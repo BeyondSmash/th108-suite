@@ -128,8 +128,8 @@
   </div>
   <div class="row" style="margin-top:2px"><span class="hint">key value examples: 86=Menu, 87=R-Ctrl, 93/94=Num0/Num. — pick a key you don't type with. Back up first → Bind → press that physical key to cycle the light. "Restore key" undoes it.</span></div>
   <div class="row" style="margin-top:2px">
-    <button id="fixTyping" disabled>🔧 Restore ' ; H J K L to normal typing</button>
-    <span class="hint">undoes the light bindings on those letter keys so they type their letters again (your media keys stay).</span>
+    <button id="fixTyping" disabled>🔁 ' ; H J K L → switch to TYPING</button>
+    <span class="hint">toggles those letter keys between normal typing and their light functions, so you can flip back and forth.</span>
   </div>
 
   <div id="log"></div>
@@ -448,11 +448,27 @@ document.getElementById('restoreKey').addEventListener('click', async ()=>{
   await writeKeySlot(kv, four);
   log(`✓ restored key value ${kv} to its backed-up mapping (${four.map(x=>x.toString(16).padStart(2,'0')).join(' ')}).`,'ok');
 });
-// one-click: restore the letter keys you bound to light functions back to normal typing
+// toggle the letter keys H J K L ; ' between normal typing and their light functions
+const LETTER_KEYS=[ // {keyValue, normal HID, light function code}
+  {v:54,hid:0x0b,fn:0x1b}, // H ↔ Front Strip Effect (27)
+  {v:55,hid:0x0d,fn:0x2e}, // J ↔ Knob Mode (46)
+  {v:56,hid:0x0e,fn:0x1d}, // K ↔ Front Strip Colour (29)
+  {v:57,hid:0x0f,fn:0xa5}, // L ↔ Ambient (165)
+  {v:58,hid:0x33,fn:0x18}, // ; ↔ Side Light Colour (24)
+  {v:59,hid:0x34,fn:0x17}, // ' ↔ Side Light Effect (23)
+];
+let lettersAreLighting=true;  // they start bound to lighting
 document.getElementById('fixTyping').addEventListener('click', async ()=>{
-  const fixes=[[54,0x0b],[55,0x0d],[56,0x0e],[57,0x0f],[58,0x33],[59,0x34]]; // [keyValue, normal HID] for H J K L ; '
-  for(const [v,hid] of fixes){ await writeKeySlot(v, [0x02,0x00,hid,0x00]); }
-  log("✓ restored H J K L ; ' to normal typing — they type their letters again.",'ok');
+  const btn=document.getElementById('fixTyping');
+  if(lettersAreLighting){
+    for(const k of LETTER_KEYS) await writeKeySlot(k.v, [0x02,0x00,k.hid,0x00]);
+    lettersAreLighting=false; btn.textContent="🔁 ' ; H J K L → switch to LIGHTING";
+    log("✓ H J K L ; ' now type normally.",'ok');
+  } else {
+    for(const k of LETTER_KEYS) await writeKeySlot(k.v, [0x0d,0x00,0x00,k.fn]);
+    lettersAreLighting=true; btn.textContent="🔁 ' ; H J K L → switch to TYPING";
+    log("✓ H J K L ; ' now cycle the lights again.",'ok');
+  }
 });
 
 document.getElementById('snapB').addEventListener('click', async ()=>{
