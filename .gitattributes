@@ -1,0 +1,14 @@
+# Normalize line endings: store LF in the repo, check out native on each OS.
+* text=auto
+
+# Keep these as LF regardless of platform.
+*.js   text eol=lf
+*.json text eol=lf
+*.html text eol=lf
+*.md   text eol=lf
+
+# Treat as binary (no EOL munging, no diff noise).
+*.png  binary
+*.jpg  binary
+*.gif  binary
+*.ico  binary
