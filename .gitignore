@@ -1,0 +1,22 @@
+# --- Epomaker's copyrighted bundles & vendor source — DO NOT redistribute ---
+*.js.txt
+app.*.js
+chunk-*.js
+OpenRGB-master_EpomakerController.zip
+_openrgb/
+
+# --- local tooling / scratch ---
+_serve.js
+*.log
+*.tmp
+logs1.txt
+*-capture.txt
+_check.js
+
+# --- node ---
+node_modules/
+th108-daemon/node_modules/
+
+# Kept on purpose (safe to publish): README.md, th108-controller.html,
+# webhid-test.html, th108-keys.json + th108-map.json (factual key map),
+# th108-daemon/ source, TH108_lighting_controller_brief.md

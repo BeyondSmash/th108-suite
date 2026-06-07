@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>TH108 — pulsing cyan + keypress-reactive controller</title>
+<style>
+  :root { color-scheme: dark; }
+  body { font:14px/1.5 system-ui,sans-serif; background:#0d1117; color:#e6edf3; margin:0; padding:24px; }
+  h1 { font-size:18px; margin:0 0 4px; }
+  .sub { color:#8b949e; margin:0 0 18px; }
+  button { font:inherit; background:#21262d; color:#e6edf3; border:1px solid #30363d;
+           border-radius:8px; padding:9px 14px; cursor:pointer; margin:0 8px 8px 0; }
+  button:hover:not(:disabled){ border-color:#58a6ff; }
+  button:disabled{ opacity:.4; cursor:not-allowed; }
+  button.primary{ background:#1f6feb; border-color:#1f6feb; }
+  button.go{ background:#238636; border-color:#238636; }
+  button.stop{ background:#da3633; border-color:#da3633; }
+  .panel{ background:#161b22; border:1px solid #30363d; border-radius:10px; padding:16px; margin:12px 0; max-width:680px; }
+  .ctl{ display:grid; grid-template-columns:160px 1fr 56px; gap:10px 14px; align-items:center; }
+  .ctl label{ color:#8b949e; }
+  input[type=range]{ width:100%; }
+  input[type=color]{ width:48px; height:28px; background:none; border:1px solid #30363d; border-radius:6px; }
+  .val{ font-family:ui-monospace,monospace; color:#58a6ff; text-align:right; }
+  #status{ margin-left:8px; }
+  #log{ margin-top:14px; background:#010409; border:1px solid #30363d; border-radius:8px; padding:10px;
+        height:150px; overflow:auto; white-space:pre-wrap; font-family:ui-monospace,monospace; font-size:12px; }
+  .ok{color:#3fb950}.err{color:#f85149}.dim{color:#8b949e}.in{color:#d29922}
+  .hint{ color:#8b949e; font-size:13px; }
+  kbd{ background:#21262d; border:1px solid #30363d; border-radius:4px; padding:1px 6px; font-family:ui-monospace,monospace; }
+</style>
+</head>
+<body>
+  <h1>Epomaker TH108 V2 PRO — live lighting controller</h1>
+  <p class="sub">Pulsing-cyan background + keypress-reactive yellow-orange, composited host-side and pushed
+     every frame over WebHID. Two layers at once — what the stock firmware won't do.</p>
+
+  <div class="row">
+    <button id="connect" class="primary">1 · Connect keyboard</button>
+    <button id="start" class="go" disabled>2 · Start effect ▶</button>
+    <button id="stop" class="stop" disabled>Stop ⏹</button>
+    <span id="status" class="dim">not connected</span>
+  </div>
+  <p class="hint">After Start, click this page once so it has keyboard focus, then type — pressed keys flash orange.
+     <br>⚠ <b>Browser keydown only fires while this tab is focused.</b> For type-anywhere/always-on we'd port this to a native host later.</p>
+
+  <div class="panel">
+    <div class="ctl">
+      <label>Background color</label><input type="color" id="bgColor" value="#00ffff" /><span></span>
+      <label>Pulse period</label><input type="range" id="period" min="400" max="6000" step="100" value="2600" /><span class="val" id="periodV"></span>
+      <label>BG min brightness</label><input type="range" id="bgMin" min="0" max="100" value="12" /><span class="val" id="bgMinV"></span>
+      <label>BG max brightness</label><input type="range" id="bgMax" min="0" max="100" value="55" /><span class="val" id="bgMaxV"></span>
+      <label>Key color</label><input type="color" id="fgColor" value="#ff8c00" /><span></span>
+      <label>Key fade</label><input type="range" id="fade" min="80" max="1500" step="20" value="380" /><span class="val" id="fadeV"></span>
+    </div>
+  </div>
+
+  <div id="log"></div>
+
+<script>
+// ===== baked-in TH108 V2 PRO map (KeyboardEvent.code -> LED index, + all LED indices) =====
+const MAP = {"keymap":{"Escape":0,"F1":1,"F2":2,"F3":3,"F4":4,"F5":5,"F6":6,"F7":7,"F8":8,"F9":9,"F10":10,"F11":11,"F12":12,"PrintScreen":99,"ScrollLock":100,"Pause":102,"Backquote":16,"Digit1":17,"Digit2":18,"Digit3":19,"Digit4":20,"Digit5":21,"Digit6":22,"Digit7":23,"Digit8":24,"Digit9":25,"Digit0":26,"Minus":27,"Equal":28,"Backspace":92,"Insert":103,"Home":104,"PageUp":105,"NumLock":29,"NumpadDivide":30,"NumpadMultiply":31,"NumpadSubtract":109,"Tab":32,"KeyQ":33,"KeyW":34,"KeyE":35,"KeyR":36,"KeyT":37,"KeyY":38,"KeyU":39,"KeyI":40,"KeyO":41,"KeyP":42,"BracketLeft":43,"BracketRight":44,"Backslash":60,"Delete":106,"End":107,"PageDown":108,"Numpad7":45,"Numpad8":46,"Numpad9":47,"NumpadAdd":110,"CapsLock":48,"KeyA":49,"KeyS":50,"KeyD":51,"KeyF":52,"KeyG":53,"KeyH":54,"KeyJ":55,"KeyK":56,"KeyL":57,"Semicolon":58,"Quote":59,"Enter":76,"Numpad4":61,"Numpad5":62,"Numpad6":63,"ShiftLeft":64,"KeyZ":65,"KeyX":66,"KeyC":67,"KeyV":68,"KeyB":69,"KeyN":70,"KeyM":71,"Comma":72,"Period":73,"Slash":74,"ShiftRight":75,"ArrowUp":90,"Numpad1":77,"Numpad2":78,"Numpad3":79,"NumpadEnter":95,"ControlLeft":80,"MetaLeft":81,"AltLeft":82,"Space":83,"AltRight":84,"ContextMenu":86,"ControlRight":87,"ArrowLeft":88,"ArrowDown":89,"ArrowRight":91,"Numpad0":93,"NumpadDecimal":94},
+"indices":[0,1,2,3,4,5,6,7,8,9,10,11,12,99,100,102,16,17,18,19,20,21,22,23,24,25,26,27,28,92,103,104,105,29,30,31,109,32,33,34,35,36,37,38,39,40,41,42,43,44,60,106,107,108,45,46,47,110,48,49,50,51,52,53,54,55,56,57,58,59,76,61,62,63,64,65,66,67,68,69,70,71,72,73,74,75,90,77,78,79,95,80,81,82,83,84,85,86,87,88,89,91,93,94]};
+const KEYMAP = MAP.keymap, INDICES = MAP.indices;
+
+// ===== WebHID transport (same proven path as the test page) =====
+const VENDOR=0x0C45, USAGE_PAGE=0xFF68, CMD=0x32;
+let device=null, reportId=0, packLen=64;
+
+const out=document.getElementById('log');
+function log(m,c=''){ const d=document.createElement('div'); if(c)d.className=c;
+  d.textContent='['+new Date().toISOString().substr(11,12)+'] '+m; out.appendChild(d);
+  while(out.childNodes.length>200) out.removeChild(out.firstChild); out.scrollTop=out.scrollHeight; }
+function setStatus(s,c=''){ const e=document.getElementById('status'); e.textContent=s; e.className=c; }
+
+function buildPkt(cmd,len,off,chunk,aux,last){
+  const s=new Uint8Array(packLen);
+  s[0]=0xAA; s[1]=cmd; s[2]=len; s[3]=off&0xFF; s[4]=(off>>8)&0xFF; s[5]=aux&0xFF; s[6]=last?1:0; s.set(chunk,8);
+  return s;
+}
+async function sendFrame(flat,aux=0){
+  if(!device) return false;
+  const room=packLen-8, n=Math.max(1,Math.ceil(flat.length/room));
+  for(let c=0;c<n;c++){
+    const off=c*room, chunk=flat.slice(off,off+room);
+    try{ await device.sendReport(reportId, buildPkt(CMD,chunk.length,off,chunk,aux,c===n-1)); }
+    catch(e){ log('send failed: '+e.message,'err'); stop(); return false; }
+  }
+  return true;
+}
+
+function findWritable(devs){
+  for(const d of devs) for(const col of d.collections||[]){
+    const or=(col.outputReports||[])[0];
+    if(or){ const it=(or.items||[])[0]||{}; return {d,reportId:or.reportId||0,packLen:it.reportCount||64,usagePage:col.usagePage}; }
+  }
+  return null;
+}
+async function connect(){
+  if(!('hid' in navigator)){ setStatus('WebHID needs Chrome/Edge','err'); return; }
+  try{
+    const picked=await navigator.hid.requestDevice({filters:[{vendorId:VENDOR,usagePage:USAGE_PAGE,usage:0x61}]});
+    const known=await navigator.hid.getDevices();
+    const all=[...picked,...known.filter(k=>!picked.includes(k))];
+    const w=findWritable(all);
+    if(!w){ setStatus('no FF68 control interface found — re-pick the 0xff68 entry','err'); return; }
+    device=w.d; reportId=w.reportId; packLen=w.packLen;
+    if(!device.opened) await device.open();
+    setStatus('connected: '+device.productName+' · reportId='+reportId+' · packLen='+packLen,'ok');
+    log('connected. '+INDICES.length+' LEDs, '+Object.keys(KEYMAP).length+' mapped keys','ok');
+    document.getElementById('start').disabled=false;
+  }catch(e){ setStatus('connect failed: '+e.message,'err'); log('connect error: '+e.message,'err'); }
+}
+
+// ===== effect loop =====
+let running=false, fg=new Float32Array(256), lastT=0, t0=0, inFlight=false;
+
+function hexToRgb(h){ return [parseInt(h.substr(1,2),16),parseInt(h.substr(3,2),16),parseInt(h.substr(5,2),16)]; }
+const P={ get period(){return +period.value;}, get bgMin(){return +bgMin.value/100;}, get bgMax(){return +bgMax.value/100;},
+          get fade(){return +fade.value;}, get bg(){return hexToRgb(bgColor.value);}, get fg(){return hexToRgb(fgColor.value);} };
+
+function buildEffectFrame(now){
+  const dt=now-lastT; lastT=now;
+  // decay foreground intensities
+  const dec=dt/P.fade;
+  for(let i=0;i<fg.length;i++){ if(fg[i]>0){ fg[i]-=dec; if(fg[i]<0)fg[i]=0; } }
+  // pulsing background brightness (sine)
+  const ph=(now-t0)/P.period*2*Math.PI;
+  const b=P.bgMin+(P.bgMax-P.bgMin)*(0.5+0.5*Math.sin(ph));
+  const [br,bg_,bb]=P.bg, [fr,fgg,fb]=P.fg;
+  const flat=new Array(INDICES.length*4);
+  for(let k=0;k<INDICES.length;k++){
+    const idx=INDICES[k];
+    let r=br*b, g=bg_*b, bl=bb*b;
+    const inten=fg[idx]||0;
+    if(inten>0){ r=r+(fr-r)*inten; g=g+(fgg-g)*inten; bl=bl+(fb-bl)*inten; }
+    const o=k*4; flat[o]=idx; flat[o+1]=r|0; flat[o+2]=g|0; flat[o+3]=bl|0;
+  }
+  return flat;
+}
+
+async function loop(){
+  if(!running) return;
+  if(!inFlight){
+    inFlight=true;
+    await sendFrame(buildEffectFrame(performance.now()));
+    inFlight=false;
+  }
+  if(running) requestAnimationFrame(loop);
+}
+
+function start(){
+  if(running||!device) return;
+  running=true; fg.fill(0); t0=lastT=performance.now();
+  document.getElementById('start').disabled=true; document.getElementById('stop').disabled=false;
+  log('effect started','ok'); requestAnimationFrame(loop);
+}
+async function stop(){
+  if(!running) return;
+  running=false;
+  document.getElementById('start').disabled=false; document.getElementById('stop').disabled=true;
+  // black-out frame so it's visibly stopped
+  const off=[]; INDICES.forEach(i=>off.push(i,0,0,0));
+  await sendFrame(off);
+  log('effect stopped (board cleared)','dim');
+}
+
+window.addEventListener('keydown',(e)=>{
+  if(!running) return;
+  const idx=KEYMAP[e.code];
+  if(idx!==undefined){ fg[idx]=1; }   // stamp full-intensity; decay handles fade. (no preventDefault — typing still works)
+});
+
+document.getElementById('connect').addEventListener('click',connect);
+document.getElementById('start').addEventListener('click',start);
+document.getElementById('stop').addEventListener('click',stop);
+
+// slider readouts
+function bind(id,fmt){ const el=document.getElementById(id),v=document.getElementById(id+'V');
+  const upd=()=>{ if(v)v.textContent=fmt(el.value); }; el.addEventListener('input',upd); upd(); }
+bind('period',x=>(x/1000).toFixed(1)+'s'); bind('bgMin',x=>x+'%'); bind('bgMax',x=>x+'%'); bind('fade',x=>x+'ms');
+</script>
+</body>
+</html>

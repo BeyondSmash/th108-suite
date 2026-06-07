@@ -1,0 +1,14 @@
+{
+  "name": "th108-lighting-daemon",
+  "version": "0.1.0",
+  "description": "Always-on host-driven lighting for the Epomaker TH108 V2 PRO (pulsing cyan + keypress-reactive orange), type-anywhere via a global keyboard hook.",
+  "type": "commonjs",
+  "main": "daemon.js",
+  "scripts": {
+    "start": "node daemon.js"
+  },
+  "dependencies": {
+    "node-hid": "^3.1.2",
+    "uiohook-napi": "^1.5.4"
+  }
+}
