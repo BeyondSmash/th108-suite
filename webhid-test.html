@@ -104,6 +104,30 @@
     <span class="hint">Reads your live keymap and shows the keys you bound to functions (', ;, ambient) — to learn the exact encoding.</span>
   </div>
 
+  <div class="row" style="margin-top:6px">
+    <b style="margin-right:8px">Bind light function → key:</b>
+    <select id="bindFunc" style="font:inherit;background:#0d1117;color:#e6edf3;border:1px solid #30363d;border-radius:6px;padding:3px 6px">
+      <option value="23">Side Light — Effect</option>
+      <option value="24">Side Light — Colour</option>
+      <option value="25">Side Light — Brightness</option>
+      <option value="26">Side Light — Speed</option>
+      <option value="27">Front Strip — Effect</option>
+      <option value="29">Front Strip — Colour</option>
+      <option value="28">Front Strip — Speed</option>
+      <option value="46">Knob Mode</option>
+      <option value="165">Ambient — effect switch</option>
+      <option value="164">Ambient — Colour</option>
+      <option value="162">Ambient — Brightness</option>
+      <option value="163">Ambient — Speed</option>
+      <option value="83">Turn off side lights</option>
+    </select>
+    <label>key value</label><input id="bindKeyVal" type="number" value="100" min="0" max="127" style="width:58px" />
+    <button id="backupKm" disabled>1· Backup keymap</button>
+    <button id="bindBtn" disabled>2· Bind</button>
+    <button id="restoreKey" disabled>Restore key</button>
+  </div>
+  <div class="row" style="margin-top:2px"><span class="hint">key value examples: 100=Scroll Lock, 102=Pause, 103=Insert, 99=Print, 86=Menu. Back up first → Bind → press that physical key to cycle the light. "Restore key" undoes it.</span></div>
+
   <div id="log"></div>
 
 <script>
@@ -127,7 +151,7 @@ function log(msg, cls='') {
   out.scrollTop = out.scrollHeight;
 }
 function setStatus(s, cls='') { logEl.textContent = s; logEl.className = cls; }
-function btns(enabled){ ['dump','scanRange','stepPrev','stepNext','stepLight','lbSet','lbOff','obSet','rdPoll','snapA','snapB','dumpKeymap','floodCyan','floodTrueCyan','composite','off'].forEach(id=>document.getElementById(id).disabled=!enabled); }
+function btns(enabled){ ['dump','scanRange','stepPrev','stepNext','stepLight','lbSet','lbOff','obSet','rdPoll','snapA','snapB','dumpKeymap','backupKm','bindBtn','restoreKey','floodCyan','floodTrueCyan','composite','off'].forEach(id=>document.getElementById(id).disabled=!enabled); }
 
 // ---- packet builder: exact replica of the web driver's buildPkt_final ----
 // pkt[0]=0xAA  [1]=cmd  [2]=payloadLen  [3..4]=byteOffset(LE)  [5]=aux  [6]=isLast  payload@[8]
@@ -384,6 +408,41 @@ document.getElementById('dumpKeymap').addEventListener('click', async ()=>{
   log(`--- reference normals: Esc(v0)=${hx([data[0],data[1],data[2],data[3]])}  A(v49)=${hx([data[196],data[197],data[198],data[199]])} ---`,'dim');
   if(!found) log('  (no function/special keys found — assign one on the official site first, then re-dump)','dim');
   else log(`found ${found} non-standard entries — paste these to me to lock the function encoding.`,'ok');
+});
+
+// ---- keymap binder: write a key's 4-byte slot via single-key keymap write (cmd 0x22) ----
+let keymapBackup=null;
+function writeKeySlot(keyValue, four){   // four = [b0,b1,b2,b3]
+  const off=4*keyValue, pkt=new Uint8Array(packLen);
+  pkt[0]=0xAA; pkt[1]=0x22; pkt[2]=0x04; pkt[3]=off&0xFF; pkt[4]=(off>>8)&0xFF;
+  pkt[8]=four[0]; pkt[9]=four[1]; pkt[10]=four[2]; pkt[11]=four[3];
+  return device.sendReport(reportId, pkt);
+}
+async function readFullKeymap(){
+  const data=new Uint8Array(512);
+  for(let off=0; off<512; off+=56){ const r=await readCmdAt(0x12, off); if(r) for(let i=0;i<56 && off+i<512;i++) data[off+i]=r[8+i]||0; }
+  return data;
+}
+document.getElementById('backupKm').addEventListener('click', async ()=>{
+  log('backing up keymap…','in');
+  keymapBackup=await readFullKeymap();
+  // offer a download too
+  const blob=new Blob([JSON.stringify(Array.from(keymapBackup))],{type:'application/json'});
+  const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='th108-keymap-backup.json'; a.click();
+  log('✓ keymap backed up (512B, also downloaded). Bind/Restore enabled.','ok');
+});
+document.getElementById('bindBtn').addEventListener('click', async ()=>{
+  const code=+document.getElementById('bindFunc').value, kv=+document.getElementById('bindKeyVal').value;
+  if(!keymapBackup){ log('⚠ click "Backup keymap" first (so you can undo).','err'); return; }
+  await writeKeySlot(kv, [0x0d, 0x00, 0x00, code]);
+  log(`✓ bound key value ${kv} → function code ${code} (0d 00 00 ${code.toString(16).padStart(2,'0')}). Press that physical key to cycle the light.`,'ok');
+});
+document.getElementById('restoreKey').addEventListener('click', async ()=>{
+  if(!keymapBackup){ log('no backup yet','err'); return; }
+  const kv=+document.getElementById('bindKeyVal').value;
+  const o=kv*4, four=[keymapBackup[o],keymapBackup[o+1],keymapBackup[o+2],keymapBackup[o+3]];
+  await writeKeySlot(kv, four);
+  log(`✓ restored key value ${kv} to its backed-up mapping (${four.map(x=>x.toString(16).padStart(2,'0')).join(' ')}).`,'ok');
 });
 
 document.getElementById('snapB').addEventListener('click', async ()=>{
