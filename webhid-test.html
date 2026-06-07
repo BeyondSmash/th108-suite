@@ -91,6 +91,13 @@
     <span class="hint">Read → change side lights via FN → Read again → diff the responses.</span>
   </div>
 
+  <div class="row" style="margin-top:6px">
+    <b style="margin-right:8px">Config diff (hunt the decorative state):</b>
+    <button id="snapA" disabled>📸 Snapshot A</button>
+    <button id="snapB" disabled>📸 Snapshot B + Diff</button>
+    <span class="hint">Snapshot A → physically cycle a decorative light (Fn+Home / your '/; key) → Snapshot B. Changed bytes = where it lives.</span>
+  </div>
+
   <div id="log"></div>
 
 <script>
@@ -114,7 +121,7 @@ function log(msg, cls='') {
   out.scrollTop = out.scrollHeight;
 }
 function setStatus(s, cls='') { logEl.textContent = s; logEl.className = cls; }
-function btns(enabled){ ['dump','scanRange','stepPrev','stepNext','stepLight','lbSet','lbOff','obSet','rdPoll','floodCyan','floodTrueCyan','composite','off'].forEach(id=>document.getElementById(id).disabled=!enabled); }
+function btns(enabled){ ['dump','scanRange','stepPrev','stepNext','stepLight','lbSet','lbOff','obSet','rdPoll','snapA','snapB','floodCyan','floodTrueCyan','composite','off'].forEach(id=>document.getElementById(id).disabled=!enabled); }
 
 // ---- packet builder: exact replica of the web driver's buildPkt_final ----
 // pkt[0]=0xAA  [1]=cmd  [2]=payloadLen  [3..4]=byteOffset(LE)  [5]=aux  [6]=isLast  payload@[8]
@@ -311,6 +318,50 @@ document.getElementById('rdPoll').addEventListener('click', ()=>{
   const cmd=parseInt(document.getElementById('rdCmd').value,16);
   log(`--- READ poll cmd 0x${cmd.toString(16)} (watch ◄ inputreport lines below for the response) ---`,'in');
   sendRaw(cmd, [0,0,0,0]);   // request; device replies via inputreport (logged)
+});
+
+// ---- config snapshot + diff (hunt for the decorative-light state) ----
+// send a read request for `cmd` and collect every input report that arrives within `ms`
+function readCmd(cmd, ms=180){
+  return new Promise(async res=>{
+    const got=[];
+    const onIn=e=>{ got.push(Array.from(new Uint8Array(e.data.buffer).slice(0,32))); };
+    device.addEventListener('inputreport', onIn);
+    const pkt=new Uint8Array(packLen); pkt[0]=0xAA; pkt[1]=cmd; pkt[2]=0x38; pkt[6]=1;
+    try{ await device.sendReport(reportId, pkt); }catch(e){}
+    setTimeout(()=>{ device.removeEventListener('inputreport', onIn); res(got); }, ms);
+  });
+}
+const SNAP_CMDS=[0x10,0x11,0x12,0x13,0x14,0x15,0x16,0x17,0x18,0x19,0x1a,0x1b,0x1c,0x1d,0x1e,0x1f,0x23,0x27,0x2b,0x43];
+async function snapshotConfig(){
+  const snap={};
+  for(const c of SNAP_CMDS){ snap[c]=await readCmd(c); }
+  return snap;
+}
+const toHex=arr=>arr.map(r=>r.map(x=>x.toString(16).padStart(2,'0')).join(' ')).join('  |  ');
+let snapAData=null;
+document.getElementById('snapA').addEventListener('click', async ()=>{
+  log('📸 reading Snapshot A (sweeping config regions)…','in');
+  snapAData=await snapshotConfig();
+  const total=Object.values(snapAData).reduce((n,v)=>n+v.length,0);
+  log(`Snapshot A done — ${total} response report(s) across ${SNAP_CMDS.length} regions. Now physically cycle a decorative light, then click Snapshot B.`,'ok');
+});
+document.getElementById('snapB').addEventListener('click', async ()=>{
+  if(!snapAData){ log('take Snapshot A first','err'); return; }
+  log('📸 reading Snapshot B + diffing…','in');
+  const b=await snapshotConfig();
+  let changed=0;
+  for(const c of SNAP_CMDS){
+    const av=toHex(snapAData[c]||[]), bv=toHex(b[c]||[]);
+    if(av!==bv){
+      changed++;
+      log(`◆ CHANGED cmd 0x${c.toString(16)}:`,'in');
+      log(`   A: ${av||'(no response)'}`,'dim');
+      log(`   B: ${bv||'(no response)'}`,'ok');
+    }
+  }
+  if(!changed) log('✗ NO config bytes changed in any region — the decorative state is internal firmware, not host-readable. Conclusively sealed.','err');
+  else log(`✓ ${changed} region(s) changed — the decorative state IS host-readable there. Next: try writing it back modified.`,'ok');
 });
 // The 104 known-valid key LED indices (from the captured map). Used as a SAFE black base
 // so we never write invalid high indices that overflow/alias the firmware buffer.
