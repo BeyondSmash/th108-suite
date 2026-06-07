@@ -70,7 +70,14 @@
   <div class="row" style="display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap">
     <div>
       <div class="sub" id="cropLbl" style="margin:0 0 4px">load a GIF to see the crop guide</div>
-      <canvas id="cropGuide" style="border:1px solid #30363d;background:#000;border-radius:4px"></canvas>
+      <canvas id="cropGuide" style="border:1px solid #30363d;background:#000;border-radius:4px;cursor:move"></canvas>
+      <div id="cropCtls" style="display:none;gap:10px;align-items:center;margin-top:7px;flex-wrap:wrap">
+        <label style="display:flex;align-items:center;gap:6px">zoom <input type="range" id="cropZoom" min="100" max="500" value="100" style="width:140px"></label>
+        <button id="cropUndo" title="undo">↶</button>
+        <button id="cropRedo" title="redo">↷</button>
+        <button id="cropReset">reset crop</button>
+        <span class="sub" style="margin:0">drag the box above to reposition</span>
+      </div>
     </div>
   </div>
   <div class="row" style="display:flex;gap:24px;align-items:flex-start;flex-wrap:wrap">
@@ -191,6 +198,15 @@ function edgeAverage(dx,dy,dw,dh,letterbox){
   }catch(e){}
   return n ? `rgb(${(r/n)|0},${(g/n)|0},${(b/n)|0})` : '#000';
 }
+// ---- adjustable crop transform (Crop mode): zoom + pan, clamped to the source ----
+let czoom=1, cpanX=0, cpanY=0;
+function cropRect(srcW,srcH){
+  const tr=160/96, ir=srcW/srcH; let cw0,ch0;
+  if(ir>tr){ ch0=srcH; cw0=srcH*tr; } else { cw0=srcW; ch0=srcW/tr; }   // base cover rect (5:3)
+  const cw=cw0/czoom, ch=ch0/czoom, maxX=(srcW-cw)/2, maxY=(srcH-ch)/2;
+  cpanX=Math.max(-maxX,Math.min(maxX,cpanX)); cpanY=Math.max(-maxY,Math.min(maxY,cpanY));  // clamp + write back
+  return { cx:(srcW-cw)/2+cpanX, cy:(srcH-ch)/2+cpanY, cw, ch };
+}
 function coverDraw(srcW,srcH,drawable){   // render drawable to 160x96 (crop or fit), return RGBA bytes
   const tw=160,th=96,ir=srcW/srcH,tr=tw/th;
   octx.filter='none'; octx.clearRect(0,0,tw,th);
@@ -214,10 +230,9 @@ function coverDraw(srcW,srcH,drawable){   // render drawable to 160x96 (crop or 
       if(letterbox){ octx.fillRect(0,0,tw,dy); octx.fillRect(0,dy+dh,tw,th-(dy+dh)); }
       else { octx.fillRect(0,0,dx,th); octx.fillRect(dx+dw,0,tw-(dx+dw),th); }
     }
-  } else {                                // COVER: fill + crop edges
-    let sw,sh,sx,sy;
-    if(ir>tr){ sh=srcH; sw=sh*tr; sx=(srcW-sw)/2; sy=0; } else { sw=srcW; sh=sw/tr; sx=0; sy=(srcH-sh)/2; }
-    octx.drawImage(drawable,sx,sy,sw,sh,0,0,tw,th);
+  } else {                                // COVER: crop (repositionable + scalable)
+    const c=cropRect(srcW,srcH);
+    octx.drawImage(drawable,c.cx,c.cy,c.cw,c.ch,0,0,tw,th);
   }
   return octx.getImageData(0,0,tw,th).data;
 }
@@ -237,17 +252,17 @@ function drawCropGuide(){
   if(isFit()){                                  // FIT: whole image kept (letterboxed) — no crop
     c.strokeStyle='#3fb950'; c.lineWidth=2; c.strokeRect(1,1,dispW-2,dispH-2);
     if(lbl) lbl.textContent=`source ${srcW}×${srcH} → whole GIF kept, letterboxed to 160×96 (black bars)`;
-  } else {                                       // COVER: dim cropped-out area, dash the kept 5:3 region
-    const tr=160/96, ir=srcW/srcH; let cw,ch,cx,cy;
-    if(ir>tr){ ch=srcH; cw=srcH*tr; cx=(srcW-cw)/2; cy=0; } else { cw=srcW; ch=srcW/tr; cx=0; cy=(srcH-ch)/2; }
-    const rx=cx*s, ry=cy*s, rw=cw*s, rh=ch*s;
+  } else {                                       // COVER: dim cropped-out area, dash the kept (adjustable) region
+    const cr=cropRect(srcW,srcH);
+    const rx=cr.cx*s, ry=cr.cy*s, rw=cr.cw*s, rh=cr.ch*s;
     c.fillStyle='rgba(1,4,9,.6)';
     c.fillRect(0,0,dispW,ry); c.fillRect(0,ry+rh,dispW,dispH-(ry+rh));
     c.fillRect(0,ry,rx,rh); c.fillRect(rx+rw,ry,dispW-(rx+rw),rh);
     c.strokeStyle='#58a6ff'; c.lineWidth=2; c.setLineDash([6,4]);
     c.strokeRect(rx+1,ry+1,rw-2,rh-2); c.setLineDash([]);
-    if(lbl) lbl.textContent=`source ${srcW}×${srcH} → dashed region (160×96 / 5:3) is kept, the dimmed edges are cropped`;
+    if(lbl) lbl.textContent=`source ${srcW}×${srcH} → drag to reposition, zoom to scale · ${(czoom*100|0)}%`;
   }
+  const ctls=document.getElementById('cropCtls'); if(ctls) ctls.style.display = (srcCanvas && !isFit()) ? 'flex' : 'none';
 }
 // evenly sample frames down to maxN, summing skipped frames' delays so total duration is preserved
 function sampleFrames(maxN){
@@ -270,7 +285,27 @@ function tickPreview(){
   if(frames.length>1) previewTimer=setTimeout(tickPreview,d);
 }
 let currentFile=null;
-document.getElementById('file').addEventListener('change', e=>{ const f=e.target.files[0]; if(f){ currentFile=f; processFile(f); } });
+document.getElementById('file').addEventListener('change', e=>{ const f=e.target.files[0]; if(f){ currentFile=f; cropResetState(); processFile(f).then(cropPush); } });
+
+// ---- crop reposition / scale, with undo·redo·reset ----
+let cropHist=[], cropHi=-1;
+const cropSnap=()=>({z:czoom,x:cpanX,y:cpanY});
+function cropPush(){ cropHist=cropHist.slice(0,cropHi+1); cropHist.push(cropSnap()); cropHi=cropHist.length-1; cropBtns(); }
+function cropBtns(){ const u=document.getElementById('cropUndo'),r=document.getElementById('cropRedo'); if(u)u.disabled=cropHi<=0; if(r)r.disabled=cropHi>=cropHist.length-1; }
+function cropApplySnap(s){ czoom=s.z; cpanX=s.x; cpanY=s.y; document.getElementById('cropZoom').value=Math.round(czoom*100); drawCropGuide(); if(currentFile) processFile(currentFile); }
+function cropResetState(){ czoom=1; cpanX=0; cpanY=0; cropHist=[]; cropHi=-1; const z=document.getElementById('cropZoom'); if(z) z.value=100; }
+document.getElementById('cropUndo').addEventListener('click', ()=>{ if(cropHi>0){ cropHi--; cropApplySnap(cropHist[cropHi]); cropBtns(); } });
+document.getElementById('cropRedo').addEventListener('click', ()=>{ if(cropHi<cropHist.length-1){ cropHi++; cropApplySnap(cropHist[cropHi]); cropBtns(); } });
+document.getElementById('cropReset').addEventListener('click', ()=>{ czoom=1; cpanX=0; cpanY=0; document.getElementById('cropZoom').value=100; drawCropGuide(); if(currentFile) processFile(currentFile); cropPush(); });
+// zoom slider: live guide on input, commit (re-process + history) on release
+document.getElementById('cropZoom').addEventListener('input', ()=>{ czoom=(+document.getElementById('cropZoom').value)/100; drawCropGuide(); });
+document.getElementById('cropZoom').addEventListener('change', ()=>{ czoom=(+document.getElementById('cropZoom').value)/100; drawCropGuide(); if(currentFile) processFile(currentFile); cropPush(); });
+// drag the crop guide to reposition (Crop mode only)
+(function(){ const cg=document.getElementById('cropGuide'); let drag=null;
+  cg.addEventListener('mousedown', e=>{ if(isFit()||!srcCanvas) return; const s=cg.width/srcW; drag={mx:e.clientX,my:e.clientY,px:cpanX,py:cpanY,s}; e.preventDefault(); });
+  window.addEventListener('mousemove', e=>{ if(!drag) return; cpanX=drag.px+(e.clientX-drag.mx)/drag.s; cpanY=drag.py+(e.clientY-drag.my)/drag.s; drawCropGuide(); });
+  window.addEventListener('mouseup', ()=>{ if(!drag) return; drag=null; if(currentFile) processFile(currentFile); cropPush(); });
+})();
 // toggling Crop/Fit (or the bar fill) re-processes the loaded GIF with the new mode
 document.querySelectorAll('input[name=fit]').forEach(r=>r.addEventListener('change', ()=>{ if(currentFile) processFile(currentFile); }));
 // show the color swatch only when "Solid color" is selected
