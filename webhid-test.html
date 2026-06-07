@@ -126,7 +126,11 @@
     <button id="bindBtn" disabled>2· Bind</button>
     <button id="restoreKey" disabled>Restore key</button>
   </div>
-  <div class="row" style="margin-top:2px"><span class="hint">key value examples: 100=Scroll Lock, 102=Pause, 103=Insert, 99=Print, 86=Menu. Back up first → Bind → press that physical key to cycle the light. "Restore key" undoes it.</span></div>
+  <div class="row" style="margin-top:2px"><span class="hint">key value examples: 86=Menu, 87=R-Ctrl, 93/94=Num0/Num. — pick a key you don't type with. Back up first → Bind → press that physical key to cycle the light. "Restore key" undoes it.</span></div>
+  <div class="row" style="margin-top:2px">
+    <button id="fixTyping" disabled>🔧 Restore ' ; H J K L to normal typing</button>
+    <span class="hint">undoes the light bindings on those letter keys so they type their letters again (your media keys stay).</span>
+  </div>
 
   <div id="log"></div>
 
@@ -151,7 +155,7 @@ function log(msg, cls='') {
   out.scrollTop = out.scrollHeight;
 }
 function setStatus(s, cls='') { logEl.textContent = s; logEl.className = cls; }
-function btns(enabled){ ['dump','scanRange','stepPrev','stepNext','stepLight','lbSet','lbOff','obSet','rdPoll','snapA','snapB','dumpKeymap','backupKm','bindBtn','restoreKey','floodCyan','floodTrueCyan','composite','off'].forEach(id=>document.getElementById(id).disabled=!enabled); }
+function btns(enabled){ ['dump','scanRange','stepPrev','stepNext','stepLight','lbSet','lbOff','obSet','rdPoll','snapA','snapB','dumpKeymap','backupKm','bindBtn','restoreKey','fixTyping','floodCyan','floodTrueCyan','composite','off'].forEach(id=>document.getElementById(id).disabled=!enabled); }
 
 // ---- packet builder: exact replica of the web driver's buildPkt_final ----
 // pkt[0]=0xAA  [1]=cmd  [2]=payloadLen  [3..4]=byteOffset(LE)  [5]=aux  [6]=isLast  payload@[8]
@@ -443,6 +447,12 @@ document.getElementById('restoreKey').addEventListener('click', async ()=>{
   const o=kv*4, four=[keymapBackup[o],keymapBackup[o+1],keymapBackup[o+2],keymapBackup[o+3]];
   await writeKeySlot(kv, four);
   log(`✓ restored key value ${kv} to its backed-up mapping (${four.map(x=>x.toString(16).padStart(2,'0')).join(' ')}).`,'ok');
+});
+// one-click: restore the letter keys you bound to light functions back to normal typing
+document.getElementById('fixTyping').addEventListener('click', async ()=>{
+  const fixes=[[54,0x0b],[55,0x0d],[56,0x0e],[57,0x0f],[58,0x33],[59,0x34]]; // [keyValue, normal HID] for H J K L ; '
+  for(const [v,hid] of fixes){ await writeKeySlot(v, [0x02,0x00,hid,0x00]); }
+  log("✓ restored H J K L ; ' to normal typing — they type their letters again.",'ok');
 });
 
 document.getElementById('snapB').addEventListener('click', async ()=>{
