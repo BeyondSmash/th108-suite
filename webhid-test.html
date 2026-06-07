@@ -98,6 +98,12 @@
     <span class="hint">Snapshot A → physically cycle a decorative light (Fn+Home / your '/; key) → Snapshot B. Changed bytes = where it lives.</span>
   </div>
 
+  <div class="row" style="margin-top:6px">
+    <b style="margin-right:8px">Keymap binder:</b>
+    <button id="dumpKeymap" disabled>🔑 Dump keymap (read function encodings)</button>
+    <span class="hint">Reads your live keymap and shows the keys you bound to functions (', ;, ambient) — to learn the exact encoding.</span>
+  </div>
+
   <div id="log"></div>
 
 <script>
@@ -121,7 +127,7 @@ function log(msg, cls='') {
   out.scrollTop = out.scrollHeight;
 }
 function setStatus(s, cls='') { logEl.textContent = s; logEl.className = cls; }
-function btns(enabled){ ['dump','scanRange','stepPrev','stepNext','stepLight','lbSet','lbOff','obSet','rdPoll','snapA','snapB','floodCyan','floodTrueCyan','composite','off'].forEach(id=>document.getElementById(id).disabled=!enabled); }
+function btns(enabled){ ['dump','scanRange','stepPrev','stepNext','stepLight','lbSet','lbOff','obSet','rdPoll','snapA','snapB','dumpKeymap','floodCyan','floodTrueCyan','composite','off'].forEach(id=>document.getElementById(id).disabled=!enabled); }
 
 // ---- packet builder: exact replica of the web driver's buildPkt_final ----
 // pkt[0]=0xAA  [1]=cmd  [2]=payloadLen  [3..4]=byteOffset(LE)  [5]=aux  [6]=isLast  payload@[8]
@@ -347,6 +353,39 @@ document.getElementById('snapA').addEventListener('click', async ()=>{
   const total=Object.values(snapAData).reduce((n,v)=>n+v.length,0);
   log(`Snapshot A done — ${total} response report(s) across ${SNAP_CMDS.length} regions. Now physically cycle a decorative light, then click Snapshot B.`,'ok');
 });
+// read 56 bytes of a config region at a given offset (response payload starts at byte 8)
+function readCmdAt(cmd, off, ms=160){
+  return new Promise(async res=>{
+    let got=null;
+    const onIn=e=>{ const b=new Uint8Array(e.data.buffer); if(b[0]===0x55 && b[1]===cmd) got=Array.from(b); };
+    device.addEventListener('inputreport', onIn);
+    const pkt=new Uint8Array(packLen); pkt[0]=0xAA; pkt[1]=cmd; pkt[2]=0x38; pkt[3]=off&0xFF; pkt[4]=(off>>8)&0xFF; pkt[6]=1;
+    try{ await device.sendReport(reportId, pkt); }catch(e){}
+    setTimeout(()=>{ device.removeEventListener('inputreport', onIn); res(got); }, ms);
+  });
+}
+// read the whole 512-byte keymap (cmd 0x12), then dump keys whose 4-byte entry isn't a plain key (type != 0x02)
+document.getElementById('dumpKeymap').addEventListener('click', async ()=>{
+  log('reading keymap (cmd 0x12, 0x190 bytes)…','in');
+  const data=new Uint8Array(512);
+  for(let off=0; off<512; off+=56){
+    const r=await readCmdAt(0x12, off);
+    if(r) for(let i=0;i<56 && off+i<512;i++) data[off+i]=r[8+i]||0;
+  }
+  const hx=b=>b.map(x=>x.toString(16).padStart(2,'0')).join(' ');
+  log('--- non-standard keymap entries (functions/special — type byte ≠ 0x02) ---','in');
+  let found=0;
+  for(let v=0; v<128; v++){
+    const b=[data[v*4],data[v*4+1],data[v*4+2],data[v*4+3]];
+    const blank = b.every(x=>x===0);
+    if(b[0]!==0x02 && !blank){ found++; log(`  value ${v}: ${hx(b)}`,'ok'); }
+  }
+  // also show a couple of known normals for reference
+  log(`--- reference normals: Esc(v0)=${hx([data[0],data[1],data[2],data[3]])}  A(v49)=${hx([data[196],data[197],data[198],data[199]])} ---`,'dim');
+  if(!found) log('  (no function/special keys found — assign one on the official site first, then re-dump)','dim');
+  else log(`found ${found} non-standard entries — paste these to me to lock the function encoding.`,'ok');
+});
+
 document.getElementById('snapB').addEventListener('click', async ()=>{
   if(!snapAData){ log('take Snapshot A first','err'); return; }
   log('📸 reading Snapshot B + diffing…','in');
