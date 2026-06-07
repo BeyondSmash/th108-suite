@@ -132,6 +132,22 @@
     <span class="hint">toggles those letter keys between normal typing and their light functions, so you can flip back and forth.</span>
   </div>
 
+  <div class="row" style="margin-top:8px">
+    <b style="margin-right:8px">⎵ Spacebar light control:</b>
+    <span class="hint">click a light → your Spacebar becomes that control + a focus overlay opens. ✕ or Esc exits and restores Spacebar.</span>
+  </div>
+  <div class="row" id="spaceLightBtns" style="display:flex;flex-wrap:wrap;gap:6px"></div>
+
+  <div id="spaceOverlay" style="position:fixed;inset:0;background:rgba(1,4,9,.85);display:none;align-items:center;justify-content:center;z-index:2000">
+    <div style="background:#161b22;border:1px solid #30363d;border-radius:16px;padding:34px 46px;text-align:center;min-width:440px;position:relative;box-shadow:0 14px 56px rgba(0,0,0,.75)">
+      <button id="spaceExit" style="position:absolute;top:10px;right:12px;background:#21262d;border:1px solid #30363d;border-radius:8px;color:#e6edf3;padding:4px 11px;cursor:pointer;font-size:15px;margin:0">✕</button>
+      <div style="font-size:14px;color:#8b949e;letter-spacing:.5px">YOUR SPACEBAR NOW CONTROLS</div>
+      <div id="spaceTitle" style="font-size:26px;font-weight:700;color:#58a6ff;margin:10px 0 6px">—</div>
+      <div id="spaceDesc" style="color:#e6edf3;font-size:15px">Tap <kbd>Space</kbd> to cycle.</div>
+      <div style="color:#8b949e;font-size:12.5px;margin-top:18px">Click ✕ or press <kbd>Esc</kbd> to exit and restore your Spacebar.</div>
+    </div>
+  </div>
+
   <div id="log"></div>
 
 <script>
@@ -155,7 +171,8 @@ function log(msg, cls='') {
   out.scrollTop = out.scrollHeight;
 }
 function setStatus(s, cls='') { logEl.textContent = s; logEl.className = cls; }
-function btns(enabled){ ['dump','scanRange','stepPrev','stepNext','stepLight','lbSet','lbOff','obSet','rdPoll','snapA','snapB','dumpKeymap','backupKm','bindBtn','restoreKey','fixTyping','floodCyan','floodTrueCyan','composite','off'].forEach(id=>document.getElementById(id).disabled=!enabled); }
+function btns(enabled){ ['dump','scanRange','stepPrev','stepNext','stepLight','lbSet','lbOff','obSet','rdPoll','snapA','snapB','dumpKeymap','backupKm','bindBtn','restoreKey','fixTyping','floodCyan','floodTrueCyan','composite','off'].forEach(id=>document.getElementById(id).disabled=!enabled);
+  document.querySelectorAll('[data-space]').forEach(b=>b.disabled=!enabled); }
 
 // ---- packet builder: exact replica of the web driver's buildPkt_final ----
 // pkt[0]=0xAA  [1]=cmd  [2]=payloadLen  [3..4]=byteOffset(LE)  [5]=aux  [6]=isLast  payload@[8]
@@ -312,6 +329,41 @@ async function connect() {
     log('connect error: ' + err.name + ': ' + err.message, 'err');
   }
 }
+// ⎵ Spacebar light control with a focus overlay (Esc / ✕ exits + restores Spacebar)
+const SPACE_VAL=83, SPACE_HID=0x2c;
+const SPACE_FUNCS=[
+  {code:24,name:'Side Light Colour',desc:"cycle the side strips' colour"},
+  {code:23,name:'Side Light Effect',desc:"cycle the side strips' effect"},
+  {code:29,name:'Front Strip Colour',desc:"cycle the front strip's colour"},
+  {code:27,name:'Front Strip Effect',desc:"cycle the front strip's effect"},
+  {code:164,name:'Ambient / Circle Colour',desc:"cycle the circle light's colour"},
+  {code:165,name:'Ambient Effect',desc:"cycle the ambient lighting effect"},
+  {code:46,name:'Knob Mode',desc:"cycle the knob mode"},
+];
+let spaceActive=false;
+function spaceEsc(e){ if(e.key==='Escape'){ e.preventDefault(); exitSpace(); } }
+async function enterSpace(f){
+  if(!device){ return; }
+  const o=SPACE_VAL*4, km=await readFullKeymap();
+  km[o]=0x0d; km[o+1]=0; km[o+2]=0; km[o+3]=f.code; await writeFullKeymap(km);
+  document.getElementById('spaceTitle').textContent=f.name;
+  document.getElementById('spaceDesc').innerHTML='Tap <kbd>Space</kbd> to '+f.desc+'.';
+  document.getElementById('spaceOverlay').style.display='flex';
+  spaceActive=true; window.addEventListener('keydown', spaceEsc);
+  log('⎵ Spacebar → '+f.name+' (overlay open).','in');
+}
+async function exitSpace(){
+  if(!spaceActive) return; spaceActive=false; window.removeEventListener('keydown', spaceEsc);
+  const o=SPACE_VAL*4, km=await readFullKeymap();
+  km[o]=0x02; km[o+1]=0; km[o+2]=SPACE_HID; km[o+3]=0; await writeFullKeymap(km);
+  document.getElementById('spaceOverlay').style.display='none';
+  log('✓ Spacebar restored to normal.','ok');
+}
+(function(){ const c=document.getElementById('spaceLightBtns');
+  SPACE_FUNCS.forEach(f=>{ const b=document.createElement('button'); b.textContent=f.name; b.disabled=true; b.dataset.space='1'; b.style.margin='0'; b.addEventListener('click',()=>enterSpace(f)); c.appendChild(b); });
+})();
+document.getElementById('spaceExit').addEventListener('click', exitSpace);
+
 document.getElementById('connect').addEventListener('click', connect);
 
 // Open EVERY vendor interface of the keyboard and log input reports from all of them,
