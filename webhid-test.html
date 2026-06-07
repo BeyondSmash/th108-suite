@@ -108,15 +108,15 @@
     <b style="margin-right:8px">Bind light function → key:</b>
     <select id="bindFunc" style="font:inherit;background:#0d1117;color:#e6edf3;border:1px solid #30363d;border-radius:6px;padding:3px 6px">
       <option value="23">Side Light — Effect</option>
-      <option value="24">Side Light — Colour</option>
+      <option value="24">Side Light — Color</option>
       <option value="25">Side Light — Brightness</option>
       <option value="26">Side Light — Speed</option>
       <option value="27">Front Strip — Effect</option>
-      <option value="29">Front Strip — Colour</option>
+      <option value="29">Front Strip — Color</option>
       <option value="28">Front Strip — Speed</option>
       <option value="46">Knob Mode</option>
       <option value="165">Ambient — effect switch</option>
-      <option value="164">Ambient — Colour</option>
+      <option value="164">Ambient — Color</option>
       <option value="162">Ambient — Brightness</option>
       <option value="163">Ambient — Speed</option>
       <option value="83">Turn off side lights</option>
@@ -252,8 +252,8 @@ function setLightBox(r,g,b,effect,bright){
 function setOnboard(r,g,b,effect,bright){
   const p=new Array(16).fill(0);
   p[0]=effect; p[1]=r; p[2]=g; p[3]=b; p[4]=255;
-  p[5]=r; p[6]=g; p[7]=b;           // secondary colour = same
-  p[8]=0;                            // colourful/dazzle off → solid colour
+  p[5]=r; p[6]=g; p[7]=b;           // secondary color = same
+  p[8]=0;                            // colorful/dazzle off → solid color
   p[9]=bright; p[10]=3; p[11]=0; p[12]=0;
   return sendRaw(0x23, p);
 }
@@ -342,11 +342,11 @@ async function connect() {
 // ⎵ Spacebar light control with a focus overlay (Esc / ✕ exits + restores Spacebar)
 const SPACE_VAL=83, SPACE_HID=0x2c;
 const SPACE_FUNCS=[
-  {code:24,name:'Side Light Colour',desc:"cycle the side strips' colour"},
+  {code:24,name:'Side Light Color',desc:"cycle the side strips' color"},
   {code:23,name:'Side Light Effect',desc:"cycle the side strips' effect"},
-  {code:29,name:'Front Strip Colour',desc:"cycle the front strip's colour"},
+  {code:29,name:'Front Strip Color',desc:"cycle the front strip's color"},
   {code:27,name:'Front Strip Effect',desc:"cycle the front strip's effect"},
-  {code:164,name:'Ambient / Circle Colour',desc:"cycle the circle light's colour"},
+  {code:164,name:'Ambient / Circle Color',desc:"cycle the circle light's color"},
   {code:165,name:'Ambient Effect',desc:"cycle the ambient lighting effect"},
   // NOTE: "Knob Mode" (code 46) just toggles mute on this board — not the LCD knob-mode switch (that's FN+knob-press). Omitted.
 ];
@@ -559,9 +559,9 @@ document.getElementById('restoreKey').addEventListener('click', async ()=>{
 const LETTER_KEYS=[ // {keyValue, normal HID, light function code}
   {v:54,hid:0x0b,fn:0x1b}, // H ↔ Front Strip Effect (27)
   {v:55,hid:0x0d,fn:0x2e}, // J ↔ Knob Mode (46)
-  {v:56,hid:0x0e,fn:0x1d}, // K ↔ Front Strip Colour (29)
+  {v:56,hid:0x0e,fn:0x1d}, // K ↔ Front Strip Color (29)
   {v:57,hid:0x0f,fn:0xa5}, // L ↔ Ambient (165)
-  {v:58,hid:0x33,fn:0x18}, // ; ↔ Side Light Colour (24)
+  {v:58,hid:0x33,fn:0x18}, // ; ↔ Side Light Color (24)
   {v:59,hid:0x34,fn:0x17}, // ' ↔ Side Light Effect (23)
 ];
 let lettersAreLighting=true;  // they start bound to lighting

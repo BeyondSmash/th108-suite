@@ -16,7 +16,7 @@
   button.primary{ background:#1f6feb; border-color:#1f6feb; }
   button.go{ background:#238636; border-color:#238636; }
   .row{ margin:12px 0; }
-  #preview{ image-rendering:pixelated; border:1px solid #30363d; width:320px; height:192px; background:#000; }
+  #preview,#previewActual{ image-rendering:pixelated; border:1px solid #30363d; width:320px; height:192px; background:#000; }
   label{ color:#8b949e; }
   #log{ margin-top:14px; background:#010409; border:1px solid #30363d; border-radius:8px; padding:10px; height:180px; overflow:auto; white-space:pre-wrap; font-family:ui-monospace,monospace; font-size:12px; }
   .ok{color:#3fb950}.err{color:#f85149}.dim{color:#8b949e}.in{color:#d29922}
@@ -40,7 +40,7 @@
 <body>
   <h1>Epomaker TH108 V2 PRO — LCD image uploader</h1>
   <p class="sub">Uploads an image or <b>animated GIF</b> to the keyboard's 160×96 screen over WebHID (cmd 0x50, RGB565),
-     with per-channel colour calibration applied to every frame.</p>
+     with per-channel color calibration applied to every frame.</p>
 
   <div class="row">
     <button id="connect" class="primary">1 · Connect screen interface</button>
@@ -49,7 +49,7 @@
 
   <div class="row">
     <input type="file" id="file" accept="image/*" />
-    <label style="margin-left:14px"><input type="checkbox" id="swap" checked /> little-endian byte order (correct for TH108 — untick only if colours look wrong)</label>
+    <label style="margin-left:14px"><input type="checkbox" id="swap" checked /> little-endian byte order (correct for TH108 — untick only if colors look wrong)</label>
   </div>
   <div class="row">
     <b style="margin-right:8px">Fit mode:</b>
@@ -60,9 +60,9 @@
     <b style="margin-right:8px">Fit bars:</b>
     <select id="barFill" style="font:inherit;background:#0d1117;color:#e6edf3;border:1px solid #30363d;border-radius:6px;padding:3px 6px">
       <option value="black">Black</option>
-      <option value="color">Solid colour →</option>
+      <option value="color">Solid color →</option>
       <option value="blur">Blurred content</option>
-      <option value="edge">Edge-colour average</option>
+      <option value="edge">Edge-color average</option>
     </select>
     <input type="color" id="barColor" value="#000000" style="margin-left:8px;width:48px;height:28px;background:none;border:1px solid #30363d;border-radius:6px" />
     <span class="hint">how to fill the bars when using Fit mode</span>
@@ -74,7 +74,10 @@
     </div>
   </div>
   <div class="row" style="display:flex;gap:24px;align-items:flex-start;flex-wrap:wrap">
-    <canvas id="preview" width="160" height="96"></canvas>
+    <div style="display:flex;gap:14px;flex-wrap:wrap">
+      <div><div class="sub" style="margin:0 0 4px">LCD preview — calibrated (what the screen shows)</div><canvas id="preview" width="160" height="96"></canvas></div>
+      <div><div class="sub" style="margin:0 0 4px">Actual — desktop colors (the true source)</div><canvas id="previewActual" width="160" height="96"></canvas></div>
+    </div>
     <div class="ctl" style="display:grid;grid-template-columns:64px 250px 60px 26px;gap:5px 8px;align-items:center">
       <div style="grid-column:1/5;display:flex;align-items:center;gap:8px;margin-bottom:2px">
         <b>Per-channel RGB calibration</b><span id="calStatus" class="dim" style="font-weight:normal"></span>
@@ -100,7 +103,7 @@
     </div>
   </div>
   <p class="sub" style="margin:6px 0 0">
-    <b>Calibrate by matching:</b> adjust the sliders until the <b>preview looks like how your LCD shows the image at default</b> (its washed / blue-purple tint). The upload automatically sends the <b>inverse</b> of those settings, so the LCD reverses its own distortion and ends up showing corrected colours. (Each upload writes the keyboard's flash.)</p>
+    <b>Calibrate by matching:</b> adjust the sliders until the <b>preview looks like how your LCD shows the image at default</b> (its washed / blue-purple tint). The upload automatically sends the <b>inverse</b> of those settings, so the LCD reverses its own distortion and ends up showing corrected colors. (Each upload writes the keyboard's flash.)</p>
   <div class="row">
     <button id="upload" class="go" disabled>2 · Upload to screen ▶</button>
     <progress id="prog" value="0" max="100"></progress>
@@ -169,6 +172,8 @@ async function connect(){
 
 // ---- image -> 160x96 RGB565 ----
 const cv=document.getElementById('preview'), ctx=cv.getContext('2d');
+const actx=document.getElementById('previewActual').getContext('2d');   // "actual" desktop-colour preview (no calibration)
+function drawActual(rgba){ actx.putImageData(new ImageData(new Uint8ClampedArray(rgba),160,96),0,0); }
 let baseData=null;             // {data} of the frame currently previewed (un-corrected, cover-fit)
 let frames=[];                 // [{rgba: Uint8ClampedArray(160*96*4), delayMs}]
 let previewTimer=null, previewIdx=0;
@@ -176,7 +181,7 @@ const off=document.createElement('canvas'); off.width=160; off.height=96;
 const octx=off.getContext('2d',{willReadFrequently:true});
 function isFit(){ const r=document.querySelector('input[name=fit]:checked'); return r && r.value==='fit'; }
 function barFill(){ const s=document.getElementById('barFill'); return s?s.value:'black'; }
-// average colour of the image's edge pixels touching the bars
+// average color of the image's edge pixels touching the bars
 function edgeAverage(dx,dy,dw,dh,letterbox){
   let r=0,g=0,b=0,n=0;
   const acc=arr=>{ for(let i=0;i<arr.length;i+=4){ r+=arr[i];g+=arr[i+1];b+=arr[i+2];n++; } };
@@ -259,6 +264,7 @@ function stopPreview(){ if(previewTimer){ clearTimeout(previewTimer); previewTim
 function tickPreview(){
   if(!frames.length) return;
   baseData={data:frames[previewIdx].rgba}; applyColor();
+  drawActual(frames[previewIdx].rgba);            // raw desktop colors, side-by-side for comparison
   const d=Math.max(20, frames[previewIdx].delayMs||100);
   previewIdx=(previewIdx+1)%frames.length;
   if(frames.length>1) previewTimer=setTimeout(tickPreview,d);
@@ -267,7 +273,13 @@ let currentFile=null;
 document.getElementById('file').addEventListener('change', e=>{ const f=e.target.files[0]; if(f){ currentFile=f; processFile(f); } });
 // toggling Crop/Fit (or the bar fill) re-processes the loaded GIF with the new mode
 document.querySelectorAll('input[name=fit]').forEach(r=>r.addEventListener('change', ()=>{ if(currentFile) processFile(currentFile); }));
-['barFill','barColor'].forEach(id=>document.getElementById(id).addEventListener('input', ()=>{ if(currentFile) processFile(currentFile); }));
+// show the color swatch only when "Solid color" is selected
+function updateBarColorVis(){ document.getElementById('barColor').style.display = (barFill()==='color') ? '' : 'none'; }
+updateBarColorVis();
+document.getElementById('barFill').addEventListener('change', ()=>{ updateBarColorVis(); if(currentFile) processFile(currentFile); });
+// debounce the color picker so dragging it doesn't re-decode every frame (was causing flicker)
+let barColorT=null;
+document.getElementById('barColor').addEventListener('input', ()=>{ clearTimeout(barColorT); barColorT=setTimeout(()=>{ if(currentFile) processFile(currentFile); }, 150); });
 async function processFile(f){
   stopPreview(); frames=[]; previewIdx=0;
   log('decoding '+f.name+' ('+(isFit()?'fit':'crop')+')…','in');
@@ -328,7 +340,7 @@ function applyColor(){
   }
   ctx.putImageData(new ImageData(d,160,96),0,0);
 }
-// ---- persistent colour calibration (saved locally, applies to all future uploads incl. GIF frames) ----
+// ---- persistent color calibration (saved locally, applies to all future uploads incl. GIF frames) ----
 const CAL_KEY='th108_rgb_calibration';
 const CAL_IDS=['rGain','rGamma','rBlack','gGain','gGamma','gBlack','bGain','bGamma','bBlack','warmth','brightness','saturation','contrast'];
 const isGammaId=id=>id.endsWith('Gamma');
@@ -339,7 +351,7 @@ function saveCal(){
   document.getElementById('calStatus').textContent='· saved';
 }
 // dialed-in calibration, baked in as the default (used when nothing is saved in localStorage yet)
-// dialed-in TH108 V2 PRO colour-correction profile, baked in as the standard default
+// dialed-in TH108 V2 PRO color-correction profile, baked in as the standard default
 // (preview = LCD's washed/blue look; upload sends the inverse → corrected on the LCD)
 const DEFAULT_CAL={rGain:100,rGamma:97,rBlack:0,gGain:100,gGamma:100,gBlack:4,bGain:122,bGamma:100,bBlack:9,warmth:95,brightness:114,saturation:100,contrast:104};
 function loadCal(){
@@ -403,7 +415,7 @@ document.getElementById('calStatus').textContent = hadCal ? '· loaded saved cal
 // apply calibration to a frame's RGBA, then encode 160x96 RGB565 (little-endian)
 function transformFrame(srcRgba){
   // You tune the sliders so the PREVIEW (fwd) matches the LCD's default washed look; the UPLOAD sends the
-  // INVERSE (inv), so the LCD reverses that distortion and ends up showing corrected colours.
+  // INVERSE (inv), so the LCD reverses that distortion and ends up showing corrected colors.
   const p=params();
   const out=new Uint8ClampedArray(srcRgba.length);
   for(let i=0;i<srcRgba.length;i+=4){
