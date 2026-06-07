@@ -51,6 +51,17 @@
     <input type="file" id="file" accept="image/*" />
     <label style="margin-left:14px"><input type="checkbox" id="swap" checked /> little-endian byte order (correct for TH108 — untick only if colours look wrong)</label>
   </div>
+  <div class="row">
+    <b style="margin-right:8px">Fit mode:</b>
+    <label><input type="radio" name="fit" value="cover" checked /> <b>Crop</b> (fill the screen, cut the edges)</label>
+    <label style="margin-left:16px"><input type="radio" name="fit" value="fit" /> <b>Fit</b> (whole GIF, black bars, no crop)</label>
+  </div>
+  <div class="row" style="display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap">
+    <div>
+      <div class="sub" id="cropLbl" style="margin:0 0 4px">load a GIF to see the crop guide</div>
+      <canvas id="cropGuide" style="border:1px solid #30363d;background:#000;border-radius:4px"></canvas>
+    </div>
+  </div>
   <div class="row" style="display:flex;gap:24px;align-items:flex-start;flex-wrap:wrap">
     <canvas id="preview" width="160" height="96"></canvas>
     <div class="ctl" style="display:grid;grid-template-columns:64px 250px 60px 26px;gap:5px 8px;align-items:center">
@@ -152,11 +163,49 @@ let frames=[];                 // [{rgba: Uint8ClampedArray(160*96*4), delayMs}]
 let previewTimer=null, previewIdx=0;
 const off=document.createElement('canvas'); off.width=160; off.height=96;
 const octx=off.getContext('2d',{willReadFrequently:true});
-function coverDraw(srcW,srcH,drawable){   // cover-fit any drawable to 160x96, return RGBA bytes
-  const tw=160,th=96,ir=srcW/srcH,tr=tw/th; let sw,sh,sx,sy;
-  if(ir>tr){ sh=srcH; sw=sh*tr; sx=(srcW-sw)/2; sy=0; } else { sw=srcW; sh=sw/tr; sx=0; sy=(srcH-sh)/2; }
-  octx.clearRect(0,0,tw,th); octx.drawImage(drawable,sx,sy,sw,sh,0,0,tw,th);
+function isFit(){ const r=document.querySelector('input[name=fit]:checked'); return r && r.value==='fit'; }
+function coverDraw(srcW,srcH,drawable){   // render drawable to 160x96 (crop or fit), return RGBA bytes
+  const tw=160,th=96,ir=srcW/srcH,tr=tw/th;
+  octx.clearRect(0,0,tw,th);
+  if(isFit()){                            // FIT: whole image, black bars
+    octx.fillStyle='#000'; octx.fillRect(0,0,tw,th);
+    let dw,dh,dx,dy;
+    if(ir>tr){ dw=tw; dh=tw/ir; dx=0; dy=(th-dh)/2; } else { dh=th; dw=th*ir; dx=(tw-dw)/2; dy=0; }
+    octx.drawImage(drawable,0,0,srcW,srcH, dx,dy,dw,dh);
+  } else {                                // COVER: fill + crop edges
+    let sw,sh,sx,sy;
+    if(ir>tr){ sh=srcH; sw=sh*tr; sx=(srcW-sw)/2; sy=0; } else { sw=srcW; sh=sw/tr; sx=0; sy=(srcH-sh)/2; }
+    octx.drawImage(drawable,sx,sy,sw,sh,0,0,tw,th);
+  }
   return octx.getImageData(0,0,tw,th).data;
+}
+// keep the first full frame + its dimensions so we can draw the crop guide
+let srcCanvas=null, srcW=0, srcH=0;
+function captureSource(drawable, w, h){
+  srcW=w; srcH=h; srcCanvas=document.createElement('canvas'); srcCanvas.width=w; srcCanvas.height=h;
+  srcCanvas.getContext('2d').drawImage(drawable,0,0,w,h);
+}
+// draw the full source with the kept (160×96 / 5:3) region highlighted and the cropped-out parts dimmed
+function drawCropGuide(){
+  const cg=document.getElementById('cropGuide'); if(!cg||!srcCanvas) return;
+  const dispW=Math.min(320, srcW), s=dispW/srcW, dispH=Math.round(srcH*s);
+  cg.width=dispW; cg.height=dispH;
+  const c=cg.getContext('2d'); c.drawImage(srcCanvas,0,0,dispW,dispH);
+  const lbl=document.getElementById('cropLbl');
+  if(isFit()){                                  // FIT: whole image kept (letterboxed) — no crop
+    c.strokeStyle='#3fb950'; c.lineWidth=2; c.strokeRect(1,1,dispW-2,dispH-2);
+    if(lbl) lbl.textContent=`source ${srcW}×${srcH} → whole GIF kept, letterboxed to 160×96 (black bars)`;
+  } else {                                       // COVER: dim cropped-out area, dash the kept 5:3 region
+    const tr=160/96, ir=srcW/srcH; let cw,ch,cx,cy;
+    if(ir>tr){ ch=srcH; cw=srcH*tr; cx=(srcW-cw)/2; cy=0; } else { cw=srcW; ch=srcW/tr; cx=0; cy=(srcH-ch)/2; }
+    const rx=cx*s, ry=cy*s, rw=cw*s, rh=ch*s;
+    c.fillStyle='rgba(1,4,9,.6)';
+    c.fillRect(0,0,dispW,ry); c.fillRect(0,ry+rh,dispW,dispH-(ry+rh));
+    c.fillRect(0,ry,rx,rh); c.fillRect(rx+rw,ry,dispW-(rx+rw),rh);
+    c.strokeStyle='#58a6ff'; c.lineWidth=2; c.setLineDash([6,4]);
+    c.strokeRect(rx+1,ry+1,rw-2,rh-2); c.setLineDash([]);
+    if(lbl) lbl.textContent=`source ${srcW}×${srcH} → dashed region (160×96 / 5:3) is kept, the dimmed edges are cropped`;
+  }
 }
 // evenly sample frames down to maxN, summing skipped frames' delays so total duration is preserved
 function sampleFrames(maxN){
@@ -177,10 +226,13 @@ function tickPreview(){
   previewIdx=(previewIdx+1)%frames.length;
   if(frames.length>1) previewTimer=setTimeout(tickPreview,d);
 }
-document.getElementById('file').addEventListener('change', async e=>{
-  const f=e.target.files[0]; if(!f) return;
+let currentFile=null;
+document.getElementById('file').addEventListener('change', e=>{ const f=e.target.files[0]; if(f){ currentFile=f; processFile(f); } });
+// toggling Crop/Fit re-processes the loaded GIF with the new mode
+document.querySelectorAll('input[name=fit]').forEach(r=>r.addEventListener('change', ()=>{ if(currentFile) processFile(currentFile); }));
+async function processFile(f){
   stopPreview(); frames=[]; previewIdx=0;
-  log('decoding '+f.name+'…','in');
+  log('decoding '+f.name+' ('+(isFit()?'fit':'crop')+')…','in');
   try{
     if(window.ImageDecoder){            // decodes animated GIF/WebP/APNG frame-by-frame with durations
       const dec=new ImageDecoder({data:await f.arrayBuffer(), type:f.type||'image/gif'});
@@ -189,16 +241,18 @@ document.getElementById('file').addEventListener('change', async e=>{
       for(let i=0;i<5000;i++){
         let res; try{ res=await dec.decode({frameIndex:i}); }catch(err){ break; }
         const vf=res.image, w=vf.displayWidth||vf.codedWidth, h=vf.displayHeight||vf.codedHeight;
+        if(i===0) captureSource(vf, w, h);
         frames.push({ rgba:coverDraw(w,h,vf), delayMs: vf.duration? vf.duration/1000 : 100 });
         vf.close();
         if(track.frameCount && i>=track.frameCount-1) break;
       }
     }
-    if(!frames.length){ const bmp=await createImageBitmap(f); frames.push({rgba:coverDraw(bmp.width,bmp.height,bmp),delayMs:100}); bmp.close&&bmp.close(); }
+    if(!frames.length){ const bmp=await createImageBitmap(f); captureSource(bmp,bmp.width,bmp.height); frames.push({rgba:coverDraw(bmp.width,bmp.height,bmp),delayMs:100}); bmp.close&&bmp.close(); }
     log('decoded '+frames.length+' frame(s)' + (frames.length>1?' (animated)':''),'ok');
+    drawCropGuide();
     tickPreview();
   }catch(err){ log('decode failed: '+err.message,'err'); }
-});
+}
 const clamp255=x=>x<0?0:x>255?255:x|0;
 const cl01=x=>x<0?0:x>1?1:x;
 function params(){
