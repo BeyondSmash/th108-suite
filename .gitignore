@@ -13,6 +13,7 @@ logs1.txt
 *-capture.txt
 _check.js
 _HANDOFF.md
+.claude/
 
 # --- node ---
 node_modules/
