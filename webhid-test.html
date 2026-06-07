@@ -427,6 +427,24 @@ async function readFullKeymap(){
   for(let off=0; off<512; off+=56){ const r=await readCmdAt(0x12, off); if(r) for(let i=0;i<56 && off+i<512;i++) data[off+i]=r[8+i]||0; }
   return data;
 }
+// write the WHOLE 512-byte keymap back (cmd 0x22, 56-byte chunks, ACK-gated) — this is what actually COMMITS edits
+async function writeFullKeymap(data){
+  for(let off=0; off<512; off+=56){
+    const len=Math.min(56, 512-off), last=(off+56)>=512;
+    const pkt=new Uint8Array(packLen);
+    pkt[0]=0xAA; pkt[1]=0x22; pkt[2]=len; pkt[3]=off&0xFF; pkt[4]=(off>>8)&0xFF; pkt[6]=last?1:0;
+    for(let i=0;i<len;i++) pkt[8+i]=data[off+i];
+    const ack=new Promise(res=>{ const onIn=e=>{ const b=new Uint8Array(e.data.buffer); if(b[0]===0x55&&b[1]===0x22){ device.removeEventListener('inputreport',onIn); res(); } };
+      device.addEventListener('inputreport',onIn); setTimeout(()=>{ device.removeEventListener('inputreport',onIn); res(); },500); });
+    await device.sendReport(reportId, pkt); await ack;
+  }
+}
+// apply a single key change via the FULL-keymap commit path (read → modify → bulk write)
+async function applyKeyChange(keyValue, four){
+  const km=await readFullKeymap();
+  const o=keyValue*4; km[o]=four[0]; km[o+1]=four[1]; km[o+2]=four[2]; km[o+3]=four[3];
+  await writeFullKeymap(km);
+}
 document.getElementById('backupKm').addEventListener('click', async ()=>{
   log('backing up keymap…','in');
   keymapBackup=await readFullKeymap();
@@ -438,14 +456,14 @@ document.getElementById('backupKm').addEventListener('click', async ()=>{
 document.getElementById('bindBtn').addEventListener('click', async ()=>{
   const code=+document.getElementById('bindFunc').value, kv=+document.getElementById('bindKeyVal').value;
   if(!keymapBackup){ log('⚠ click "Backup keymap" first (so you can undo).','err'); return; }
-  await writeKeySlot(kv, [0x0d, 0x00, 0x00, code]);
+  await applyKeyChange(kv, [0x0d, 0x00, 0x00, code]);
   log(`✓ bound key value ${kv} → function code ${code} (0d 00 00 ${code.toString(16).padStart(2,'0')}). Press that physical key to cycle the light.`,'ok');
 });
 document.getElementById('restoreKey').addEventListener('click', async ()=>{
   if(!keymapBackup){ log('no backup yet','err'); return; }
   const kv=+document.getElementById('bindKeyVal').value;
   const o=kv*4, four=[keymapBackup[o],keymapBackup[o+1],keymapBackup[o+2],keymapBackup[o+3]];
-  await writeKeySlot(kv, four);
+  await applyKeyChange(kv, four);
   log(`✓ restored key value ${kv} to its backed-up mapping (${four.map(x=>x.toString(16).padStart(2,'0')).join(' ')}).`,'ok');
 });
 // toggle the letter keys H J K L ; ' between normal typing and their light functions
@@ -459,16 +477,19 @@ const LETTER_KEYS=[ // {keyValue, normal HID, light function code}
 ];
 let lettersAreLighting=true;  // they start bound to lighting
 document.getElementById('fixTyping').addEventListener('click', async ()=>{
-  const btn=document.getElementById('fixTyping');
-  if(lettersAreLighting){
-    for(const k of LETTER_KEYS) await writeKeySlot(k.v, [0x02,0x00,k.hid,0x00]);
-    lettersAreLighting=false; btn.textContent="🔁 ' ; H J K L → switch to LIGHTING";
-    log("✓ H J K L ; ' now type normally.",'ok');
-  } else {
-    for(const k of LETTER_KEYS) await writeKeySlot(k.v, [0x0d,0x00,0x00,k.fn]);
-    lettersAreLighting=true; btn.textContent="🔁 ' ; H J K L → switch to TYPING";
-    log("✓ H J K L ; ' now cycle the lights again.",'ok');
+  const btn=document.getElementById('fixTyping'); btn.disabled=true;
+  const toTyping=lettersAreLighting;
+  log(toTyping?'reading + rewriting keymap → typing…':'reading + rewriting keymap → lighting…','in');
+  const km=await readFullKeymap();
+  for(const k of LETTER_KEYS){ const o=k.v*4;
+    if(toTyping){ km[o]=0x02; km[o+1]=0x00; km[o+2]=k.hid; km[o+3]=0x00; }
+    else { km[o]=0x0d; km[o+1]=0x00; km[o+2]=0x00; km[o+3]=k.fn; }
   }
+  await writeFullKeymap(km);
+  lettersAreLighting=!toTyping;
+  btn.textContent = toTyping ? "🔁 ' ; H J K L → switch to LIGHTING" : "🔁 ' ; H J K L → switch to TYPING";
+  log(toTyping ? "✓ H J K L ; ' should now type normally (full keymap committed)." : "✓ H J K L ; ' now cycle the lights again.",'ok');
+  btn.disabled=false;
 });
 
 document.getElementById('snapB').addEventListener('click', async ()=>{
