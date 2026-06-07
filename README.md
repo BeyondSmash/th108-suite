@@ -11,8 +11,18 @@ live layers every frame** —
 
 — and pushes the combined per-key frame to the keyboard ~30–60 times a second.
 
-> Status: working proof-of-concept. `webhid-test.html` is the bring-up/diagnostic page;
-> `th108-controller.html` is the actual effect controller.
+> Status: working on hardware. The signature two-layer controller is the headline, but the
+> repo has since grown into a small **host-side suite** for the board (lighting, the LCD screen,
+> key remapping, and an always-on background service).
+
+## What's in here
+
+| File | What it does |
+|---|---|
+| **`th108-controller.html`** | The headline effect controller — pulsing-cyan background + keypress-reactive orange, composited per-frame and streamed over WebHID. |
+| **`th108-screen.html`** | LCD uploader for the on-board 160×96 screen — push a custom image/GIF with colour calibration, Crop/Fit framing, and letterbox bar fills. |
+| **`webhid-test.html`** | Bring-up / diagnostic page, plus a **key-binder**: remap a physical key to a lighting function (the only way to reach the decorative LEDs — see below), with a spacebar focus-overlay mode. |
+| **`th108-daemon/`** | Always-on Node service (`node-hid` + `uiohook-napi`) that runs the reactive lighting as a background process so it works in **any** app, no browser tab required. Includes login-autostart scripts. |
 
 ## Why the stock software can't do this
 
@@ -66,10 +76,17 @@ of the above provide.
 
 - [x] Reverse-engineer the per-key frame protocol; prove live per-key push over WebHID
 - [x] Pulsing-cyan background + keypress-reactive orange controller
-- [ ] **Side / edge LED strips** and the **ring LED** by the screen (extra LED indices — discovery in progress)
-- [ ] **LCD screen**: custom image/GIF with a **live time overlay** (separate pixel-streaming command)
-- [ ] **Always-on native host** (no browser tab): tray daemon with a global keyboard hook so the
-      reactive layer works type-anywhere, not just while a tab is focused
+- [x] **LCD screen**: upload a custom image/GIF (160×96, RGB565) with colour calibration and framing
+- [x] **Always-on host** (no browser tab): Node daemon with a system-wide keyboard hook so the
+      reactive layer works type-anywhere, plus login-autostart
+- [x] **Key remapping** to lighting functions via a full-keymap read-modify-write (`webhid-test.html`)
+- [ ] **LCD live overlays** (e.g. a clock on top of the uploaded image) and a multi-slot GIF slideshow
+- [ ] Normal-key / macro remapping and broader on-board-feature parity (profiles, advanced keys)
+- [x] ~~Side / edge LED strips and the ring LED~~ — **investigated and sealed: these decorative LEDs
+      are firmware-controlled and cannot be set or triggered from software.** The firmware only runs
+      them in response to a physical matrix scan, and they expose no host-readable state. The one
+      software-adjacent path is to *remap a physical key* to the decorative light function so a tap
+      cycles it (e.g. the ring = Ambient zone → bind to the Super/Menu key) — done via the key-binder.
 
 ## Legal / IP
 
