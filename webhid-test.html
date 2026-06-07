@@ -148,6 +148,16 @@
     </div>
   </div>
 
+  <div id="kmProg" style="position:fixed;inset:0;background:rgba(1,4,9,.78);display:none;align-items:center;justify-content:center;z-index:2100">
+    <div style="background:#161b22;border:1px solid #30363d;border-radius:14px;padding:26px 36px;text-align:center;min-width:360px;box-shadow:0 12px 48px rgba(0,0,0,.7)">
+      <div id="kmProgLbl" style="font-size:15px;color:#e6edf3;margin-bottom:14px">Updating keyboard…</div>
+      <div style="height:10px;background:#0d1117;border:1px solid #30363d;border-radius:6px;overflow:hidden">
+        <div id="kmProgFill" style="height:100%;width:0%;background:linear-gradient(90deg,#1f6feb,#58a6ff);transition:width .12s"></div>
+      </div>
+      <div id="kmProgPct" style="font-size:12px;color:#8b949e;margin-top:8px">0%</div>
+    </div>
+  </div>
+
   <div id="log"></div>
 
 <script>
@@ -338,14 +348,13 @@ const SPACE_FUNCS=[
   {code:27,name:'Front Strip Effect',desc:"cycle the front strip's effect"},
   {code:164,name:'Ambient / Circle Colour',desc:"cycle the circle light's colour"},
   {code:165,name:'Ambient Effect',desc:"cycle the ambient lighting effect"},
-  {code:46,name:'Knob Mode',desc:"cycle the knob mode"},
+  // NOTE: "Knob Mode" (code 46) just toggles mute on this board — not the LCD knob-mode switch (that's FN+knob-press). Omitted.
 ];
 let spaceActive=false;
 function spaceEsc(e){ if(e.key==='Escape'){ e.preventDefault(); exitSpace(); } }
 async function enterSpace(f){
   if(!device){ return; }
-  const o=SPACE_VAL*4, km=await readFullKeymap();
-  km[o]=0x0d; km[o+1]=0; km[o+2]=0; km[o+3]=f.code; await writeFullKeymap(km);
+  await keymapRMW(km=>{ const o=SPACE_VAL*4; km[o]=0x0d; km[o+1]=0; km[o+2]=0; km[o+3]=f.code; }, 'Binding Spacebar → '+f.name+'…');
   document.getElementById('spaceTitle').textContent=f.name;
   document.getElementById('spaceDesc').innerHTML='Tap <kbd>Space</kbd> to '+f.desc+'.';
   document.getElementById('spaceOverlay').style.display='flex';
@@ -354,9 +363,8 @@ async function enterSpace(f){
 }
 async function exitSpace(){
   if(!spaceActive) return; spaceActive=false; window.removeEventListener('keydown', spaceEsc);
-  const o=SPACE_VAL*4, km=await readFullKeymap();
-  km[o]=0x02; km[o+1]=0; km[o+2]=SPACE_HID; km[o+3]=0; await writeFullKeymap(km);
   document.getElementById('spaceOverlay').style.display='none';
+  await keymapRMW(km=>{ const o=SPACE_VAL*4; km[o]=0x02; km[o+1]=0; km[o+2]=SPACE_HID; km[o+3]=0; }, 'Restoring Spacebar…');
   log('✓ Spacebar restored to normal.','ok');
 }
 (function(){ const c=document.getElementById('spaceLightBtns');
@@ -474,13 +482,30 @@ function writeKeySlot(keyValue, four){   // four = [b0,b1,b2,b3]
   pkt[8]=four[0]; pkt[9]=four[1]; pkt[10]=four[2]; pkt[11]=four[3];
   return device.sendReport(reportId, pkt);
 }
-async function readFullKeymap(){
+// ---- keymap progress bar (the read+write takes ~1.7s, so show a loading bar) ----
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+function kmShow(label){ document.getElementById('kmProgLbl').textContent=label||'Updating keyboard…'; setKm(0); document.getElementById('kmProg').style.display='flex'; }
+function setKm(pct){ document.getElementById('kmProgFill').style.width=pct+'%'; document.getElementById('kmProgPct').textContent=Math.round(pct)+'%'; }
+function kmHide(){ document.getElementById('kmProg').style.display='none'; }
+// read+modify+write the full keymap with a progress bar. modify(km) edits in place and may return a value.
+async function keymapRMW(modify, label){
+  kmShow(label);
+  try{
+    const km=await readFullKeymap(0,55);     // read = first 55%
+    const r=modify(km);
+    await writeFullKeymap(km,55,100);        // write = last 45%
+    setKm(100); await sleep(140);
+    return r;
+  } finally { kmHide(); }
+}
+async function readFullKeymap(p0,p1){
   const data=new Uint8Array(512);
-  for(let off=0; off<512; off+=56){ const r=await readCmdAt(0x12, off); if(r) for(let i=0;i<56 && off+i<512;i++) data[off+i]=r[8+i]||0; }
+  for(let off=0; off<512; off+=56){ const r=await readCmdAt(0x12, off); if(r) for(let i=0;i<56 && off+i<512;i++) data[off+i]=r[8+i]||0;
+    if(p1!=null) setKm(p0+(p1-p0)*Math.min(1,(off+56)/512)); }
   return data;
 }
 // write the WHOLE 512-byte keymap back (cmd 0x22, 56-byte chunks, ACK-gated) — this is what actually COMMITS edits
-async function writeFullKeymap(data){
+async function writeFullKeymap(data, p0, p1){
   for(let off=0; off<512; off+=56){
     const len=Math.min(56, 512-off), last=(off+56)>=512;
     const pkt=new Uint8Array(packLen);
@@ -489,17 +514,16 @@ async function writeFullKeymap(data){
     const ack=new Promise(res=>{ const onIn=e=>{ const b=new Uint8Array(e.data.buffer); if(b[0]===0x55&&b[1]===0x22){ device.removeEventListener('inputreport',onIn); res(); } };
       device.addEventListener('inputreport',onIn); setTimeout(()=>{ device.removeEventListener('inputreport',onIn); res(); },500); });
     await device.sendReport(reportId, pkt); await ack;
+    if(p1!=null) setKm(p0+(p1-p0)*Math.min(1,(off+56)/512));
   }
 }
-// apply a single key change via the FULL-keymap commit path (read → modify → bulk write)
+// apply a single key change via the FULL-keymap commit path (read → modify → bulk write), with progress
 async function applyKeyChange(keyValue, four){
-  const km=await readFullKeymap();
-  const o=keyValue*4; km[o]=four[0]; km[o+1]=four[1]; km[o+2]=four[2]; km[o+3]=four[3];
-  await writeFullKeymap(km);
+  await keymapRMW(km=>{ const o=keyValue*4; km[o]=four[0]; km[o+1]=four[1]; km[o+2]=four[2]; km[o+3]=four[3]; }, 'Updating key '+keyValue+'…');
 }
 document.getElementById('backupKm').addEventListener('click', async ()=>{
   log('backing up keymap…','in');
-  keymapBackup=await readFullKeymap();
+  kmShow('Reading keymap…'); keymapBackup=await readFullKeymap(0,100); setKm(100); await sleep(140); kmHide();
   // offer a download too
   const blob=new Blob([JSON.stringify(Array.from(keymapBackup))],{type:'application/json'});
   const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='th108-keymap-backup.json'; a.click();
@@ -512,19 +536,16 @@ document.getElementById('bindBtn').addEventListener('click', async ()=>{
   const code=+document.getElementById('bindFunc').value, kv=+document.getElementById('bindKeyVal').value;
   const fname=document.getElementById('bindFunc').selectedOptions[0].text;
   const btn=document.getElementById('bindBtn'); btn.disabled=true;
-  const km=await readFullKeymap();
-  const o=kv*4, isBound=(km[o]===0x0d && km[o+3]===code);
-  if(isBound){
-    const hid=DEFAULT_HID[kv];
-    if(hid==null){ log(`no default known for key value ${kv} — pick a standard key`,'err'); btn.disabled=false; return; }
-    km[o]=0x02; km[o+1]=0x00; km[o+2]=hid; km[o+3]=0x00;
-    await writeFullKeymap(km);
-    log(`✓ toggled OFF — key value ${kv} reverted to its default character.`,'ok');
-  } else {
-    km[o]=0x0d; km[o+1]=0x00; km[o+2]=0x00; km[o+3]=code;
-    await writeFullKeymap(km);
-    log(`✓ toggled ON — key value ${kv} now cycles "${fname}". Press it to use; click again to toggle off.`,'ok');
-  }
+  const r=await keymapRMW(km=>{
+    const o=kv*4, isBound=(km[o]===0x0d && km[o+3]===code);
+    if(isBound){
+      const hid=DEFAULT_HID[kv]; if(hid==null) return {err:true};
+      km[o]=0x02; km[o+1]=0x00; km[o+2]=hid; km[o+3]=0x00; return {bound:false};
+    } else { km[o]=0x0d; km[o+1]=0x00; km[o+2]=0x00; km[o+3]=code; return {bound:true}; }
+  }, 'Updating key '+kv+'…');
+  if(r.err) log(`no default known for key value ${kv} — pick a standard key`,'err');
+  else if(r.bound) log(`✓ toggled ON — key value ${kv} now cycles "${fname}". Press it to use; click again to toggle off.`,'ok');
+  else log(`✓ toggled OFF — key value ${kv} reverted to its default character.`,'ok');
   btn.disabled=false;
 });
 document.getElementById('restoreKey').addEventListener('click', async ()=>{
@@ -547,13 +568,12 @@ let lettersAreLighting=true;  // they start bound to lighting
 document.getElementById('fixTyping').addEventListener('click', async ()=>{
   const btn=document.getElementById('fixTyping'); btn.disabled=true;
   const toTyping=lettersAreLighting;
-  log(toTyping?'reading + rewriting keymap → typing…':'reading + rewriting keymap → lighting…','in');
-  const km=await readFullKeymap();
-  for(const k of LETTER_KEYS){ const o=k.v*4;
-    if(toTyping){ km[o]=0x02; km[o+1]=0x00; km[o+2]=k.hid; km[o+3]=0x00; }
-    else { km[o]=0x0d; km[o+1]=0x00; km[o+2]=0x00; km[o+3]=k.fn; }
-  }
-  await writeFullKeymap(km);
+  await keymapRMW(km=>{
+    for(const k of LETTER_KEYS){ const o=k.v*4;
+      if(toTyping){ km[o]=0x02; km[o+1]=0x00; km[o+2]=k.hid; km[o+3]=0x00; }
+      else { km[o]=0x0d; km[o+1]=0x00; km[o+2]=0x00; km[o+3]=k.fn; }
+    }
+  }, toTyping?'Switching keys to typing…':'Switching keys to lighting…');
   lettersAreLighting=!toTyping;
   btn.textContent = toTyping ? "🔁 ' ; H J K L → switch to LIGHTING" : "🔁 ' ; H J K L → switch to TYPING";
   log(toTyping ? "✓ H J K L ; ' should now type normally (full keymap committed)." : "✓ H J K L ; ' now cycle the lights again.",'ok');
