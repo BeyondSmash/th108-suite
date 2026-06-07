@@ -325,7 +325,8 @@ document.getElementById('rdPoll').addEventListener('click', ()=>{
 function readCmd(cmd, ms=180){
   return new Promise(async res=>{
     const got=[];
-    const onIn=e=>{ got.push(Array.from(new Uint8Array(e.data.buffer).slice(0,32))); };
+    // only capture the response that matches THIS read (0x55 <cmd>) — rejects stray broadcasts
+    const onIn=e=>{ const b=new Uint8Array(e.data.buffer); if(b[0]===0x55 && b[1]===cmd) got.push(Array.from(b.slice(0,40))); };
     device.addEventListener('inputreport', onIn);
     const pkt=new Uint8Array(packLen); pkt[0]=0xAA; pkt[1]=cmd; pkt[2]=0x38; pkt[6]=1;
     try{ await device.sendReport(reportId, pkt); }catch(e){}
@@ -360,8 +361,8 @@ document.getElementById('snapB').addEventListener('click', async ()=>{
       log(`   B: ${bv||'(no response)'}`,'ok');
     }
   }
-  if(!changed) log('✗ NO config bytes changed in any region — the decorative state is internal firmware, not host-readable. Conclusively sealed.','err');
-  else log(`✓ ${changed} region(s) changed — the decorative state IS host-readable there. Next: try writing it back modified.`,'ok');
+  if(!changed) log('— NO regions changed between A and B. (If you cycled a decorative and nothing changed, that light isn\'t reflected in host-readable config. If this was a hands-off test, good: it means the regions are stable.)','dim');
+  else log(`◆ ${changed} region(s) changed. If you cycled a decorative between snapshots, that region holds its state → next: map the bytes, then try writing it.`,'ok');
 });
 // The 104 known-valid key LED indices (from the captured map). Used as a SAFE black base
 // so we never write invalid high indices that overflow/alias the firmware buffer.
