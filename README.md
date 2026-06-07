@@ -93,9 +93,33 @@ of the above provide.
 This is an independent interoperability project. The HID protocol is documented from observed device
 behaviour (clean-room). No vendor firmware, software, or bundled assets are included or redistributed.
 "Epomaker" and product names are trademarks of their respective owners; this project is not affiliated
-with or endorsed by Epomaker.
+with or endorsed by Epomaker. The name is used only to describe the hardware this software works with.
+
+## License
+
+Copyright © 2026 Beyon. Licensed under the **GNU General Public License v3.0** — see [`LICENSE`](LICENSE).
+
+In short: you're free to use, study, modify, and share this software, but derivative works must
+also be released under the GPL-3.0 (they can't be taken closed-source). As the copyright holder,
+the author retains the right to offer the software under other terms as well.
 
 ## Requirements
 
 - A Chromium browser (Chrome/Edge) — WebHID isn't available in Firefox/Safari.
 - The keyboard connected via USB. The vendor software does **not** need to be running.
+
+## Compatibility
+
+- ✅ **Verified:** Epomaker **TH108 V2 PRO** — the only hardware this has been tested on.
+- 🟡 **Possibly partial (untested):** the code matches on vendor id `0x0C45` + the vendor HID
+  interface (usage page `0xFF68`, usage `0x61`), **not** a specific product id. `0x0C45` is
+  **SONiX Technology**, a vendor id shared across many budget keyboards (several Epomaker models
+  and other brands built on the same MCU), so the keymap + per-key paint protocol is likely a
+  **SONiX-family** protocol that *may* carry over to siblings. Three things are board-specific
+  and would need per-model work: the **LED index map** is hardcoded for the TH108 V2 PRO layout
+  (a different layout paints the wrong keys), the **LCD** commands assume this board's exact
+  160×96 screen, and the calibration profile / decorative-LED findings are this board's firmware.
+- ❌ Not a guaranteed drop-in for arbitrary `0x0C45` keyboards.
+
+If you have a sibling board, re-capturing the `KeyboardEvent.code → LED index` map is the main
+porting step — contributions welcome.
