@@ -12,6 +12,7 @@ _serve.js
 logs1.txt
 *-capture.txt
 _check.js
+_HANDOFF.md
 
 # --- node ---
 node_modules/
