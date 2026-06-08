@@ -49,6 +49,19 @@
   .lbody{ margin-top:10px; padding-top:8px; border-top:1px solid #21262d; }
   .lbody .ctl{ grid-template-columns:140px 1fr 64px; }
   .lbody .ph{ color:#8b949e; font-size:13px; }
+  #workspace{ display:flex; gap:16px; align-items:flex-start; flex-wrap:wrap; }
+  .col{ flex:1 1 0; min-width:430px; }
+  #colR{ min-width:540px; }
+  .col .panel{ max-width:none; }
+  body.editmode .block{ outline:2px dashed #58a6ff; outline-offset:3px; cursor:grab; }
+  body.editmode .block *{ pointer-events:none; }
+  .block.dragging{ opacity:.5; }
+  .lhead .lgrip{ cursor:grab; color:#8b949e; font-size:15px; user-select:none; padding:0 2px; }
+  .lhead .lgrip:active{ cursor:grabbing; }
+  .lcard.ldragging{ opacity:.5; }
+  .lhead .llvl{ font-weight:600; color:#58a6ff; font-size:12px; min-width:50px; }
+  .numin{ font:inherit; width:48px; background:#161b22; color:#e6edf3; border:1px solid #30363d; border-radius:6px; padding:2px 4px; }
+  .lhead .numin{ width:42px; }
 </style>
 </head>
 <body>
@@ -65,15 +78,23 @@
   <p class="hint">After Start, click this page once so it has keyboard focus, then type — pressed keys flash orange.
      <br>⚠ <b>Browser keydown only fires while this tab is focused.</b> For type-anywhere/always-on we'd port this to a native host later.</p>
 
-  <div class="panel" id="layersPanel">
+  <div class="row" style="margin-top:4px">
+    <button id="editBtn">✎ Edit layout</button>
+    <span id="editHint" class="hint" style="display:none">drag a panel by its dashed outline to move it between columns / reorder</span>
+  </div>
+
+  <div id="workspace">
+   <div class="col" id="colL">
+  <div class="panel block" id="layersPanel">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
       <b>Layer compositor</b>
       <span class="hint" style="margin:0">top of list = top layer · bottom of list = bottom layer</span>
     </div>
     <div id="layerCards"></div>
   </div>
-
-  <div class="panel" style="max-width:1000px">
+   </div>
+   <div class="col" id="colR">
+  <div class="panel block" id="gifPanel">
     <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
       <b>GIF → keyboard lighting</b>
       <input type="file" id="gifFile" accept="image/*,video/*" />
@@ -100,7 +121,7 @@
       <label class="sl">contrast <span class="srange"><input type="range" id="gifContrast" min="50" max="250" value="100"><i class="tick" style="left:calc(7px + (100% - 14px)*.25)"></i></span></label>
       <label class="sl">gamma <span class="srange"><input type="range" id="gifGamma" min="100" max="300" value="180"><i class="tick" style="left:calc(7px + (100% - 14px)*.40)"></i></span></label>
       <label class="sl">speed <span class="srange"><input type="range" id="gifSpeed" min="25" max="400" value="100"><i class="tick" style="left:calc(7px + (100% - 14px)*.20)"></i></span></label>
-      <label class="sl">fps <span class="srange"><input type="range" id="gifFps" min="5" max="60" value="60"></span></label>
+      <label class="sl">fps <span class="srange"><input type="range" id="gifFps" min="5" max="60" value="60"></span><input type="number" id="gifFpsNum" class="numin" min="5" max="60" value="60"></label>
       <label class="sl" title="freeze on the current frame (no animation)"><input type="checkbox" id="gifStatic"> static</label>
       <label class="sl">brightness <span class="srange"><input type="range" id="gifBri" min="10" max="100" value="100"></span></label>
       <label class="sl">map
@@ -130,7 +151,9 @@
     <div class="hint" id="gifInfo" style="margin-top:6px">load an image/GIF — sampled onto the 104 keys (physical layout, ~3.46:1). Raw RGB, area-averaged. Plays instead of the pulse effect; bold shapes read best.</div>
   </div>
 
-  <div id="log"></div>
+  <div id="log" class="block"></div>
+   </div>
+  </div>
 
 <script src="th108-media-lib.js"></script>
 <script>
@@ -579,6 +602,12 @@ function enhanceSlider(id,def,fmt){
   host.appendChild(val); host.appendChild(rb);
 }
 [['gifZoom',100,v=>v+'%'],['gifRot',0,v=>v+'°'],['gifSat',170,v=>v+'%'],['gifContrast',100,v=>v+'%'],['gifGamma',180,v=>(v/100).toFixed(2)],['gifSpeed',100,v=>(v/100).toFixed(1)+'×'],['gifFps',60,v=>v+'fps'],['gifBri',100,v=>v+'%']].forEach(a=>enhanceSlider(a[0],a[1],a[2]));
+// gifFps range <-> number input, synced (min 5 max 60); both drive fpsCap()
+(function(){ const fps=document.getElementById('gifFps'), fn=document.getElementById('gifFpsNum');
+  const set=v=>{ v=Math.max(5,Math.min(60,Math.round(v||5))); fps.value=v; fn.value=v; };
+  fps.addEventListener('input',e=>{ set(+e.target.value); });
+  fn.addEventListener('input',e=>{ set(+e.target.value); fps.dispatchEvent(new Event('input',{bubbles:true})); });
+})();
 document.getElementById('gifSat').addEventListener('input',e=>{ snap(e.target,170,8); if(gifFrames[gifIdx]) drawKb(gifFrames[gifIdx].rgb); });   // saturation/brightness apply at output → preview only
 document.getElementById('gifBars').addEventListener('change',refresh);                                                      // bar fill affects out-of-bounds keys → resample
 document.getElementById('gifSample').addEventListener('change',refresh);                                                    // sampling strategy → resample
@@ -622,15 +651,18 @@ function buildLayerCards(){
   for(let n=layers.length-1;n>=0;n--){
     const L=layers[n], card=document.createElement('div');
     card.className='lcard'+(L.enabled?'':' off'); card.dataset.n=n;
+    card.draggable=true;
     const opt=(arr,sel)=>arr.map(v=>'<option'+(v===sel?' selected':'')+'>'+v+'</option>').join('');
     card.innerHTML=
       '<div class="lhead">'+
+        '<span class="lgrip" title="drag to change layer level">⠿</span>'+
+        '<span class="llvl">Layer '+(n+1)+'</span>'+
         '<input type="checkbox" class="le"'+(L.enabled?' checked':'')+' title="enable layer">'+
         '<input type="text" class="ln" value="'+L.name.replace(/"/g,'&quot;')+'">'+
         '<select class="lt">'+opt(TYPES,L.type)+'</select>'+
         '<span class="lfield">opacity <input type="range" class="lo" min="0" max="100" value="'+Math.round(L.opacity*100)+'"><span class="lv lov">'+Math.round(L.opacity*100)+'%</span></span>'+
         '<select class="lbl">'+opt(BLENDS,L.blend)+'</select>'+
-        '<span class="lfield">fps <input type="range" class="lf" min="1" max="60" value="'+L.fps+'"><span class="lv lfv">'+L.fps+'</span></span>'+
+        '<span class="lfield">fps <input type="range" class="lf" min="1" max="60" value="'+L.fps+'"><input type="number" class="numin lfn" min="1" max="60" value="'+L.fps+'"></span>'+
       '</div>'+
       '<div class="lbody"></div>';
     host.appendChild(card);
@@ -640,10 +672,51 @@ function buildLayerCards(){
     card.querySelector('.lt').addEventListener('change',e=>{ L.type=e.target.value; ensureSettings(L); buildLayerBody(card,L); });
     card.querySelector('.lo').addEventListener('input',e=>{ L.opacity=(+e.target.value)/100; card.querySelector('.lov').textContent=e.target.value+'%'; });
     card.querySelector('.lbl').addEventListener('change',e=>{ L.blend=e.target.value; });
-    card.querySelector('.lf').addEventListener('input',e=>{ L.fps=+e.target.value; card.querySelector('.lfv').textContent=e.target.value; });
+    // fps: range <-> number input, synced bidirectionally (min 1 max 60)
+    const lf=card.querySelector('.lf'), lfn=card.querySelector('.lfn');
+    const setFps=v=>{ v=Math.max(1,Math.min(60,Math.round(v||1))); L.fps=v; lf.value=v; lfn.value=v; };
+    lf.addEventListener('input',e=>setFps(+e.target.value));
+    lfn.addEventListener('input',e=>setFps(+e.target.value));
+    // layer card drag-to-reorder (grip only)
+    card.addEventListener('dragstart',e=>{
+      if(!e.target.closest('.lgrip')){ e.preventDefault(); return; }   // only the grip starts a card drag
+      lcardDragging=card; card.classList.add('ldragging');
+      try{ e.dataTransfer.effectAllowed='move'; e.dataTransfer.setData('text/plain','lcard'); }catch(_){ }
+    });
+    card.addEventListener('dragend',()=>{ card.classList.remove('ldragging'); lcardDragging=null; });
     buildLayerBody(card,L);
   }
 }
+// ===== layer-card reorder: dragging the grip rearranges the layers array =====
+let lcardDragging=null;
+(function(){
+  const host=document.getElementById('layerCards');
+  host.addEventListener('dragover',e=>{
+    if(!lcardDragging) return;   // don't interfere with block-layout drags
+    e.preventDefault();
+    const after=lcardAfter(host,e.clientY);
+    if(after==null) host.appendChild(lcardDragging);
+    else if(after!==lcardDragging) host.insertBefore(lcardDragging,after);
+  });
+  host.addEventListener('drop',e=>{
+    if(!lcardDragging) return;
+    e.preventDefault();
+    // cards are listed top→bottom = highest index first; rebuild layers from DOM order (reversed)
+    const order=[...host.querySelectorAll('.lcard')].map(c=>layers[+c.dataset.n]);
+    layers.length=0; for(let i=order.length-1;i>=0;i--) layers.push(order[i]);   // DOM top→bottom reversed = bottom→top array
+    buildLayerCards();                                  // re-render so labels + dataset.n update
+    saveLayerOrder();
+    if(running){ const now=performance.now(); for(const L of layers){ renderLayer(L,now); L.lastTick=now; } }
+  });
+})();
+function lcardAfter(host,y){
+  const cards=[...host.querySelectorAll('.lcard:not(.ldragging)')];
+  let closest=null, cd=-Infinity;
+  for(const c of cards){ const r=c.getBoundingClientRect(), off=y-(r.top+r.height/2);
+    if(off<0 && off>cd){ cd=off; closest=c; } }
+  return closest;
+}
+function saveLayerOrder(){ try{ localStorage.setItem('th108_layerOrder', JSON.stringify(layers.map(L=>L.type+':'+L.name))); }catch(_){ } }
 // ensure a layer's settings object has the fields its current type needs (filling defaults on type switch)
 function ensureSettings(L){
   const s=L.settings, def={ color:'#00ffff', period:2600, bgMin:12, bgMax:55, fade:380,
@@ -673,11 +746,14 @@ function buildLayerBody(card,L){
   } else if(L.type==='reactive'){
     body.innerHTML='<div class="ctl">'+
       row('Color','<input type="color" class="s-color" value="'+s.color+'"><span></span>')+
-      row('Fade','<input type="range" class="s-fade" min="80" max="1500" step="20" value="'+s.fade+'"><span class="val s-fadeV"></span>')+
+      row('Fade','<input type="range" class="s-fade" min="80" max="1500" step="20" value="'+s.fade+'"><span style="display:flex;gap:6px;align-items:center"><input type="number" class="numin s-fadeN" min="80" max="1500" value="'+s.fade+'"><span class="val s-fadeV"></span></span>')+
     '</div>';
     body.querySelector('.s-color').addEventListener('input',e=>s.color=e.target.value);
-    const fv=body.querySelector('.s-fadeV'), upF=()=>fv.textContent=s.fade+'ms';
-    body.querySelector('.s-fade').addEventListener('input',e=>{ s.fade=+e.target.value; upF(); }); upF();
+    const fd=body.querySelector('.s-fade'), fdn=body.querySelector('.s-fadeN'), fv=body.querySelector('.s-fadeV');
+    const setFade=v=>{ v=Math.max(80,Math.min(1500,Math.round(v||80))); s.fade=v; fd.value=v; fdn.value=v; fv.textContent='ms'; };
+    fd.addEventListener('input',e=>setFade(+e.target.value));
+    fdn.addEventListener('input',e=>setFade(+e.target.value));
+    fv.textContent='ms';
   } else if(L.type==='gradient'){
     body.innerHTML='<div class="ctl">'+
       row('Color A','<input type="color" class="s-a" value="'+s.colorA+'"><span></span>')+
@@ -697,6 +773,56 @@ function buildLayerBody(card,L){
   }
 }
 buildLayerCards();
+
+// ===== Edit-layout mode: drag .block panels between columns (persisted) =====
+const LAYOUT_KEY='th108_layout';
+let editMode=false;
+function blocks(){ return [...document.querySelectorAll('.block')]; }
+function setEdit(on){
+  editMode=on;
+  document.body.classList.toggle('editmode',on);
+  blocks().forEach(b=>b.draggable=on);
+  const btn=document.getElementById('editBtn'); btn.textContent = on?'✓ Done':'✎ Edit layout';
+  document.getElementById('editHint').style.display = on?'inline':'none';
+}
+document.getElementById('editBtn').addEventListener('click',()=>setEdit(!editMode));
+
+let blockDragging=null;
+blocks().forEach(b=>{
+  b.addEventListener('dragstart',e=>{ if(!editMode){ e.preventDefault(); return; }
+    blockDragging=b; b.classList.add('dragging');
+    try{ e.dataTransfer.effectAllowed='move'; e.dataTransfer.setData('text/plain','block'); }catch(_){ }
+  });
+  b.addEventListener('dragend',()=>{ b.classList.remove('dragging'); blockDragging=null; saveLayout(); });
+});
+function blockAfter(col,y){
+  const els=[...col.querySelectorAll('.block:not(.dragging)')];
+  let closest=null, cd=-Infinity;
+  for(const el of els){ const r=el.getBoundingClientRect(), off=y-(r.top+r.height/2);
+    if(off<0 && off>cd){ cd=off; closest=el; } }
+  return closest;
+}
+['colL','colR'].forEach(id=>{
+  const col=document.getElementById(id);
+  col.addEventListener('dragover',e=>{ if(!blockDragging) return; e.preventDefault();
+    const after=blockAfter(col,e.clientY);
+    if(after==null) col.appendChild(blockDragging); else col.insertBefore(blockDragging,after);
+  });
+});
+function saveLayout(){
+  try{ localStorage.setItem(LAYOUT_KEY, JSON.stringify({
+    colL:[...document.getElementById('colL').querySelectorAll('.block')].map(b=>b.id),
+    colR:[...document.getElementById('colR').querySelectorAll('.block')].map(b=>b.id)
+  })); }catch(_){ }
+}
+function restoreLayout(){
+  let saved; try{ saved=JSON.parse(localStorage.getItem(LAYOUT_KEY)||'null'); }catch(_){ saved=null; }
+  if(!saved) return;
+  const colL=document.getElementById('colL'), colR=document.getElementById('colR');
+  (saved.colL||[]).forEach(bid=>{ const b=document.getElementById(bid); if(b) colL.appendChild(b); });
+  (saved.colR||[]).forEach(bid=>{ const b=document.getElementById(bid); if(b) colR.appendChild(b); });
+}
+restoreLayout();
 </script>
 </body>
 </html>
