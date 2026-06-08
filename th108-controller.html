@@ -590,9 +590,14 @@ function renderPattern(L,now){
       R=(235+(cc[0]-235)*0.5)*b; G=(245+(cc[1]-245)*0.5)*b; B=(255+(cc[2]-255)*0.5)*b;   // white→colour blend, dimmed by b
       done=true;
     } else if(pat==='color-fountain'){
-      const rise=(ny + t*(0.3+spd))%1, jet=0.5+0.5*Math.sin(nx*scaleK*3 + Math.sin(t)*0.5), up=0.5+0.5*Math.sin((ny*5 - t*speedK*4)*Math.PI*2);
-      bright=Math.max(0,Math.min(1, Math.pow(1-ny,1.2)*1.4*(0.35+0.65*jet)*(0.5+0.5*up)));   // jets brighter at the bottom, spraying up
-      field=rise + nx*0.15;                                     // colour flows upward with the stream
+      // expanding radial rings (soft falloff) radiating from centre over a background colour, seamless loop
+      const dx=nx-0.5, dy=ny-0.5, dist=Math.sqrt(dx*dx+dy*dy)/0.72;   // normalized radius 0..~1
+      const sp2=0.2+spd*0.6; let ring=0, rr=0;
+      for(let i=0;i<3;i++){ const r=((t*sp2)+i/3)%1, gd=Math.abs(dist-r), g=Math.exp(-(gd*gd)/(2*0.09*0.09))*Math.max(0,1-r); if(g>ring){ ring=g; rr=r; } }
+      const rc=patColorize(colMode, rr+t*0.1, 1, C1,C2,C3);     // ring colour (respects colMode)
+      const bg = colMode==='c1' ? [C2[0]*0.16,C2[1]*0.16,C2[2]*0.16] : [0,0,0];   // c1 → C2 background; else dark so the ring colour reads
+      R=bg[0]+(rc[0]-bg[0])*ring; G=bg[1]+(rc[1]-bg[1])*ring; B=bg[2]+(rc[2]-bg[2])*ring;
+      done=true;
     } else if(pat==='colorful-interchange'){
       const N=6; field=Math.floor(((t*(0.2+spd))%1)*N)/N;   // whole board one stepped colour coord, wraps cleanly
       bright=1;
