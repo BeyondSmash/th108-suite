@@ -590,7 +590,7 @@ function renderPattern(L,now){
       done=true;
     } else if(pat==='color-fountain'){
       // expanding DARK bands (absence of light) radiating from ~the home-row (K/L). Scale = band thickness+depth, Gap = spacing between rings
-      const dx=nx-0.42, dy=ny-0.60, dist=Math.sqrt(dx*dx+dy*dy)/0.85;   // origin near K/L; normalized so rings reach the far corner
+      const dx=(nx-0.42)*BOARDW, dy=(ny-0.60)*BOARDH, dist=Math.sqrt(dx*dx+dy*dy)/13.6;   // PHYSICAL units → TRUE circular rings (normalized space made ~3.46:1 ellipses); /13.6 ≈ centre→far-corner so rings reach the edge
       const sp2=0.2+spd*0.6, w=0.02+scl*0.20, depth=0.45+scl*0.55, edge=0.05;
       const gap=0.15+((s.gap!=null?s.gap:50)/100)*0.55, nr=Math.min(8,Math.ceil(1/gap)+1); let ring=0;   // Gap → radial spacing between rings
       for(let i=0;i<nr;i++){ const r=((t*sp2)+i*gap)%1;
