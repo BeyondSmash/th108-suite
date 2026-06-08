@@ -550,6 +550,76 @@ function renderPattern(L,now){
       let tt=nx*scaleK*0.5 - t*speedK; tt=tt-Math.floor(tt);
       const tri=1-Math.abs(1-2*tt);                       // triangle A→B→A, seamless loop
       R=cr+(c2r-cr)*tri; G=cg+(c2g-cg)*tri; B=cb+(c2b-cb)*tri;
+    } else if(pat==='static'){
+      R=cr; G=cg; B=cb;                                   // solid colour, full brightness
+    } else if(pat==='snowfall'){
+      const col=Math.round(nx*scaleK*3), cH=patHash(col*7+3);
+      const sway=Math.sin(t+cH*6)*0.04;                   // gentle horizontal drift (visual only)
+      const dropY=(t*(0.15+spd*0.5)+cH)%1; let d=Math.abs(ny-dropY); d=Math.min(d,1-d);   // wrapped → drop re-enters top seamlessly
+      const dd=Math.sqrt(d*d+sway*sway);
+      const b=Math.exp(-(dd*dd)/(2*0.09*0.09));
+      R=(235+(cr-235)*0.5)*b; G=(245+(cg-245)*0.5)*b; B=(255+(cb-255)*0.5)*b;   // white blended toward colour
+    } else if(pat==='color-fountain'){
+      const b=Math.max(0,Math.min(1,(1-ny)*(0.6+0.4*Math.sin((ny*6 - t*speedK*3)*Math.PI*2))));   // sin keeps it seamless
+      const rgb=hsv2rgb(nx*0.6 + t*speedK, 1, 1);
+      R=rgb[0]*b; G=rgb[1]*b; B=rgb[2]*b;
+    } else if(pat==='colorful-interchange'){
+      const N=6; const hue=Math.floor(((t*(0.2+spd))%1)*N)/N;   // whole board one stepped hue, wraps cleanly
+      const rgb=hsv2rgb(hue,1,1); R=rgb[0];G=rgb[1];B=rgb[2];
+    } else if(pat==='turning-peaks'){
+      const peak=0.45+0.35*Math.sin(nx*scaleK + t*speedK*2*Math.PI*0.3);   // scrolling skyline, sin → seamless
+      const e=ny-(1-peak), w=0.08;                        // smoothstep soft top edge
+      let b=Math.max(0,Math.min(1,e/w)); b=b*b*(3-2*b);
+      const rgb=hsv2rgb(nx + t*0.1,1,1);
+      R=rgb[0]*b; G=rgb[1]*b; B=rgb[2]*b;
+    } else if(pat==='two-birds'){
+      const p=(t*(0.2+spd))%1;
+      const gx=(dx)=>{ dx=Math.abs(dx); dx=Math.min(dx,1-dx);   // wrapped x distance → seamless re-entry
+        return Math.exp(-(dx*dx)/(2*0.07*0.07)); };
+      const gy=Math.exp(-((ny-0.5)*(ny-0.5))/(2*0.10*0.10));
+      const bA=gx(nx-p)*gy, bB=gx(nx-(1-p))*gy;
+      R=cr*bA + c2r*bB; G=cg*bA + c2g*bB; B=cb*bA + c2b*bB;
+    } else if(pat==='layered-mountains'){
+      for(let i=0;i<3;i++){
+        const off=t*speedK*(i+1)*0.3;                     // parallax: nearer (higher i) scrolls faster
+        const band=(2-i)/3, bandLo=band, bandHi=band+1/3; // i=0 top band … i=2 bottom band
+        const peak=0.5+0.5*Math.sin((nx*scaleK*(1+i*0.5) + off)*2*Math.PI);   // sin → seamless
+        if(ny>=bandLo && ny<bandHi){
+          const local=(ny-bandLo)/(1/3);
+          const bri=(0.4+0.3*i)*Math.max(0,Math.min(1,(local-(1-peak))/0.3+0.5));   // lower bands brighter
+          const rgb=hsv2rgb(0.55 - i*0.18 + t*0.05,1,1);
+          R+=rgb[0]*bri; G+=rgb[1]*bri; B+=rgb[2]*bri;
+        }
+      }
+    } else if(pat==='gentle-rain'){
+      const xoff=ny*0.25;                                 // slant: x shifts with depth (wind)
+      const col=Math.round((nx+xoff)*scaleK*4), cH=patHash(col*7+13);
+      const dropY=(t*(0.12+spd*0.35)+cH)%1; let d=Math.abs(ny-dropY); d=Math.min(d,1-d);   // wrapped vertical → seamless
+      const b=Math.exp(-(d*d)/(2*0.10*0.10))*0.85;
+      R=cr*b; G=cg*b; B=cb*b;
+    } else if(pat==='back-forth'){
+      const p=1-Math.abs(1-2*((t*(0.2+spd))%1));          // triangle ping-pong, smooth bounce
+      let d=Math.abs(nx-p); const w=0.10;
+      const b=Math.exp(-(d*d)/(2*w*w));
+      R=cr*b; G=cg*b; B=cb*b;
+    } else if(pat==='bloom'){
+      for(let i=0;i<3;i++){
+        const cH=patHash(i*53+7), cx=patHash(i*29+11), cy=patHash(i*97+19);
+        const r=(t*(0.2+spd)+cH)%1;                       // ring radius grows 0..1, wraps
+        const dx=nx-cx, dy=ny-cy, dist=Math.sqrt(dx*dx+dy*dy);
+        const ring=Math.exp(-((dist-r)*(dist-r))/(2*0.07*0.07));
+        const fade=Math.max(0,1-r);                       // fades to 0 before reset → clean wrap
+        const b=ring*fade;
+        const rgb=hsv2rgb(cH + t*0.05,1,1);
+        R+=rgb[0]*b; G+=rgb[1]*b; B+=rgb[2]*b;
+      }
+    } else if(pat==='plasma'){
+      const v=(Math.sin(nx*scaleK*2+t*speedK)+Math.sin(ny*scaleK*2+t*speedK*1.3)+Math.sin((nx+ny)*scaleK+t*speedK*0.7))/3;
+      const rgb=hsv2rgb(0.5+0.5*v + t*0.05,1,1); R=rgb[0];G=rgb[1];B=rgb[2];   // inherently looping
+    } else if(pat==='aurora'){
+      const b=0.4+0.6*Math.max(0,Math.sin(nx*scaleK*1.5 + t*speedK + Math.sin(ny*3+t*0.5)));   // slow vertical curtains
+      const rgb=hsv2rgb(0.35+0.15*Math.sin(nx*2+t*0.3),1,1);   // green→teal→purple drift
+      R=rgb[0]*b; G=rgb[1]*b; B=rgb[2]*b;
     } else {
       const rgb=hsv2rgb(nx*scaleK + t*speedK, 1, 1); R=rgb[0];G=rgb[1];B=rgb[2];   // fallback = rainbow
     }
@@ -1121,7 +1191,7 @@ function buildLayerBody(card,L){
     const sv=c('.s-scrollV'), upS=()=>sv.textContent=(s.scroll).toFixed(2);
     c('.s-scroll').addEventListener('input',e=>{ s.scroll=(+e.target.value)/100; upS(); }); upS();
   } else if(L.type==='pattern'){
-    const pats=['rainbow','spectrum','radial-rainbow','wave','breathing','ripple','scan','twinkle','rain','fire','comet','gradient-flow'];
+    const pats=['rainbow','spectrum','radial-rainbow','wave','breathing','ripple','scan','twinkle','rain','fire','comet','gradient-flow','static','snowfall','color-fountain','colorful-interchange','turning-peaks','two-birds','layered-mountains','gentle-rain','back-forth','bloom','plasma','aurora'];
     const popt=pats.map(p=>'<option'+(p===s.pattern?' selected':'')+'>'+p+'</option>').join('');
     body.innerHTML='<div class="ctl">'+
       row('Pattern','<select class="s-pat">'+popt+'</select><span></span>')+
