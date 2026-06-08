@@ -497,9 +497,28 @@ function hsv2rgb(h,s,v){
 }
 // deterministic per-index hash → 0..1 (stable sparkle/column offsets)
 function patHash(i){ const x=Math.sin(i*127.1+311.7)*43758.5453; return x-Math.floor(x); }
+// shared colouriser: map a 0..1 colour coordinate `field` + 0..1 `bright` to [r,g,b] 0..255 per colMode.
+// C1/C2/C3 are hexToRgb arrays. Lets every pattern use the user's colours instead of a fixed rainbow.
+function patColorize(mode, field, bright, C1, C2, C3){
+  field=field-Math.floor(field);                 // wrap to 0..1
+  bright=bright<0?0:(bright>1?1:bright);          // clamp
+  if(mode==='c1'){ return [C1[0]*bright, C1[1]*bright, C1[2]*bright]; }
+  if(mode==='c12'){
+    const u=1-Math.abs(1-2*field);               // triangle blend → seamless C1↔C2↔C1
+    return [(C1[0]+(C2[0]-C1[0])*u)*bright, (C1[1]+(C2[1]-C1[1])*u)*bright, (C1[2]+(C2[2]-C1[2])*u)*bright];
+  }
+  if(mode==='palette'){
+    const stops=[C1,C2,C3,C1], x=field*3, i=Math.floor(x), f=x-i, a=stops[i], b=stops[i+1];
+    return [(a[0]+(b[0]-a[0])*f)*bright, (a[1]+(b[1]-a[1])*f)*bright, (a[2]+(b[2]-a[2])*f)*bright];
+  }
+  const rgb=hsv2rgb(field,1,1);                   // 'rainbow' (default)
+  return [rgb[0]*bright, rgb[1]*bright, rgb[2]*bright];
+}
 function renderPattern(L,now){
   const s=L.settings, out=L.rgb, t=now/1000;
   const pat=s.pattern, [cr,cg,cb]=hexToRgb(s.color), [c2r,c2g,c2b]=hexToRgb(s.color2);
+  const C1=hexToRgb(s.color), C2=hexToRgb(s.color2), C3=hexToRgb(s.color3||'#00ff00');
+  const colMode=s.colMode||'rainbow';                     // rainbow | c1 | c12 | palette
   const spd=(s.speed||0)/100, scl=(s.scale||0)/100;       // 0..1 normalized controls
   const speedK=spd*2;                                      // hue/phase cycles per second-ish
   const scaleK=0.5+scl*5;                                  // spatial frequency (waves/ripples/rainbow span)
@@ -508,82 +527,87 @@ function renderPattern(L,now){
     if(!c){ out[o]=out[o+1]=out[o+2]=0; continue; }
     const nx=c[0], ny=c[1];
     let R=0,G=0,B=0;
+    // Most patterns set a colour coordinate `field` (0..1) + `bright` (0..1) and go through patColorize.
+    // `done=true` means the branch wrote R/G/B itself (fire = native colours; accumulators sum patColorize calls).
+    let field=0, bright=1, done=false;
     if(pat==='rainbow'){
-      const rgb=hsv2rgb(nx*scaleK + t*speedK, 1, 1); R=rgb[0];G=rgb[1];B=rgb[2];
+      field=nx*scaleK + t*speedK; bright=1;
     } else if(pat==='spectrum'){
-      const rgb=hsv2rgb(t*speedK, 1, 1); R=rgb[0];G=rgb[1];B=rgb[2];
+      field=t*speedK; bright=1;
     } else if(pat==='radial-rainbow'){
       const dx=nx-0.5, dy=ny-0.5, dist=Math.sqrt(dx*dx+dy*dy);
-      const rgb=hsv2rgb(dist*scaleK + t*speedK, 1, 1); R=rgb[0];G=rgb[1];B=rgb[2];
+      field=dist*scaleK + t*speedK; bright=1;
     } else if(pat==='wave'){
-      const b=0.5+0.5*Math.sin((nx*scaleK - t*speedK)*2*Math.PI);
-      R=cr*b; G=cg*b; B=cb*b;
+      bright=0.5+0.5*Math.sin((nx*scaleK - t*speedK)*2*Math.PI);
+      field=nx*scaleK - t*speedK;                              // spatial/phase coordinate
     } else if(pat==='breathing'){
       const rate=0.1+spd*0.6;                                   // gentle breathe (~0.4 Hz default, like the Background pulse) — was too fast/harsh
-      const bb=0.5+0.5*Math.sin(t*rate*2*Math.PI), b=0.12+0.88*bb;   // floor so it never fully extinguishes
-      R=cr*b; G=cg*b; B=cb*b;
+      const bb=0.5+0.5*Math.sin(t*rate*2*Math.PI);
+      bright=0.12+0.88*bb;                                      // floor so it never fully extinguishes
+      field=t*rate;                                             // colour drifts with the breath phase
     } else if(pat==='ripple'){
       const dx=nx-0.5, dy=ny-0.5, dist=Math.sqrt(dx*dx+dy*dy);
-      const b=0.5+0.5*Math.sin((dist*scaleK*4 - t*speedK)*2*Math.PI);
-      R=cr*b; G=cg*b; B=cb*b;
+      bright=0.5+0.5*Math.sin((dist*scaleK*4 - t*speedK)*2*Math.PI);
+      field=dist*scaleK;                                        // colour by radial distance
     } else if(pat==='scan'){
       const p=(t*speedK)%1; let d=Math.abs(nx-p); d=Math.min(d,1-d); const w=0.05+(1-scl)*0.12;   // wrapped distance → bar exits right & re-enters left, no jerk
-      const b=Math.exp(-(d*d)/(2*w*w));
-      R=cr*b; G=cg*b; B=cb*b;
+      bright=Math.exp(-(d*d)/(2*w*w));
+      field=nx;                                                 // colour by horizontal position
     } else if(pat==='twinkle'){
       const ph=Math.sin(t*speedK + patHash(INDICES[k])*6.283);
-      const b=ph>0 ? ph*ph*ph : 0;
-      R=cr*b; G=cg*b; B=cb*b;
+      bright=ph>0 ? ph*ph*ph : 0;
+      field=patHash(INDICES[k]);                                // per-key colour offset
     } else if(pat==='rain'){
       const col=Math.round(nx*scaleK*4), colH=patHash(col*7+13);
       const dropY=(t*speedK + colH)%1; let d=Math.abs(ny-dropY); d=Math.min(d,1-d); const w=0.08;   // wrapped → drop re-enters top seamlessly
-      const b=Math.exp(-(d*d)/(2*w*w));
-      R=cr*b; G=cg*b; B=cb*b;
+      bright=Math.exp(-(d*d)/(2*w*w));
+      field=colH;                                               // colour by column
     } else if(pat==='fire'){
       const heat=(1-ny);                                  // hotter at the bottom
       const flick=0.55+0.45*Math.sin(t*speedK*6 + patHash(INDICES[k])*6.283 + ny*8);
       let v=Math.max(0,Math.min(1, heat*flick*1.3));
-      // red→yellow ramp (low v = deep red, high v = yellow), ignore color
-      R=255*Math.min(1,v*1.6); G=255*Math.max(0,Math.min(1,(v-0.35)*1.6)); B=0;
+      // red→yellow ramp (low v = deep red, high v = yellow) — EXEMPT from colMode, fire is always fire
+      R=255*Math.min(1,v*1.6); G=255*Math.max(0,Math.min(1,(v-0.35)*1.6)); B=0; done=true;
     } else if(pat==='comet'){
       const head=(t*speedK)%1, pos=k/NLED;
       let d=pos-head; d=d-Math.floor(d);                  // distance behind the head, wrapped 0..1
       const tail=0.18+(1-scl)*0.25;
-      const b=d<tail ? Math.pow(1-d/tail,2) : 0;
-      R=cr*b; G=cg*b; B=cb*b;
+      bright=d<tail ? Math.pow(1-d/tail,2) : 0;
+      field=pos;                                                // colour by position along the strip
     } else if(pat==='gradient-flow'){
       let tt=nx*scaleK*0.5 - t*speedK; tt=tt-Math.floor(tt);
-      const tri=1-Math.abs(1-2*tt);                       // triangle A→B→A, seamless loop
-      R=cr+(c2r-cr)*tri; G=cg+(c2g-cg)*tri; B=cb+(c2b-cb)*tri;
+      field=tt; bright=1;                                       // patColorize handles the C1↔C2 blend (c12) / rainbow / palette
     } else if(pat==='static'){
-      R=cr; G=cg; B=cb;                                   // solid colour, full brightness
+      field=0; bright=1;                                        // c1 = solid C1; rainbow = red; c12 = C1
     } else if(pat==='snowfall'){
       const col=Math.round(nx*scaleK*3), cH=patHash(col*7+3);
       const sway=Math.sin(t+cH*6)*0.04;                   // gentle horizontal drift (visual only)
       const dropY=(t*(0.15+spd*0.5)+cH)%1; let d=Math.abs(ny-dropY); d=Math.min(d,1-d);   // wrapped → drop re-enters top seamlessly
       const dd=Math.sqrt(d*d+sway*sway);
       const b=Math.exp(-(dd*dd)/(2*0.09*0.09));
-      R=(235+(cr-235)*0.5)*b; G=(245+(cg-245)*0.5)*b; B=(255+(cb-255)*0.5)*b;   // white blended toward colour
+      const cc=patColorize(colMode, cH, 1, C1,C2,C3);          // column-hash colour at full intensity
+      R=(235+(cc[0]-235)*0.5)*b; G=(245+(cc[1]-245)*0.5)*b; B=(255+(cc[2]-255)*0.5)*b;   // white→colour blend, dimmed by b
+      done=true;
     } else if(pat==='color-fountain'){
-      const b=Math.max(0,Math.min(1,(1-ny)*(0.6+0.4*Math.sin((ny*6 - t*speedK*3)*Math.PI*2))));   // sin keeps it seamless
-      const rgb=hsv2rgb(nx*0.6 + t*speedK, 1, 1);
-      R=rgb[0]*b; G=rgb[1]*b; B=rgb[2]*b;
+      bright=Math.max(0,Math.min(1,(1-ny)*(0.6+0.4*Math.sin((ny*6 - t*speedK*3)*Math.PI*2))));   // sin keeps it seamless
+      field=nx*0.6 + t*speedK;
     } else if(pat==='colorful-interchange'){
-      const N=6; const hue=Math.floor(((t*(0.2+spd))%1)*N)/N;   // whole board one stepped hue, wraps cleanly
-      const rgb=hsv2rgb(hue,1,1); R=rgb[0];G=rgb[1];B=rgb[2];
+      const N=6; field=Math.floor(((t*(0.2+spd))%1)*N)/N;   // whole board one stepped colour coord, wraps cleanly
+      bright=1;
     } else if(pat==='turning-peaks'){
       const peak=0.45+0.35*Math.sin(nx*scaleK + t*speedK*2*Math.PI*0.3);   // scrolling skyline, sin → seamless
       const e=ny-(1-peak), w=0.08;                        // smoothstep soft top edge
       let b=Math.max(0,Math.min(1,e/w)); b=b*b*(3-2*b);
-      const rgb=hsv2rgb(nx + t*0.1,1,1);
-      R=rgb[0]*b; G=rgb[1]*b; B=rgb[2]*b;
+      bright=b; field=nx + t*0.1;
     } else if(pat==='two-birds'){
       const p=(t*(0.2+spd))%1;
       const gx=(dx)=>{ dx=Math.abs(dx); dx=Math.min(dx,1-dx);   // wrapped x distance → seamless re-entry
         return Math.exp(-(dx*dx)/(2*0.07*0.07)); };
       const gy=Math.exp(-((ny-0.5)*(ny-0.5))/(2*0.10*0.10));
       const bA=gx(nx-p)*gy, bB=gx(nx-(1-p))*gy;
-      R=cr*bA + c2r*bB; G=cg*bA + c2g*bB; B=cb*bA + c2b*bB;
+      const dotA=patColorize(colMode, 0,   bA, C1,C2,C3);   // dot 0 → field 0
+      const dotB=patColorize(colMode, 0.5, bB, C1,C2,C3);   // dot 1 → field 0.5
+      R=dotA[0]+dotB[0]; G=dotA[1]+dotB[1]; B=dotA[2]+dotB[2]; done=true;
     } else if(pat==='layered-mountains'){
       for(let i=0;i<3;i++){
         const off=t*speedK*(i+1)*0.3;                     // parallax: nearer (higher i) scrolls faster
@@ -592,21 +616,22 @@ function renderPattern(L,now){
         if(ny>=bandLo && ny<bandHi){
           const local=(ny-bandLo)/(1/3);
           const bri=(0.4+0.3*i)*Math.max(0,Math.min(1,(local-(1-peak))/0.3+0.5));   // lower bands brighter
-          const rgb=hsv2rgb(0.55 - i*0.18 + t*0.05,1,1);
-          R+=rgb[0]*bri; G+=rgb[1]*bri; B+=rgb[2]*bri;
+          const cc=patColorize(colMode, 0.55 - i*0.18 + t*0.05, bri, C1,C2,C3);
+          R+=cc[0]; G+=cc[1]; B+=cc[2];
         }
       }
+      done=true;
     } else if(pat==='gentle-rain'){
       const xoff=ny*0.25;                                 // slant: x shifts with depth (wind)
       const col=Math.round((nx+xoff)*scaleK*4), cH=patHash(col*7+13);
       const dropY=(t*(0.12+spd*0.35)+cH)%1; let d=Math.abs(ny-dropY); d=Math.min(d,1-d);   // wrapped vertical → seamless
-      const b=Math.exp(-(d*d)/(2*0.10*0.10))*0.85;
-      R=cr*b; G=cg*b; B=cb*b;
+      bright=Math.exp(-(d*d)/(2*0.10*0.10))*0.85;
+      field=cH;                                                 // colour by column
     } else if(pat==='back-forth'){
       const p=1-Math.abs(1-2*((t*(0.2+spd))%1));          // triangle ping-pong, smooth bounce
       let d=Math.abs(nx-p); const w=0.10;
-      const b=Math.exp(-(d*d)/(2*w*w));
-      R=cr*b; G=cg*b; B=cb*b;
+      bright=Math.exp(-(d*d)/(2*w*w));
+      field=nx;                                                 // colour by horizontal position
     } else if(pat==='bloom'){
       for(let i=0;i<3;i++){
         const cH=patHash(i*53+7), cx=patHash(i*29+11), cy=patHash(i*97+19);
@@ -615,19 +640,20 @@ function renderPattern(L,now){
         const ring=Math.exp(-((dist-r)*(dist-r))/(2*0.07*0.07));
         const fade=Math.max(0,1-r);                       // fades to 0 before reset → clean wrap
         const b=ring*fade;
-        const rgb=hsv2rgb(cH + t*0.05,1,1);
-        R+=rgb[0]*b; G+=rgb[1]*b; B+=rgb[2]*b;
+        const cc=patColorize(colMode, cH + t*0.05, b, C1,C2,C3);
+        R+=cc[0]; G+=cc[1]; B+=cc[2];
       }
+      done=true;
     } else if(pat==='plasma'){
       const v=(Math.sin(nx*scaleK*2+t*speedK)+Math.sin(ny*scaleK*2+t*speedK*1.3)+Math.sin((nx+ny)*scaleK+t*speedK*0.7))/3;
-      const rgb=hsv2rgb(0.5+0.5*v + t*0.05,1,1); R=rgb[0];G=rgb[1];B=rgb[2];   // inherently looping
+      field=0.5+0.5*v + t*0.05; bright=1;                       // inherently looping
     } else if(pat==='aurora'){
-      const b=0.4+0.6*Math.max(0,Math.sin(nx*scaleK*1.5 + t*speedK + Math.sin(ny*3+t*0.5)));   // slow vertical curtains
-      const rgb=hsv2rgb(0.35+0.15*Math.sin(nx*2+t*0.3),1,1);   // green→teal→purple drift
-      R=rgb[0]*b; G=rgb[1]*b; B=rgb[2]*b;
+      bright=0.4+0.6*Math.max(0,Math.sin(nx*scaleK*1.5 + t*speedK + Math.sin(ny*3+t*0.5)));   // slow vertical curtains
+      field=0.35+0.15*Math.sin(nx*2+t*0.3);                     // green→teal→purple drift (rainbow); follows colMode otherwise
     } else {
-      const rgb=hsv2rgb(nx*scaleK + t*speedK, 1, 1); R=rgb[0];G=rgb[1];B=rgb[2];   // fallback = rainbow
+      field=nx*scaleK + t*speedK; bright=1;                     // fallback = rainbow
     }
+    if(!done){ const cc=patColorize(colMode, field, bright, C1,C2,C3); R=cc[0]; G=cc[1]; B=cc[2]; }
     out[o]=Math.max(0,Math.min(255,R))|0; out[o+1]=Math.max(0,Math.min(255,G))|0; out[o+2]=Math.max(0,Math.min(255,B))|0;
   }
 }
@@ -1102,7 +1128,7 @@ function ensureSettings(L){
     Object.keys(rd).forEach(k=>{ if(s[k]===undefined)s[k]=rd[k]; });
     if(!Array.isArray(s.pal)) s.pal=rd.pal.slice(); }
   else if(L.type==='gradient'){ ['colorA','colorB','angle','scroll','phase'].forEach(k=>{ if(s[k]===undefined)s[k]=def[k]; }); }
-  else if(L.type==='pattern'){ const pd={ pattern:'rainbow', color:'#00ffff', color2:'#ff00ff', speed:50, scale:50 };
+  else if(L.type==='pattern'){ const pd={ pattern:'rainbow', color:'#00ffff', color2:'#ff00ff', color3:'#00ff00', colMode:'rainbow', speed:50, scale:50 };
     Object.keys(pd).forEach(k=>{ if(s[k]===undefined)s[k]=pd[k]; }); }
   // common per-layer adjust fields — backfilled for EVERY layer type
   const cd={ bri:100, sat:100, con:100, gam:100, rot:0, spd:100, frozen:false };
@@ -1198,17 +1224,24 @@ function buildLayerBody(card,L){
   } else if(L.type==='pattern'){
     const pats=['rainbow','spectrum','radial-rainbow','wave','breathing','ripple','scan','twinkle','rain','fire','comet','gradient-flow','static','snowfall','color-fountain','colorful-interchange','turning-peaks','two-birds','layered-mountains','gentle-rain','back-forth','bloom','plasma','aurora'];
     const pbtns=pats.map(p=>'<button type="button" class="patbtn'+(p===s.pattern?' sel':'')+'" data-p="'+p+'">'+p+'</button>').join('');
+    const colModes=[['rainbow','Rainbow'],['c1','Color 1'],['c12','Color 1→2'],['palette','Palette']];
+    const cm=s.colMode||'rainbow';
+    const cmOpt=colModes.map(m=>'<option value="'+m[0]+'"'+(m[0]===cm?' selected':'')+'>'+m[1]+'</option>').join('');
     body.innerHTML='<div class="ph" style="margin:0 0 4px">Pattern</div><div class="patgrid">'+pbtns+'</div>'+
       '<div class="ctl">'+
+      row('Colours','<select class="s-colMode">'+cmOpt+'</select><span></span>')+
       row('Color 1','<input type="color" class="s-color" value="'+s.color+'"><span></span>')+
       row('Color 2','<input type="color" class="s-color2" value="'+s.color2+'"><span></span>')+
+      row('Color 3','<input type="color" class="s-color3" value="'+(s.color3||'#00ff00')+'"><span></span>')+
       row('Speed','<input type="range" class="s-speed" min="0" max="100" value="'+s.speed+'"><span class="val s-speedV"></span>')+
       row('Scale','<input type="range" class="s-scale" min="0" max="100" value="'+s.scale+'"><span class="val s-scaleV"></span>')+
     '</div>';
     const c=q=>body.querySelector(q);
     body.querySelectorAll('.patbtn').forEach(btn=>btn.addEventListener('click',()=>{ s.pattern=btn.dataset.p; body.querySelectorAll('.patbtn').forEach(b=>b.classList.toggle('sel',b===btn)); scheduleSaveLayers(); }));
+    c('.s-colMode').addEventListener('change',e=>{ s.colMode=e.target.value; scheduleSaveLayers(); });
     c('.s-color').addEventListener('input',e=>s.color=e.target.value);
     c('.s-color2').addEventListener('input',e=>s.color2=e.target.value);
+    c('.s-color3').addEventListener('input',e=>s.color3=e.target.value);
     const spv=c('.s-speedV'), upSp=()=>spv.textContent=s.speed+'%';
     c('.s-speed').addEventListener('input',e=>{ s.speed=+e.target.value; upSp(); }); upSp();
     const scv=c('.s-scaleV'), upSc=()=>scv.textContent=s.scale+'%';
