@@ -121,7 +121,7 @@
     <b style="margin-right:8px">Recover / slots:</b>
     <label>slot</label><input id="slot" type="number" value="0" min="0" max="7" style="width:48px" />
     <button id="switchSlot" disabled>Switch to built-in slot (0x51)</button>
-    <span class="sub">Un-sticks a frozen screen — also the screen-switch probe: step the slot # to find the built-in clock screen.</span>
+    <span class="sub">Sends cmd 0x51 (built-in slot). Tested 0–4: it ACKs but doesn't change the display on this board — kept as an experimental/recovery control. The clock is reached via FN+knob, not here.</span>
   </div>
   <div class="row">
     <b style="margin-right:8px">Clock:</b>

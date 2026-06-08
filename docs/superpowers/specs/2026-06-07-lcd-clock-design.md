@@ -98,6 +98,21 @@ commands that belong on the **`0xFF68` / usage `0x61` control interface**. So:
 - Promoting Part B to a real toggle — depends on probe outcome.
 - Any clock face / pixel compositing (the clock is firmware-rendered; we don't draw it).
 
+## Outcome (2026-06-07, hardware-tested)
+
+- **Part A — DONE & confirmed.** Clock time-sync works once `0x34` is sent on the `0xFF68` control
+  interface (the screen interface ACKs nothing). Verified: synced time matched the PC on the FN+knob
+  clock screen.
+- **Part B — CLOSED (negative result).** `0x51` ACKs (`55 51`) but does not change the LCD for slot
+  indices 0–4. The board holds one GIF (single flash slot) and the clock is a firmware display *mode*
+  reached only via the FN+knob menu — not a `0x51` slot. The official tool has no screen-switch button
+  to capture either. No software Show-GIF/Show-clock toggle is possible with current knowledge; the
+  `0x51` control is kept as an experimental/recovery primitive. Only remaining lead for a future
+  attempt: a key-bindable "screen/watchface switch" function code (capture from the official tool's
+  Custom/Advanced Keys assignment, then bind via the keymap).
+- **12/24h format** is not in the `0x34` packet — separate firmware setting (FN+knob menu or official
+  Settings page); pending a quick check.
+
 ## Verification
 
 - Part A: click Sync, confirm `55 34` ACK in the log; switch the LCD to the clock (FN+knob) and verify
