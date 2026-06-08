@@ -263,6 +263,7 @@ function findWritable(devs){
   // the per-key control interface is 0xFF68 usage 0x61 — pick it explicitly, NOT just the first output report (which can be the screen iface 0xFF67)
   return pick(c=>c.usagePage===0xFF68 && c.usage===0x61) || pick(c=>c.usagePage===0xFF68) || pick(()=>true);
 }
+let _inRpts=0;   // count of input reports drained from the board (must read them or the IN buffer fills and wedges the pipe)
 async function connect(){
   if(!('hid' in navigator)){ setStatus('WebHID needs Chrome/Edge','err'); return; }
   try{
@@ -273,6 +274,8 @@ async function connect(){
     if(!w){ setStatus('no FF68 control interface found — re-pick the 0xff68 entry','err'); return; }
     device=w.d; reportId=w.reportId; packLen=w.packLen;
     if(!device.opened) await device.open();
+    if(!device._inHooked){ device._inHooked=true;   // DRAIN input reports: the board sends an ACK/status report per write; if we never read them the IN buffer fills and the whole HID pipe wedges after a few seconds
+      device.addEventListener('inputreport', e=>{ _inRpts++; if(_inRpts===1){ const b=new Uint8Array(e.data.buffer); log('draining board input reports (id='+e.reportId+', first=['+Array.from(b.slice(0,8)).map(x=>x.toString(16).padStart(2,'0')).join(' ')+'…])','dim'); } }); }
     setStatus('connected: '+device.productName+' · reportId='+reportId+' · packLen='+packLen,'ok');
     log('connected: '+device.productName+' · iface 0x'+(w.usagePage||0).toString(16)+'/0x'+(w.usage||0).toString(16)+' · reportId='+reportId+' · packLen='+packLen+' · '+INDICES.length+' LEDs','ok');
     document.getElementById('start').disabled=false;
@@ -324,7 +327,7 @@ window.addEventListener('keyup',(e)=>{
 const layers=[
   { name:'Background', enabled:true,  type:'background', opacity:1,   blend:'normal', fps:30, rgb:new Uint8Array(NLED*3), lastTick:0,
     settings:{ color:'#00ffff', period:2600, bgMin:12, bgMax:55 } },
-  { name:'Reactive',   enabled:true,  type:'reactive',   opacity:1,   blend:'add',    fps:60, rgb:new Uint8Array(NLED*3), lastTick:0,
+  { name:'Reactive',   enabled:true,  type:'reactive',   opacity:1,   blend:'add',    fps:30, rgb:new Uint8Array(NLED*3), lastTick:0,
     settings:{ color:'#ff8c00', colorB:'#00ffff', colorC:'#00ff00', mode:'single', hold:0, fade:380, isolate:false } },
   { name:'Gradient',   enabled:false, type:'gradient',   opacity:1,   blend:'normal', fps:30, rgb:new Uint8Array(NLED*3), lastTick:0,
     settings:{ colorA:'#ff0000', colorB:'#0000ff', angle:0, scroll:0, phase:0 } },
@@ -1094,7 +1097,7 @@ function buildLayerCards(){
         '<select class="lt">'+opt(TYPES,L.type)+'</select>'+
         '<span class="lfield">opacity <input type="range" class="lo" min="0" max="100" value="'+Math.round(L.opacity*100)+'"><input type="number" class="numin lon" min="0" max="100" value="'+Math.round(L.opacity*100)+'"></span>'+
         '<select class="lbl">'+opt(BLENDS,L.blend)+'</select>'+
-        '<span class="lfield">fps <input type="range" class="lf" min="1" max="60" value="'+L.fps+'"><input type="number" class="numin lfn" min="1" max="60" value="'+L.fps+'"></span>'+
+        '<span class="lfield">fps <input type="range" class="lf" min="1" max="30" value="'+L.fps+'"><input type="number" class="numin lfn" min="1" max="30" value="'+L.fps+'"></span>'+
       '</div>'+
       '<div class="lbody"></div>';
     host.appendChild(card);
@@ -1109,7 +1112,7 @@ function buildLayerCards(){
     card.querySelector('.lbl').addEventListener('change',e=>{ L.blend=e.target.value; });
     // fps: range <-> number input, synced bidirectionally (min 1 max 60)
     const lf=card.querySelector('.lf'), lfn=card.querySelector('.lfn');
-    const setFps=v=>{ v=Math.max(1,Math.min(60,Math.round(v||1))); L.fps=v; lf.value=v; lfn.value=v; };
+    const setFps=v=>{ v=Math.max(1,Math.min(30,Math.round(v||1))); L.fps=v; lf.value=v; lfn.value=v; };   // 30fps cap — board can't sustain faster full-frame streaming
     lf.addEventListener('input',e=>setFps(+e.target.value));
     lfn.addEventListener('input',e=>setFps(+e.target.value));
     // layer card drag-to-reorder (grip only)
@@ -1158,7 +1161,7 @@ function saveLayers(){ try{ localStorage.setItem('th108_layers', JSON.stringify(
 function scheduleSaveLayers(){ clearTimeout(_slsT); _slsT=setTimeout(saveLayers,400); }
 function restoreLayers(){ try{ const a=JSON.parse(localStorage.getItem('th108_layers')||'null'); if(!Array.isArray(a)) return;
   for(let i=0;i<layers.length&&i<a.length;i++){ const o=a[i]; if(!o) continue; const L=layers[i];
-    if(o.name!=null)L.name=o.name; L.enabled=!!o.enabled; if(o.type)L.type=o.type; if(o.opacity!=null)L.opacity=o.opacity; if(o.blend)L.blend=o.blend; if(o.fps)L.fps=o.fps;
+    if(o.name!=null)L.name=o.name; L.enabled=!!o.enabled; if(o.type)L.type=o.type; if(o.opacity!=null)L.opacity=o.opacity; if(o.blend)L.blend=o.blend; if(o.fps)L.fps=Math.min(30,o.fps);   // clamp any pre-cap saved fps
     if(o.settings&&typeof o.settings==='object')L.settings=o.settings; }
 }catch(_){ } }
 // ensure a layer's settings object has the fields its current type needs (filling defaults on type switch)
