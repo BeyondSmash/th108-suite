@@ -64,6 +64,10 @@
   .lhead .numin{ width:42px; }
   .hexin{ background:#161b22; color:#e6edf3; border:1px solid #30363d; border-radius:6px; padding:2px 6px; font:inherit; width:74px; }
   .cwrap{ display:inline-flex; align-items:center; gap:6px; flex-wrap:wrap; }
+  .patgrid{ display:flex; flex-wrap:wrap; gap:4px; margin-bottom:8px; }
+  .patbtn{ font:12px/1 inherit; background:#21262d; color:#c9d1d9; border:1px solid #30363d; border-radius:6px; padding:5px 8px; cursor:pointer; }
+  .patbtn:hover{ border-color:#58a6ff; }
+  .patbtn.sel{ background:#1f6feb; border-color:#1f6feb; color:#fff; }
 </style>
 </head>
 <body>
@@ -188,6 +192,7 @@
       <label class="sl">brightness <span class="srange"><input type="range" id="obBri" min="1" max="6" value="4"></span><span class="val" id="obBriV" style="min-width:18px">4</span></label>
       <label class="sl">speed <span class="srange"><input type="range" id="obSpeed" min="1" max="6" value="4"></span><span class="val" id="obSpeedV" style="min-width:18px">4</span></label>
       <button id="obApply" class="go">Apply to keyboard</button>
+      <button id="obBack" title="resume the host layer compositor (overrides the firmware effect)">↩ Back to layers</button>
       <span id="obStatus" class="hint" style="margin:0"></span>
     </div>
   </div>
@@ -1192,16 +1197,16 @@ function buildLayerBody(card,L){
     c('.s-scroll').addEventListener('input',e=>{ s.scroll=(+e.target.value)/100; upS(); }); upS();
   } else if(L.type==='pattern'){
     const pats=['rainbow','spectrum','radial-rainbow','wave','breathing','ripple','scan','twinkle','rain','fire','comet','gradient-flow','static','snowfall','color-fountain','colorful-interchange','turning-peaks','two-birds','layered-mountains','gentle-rain','back-forth','bloom','plasma','aurora'];
-    const popt=pats.map(p=>'<option'+(p===s.pattern?' selected':'')+'>'+p+'</option>').join('');
-    body.innerHTML='<div class="ctl">'+
-      row('Pattern','<select class="s-pat">'+popt+'</select><span></span>')+
+    const pbtns=pats.map(p=>'<button type="button" class="patbtn'+(p===s.pattern?' sel':'')+'" data-p="'+p+'">'+p+'</button>').join('');
+    body.innerHTML='<div class="ph" style="margin:0 0 4px">Pattern</div><div class="patgrid">'+pbtns+'</div>'+
+      '<div class="ctl">'+
       row('Color 1','<input type="color" class="s-color" value="'+s.color+'"><span></span>')+
       row('Color 2','<input type="color" class="s-color2" value="'+s.color2+'"><span></span>')+
       row('Speed','<input type="range" class="s-speed" min="0" max="100" value="'+s.speed+'"><span class="val s-speedV"></span>')+
       row('Scale','<input type="range" class="s-scale" min="0" max="100" value="'+s.scale+'"><span class="val s-scaleV"></span>')+
     '</div>';
     const c=q=>body.querySelector(q);
-    c('.s-pat').addEventListener('change',e=>{ s.pattern=e.target.value; });
+    body.querySelectorAll('.patbtn').forEach(btn=>btn.addEventListener('click',()=>{ s.pattern=btn.dataset.p; body.querySelectorAll('.patbtn').forEach(b=>b.classList.toggle('sel',b===btn)); scheduleSaveLayers(); }));
     c('.s-color').addEventListener('input',e=>s.color=e.target.value);
     c('.s-color2').addEventListener('input',e=>s.color2=e.target.value);
     const spv=c('.s-speedV'), upSp=()=>spv.textContent=s.speed+'%';
@@ -1339,6 +1344,7 @@ async function applyOnboard(){
   }catch(e){ log('onboard apply failed: '+e.message,'err'); obSetStatus('apply failed','err'); }
 }
 document.getElementById('obApply').addEventListener('click',applyOnboard);
+document.getElementById('obBack').addEventListener('click',()=>{ if(!device){ log('connect first','err'); return; } if(!running) start(); else log('layers already running — they override the firmware effect','dim'); });   // resume host layers over the firmware effect
 </script>
 </body>
 </html>
