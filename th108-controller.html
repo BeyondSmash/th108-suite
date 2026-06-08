@@ -233,13 +233,26 @@ function buildPkt(cmd,len,off,chunk,aux,last){
   s[0]=0xAA; s[1]=cmd; s[2]=len; s[3]=off&0xFF; s[4]=(off>>8)&0xFF; s[5]=aux&0xFF; s[6]=last?1:0; s.set(chunk,8);
   return s;
 }
+let _sendStalls=0;   // consecutive frames whose sendReport never resolved (HID pipe backpressure)
 async function sendFrame(flat,aux=0){
   if(!device) return false;
   const room=packLen-8, n=Math.max(1,Math.ceil(flat.length/room));
   for(let c=0;c<n;c++){
     const off=c*room, chunk=flat.slice(off,off+room);
-    try{ await device.sendReport(reportId, buildPkt(CMD,chunk.length,off,chunk,aux,c===n-1)); }
-    catch(e){ log('send failed: '+e.message,'err'); stop(); return false; }
+    let timer; const stall=new Promise((_,rej)=>{ timer=setTimeout(()=>rej(new Error('__stall__')),600); });
+    try{
+      // race the send against a timeout: a sendReport that NEVER resolves (device HID pipe stalled) would
+      // otherwise suspend layerTick at the await forever → loop stops rescheduling → board freezes silently.
+      await Promise.race([ device.sendReport(reportId, buildPkt(CMD,chunk.length,off,chunk,aux,c===n-1)), stall ]);
+      clearTimeout(timer); _sendStalls=0;
+    }catch(e){ clearTimeout(timer);
+      if(e && e.message==='__stall__'){            // abandon this frame so the loop keeps running + self-heals when the device drains
+        if(++_sendStalls===1 || _sendStalls%20===0) log('send stalled — keyboard not draining frames; dropping to keep the loop alive','dim');
+        if(_sendStalls>=15){ log('keyboard unresponsive — stopping. Unplug/replug it, then Connect → Start layers.','err'); stop(); }
+        return false;
+      }
+      log('send failed: '+e.message,'err'); stop(); return false;   // genuine error (e.g. unplugged) → stop
+    }
   }
   return true;
 }
