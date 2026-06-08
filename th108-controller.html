@@ -30,7 +30,13 @@
   kbd{ background:#21262d; border:1px solid #30363d; border-radius:4px; padding:1px 6px; font-family:ui-monospace,monospace; }
   .sl{ color:#8b949e; display:flex; align-items:center; gap:6px; }
   .srange{ position:relative; display:inline-block; width:110px; height:20px; }
-  .srange input[type=range]{ position:absolute; left:0; top:50%; transform:translateY(-50%); width:100%; margin:0; }
+  .srange input[type=range]{ -webkit-appearance:none; appearance:none; position:absolute; left:0; top:50%; transform:translateY(-50%); width:100%; height:14px; margin:0; background:transparent; }
+  .srange input[type=range]::-webkit-slider-runnable-track{ height:4px; background:#30363d; border-radius:2px; }
+  .srange input[type=range]::-moz-range-track{ height:4px; background:#30363d; border-radius:2px; }
+  .srange input[type=range]::-webkit-slider-thumb{ -webkit-appearance:none; appearance:none; width:14px; height:14px; border-radius:50%; background:#c9d1d9; margin-top:-5px; cursor:pointer; }
+  .srange input[type=range]::-moz-range-thumb{ width:14px; height:14px; border:none; border-radius:50%; background:#c9d1d9; cursor:pointer; }
+  .srange input[type=range].snapped::-webkit-slider-thumb{ background:#ff8c00; }
+  .srange input[type=range].snapped::-moz-range-thumb{ background:#ff8c00; }
   .srange .tick{ position:absolute; top:1px; bottom:1px; width:2px; background:#58a6ff; transform:translateX(-50%); pointer-events:none; border-radius:1px; }   /* marks the snap/default value */
 </style>
 </head>
@@ -74,13 +80,15 @@
     </div>
     <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-top:8px">
       <label class="sl">zoom <span class="srange"><input type="range" id="gifZoom" min="20" max="500" value="100"><i class="tick" style="left:calc(7px + (100% - 14px)*.167)"></i></span></label>
+      <label class="sl">rotate <span class="srange" id="gifRotRange"><input type="range" id="gifRot" min="0" max="360" value="0"></span></label>
       <label class="sl">saturation <span class="srange"><input type="range" id="gifSat" min="100" max="300" value="170"><i class="tick" style="left:calc(7px + (100% - 14px)*.35)"></i></span></label>
       <label class="sl">contrast <span class="srange"><input type="range" id="gifContrast" min="50" max="250" value="100"><i class="tick" style="left:calc(7px + (100% - 14px)*.25)"></i></span></label>
       <label class="sl">gamma <span class="srange"><input type="range" id="gifGamma" min="100" max="300" value="180"><i class="tick" style="left:calc(7px + (100% - 14px)*.40)"></i></span></label>
+      <label class="sl">speed <span class="srange"><input type="range" id="gifSpeed" min="25" max="400" value="100"><i class="tick" style="left:calc(7px + (100% - 14px)*.20)"></i></span></label>
       <label class="sl">brightness <span class="srange"><input type="range" id="gifBri" min="10" max="100" value="100"></span></label>
       <label class="sl">sample
         <select id="gifSample" style="font:inherit;background:#0d1117;color:#e6edf3;border:1px solid #30363d;border-radius:6px;padding:2px 4px">
-          <option value="average">Average (area)</option><option value="center">Center pixel</option><option value="gaussian">Gaussian (centre-weighted)</option><option value="vivid">Most vivid pixel</option>
+          <option value="average">Average (area)</option><option value="center">Center pixel</option><option value="gaussian">Gaussian (centre-weighted)</option><option value="vivid">Most vivid pixel</option><option value="dominant">Dominant colour</option><option value="standout">Standout (max contrast)</option>
         </select></label>
       <label class="sl">bars
         <select id="gifBars" style="font:inherit;background:#0d1117;color:#e6edf3;border:1px solid #30363d;border-radius:6px;padding:2px 4px">
@@ -221,6 +229,8 @@ const MAXDIM=340;                                    // cap decoded frame size (
 let gifFrames=[], gifPlaying=false, gifIdx=0;        // frame = {img:ImageData, w, h, delayMs, rgb:Uint8Array}
 let czoom=1, cpanX=0, cpanY=0, srcTmp=null;          // GIF position transform (source-pixel pan + zoom)
 function gifBri(){ return (+document.getElementById('gifBri').value)/100; }
+function gifSpeed(){ return (+document.getElementById('gifSpeed').value)/100; }      // playback speed multiplier
+function gifRotRad(){ return (+document.getElementById('gifRot').value)*Math.PI/180; }  // GIF rotation
 // the board-aspect source rect that maps onto the keyboard, given zoom/pan — clamped to the source
 function gifCrop(SW,SH){
   const tr=BOARDW/BOARDH, ir=SW/SH; let cw0,ch0;
@@ -241,24 +251,36 @@ function barColor(fr){
 function sampleKeyColors(fr){
   const data=fr.img.data, SW=fr.w, SH=fr.h, cr=gifCrop(SW,SH), bc=barColor(fr), rgb=new Uint8Array(INDICES.length*3);
   const mode=document.getElementById('gifSample').value, N = mode==='center' ? 0 : 3;   // 0 = single centre sample, else 4×4 grid
+  const rot=gifRotRad(), cs=Math.cos(rot), sn=Math.sin(rot), ccx=cr.cx+cr.cw/2, ccy=cr.cy+cr.ch/2;   // rotate sampling around crop centre
   for(let k=0;k<INDICES.length;k++){
     const L=LAYOUT[INDICES[k]];
     let nx=0.5,ny=0.5,nw=1/BOARDW,nh=1/BOARDH;
     if(L){ nx=(L[0]+L[2]/2)/BOARDW; ny=(L[1]+L[3]/2)/BOARDH; nw=L[2]/BOARDW; nh=L[3]/BOARDH; }
     const sx=cr.cx+(nx-nw/2)*cr.cw, sy=cr.cy+(ny-nh/2)*cr.ch, sw=nw*cr.cw, sh=nh*cr.ch;
-    let r=0,g=0,b=0,ws=0, bSat=-1,br2=0,bg2=0,bb2=0, anyIn=false;
+    const SR=[],SG=[],SB=[],SU=[],SV=[];                       // in-bounds samples of the patch
     for(let iy=0;iy<=N;iy++)for(let ix=0;ix<=N;ix++){
-      const u = N?ix/N:0.5, v = N?iy/N:0.5, fx=sx+sw*u, fy=sy+sh*v;
-      if(fx<0||fy<0||fx>=SW||fy>=SH) continue;                 // outside the source → bar fill
-      const o=((fy|0)*SW+(fx|0))*4, pr=data[o],pg=data[o+1],pb=data[o+2]; anyIn=true;
-      if(mode==='vivid'){ const sat=Math.max(pr,pg,pb)-Math.min(pr,pg,pb); if(sat>bSat){ bSat=sat; br2=pr; bg2=pg; bb2=pb; } }
-      else if(mode==='gaussian'){ const du=u-0.5,dv=v-0.5, w=Math.exp(-(du*du+dv*dv)*8); r+=pr*w; g+=pg*w; b+=pb*w; ws+=w; }
-      else { r+=pr; g+=pg; b+=pb; ws++; }                      // average + center
+      const u=N?ix/N:0.5, v=N?iy/N:0.5; let fx=sx+sw*u, fy=sy+sh*v;
+      if(rot){ const dx=fx-ccx, dy=fy-ccy; fx=ccx+dx*cs+dy*sn; fy=ccy-dx*sn+dy*cs; }   // rotate sampling grid → image appears rotated
+      if(fx<0||fy<0||fx>=SW||fy>=SH) continue;
+      const o=((fy|0)*SW+(fx|0))*4; SR.push(data[o]); SG.push(data[o+1]); SB.push(data[o+2]); SU.push(u); SV.push(v);
     }
-    const t=k*3;
-    if(!anyIn){ rgb[t]=bc[0]; rgb[t+1]=bc[1]; rgb[t+2]=bc[2]; }
-    else if(mode==='vivid'){ rgb[t]=br2; rgb[t+1]=bg2; rgb[t+2]=bb2; }
-    else { rgb[t]=r/ws|0; rgb[t+1]=g/ws|0; rgb[t+2]=b/ws|0; }
+    const t=k*3, n=SR.length; let R,G,B;
+    if(!n){ rgb[t]=bc[0]; rgb[t+1]=bc[1]; rgb[t+2]=bc[2]; continue; }   // fully outside → bar colour
+    if(mode==='vivid'){                                        // most saturated pixel
+      let bi=0,bs=-1; for(let i=0;i<n;i++){ const s=Math.max(SR[i],SG[i],SB[i])-Math.min(SR[i],SG[i],SB[i]); if(s>bs){bs=s;bi=i;} } R=SR[bi];G=SG[bi];B=SB[bi];
+    } else if(mode==='standout'){                              // pixel furthest from the patch average (max local contrast)
+      let mr=0,mg=0,mb=0; for(let i=0;i<n;i++){mr+=SR[i];mg+=SG[i];mb+=SB[i];} mr/=n;mg/=n;mb/=n;
+      let bi=0,bd=-1; for(let i=0;i<n;i++){ const dr=SR[i]-mr,dg=SG[i]-mg,db=SB[i]-mb,d=dr*dr+dg*dg+db*db; if(d>bd){bd=d;bi=i;} } R=SR[bi];G=SG[bi];B=SB[bi];
+    } else if(mode==='dominant'){                              // most common colour (quantised to 4 levels/channel), members averaged
+      const cnt={}; for(let i=0;i<n;i++){ const q=((SR[i]>>6)<<4)|((SG[i]>>6)<<2)|(SB[i]>>6); (cnt[q]||(cnt[q]=[])).push(i); }
+      let best=null,bn=0; for(const q in cnt){ if(cnt[q].length>bn){bn=cnt[q].length;best=cnt[q];} }
+      let r=0,g=0,b=0; for(const i of best){r+=SR[i];g+=SG[i];b+=SB[i];} R=r/best.length;G=g/best.length;B=b/best.length;
+    } else if(mode==='gaussian'){                              // centre-weighted average
+      let r=0,g=0,b=0,w=0; for(let i=0;i<n;i++){ const du=SU[i]-0.5,dv=SV[i]-0.5,wt=Math.exp(-(du*du+dv*dv)*8); r+=SR[i]*wt;g+=SG[i]*wt;b+=SB[i]*wt;w+=wt; } R=r/w;G=g/w;B=b/w;
+    } else {                                                   // average (area) + center
+      let r=0,g=0,b=0; for(let i=0;i<n;i++){r+=SR[i];g+=SG[i];b+=SB[i];} R=r/n;G=g/n;B=b/n;
+    }
+    rgb[t]=R|0; rgb[t+1]=G|0; rgb[t+2]=B|0;
   }
   return rgb;
 }
@@ -296,11 +318,16 @@ function drawSrc(){
   srcTmp.width=fr.w; srcTmp.height=fr.h; srcTmp.getContext('2d').putImageData(fr.img,0,0);
   const sc=Math.min(cv.width/fr.w, cv.height/fr.h), dw=fr.w*sc, dh=fr.h*sc, ox=(cv.width-dw)/2, oy=(cv.height-dh)/2;
   ctx.drawImage(srcTmp, ox,oy,dw,dh);
-  const cr=gifCrop(fr.w,fr.h), rx=ox+cr.cx*sc, ry=oy+cr.cy*sc, rw=cr.cw*sc, rh=cr.ch*sc;
-  ctx.fillStyle='rgba(1,4,9,.6)';
-  ctx.fillRect(ox,oy,dw,ry-oy); ctx.fillRect(ox,ry+rh,dw,oy+dh-(ry+rh));
-  ctx.fillRect(ox,ry,rx-ox,rh); ctx.fillRect(rx+rw,ry,ox+dw-(rx+rw),rh);
-  ctx.strokeStyle='#58a6ff'; ctx.lineWidth=2; ctx.strokeRect(rx,ry,rw,rh);
+  const cr=gifCrop(fr.w,fr.h), rx=ox+cr.cx*sc, ry=oy+cr.cy*sc, rw=cr.cw*sc, rh=cr.ch*sc, rot=gifRotRad();
+  if(rot){                                                    // rotated: just outline the (rotated) sampled region
+    ctx.save(); ctx.translate(rx+rw/2, ry+rh/2); ctx.rotate(-rot);
+    ctx.strokeStyle='#58a6ff'; ctx.lineWidth=2; ctx.strokeRect(-rw/2,-rh/2,rw,rh); ctx.restore();
+  } else {                                                    // axis-aligned: dim the cropped-out area + outline
+    ctx.fillStyle='rgba(1,4,9,.6)';
+    ctx.fillRect(ox,oy,dw,ry-oy); ctx.fillRect(ox,ry+rh,dw,oy+dh-(ry+rh));
+    ctx.fillRect(ox,ry,rx-ox,rh); ctx.fillRect(rx+rw,ry,ox+dw-(rx+rw),rh);
+    ctx.strokeStyle='#58a6ff'; ctx.lineWidth=2; ctx.strokeRect(rx,ry,rw,rh);
+  }
   cv._map={sc};
 }
 function refresh(){ if(!gifFrames.length) return; resampleAll(); drawSrc(); drawKb(gifFrames[gifIdx].rgb); }
@@ -339,7 +366,7 @@ async function loadMedia(blob, name){
 }
 async function gifTick(){
   if(!gifPlaying||!gifFrames.length) return;
-  const fr=gifFrames[gifIdx]; let delay=Math.max(33, fr.delayMs|0);
+  const fr=gifFrames[gifIdx]; let delay=Math.max(16, (fr.delayMs|0)/gifSpeed());
   if(!inFlight){ inFlight=true; const ok=await sendFrame(gifFlat(fr.rgb)); inFlight=false;
     if(ok){ drawKb(fr.rgb); drawSrc(); gifIdx=(gifIdx+1)%gifFrames.length; } }
   else delay=20;                                            // device busy — retry soon without advancing
@@ -374,7 +401,9 @@ let gifDrag=false, gifLast=null;
 document.getElementById('gifFile').addEventListener('change',e=>{ if(e.target.files[0]) loadMedia(e.target.files[0], e.target.files[0].name); });
 document.getElementById('gifPlay').addEventListener('click',gifPlay);
 document.getElementById('gifStop').addEventListener('click',gifStopFn);
-const snap=(el,target,thr)=>{ if(Math.abs((+el.value)-target)<=thr) el.value=target; };   // magnetic detent at the default value
+const flashSnap=el=>{ el.classList.add('snapped'); clearTimeout(el._st); el._st=setTimeout(()=>el.classList.remove('snapped'),250); };   // thumb flashes orange 250ms on snap
+const snap=(el,target,thr)=>{ if(Math.abs((+el.value)-target)<=thr){ if(+el.value!==target) el.value=target; if(!el._sn){ el._sn=true; flashSnap(el); } } else el._sn=false; };
+const snapMul=(el,step,thr)=>{ const v=+el.value, nr=Math.round(v/step)*step; if(Math.abs(v-nr)<=thr){ if(v!==nr) el.value=nr; if(el._sn!==nr){ el._sn=nr; flashSnap(el); } } else el._sn=null; };
 document.getElementById('gifZoom').addEventListener('input',e=>{ snap(e.target,100,10); czoom=(+e.target.value)/100; refresh(); });
 document.getElementById('gifReset').addEventListener('click',()=>{ czoom=1; cpanX=cpanY=0; document.getElementById('gifZoom').value=100; refresh(); });
 document.getElementById('gifBri').addEventListener('input',()=>{ if(gifFrames[gifIdx]) drawKb(gifFrames[gifIdx].rgb); });
@@ -384,6 +413,8 @@ document.getElementById('gifSample').addEventListener('change',refresh);        
 document.getElementById('gifBarColor').addEventListener('input',refresh);
 document.getElementById('gifContrast').addEventListener('input',e=>{ snap(e.target,100,8); if(gifFrames[gifIdx]) drawKb(gifFrames[gifIdx].rgb); });
 document.getElementById('gifGamma').addEventListener('input',e=>{ snap(e.target,180,8); if(gifFrames[gifIdx]) drawKb(gifFrames[gifIdx].rgb); });
+document.getElementById('gifRot').addEventListener('input',e=>{ snapMul(e.target,45,6); refresh(); });   // rotate → resample + redraw, snaps every 45°
+(function(){ const sr=document.getElementById('gifRotRange'); for(let d=0;d<=360;d+=45){ const i=document.createElement('i'); i.className='tick'; i.style.left='calc(7px + (100% - 14px)*'+(d/360)+')'; sr.appendChild(i); } })();
 // load by URL (CORS-permitting) and from the clipboard (paste button + Ctrl+V anywhere on the page)
 async function loadFromUrl(url){
   if(!url) return;
