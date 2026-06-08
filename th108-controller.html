@@ -348,10 +348,11 @@ let gifDrag=false, gifLast=null;
 document.getElementById('gifFile').addEventListener('change',e=>{ if(e.target.files[0]) loadGif(e.target.files[0]); });
 document.getElementById('gifPlay').addEventListener('click',gifPlay);
 document.getElementById('gifStop').addEventListener('click',gifStopFn);
-document.getElementById('gifZoom').addEventListener('input',e=>{ czoom=(+e.target.value)/100; refresh(); });
+const snap=(el,target,thr)=>{ if(Math.abs((+el.value)-target)<=thr) el.value=target; };   // magnetic detent at the default value
+document.getElementById('gifZoom').addEventListener('input',e=>{ snap(e.target,100,10); czoom=(+e.target.value)/100; refresh(); });
 document.getElementById('gifReset').addEventListener('click',()=>{ czoom=1; cpanX=cpanY=0; document.getElementById('gifZoom').value=100; refresh(); });
 document.getElementById('gifBri').addEventListener('input',()=>{ if(gifFrames[gifIdx]) drawKb(gifFrames[gifIdx].rgb); });
-document.getElementById('gifSat').addEventListener('input',()=>{ if(gifFrames[gifIdx]) drawKb(gifFrames[gifIdx].rgb); });   // saturation/brightness apply at output → preview only
+document.getElementById('gifSat').addEventListener('input',e=>{ snap(e.target,170,8); if(gifFrames[gifIdx]) drawKb(gifFrames[gifIdx].rgb); });   // saturation/brightness apply at output → preview only
 document.getElementById('gifBars').addEventListener('change',refresh);                                                      // bar fill affects out-of-bounds keys → resample
 document.getElementById('gifBarColor').addEventListener('input',refresh);
 
