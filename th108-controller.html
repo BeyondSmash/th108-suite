@@ -257,23 +257,89 @@ function renderBackground(L,now){
   const r=br*b|0, g=bg_*b|0, bl=bb*b|0, out=L.rgb;
   for(let k=0;k<NLED;k++){ const o=k*3; out[o]=r; out[o+1]=g; out[o+2]=bl; }
 }
+// reactive intensity envelope: shapes a key's flash over `elapsed` ms using hold/fade. → 0..1
+function reactEnvelope(elapsed, hold, fade, style){
+  if(elapsed<0) return 0;
+  const dur=hold+fade;                                   // total flash lifetime for the cyclic styles
+  switch(style){
+    case 'double-blink': {                               // two quick full blinks, then fade out
+      if(elapsed<70)  return 1;
+      if(elapsed<140) return 0;
+      if(elapsed<210) return 1;
+      return Math.max(0, 1-(elapsed-210)/fade);
+    }
+    case 'blink': {                                       // square on/off ~6 Hz for hold+fade, then 0
+      if(elapsed>=dur) return 0;
+      return (Math.floor(elapsed/(1000/12))%2===0) ? 1 : 0;   // 12 toggles/s = 6 Hz on/off
+    }
+    case 'strobe': {                                      // fast on/off ~14 Hz for hold+fade, then 0
+      if(elapsed>=dur) return 0;
+      return (Math.floor(elapsed/(1000/28))%2===0) ? 1 : 0;
+    }
+    case 'pulse': {                                       // sin pulse that decays out
+      const decay=Math.max(0, 1-elapsed/dur);
+      return (0.5+0.5*Math.sin(elapsed/120))*decay;
+    }
+    case 'ramp': {                                        // fade IN then OUT
+      const up=hold>0?hold:120;
+      if(elapsed<up) return elapsed/up;
+      return Math.max(0, 1-(elapsed-up)/fade);
+    }
+    case 'heartbeat': {                                   // lub-dub bumps repeating, decaying with the flash
+      const decay=Math.max(0, 1-elapsed/dur);
+      if(decay<=0) return 0;
+      const beat=elapsed%800;                            // 800ms cardiac cycle
+      const bump=(c,w)=>{ const d=beat-c; return Math.exp(-(d*d)/(2*w*w)); };
+      return Math.min(1, bump(60,42)+0.7*bump(220,42))*decay;   // lub (strong) then dub (softer)
+    }
+    case 'fade':
+    default:
+      return elapsed<=hold ? 1 : Math.max(0, 1-(elapsed-hold)/fade);
+  }
+}
 function renderReactive(L,now){
   const s=L.settings, out=L.rgb;
   const A=hexToRgb(s.color), B=hexToRgb(s.colorB||'#00ffff'), C=hexToRgb(s.colorC||'#00ff00');
-  const mode=s.mode||'single';
+  const mode=s.mode||'single', style=s.style||'fade';
   const hold=Math.max(0,s.hold||0), fade=Math.max(1,s.fade);
   // shimmer rate: s.shimmer (0..100 → 0..6 Hz) if present, else fixed 3 Hz
   const shimmerHz = (s.shimmer!==undefined) ? (s.shimmer/100)*6 : 3;
   if(!L._inten || L._inten.length!==NLED) L._inten=new Float32Array(NLED);
+  // random-mode per-key state: _seen = press-time the colour was assigned for, _col = locked RGB
+  if(!L._seen || L._seen.length!==NLED){ L._seen=new Float64Array(NLED).fill(-1e12); L._col=new Uint8Array(NLED*3); }
+  if(L._lastHue===undefined) L._lastHue=-1; if(L._lastPalI===undefined) L._lastPalI=-1;
+  const palList=(Array.isArray(s.pal)?s.pal:[]).filter(h=>typeof h==='string' && h.length===7 && h[0]==='#');
   const tsec=now/1000;
   for(let k=0;k<NLED;k++){
     const o=k*3, idx=INDICES[k];
     const elapsed=now-reactT[idx];
-    let inten = elapsed<0 ? 0 : (elapsed<=hold ? 1 : Math.max(0, 1-(elapsed-hold)/fade));
+    let inten = reactEnvelope(elapsed, hold, fade, style);
     L._inten[k]=inten;
     if(inten<=0){ out[o]=out[o+1]=out[o+2]=0; continue; }
     let cr,cg,cb;
-    if(mode==='single'){ cr=A[0]; cg=A[1]; cb=A[2]; }
+    if(mode==='random'){
+      // new press for this slot? (press time differs from what we locked the colour at) → pick a fresh colour
+      if(reactT[idx]!==L._seen[k]){
+        let rgb;
+        if(s.anyColor){
+          let h=Math.random();
+          for(let tries=0; tries<8 && L._lastHue>=0; tries++){
+            let dh=Math.abs(h-L._lastHue); dh=Math.min(dh,1-dh);   // wrap-around hue distance
+            if(dh>=0.12) break;
+            h=Math.random();
+          }
+          L._lastHue=h; rgb=hsv2rgb(h,1,1);
+        } else if(palList.length){
+          let pi=Math.floor(Math.random()*palList.length);
+          if(palList.length>1){ for(let tries=0; tries<6 && pi===L._lastPalI; tries++) pi=Math.floor(Math.random()*palList.length); }
+          L._lastPalI=pi; rgb=hexToRgb(palList[pi]);
+        } else { rgb=[255,255,255]; }
+        L._col[k*3]=rgb[0]; L._col[k*3+1]=rgb[1]; L._col[k*3+2]=rgb[2];
+        L._seen[k]=reactT[idx];
+      }
+      cr=L._col[k*3]; cg=L._col[k*3+1]; cb=L._col[k*3+2];
+    }
+    else if(mode==='single'){ cr=A[0]; cg=A[1]; cb=A[2]; }
     else {
       const phase=patHash(idx);   // per-key phase offset so keys shimmer out of phase
       if(mode==='ab'){
@@ -834,8 +900,10 @@ function ensureSettings(L){
   const s=L.settings, def={ color:'#00ffff', period:2600, bgMin:12, bgMax:55, fade:380,
     colorA:'#ff0000', colorB:'#0000ff', angle:0, scroll:0, phase:0 };
   if(L.type==='background'){ ['color','period','bgMin','bgMax'].forEach(k=>{ if(s[k]===undefined)s[k]=def[k]; }); if(s.color===undefined)s.color='#00ffff'; }
-  else if(L.type==='reactive'){ const rd={ color:'#ff8c00', colorB:'#00ffff', colorC:'#00ff00', mode:'single', hold:0, fade:380, isolate:false };
-    Object.keys(rd).forEach(k=>{ if(s[k]===undefined)s[k]=rd[k]; }); }
+  else if(L.type==='reactive'){ const rd={ color:'#ff8c00', colorB:'#00ffff', colorC:'#00ff00', mode:'single', hold:0, fade:380, isolate:false,
+      style:'fade', pal:['#ff0000','#00ff00','#0000ff','#ffff00','#ff00ff'], anyColor:false };
+    Object.keys(rd).forEach(k=>{ if(s[k]===undefined)s[k]=rd[k]; });
+    if(!Array.isArray(s.pal)) s.pal=rd.pal.slice(); }
   else if(L.type==='gradient'){ ['colorA','colorB','angle','scroll','phase'].forEach(k=>{ if(s[k]===undefined)s[k]=def[k]; }); }
   else if(L.type==='pattern'){ const pd={ pattern:'rainbow', color:'#00ffff', color2:'#ff00ff', speed:50, scale:50 };
     Object.keys(pd).forEach(k=>{ if(s[k]===undefined)s[k]=pd[k]; }); }
@@ -859,18 +927,29 @@ function buildLayerBody(card,L){
     const mxv=c('.s-bgMaxV'), upMx=()=>mxv.textContent=s.bgMax+'%';
     c('.s-bgMax').addEventListener('input',e=>{ s.bgMax=+e.target.value; upMx(); }); upMx();
   } else if(L.type==='reactive'){
-    const modes=[['single','Single colour'],['ab','A–B shimmer'],['rgb','RGB shimmer']];
+    const modes=[['single','Single colour'],['ab','A–B shimmer'],['rgb','RGB shimmer'],['random','Random']];
     const mopt=modes.map(m=>'<option value="'+m[0]+'"'+(m[0]===s.mode?' selected':'')+'>'+m[1]+'</option>').join('');
+    const styles=[['fade','Fade'],['double-blink','Double-blink'],['blink','Blink'],['pulse','Pulse'],['ramp','Ramp (in→out)'],['strobe','Strobe'],['heartbeat','Heartbeat']];
+    const sopt=styles.map(m=>'<option value="'+m[0]+'"'+(m[0]===(s.style||'fade')?' selected':'')+'>'+m[1]+'</option>').join('');
+    const palDefs=['#ff0000','#00ff00','#0000ff','#ffff00','#ff00ff'];
+    const palHtml=[0,1,2,3,4].map(i=>'<input type="color" class="s-pal" data-i="'+i+'" value="'+((s.pal&&s.pal[i])||palDefs[i])+'">').join(' ');
     body.innerHTML='<div class="ctl">'+
       row('Mode','<select class="s-mode">'+mopt+'</select><span></span>')+
+      row('Style','<select class="s-style">'+sopt+'</select><span></span>')+
       row('Color A','<input type="color" class="s-color" value="'+s.color+'"><span></span>')+
       row('Color B','<input type="color" class="s-colorB" value="'+s.colorB+'"><span></span>')+
       row('Color C','<input type="color" class="s-colorC" value="'+s.colorC+'"><span></span>')+
+      row('Palette','<span style="display:flex;gap:4px;align-items:center;flex-wrap:wrap">'+palHtml+'</span><span></span>')+
+      row('Any colour','<label class="sl" style="margin:0"><input type="checkbox" class="s-anyColor"'+(s.anyColor?' checked':'')+'> full spectrum (random hues)</label><span></span>')+
       row('Hold','<input type="range" class="s-hold" min="0" max="1000" step="10" value="'+s.hold+'"><span style="display:flex;gap:6px;align-items:center"><input type="number" class="numin s-holdN" min="0" max="1000" value="'+s.hold+'"><span class="val s-holdV"></span></span>')+
       row('Fade','<input type="range" class="s-fade" min="80" max="1500" step="20" value="'+s.fade+'"><span style="display:flex;gap:6px;align-items:center"><input type="number" class="numin s-fadeN" min="80" max="1500" value="'+s.fade+'"><span class="val s-fadeV"></span></span>')+
       row('Isolate','<label class="sl" style="margin:0"><input type="checkbox" class="s-isolate"'+(s.isolate?' checked':'')+'> punch through layers below</label><span></span>')+
     '</div>';
     body.querySelector('.s-mode').addEventListener('change',e=>s.mode=e.target.value);
+    body.querySelector('.s-style').addEventListener('change',e=>s.style=e.target.value);
+    if(!Array.isArray(s.pal)) s.pal=palDefs.slice();
+    body.querySelectorAll('.s-pal').forEach(inp=>inp.addEventListener('input',e=>{ s.pal[+e.target.dataset.i]=e.target.value; }));
+    body.querySelector('.s-anyColor').addEventListener('change',e=>s.anyColor=e.target.checked);
     body.querySelector('.s-color').addEventListener('input',e=>s.color=e.target.value);
     body.querySelector('.s-colorB').addEventListener('input',e=>s.colorB=e.target.value);
     body.querySelector('.s-colorC').addEventListener('input',e=>s.colorC=e.target.value);
