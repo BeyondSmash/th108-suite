@@ -136,7 +136,7 @@
         </select></label>
       <label class="sl">sample
         <select id="gifSample" style="font:inherit;background:#0d1117;color:#e6edf3;border:1px solid #30363d;border-radius:6px;padding:2px 4px">
-          <option value="average">Average (area)</option><option value="center">Center pixel</option><option value="gaussian">Gaussian (centre-weighted)</option><option value="vivid">Most vivid pixel</option><option value="bright">Brightest pixel (text/logos)</option><option value="dominant">Dominant colour</option><option value="standout">Standout (max contrast)</option>
+          <option value="average">Average (area)</option><option value="center">Center pixel</option><option value="gaussian">Gaussian (center-weighted)</option><option value="vivid">Most vivid pixel</option><option value="bright">Brightest pixel (text/logos)</option><option value="dominant">Dominant color</option><option value="standout">Standout (max contrast)</option>
         </select></label>
       <label class="sl">bars
         <select id="gifBars" style="font:inherit;background:#0d1117;color:#e6edf3;border:1px solid #30363d;border-radius:6px;padding:2px 4px">
@@ -184,7 +184,7 @@
           <option value="19">19 · Back and Forth</option>
           <option value="20">20 · Custom</option>
         </select></label>
-      <label class="sl" title="rainbow / multi-colour; uncheck to use the primary colour"><input type="checkbox" id="obColorful" checked> colourful (rainbow)</label>
+      <label class="sl" title="rainbow / multi-color; uncheck to use the primary color"><input type="checkbox" id="obColorful" checked> colorful (rainbow)</label>
       <label class="sl">primary <input type="color" id="obPrimary" value="#00ffff"></label>
       <label class="sl">secondary <input type="color" id="obSecondary" value="#ff00ff"></label>
     </div>
@@ -212,7 +212,7 @@ const BOARDW=22.5, BOARDH=6.5;   // full-size + numpad ≈ 3.46:1
 const LAYOUT={"0":[0,0,1,1],"1":[2,0,1,1],"2":[3,0,1,1],"3":[4,0,1,1],"4":[5,0,1,1],"5":[6.5,0,1,1],"6":[7.5,0,1,1],"7":[8.5,0,1,1],"8":[9.5,0,1,1],"9":[11,0,1,1],"10":[12,0,1,1],"11":[13,0,1,1],"12":[14,0,1,1],"16":[0,1.5,1,1],"17":[1,1.5,1,1],"18":[2,1.5,1,1],"19":[3,1.5,1,1],"20":[4,1.5,1,1],"21":[5,1.5,1,1],"22":[6,1.5,1,1],"23":[7,1.5,1,1],"24":[8,1.5,1,1],"25":[9,1.5,1,1],"26":[10,1.5,1,1],"27":[11,1.5,1,1],"28":[12,1.5,1,1],"29":[18.5,1.5,1,1],"30":[19.5,1.5,1,1],"31":[20.5,1.5,1,1],"32":[0,2.5,1.5,1],"33":[1.5,2.5,1,1],"34":[2.5,2.5,1,1],"35":[3.5,2.5,1,1],"36":[4.5,2.5,1,1],"37":[5.5,2.5,1,1],"38":[6.5,2.5,1,1],"39":[7.5,2.5,1,1],"40":[8.5,2.5,1,1],"41":[9.5,2.5,1,1],"42":[10.5,2.5,1,1],"43":[11.5,2.5,1,1],"44":[12.5,2.5,1,1],"45":[18.5,2.5,1,1],"46":[19.5,2.5,1,1],"47":[20.5,2.5,1,1],"48":[0,3.5,1.75,1],"49":[1.75,3.5,1,1],"50":[2.75,3.5,1,1],"51":[3.75,3.5,1,1],"52":[4.75,3.5,1,1],"53":[5.75,3.5,1,1],"54":[6.75,3.5,1,1],"55":[7.75,3.5,1,1],"56":[8.75,3.5,1,1],"57":[9.75,3.5,1,1],"58":[10.75,3.5,1,1],"59":[11.75,3.5,1,1],"60":[13.5,2.5,1.5,1],"61":[18.5,3.5,1,1],"62":[19.5,3.5,1,1],"63":[20.5,3.5,1,1],"64":[0,4.5,2.25,1],"65":[2.25,4.5,1,1],"66":[3.25,4.5,1,1],"67":[4.25,4.5,1,1],"68":[5.25,4.5,1,1],"69":[6.25,4.5,1,1],"70":[7.25,4.5,1,1],"71":[8.25,4.5,1,1],"72":[9.25,4.5,1,1],"73":[10.25,4.5,1,1],"74":[11.25,4.5,1,1],"75":[12.25,4.5,2.75,1],"76":[12.75,3.5,2.25,1],"77":[18.5,4.5,1,1],"78":[19.5,4.5,1,1],"79":[20.5,4.5,1,1],"80":[0,5.5,1.5,1],"81":[1.5,5.5,1.25,1],"82":[2.75,5.5,1.25,1],"83":[4,5.5,6.25,1],"84":[10.25,5.5,1.25,1],"85":[11.5,5.5,1.25,1],"86":[12.75,5.5,1.25,1],"87":[14,5.5,1,1],"88":[15.25,5.5,1,1],"89":[16.25,5.5,1,1],"90":[16.25,4.5,1,1],"91":[17.25,5.5,1,1],"92":[13,1.5,2,1],"93":[18.5,5.5,2,1],"94":[20.5,5.5,1,1],"95":[21.5,4.5,1,2],"99":[15.25,0,1,1],"100":[16.25,0,1,1],"102":[17.25,0,1,1],"103":[15.25,1.5,1,1],"104":[16.25,1.5,1,1],"105":[17.25,1.5,1,1],"106":[15.25,2.5,1,1],"107":[16.25,2.5,1,1],"108":[17.25,2.5,1,1],"109":[21.5,1.5,1,1],"110":[21.5,2.5,1,2]};
 // uniform-grid positions (LED index -> [col,row]); the "Grid" mapping gives every key an equal cell — best for legible text/pixel art
 const GW=21, GH=6, GRID={"0":[0,0],"1":[2,0],"2":[3,0],"3":[4,0],"4":[5,0],"5":[6,0],"6":[7,0],"7":[8,0],"8":[9,0],"9":[10,0],"10":[11,0],"11":[12,0],"12":[13,0],"16":[0,1],"17":[1,1],"18":[2,1],"19":[3,1],"20":[4,1],"21":[5,1],"22":[6,1],"23":[7,1],"24":[8,1],"25":[9,1],"26":[10,1],"27":[11,1],"28":[12,1],"29":[17,1],"30":[18,1],"31":[19,1],"32":[0,2],"33":[1,2],"34":[2,2],"35":[3,2],"36":[4,2],"37":[5,2],"38":[6,2],"39":[7,2],"40":[8,2],"41":[9,2],"42":[10,2],"43":[11,2],"44":[12,2],"45":[17,2],"46":[18,2],"47":[19,2],"48":[0,3],"49":[1,3],"50":[2,3],"51":[3,3],"52":[4,3],"53":[5,3],"54":[6,3],"55":[7,3],"56":[8,3],"57":[9,3],"58":[10,3],"59":[11,3],"60":[13,2],"61":[17,3],"62":[18,3],"63":[19,3],"64":[0,4],"65":[2,4],"66":[3,4],"67":[4,4],"68":[5,4],"69":[6,4],"70":[7,4],"71":[8,4],"72":[9,4],"73":[10,4],"74":[11,4],"75":[12,4],"76":[13,3],"77":[17,4],"78":[18,4],"79":[19,4],"80":[0,5],"81":[1,5],"82":[2,5],"83":[6,5],"84":[10,5],"85":[11,5],"86":[12,5],"87":[13,5],"88":[14,5],"89":[15,5],"90":[15,4],"91":[16,5],"92":[13,1],"93":[18,5],"94":[19,5],"95":[20,4],"99":[14,0],"100":[15,0],"102":[16,0],"103":[14,1],"104":[15,1],"105":[16,1],"106":[14,2],"107":[15,2],"108":[16,2],"109":[20,1],"110":[20,2]};
-function keyCell(idx){                                // -> [nx,ny,nw,nh] normalized centre+size, per the active mapping
+function keyCell(idx){                                // -> [nx,ny,nw,nh] normalized center+size, per the active mapping
   if(document.getElementById('gifMap').value==='grid'){ const G=GRID[idx]; if(G) return [(G[0]+0.5)/GW,(G[1]+0.5)/GH,1/GW,1/GH]; }
   const L=LAYOUT[idx]; if(L) return [(L[0]+L[2]/2)/BOARDW,(L[1]+L[3]/2)/BOARDH,L[2]/BOARDW,L[3]/BOARDH];
   return null;   // unknown index (no physical/grid position) → don't draw a phantom key
@@ -281,7 +281,7 @@ function attachHex(scope){
     tx.type='text'; tx.className='hexin'; tx.maxLength=7; tx.spellcheck=false;
     tx.value=ci.value.toUpperCase();
     const wrap=document.createElement('span'); wrap.className='cwrap';
-    ci.parentNode.insertBefore(wrap, ci); wrap.appendChild(ci); wrap.appendChild(tx);   // colour+hex share ONE grid cell (keeps the row layout aligned)
+    ci.parentNode.insertBefore(wrap, ci); wrap.appendChild(ci); wrap.appendChild(tx);   // color+hex share ONE grid cell (keeps the row layout aligned)
     let fromText=false;
     ci.addEventListener('input',()=>{ if(!fromText) tx.value=ci.value.toUpperCase(); });   // picker → text box (uppercase; skip while text box drives)
     tx.addEventListener('input',()=>{                          // text box → picker (+ propagate)
@@ -377,7 +377,7 @@ function renderReactive(L,now){
   // shimmer rate: s.shimmer (0..100 → 0..6 Hz) if present, else fixed 3 Hz
   const shimmerHz = (s.shimmer!==undefined) ? (s.shimmer/100)*6 : 3;
   if(!L._inten || L._inten.length!==NLED) L._inten=new Float32Array(NLED);
-  // random-mode per-key state: _seen = press-time the colour was assigned for, _col = locked RGB
+  // random-mode per-key state: _seen = press-time the color was assigned for, _col = locked RGB
   if(!L._seen || L._seen.length!==NLED){ L._seen=new Float64Array(NLED).fill(-1e12); L._col=new Uint8Array(NLED*3); }
   if(L._lastHue===undefined) L._lastHue=-1; if(L._lastPalI===undefined) L._lastPalI=-1;
   if(L._seqI===undefined) L._seqI=0;   // round-robin pointer for sequential mode
@@ -390,7 +390,7 @@ function renderReactive(L,now){
     if(inten<=0){ out[o]=out[o+1]=out[o+2]=0; continue; }
     let cr,cg,cb;
     if(mode==='random'){
-      // new press for this slot? (press time differs from what we locked the colour at) → pick a fresh colour
+      // new press for this slot? (press time differs from what we locked the color at) → pick a fresh color
       if(reactT[idx]!==L._seen[k]){
         let rgb;
         if(s.anyColor){
@@ -412,7 +412,7 @@ function renderReactive(L,now){
       cr=L._col[k*3]; cg=L._col[k*3+1]; cb=L._col[k*3+2];
     }
     else if(mode==='sequential'){
-      // lock the NEXT colour in the chosen sequence on each new press (round-robin)
+      // lock the NEXT color in the chosen sequence on each new press (round-robin)
       if(reactT[idx]!==L._seen[k]){
         const seq = s.seqSrc==='palette' ? palList.map(hexToRgb) : [A,B,C];
         const rgb = seq.length ? seq[L._seqI % seq.length] : [255,255,255];
@@ -446,7 +446,7 @@ function renderGradient(L,now){
   s._lt=now;
   for(let k=0;k<NLED;k++){ const c=layerCell(L,k); const o=k*3;
     if(!c){ out[o]=out[o+1]=out[o+2]=0; continue; }
-    // project key centre (0..1) onto the axis, recentre to 0..1, add scroll phase
+    // project key center (0..1) onto the axis, recenter to 0..1, add scroll phase
     let t=(c[0]-0.5)*ux+(c[1]-0.5)*uy+0.5+s.phase;
     t=t-Math.floor(t);
     const tt=1-Math.abs(1-2*t);   // triangle (A→B→A) so the scrolling gradient loops with no hard seam
@@ -455,7 +455,7 @@ function renderGradient(L,now){
 function renderMedia(L,now){ L.rgb.fill(0); }   // Stage 1 placeholder — GIF engine ported into layers in Stage 2
 
 // ----- common per-layer adjust helpers (mirror the GIF tool's controls) -----
-// colour post-process applied IN PLACE to L.rgb: saturation→contrast→gamma→brightness (same math as adjustRGB)
+// color post-process applied IN PLACE to L.rgb: saturation→contrast→gamma→brightness (same math as adjustRGB)
 function applyAdjust(L){
   const s=L.settings; if(!s) return;
   const sat=s.sat/100, con=s.con/100, gam=s.gam/100, bri=s.bri/100;
@@ -476,7 +476,7 @@ function layerNow(L, now){
   if(!L.settings.frozen) L._clk += dt * (L.settings.spd/100);
   return L._clk;
 }
-// per-layer key cell, optionally rotated about the board centre by L.settings.rot degrees
+// per-layer key cell, optionally rotated about the board center by L.settings.rot degrees
 function layerCell(L, k){
   const c=keyCell(INDICES[k]); if(!c) return null;
   const rot=L.settings.rot|0;
@@ -497,8 +497,8 @@ function hsv2rgb(h,s,v){
 }
 // deterministic per-index hash → 0..1 (stable sparkle/column offsets)
 function patHash(i){ const x=Math.sin(i*127.1+311.7)*43758.5453; return x-Math.floor(x); }
-// shared colouriser: map a 0..1 colour coordinate `field` + 0..1 `bright` to [r,g,b] 0..255 per colMode.
-// C1/C2/C3 are hexToRgb arrays. Lets every pattern use the user's colours instead of a fixed rainbow.
+// shared coloriser: map a 0..1 color coordinate `field` + 0..1 `bright` to [r,g,b] 0..255 per colMode.
+// C1/C2/C3 are hexToRgb arrays. Lets every pattern use the user's colors instead of a fixed rainbow.
 function patColorize(mode, field, bright, C1, C2, C3){
   field=field-Math.floor(field);                 // wrap to 0..1
   bright=bright<0?0:(bright>1?1:bright);          // clamp
@@ -527,8 +527,8 @@ function renderPattern(L,now){
     if(!c){ out[o]=out[o+1]=out[o+2]=0; continue; }
     const nx=c[0], ny=c[1];
     let R=0,G=0,B=0;
-    // Most patterns set a colour coordinate `field` (0..1) + `bright` (0..1) and go through patColorize.
-    // `done=true` means the branch wrote R/G/B itself (fire = native colours; accumulators sum patColorize calls).
+    // Most patterns set a color coordinate `field` (0..1) + `bright` (0..1) and go through patColorize.
+    // `done=true` means the branch wrote R/G/B itself (fire = native colors; accumulators sum patColorize calls).
     let field=0, bright=1, done=false;
     if(pat==='rainbow'){
       field=nx*scaleK + t*speedK; bright=1;
@@ -544,24 +544,24 @@ function renderPattern(L,now){
       const rate=0.1+spd*0.6;                                   // gentle breathe (~0.4 Hz default, like the Background pulse) — was too fast/harsh
       const bb=0.5+0.5*Math.sin(t*rate*2*Math.PI);
       bright=0.12+0.88*bb;                                      // floor so it never fully extinguishes
-      field=t*rate;                                             // colour drifts with the breath phase
+      field=t*rate;                                             // color drifts with the breath phase
     } else if(pat==='ripple'){
       const dx=nx-0.5, dy=ny-0.5, dist=Math.sqrt(dx*dx+dy*dy);
       bright=0.5+0.5*Math.sin((dist*scaleK*4 - t*speedK)*2*Math.PI);
-      field=dist*scaleK;                                        // colour by radial distance
+      field=dist*scaleK;                                        // color by radial distance
     } else if(pat==='scan'){
       const p=(t*speedK)%1; let d=Math.abs(nx-p); d=Math.min(d,1-d); const w=0.05+(1-scl)*0.12;   // wrapped distance → bar exits right & re-enters left, no jerk
       bright=Math.exp(-(d*d)/(2*w*w));
-      field=nx;                                                 // colour by horizontal position
+      field=nx;                                                 // color by horizontal position
     } else if(pat==='twinkle'){
       const ph=Math.sin(t*speedK + patHash(INDICES[k])*6.283);
       bright=ph>0 ? ph*ph*ph : 0;
-      field=patHash(INDICES[k]);                                // per-key colour offset
+      field=patHash(INDICES[k]);                                // per-key color offset
     } else if(pat==='rain'){
       const col=Math.round(nx*scaleK*4), colH=patHash(col*7+13);
       const dropY=(t*speedK + colH)%1; let d=Math.abs(ny-dropY); d=Math.min(d,1-d); const w=0.08;   // wrapped → drop re-enters top seamlessly
       bright=Math.exp(-(d*d)/(2*w*w));
-      field=colH;                                               // colour by column
+      field=colH;                                               // color by column
     } else if(pat==='fire'){
       const heat=(1-ny);                                  // hotter at the bottom
       const flick=0.55+0.45*Math.sin(t*speedK*6 + patHash(INDICES[k])*6.283 + ny*8);
@@ -574,7 +574,7 @@ function renderPattern(L,now){
       const tail=0.12+(1-scl)*0.30, dy=Math.abs(ny-cy);
       const yfall=Math.exp(-(dy*dy)/(2*0.16*0.16));      // concentrate near the comet's row → a streak, not a full-height bar
       bright=(beh<tail ? Math.pow(1-beh/tail,2) : 0)*yfall;
-      field=head;                                              // colour by head position
+      field=head;                                              // color by head position
     } else if(pat==='gradient-flow'){
       let tt=nx*scaleK*0.5 - t*speedK; tt=tt-Math.floor(tt);
       field=tt; bright=1;                                       // patColorize handles the C1↔C2 blend (c12) / rainbow / palette
@@ -586,20 +586,20 @@ function renderPattern(L,now){
       const dropY=(t*(0.15+spd*0.5)+cH)%1; let d=Math.abs(ny-dropY); d=Math.min(d,1-d);   // wrapped → drop re-enters top seamlessly
       const dd=Math.sqrt(d*d+sway*sway);
       const b=Math.exp(-(dd*dd)/(2*0.09*0.09));
-      const cc=patColorize(colMode, cH, 1, C1,C2,C3);          // column-hash colour at full intensity
-      R=(235+(cc[0]-235)*0.5)*b; G=(245+(cc[1]-245)*0.5)*b; B=(255+(cc[2]-255)*0.5)*b;   // white→colour blend, dimmed by b
+      const cc=patColorize(colMode, cH, 1, C1,C2,C3);          // column-hash color at full intensity
+      R=(235+(cc[0]-235)*0.5)*b; G=(245+(cc[1]-245)*0.5)*b; B=(255+(cc[2]-255)*0.5)*b;   // white→color blend, dimmed by b
       done=true;
     } else if(pat==='color-fountain'){
-      // expanding radial rings (soft falloff) radiating from centre over a background colour, seamless loop
-      const dx=nx-0.5, dy=ny-0.5, dist=Math.sqrt(dx*dx+dy*dy)/0.72;   // normalized radius 0..~1
-      const sp2=0.2+spd*0.6; let ring=0, rr=0;
-      for(let i=0;i<3;i++){ const r=((t*sp2)+i/3)%1, gd=Math.abs(dist-r), g=Math.exp(-(gd*gd)/(2*0.09*0.09))*Math.max(0,1-r); if(g>ring){ ring=g; rr=r; } }
-      const rc=patColorize(colMode, rr+t*0.1, 1, C1,C2,C3);     // ring colour (respects colMode)
-      const bg = colMode==='c1' ? [C2[0]*0.16,C2[1]*0.16,C2[2]*0.16] : [0,0,0];   // c1 → C2 background; else dark so the ring colour reads
-      R=bg[0]+(rc[0]-bg[0])*ring; G=bg[1]+(rc[1]-bg[1])*ring; B=bg[2]+(rc[2]-bg[2])*ring;
-      done=true;
+      // expanding radial rings (soft falloff) radiating from center over a background color, seamless loop
+      // lit field with an expanding DARK ring (absence of light) radiating out — each ring soft-fades in at center & out at edge
+      const dx=nx-0.5, dy=ny-0.5, dist=Math.sqrt(dx*dx+dy*dy)/0.72;   // normalized radius
+      const sp2=0.2+spd*0.6; let ring=0;
+      for(let i=0;i<3;i++){ const r=((t*sp2)+i/3)%1, env=Math.min(1,r/0.18)*Math.max(0,1-r), gd=Math.abs(dist-r);
+        ring=Math.max(ring, Math.exp(-(gd*gd)/(2*0.08*0.08))*env); }
+      bright=1-ring;                                            // dark ring carved from the lit field (Color 1 mode = pure C1 with dark rings)
+      field=dist*0.5 + t*0.1;                                   // color coord (only matters in rainbow / C1→2 / palette)
     } else if(pat==='colorful-interchange'){
-      const N=6; field=Math.floor(((t*(0.2+spd))%1)*N)/N;   // whole board one stepped colour coord, wraps cleanly
+      const N=6; field=Math.floor(((t*(0.2+spd))%1)*N)/N;   // whole board one stepped color coord, wraps cleanly
       bright=1;
     } else if(pat==='turning-peaks'){
       const peak=0.45+0.35*Math.sin(nx*scaleK + t*speedK*2*Math.PI*0.3);   // scrolling skyline, sin → seamless
@@ -633,12 +633,12 @@ function renderPattern(L,now){
       const col=Math.round((nx+xoff)*scaleK*4), cH=patHash(col*7+13);
       const dropY=(t*(0.12+spd*0.35)+cH)%1; let d=Math.abs(ny-dropY); d=Math.min(d,1-d);   // wrapped vertical → seamless
       bright=Math.exp(-(d*d)/(2*0.10*0.10))*0.85;
-      field=cH;                                                 // colour by column
+      field=cH;                                                 // color by column
     } else if(pat==='back-forth'){
       const p=1-Math.abs(1-2*((t*(0.2+spd))%1));          // triangle ping-pong, smooth bounce
       let d=Math.abs(nx-p); const w=0.10;
       bright=Math.exp(-(d*d)/(2*w*w));
-      field=nx;                                                 // colour by horizontal position
+      field=nx;                                                 // color by horizontal position
     } else if(pat==='bloom'){
       for(let i=0;i<3;i++){
         const cH=patHash(i*53+7), cx=patHash(i*29+11), cy=patHash(i*97+19);
@@ -672,7 +672,7 @@ function renderLayer(L,now){
   else if(L.type==='gradient') renderGradient(L,tnow);
   else if(L.type==='pattern') renderPattern(L,tnow);
   else renderMedia(L,now);
-  applyAdjust(L);   // common colour post-process (saturation→contrast→gamma→brightness)
+  applyAdjust(L);   // common color post-process (saturation→contrast→gamma→brightness)
 }
 
 // ----- compositor: blend enabled layers bottom→top → flat frame → send -----
@@ -683,7 +683,7 @@ function composite(){
     if(!L.enabled) continue;
     const a=L.opacity, src=L.rgb, bl=L.blend;
     // ISOLATE (punch-through): a reactive layer carves out the layers below at pressed keys,
-    // so the flash shows its true colour; the lower layers return as inten fades back to 0.
+    // so the flash shows its true color; the lower layers return as inten fades back to 0.
     if(L.type==='reactive' && L.settings && L.settings.isolate && L._inten){
       for(let k=0;k<NLED;k++){ const m=1-Math.max(0,Math.min(1,L._inten[k])), t=k*3;
         acc[t]*=m; acc[t+1]*=m; acc[t+2]*=m; }
@@ -756,11 +756,11 @@ function gifCrop(SW,SH){
   const tr=BOARDW/BOARDH, ir=SW/SH; let cw0,ch0;
   if(ir>tr){ ch0=SH; cw0=SH*tr; } else { cw0=SW; ch0=SW/tr; }
   const cw=cw0/czoom, ch=ch0/czoom, mX=(SW-cw)/2, mY=(SH-ch)/2;
-  cpanX = mX>0 ? Math.max(-mX,Math.min(mX,cpanX)) : 0;   // czoom<1 (zoomed out past cover) → crop exceeds source → centre it
+  cpanX = mX>0 ? Math.max(-mX,Math.min(mX,cpanX)) : 0;   // czoom<1 (zoomed out past cover) → crop exceeds source → center it
   cpanY = mY>0 ? Math.max(-mY,Math.min(mY,cpanY)) : 0;
   return {cx:(SW-cw)/2+cpanX, cy:(SH-ch)/2+cpanY, cw, ch};
 }
-// bar-fill colour for keys whose sample falls outside the source (zoomed out / fit)
+// bar-fill color for keys whose sample falls outside the source (zoomed out / fit)
 function barColor(fr){
   const m=document.getElementById('gifBars').value;
   if(m==='custom'){ const h=document.getElementById('gifBarColor').value; return [parseInt(h.substr(1,2),16),parseInt(h.substr(3,2),16),parseInt(h.substr(5,2),16)]; }
@@ -770,8 +770,8 @@ function barColor(fr){
 // map each key's source patch -> one raw rgb, via the chosen strategy (saturation/etc. applied later at output)
 function sampleKeyColors(fr){
   const data=fr.img.data, SW=fr.w, SH=fr.h, cr=gifCrop(SW,SH), bc=barColor(fr), rgb=new Uint8Array(INDICES.length*3);
-  const mode=document.getElementById('gifSample').value, N = mode==='center' ? 0 : 4;   // 0 = single centre sample, else 5×5 grid (denser → catches thin strokes)
-  const rot=gifRotRad(), cs=Math.cos(rot), sn=Math.sin(rot), ccx=cr.cx+cr.cw/2, ccy=cr.cy+cr.ch/2;   // rotate sampling around crop centre
+  const mode=document.getElementById('gifSample').value, N = mode==='center' ? 0 : 4;   // 0 = single center sample, else 5×5 grid (denser → catches thin strokes)
+  const rot=gifRotRad(), cs=Math.cos(rot), sn=Math.sin(rot), ccx=cr.cx+cr.cw/2, ccy=cr.cy+cr.ch/2;   // rotate sampling around crop center
   for(let k=0;k<INDICES.length;k++){
     const c=keyCell(INDICES[k]); if(!c){ rgb[k*3]=rgb[k*3+1]=rgb[k*3+2]=0; continue; } const nx=c[0],ny=c[1],nw=c[2],nh=c[3];
     const sx=cr.cx+(nx-nw/2)*cr.cw, sy=cr.cy+(ny-nh/2)*cr.ch, sw=nw*cr.cw, sh=nh*cr.ch;
@@ -783,7 +783,7 @@ function sampleKeyColors(fr){
       const o=((fy|0)*SW+(fx|0))*4; SR.push(data[o]); SG.push(data[o+1]); SB.push(data[o+2]); SU.push(u); SV.push(v);
     }
     const t=k*3, n=SR.length; let R,G,B;
-    if(!n){ rgb[t]=bc[0]; rgb[t+1]=bc[1]; rgb[t+2]=bc[2]; continue; }   // fully outside → bar colour
+    if(!n){ rgb[t]=bc[0]; rgb[t+1]=bc[1]; rgb[t+2]=bc[2]; continue; }   // fully outside → bar color
     if(mode==='vivid'){                                        // most saturated pixel
       let bi=0,bs=-1; for(let i=0;i<n;i++){ const s=Math.max(SR[i],SG[i],SB[i])-Math.min(SR[i],SG[i],SB[i]); if(s>bs){bs=s;bi=i;} } R=SR[bi];G=SG[bi];B=SB[bi];
     } else if(mode==='bright'){                                 // brightest pixel — any bright stroke in the patch lights the key (legible text/logos)
@@ -791,11 +791,11 @@ function sampleKeyColors(fr){
     } else if(mode==='standout'){                              // pixel furthest from the patch average (max local contrast)
       let mr=0,mg=0,mb=0; for(let i=0;i<n;i++){mr+=SR[i];mg+=SG[i];mb+=SB[i];} mr/=n;mg/=n;mb/=n;
       let bi=0,bd=-1; for(let i=0;i<n;i++){ const dr=SR[i]-mr,dg=SG[i]-mg,db=SB[i]-mb,d=dr*dr+dg*dg+db*db; if(d>bd){bd=d;bi=i;} } R=SR[bi];G=SG[bi];B=SB[bi];
-    } else if(mode==='dominant'){                              // most common colour (quantised to 4 levels/channel), members averaged
+    } else if(mode==='dominant'){                              // most common color (quantised to 4 levels/channel), members averaged
       const cnt={}; for(let i=0;i<n;i++){ const q=((SR[i]>>6)<<4)|((SG[i]>>6)<<2)|(SB[i]>>6); (cnt[q]||(cnt[q]=[])).push(i); }
       let best=null,bn=0; for(const q in cnt){ if(cnt[q].length>bn){bn=cnt[q].length;best=cnt[q];} }
       let r=0,g=0,b=0; for(const i of best){r+=SR[i];g+=SG[i];b+=SB[i];} R=r/best.length;G=g/best.length;B=b/best.length;
-    } else if(mode==='gaussian'){                              // centre-weighted average
+    } else if(mode==='gaussian'){                              // center-weighted average
       let r=0,g=0,b=0,w=0; for(let i=0;i<n;i++){ const du=SU[i]-0.5,dv=SV[i]-0.5,wt=Math.exp(-(du*du+dv*dv)*8); r+=SR[i]*wt;g+=SG[i]*wt;b+=SB[i]*wt;w+=wt; } R=r/w;G=g/w;B=b/w;
     } else {                                                   // average (area) + center
       let r=0,g=0,b=0; for(let i=0;i<n;i++){r+=SR[i];g+=SG[i];b+=SB[i];} R=r/n;G=g/n;B=b/n;
@@ -809,9 +809,9 @@ function adjustRGB(r,g,b){                            // saturation + contrast +
   const s=(+document.getElementById('gifSat').value)/100, c=(+document.getElementById('gifContrast').value)/100,
         gm=(+document.getElementById('gifGamma').value)/100, br=gifBri();
   if(s!==1){ const y=0.299*r+0.587*g+0.114*b; r=y+(r-y)*s; g=y+(g-y)*s; b=y+(b-y)*s; }
-  if(c!==1){ r=(r-128)*c+128; g=(g-128)*c+128; b=(b-128)*c+128; }                                // contrast — push colours apart so they pop
+  if(c!==1){ r=(r-128)*c+128; g=(g-128)*c+128; b=(b-128)*c+128; }                                // contrast — push colors apart so they pop
   r=Math.max(0,Math.min(255,r)); g=Math.max(0,Math.min(255,g)); b=Math.max(0,Math.min(255,b));
-  if(gm!==1){ r=255*Math.pow(r/255,gm); g=255*Math.pow(g/255,gm); b=255*Math.pow(b/255,gm); }   // crush faint bleed → truer colour on the LEDs
+  if(gm!==1){ r=255*Math.pow(r/255,gm); g=255*Math.pow(g/255,gm); b=255*Math.pow(b/255,gm); }   // crush faint bleed → truer color on the LEDs
   return [Math.max(0,Math.min(255,r*br))|0, Math.max(0,Math.min(255,g*br))|0, Math.max(0,Math.min(255,b*br))|0];
 }
 function gifFlat(rgb){                                // -> flat [idx,r,g,b,...] for sendFrame
@@ -820,7 +820,7 @@ function gifFlat(rgb){                                // -> flat [idx,r,g,b,...]
     flat[o]=INDICES[k]; flat[o+1]=c[0]; flat[o+2]=c[1]; flat[o+3]=c[2]; }
   return flat;
 }
-// keyboard-shaped preview: each key drawn at its physical rect, in its sampled colour
+// keyboard-shaped preview: each key drawn at its physical rect, in its sampled color
 function drawKb(rgb){
   const cv=document.getElementById('gifKb'), ctx=cv.getContext('2d'), pad=4, W=cv.width-2*pad, H=cv.height-2*pad;
   ctx.fillStyle='#0d1117'; ctx.fillRect(0,0,cv.width,cv.height);
@@ -847,7 +847,7 @@ function drawSrc(){
     ctx.fillRect(ox,ry,rx-ox,rh); ctx.fillRect(rx+rw,ry,ox+dw-(rx+rw),rh);
     ctx.strokeStyle='#58a6ff'; ctx.lineWidth=2; ctx.strokeRect(rx,ry,rw,rh);
   }
-  // subtle orientation arrow at the crop centre (up = 0°, rotates with the angle)
+  // subtle orientation arrow at the crop center (up = 0°, rotates with the angle)
   const acx=rx+rw/2, acy=ry+rh/2, al=Math.max(12,Math.min(rw,rh)*0.28);
   ctx.save(); ctx.translate(acx,acy); ctx.rotate(-rot);
   ctx.strokeStyle='rgba(88,166,255,.7)'; ctx.fillStyle='rgba(88,166,255,.7)'; ctx.lineWidth=2;
@@ -857,7 +857,7 @@ function drawSrc(){
   cv._map={sc};
 }
 function refresh(){ if(!gifFrames.length) return; resampleAll(); drawSrc(); drawKb(gifFrames[gifIdx].rgb); }
-function pushFrame(frames, id, dw, dh, delayMs){      // border colour (the "sampled" bar fill) + push in our frame format
+function pushFrame(frames, id, dw, dh, delayMs){      // border color (the "sampled" bar fill) + push in our frame format
   const D=id.data; let er=0,eg=0,eb=0,en=0;
   const accRow=y=>{ for(let x=0;x<dw;x++){ const o=(y*dw+x)*4; er+=D[o];eg+=D[o+1];eb+=D[o+2];en++; } };
   const accCol=x=>{ for(let y=0;y<dh;y++){ const o=(y*dw+x)*4; er+=D[o];eg+=D[o+1];eb+=D[o+2];en++; } };
@@ -1161,19 +1161,19 @@ function buildLayerBody(card,L){
     c('.s-bgMax').addEventListener('input',e=>{ s.bgMax=+e.target.value; upMx(); }); upMx();
   } else if(L.type==='reactive'){
     const mode=s.mode||'single', seqSrc=s.seqSrc||'abc';
-    const modes=[['single','Single colour'],['ab','A–B shimmer'],['rgb','RGB shimmer'],['random','Random'],['sequential','Sequential']];
+    const modes=[['single','Single color'],['ab','A–B shimmer'],['rgb','RGB shimmer'],['random','Random'],['sequential','Sequential']];
     const mopt=modes.map(m=>'<option value="'+m[0]+'"'+(m[0]===mode?' selected':'')+'>'+m[1]+'</option>').join('');
     const styles=[['fade','Fade'],['double-blink','Double-blink'],['blink','Blink'],['pulse','Pulse'],['ramp','Ramp (in→out)'],['strobe','Strobe'],['heartbeat','Heartbeat']];
     const sopt=styles.map(m=>'<option value="'+m[0]+'"'+(m[0]===(s.style||'fade')?' selected':'')+'>'+m[1]+'</option>').join('');
     const palDefs=['#ff0000','#00ff00','#0000ff','#ffff00','#ff00ff'];
     const palHtml=[0,1,2,3,4].map(i=>'<input type="color" class="s-pal" data-i="'+i+'" value="'+((s.pal&&s.pal[i])||palDefs[i])+'">').join(' ');
-    // decide which colour controls this mode needs
+    // decide which color controls this mode needs
     const showA = mode==='single' || mode==='ab' || mode==='rgb' || (mode==='sequential' && seqSrc==='abc');
     const showB = mode==='ab' || mode==='rgb' || (mode==='sequential' && seqSrc==='abc');
     const showC = mode==='rgb' || (mode==='sequential' && seqSrc==='abc');
     const showPal = mode==='random' || (mode==='sequential' && seqSrc==='palette');
     const showAny = mode==='random';
-    const aLabel = mode==='single' ? 'Colour' : 'Color A';
+    const aLabel = mode==='single' ? 'Color' : 'Color A';
     let html='<div class="ctl">'+
       row('Mode','<select class="s-mode">'+mopt+'</select><span></span>')+
       row('Style','<select class="s-style">'+sopt+'</select><span></span>');
@@ -1185,7 +1185,7 @@ function buildLayerBody(card,L){
     if(showB) html+=row('Color B','<input type="color" class="s-colorB" value="'+s.colorB+'"><span></span>');
     if(showC) html+=row('Color C','<input type="color" class="s-colorC" value="'+s.colorC+'"><span></span>');
     if(showPal) html+=row('Palette','<span style="display:flex;gap:4px;align-items:center;flex-wrap:wrap">'+palHtml+'</span><span></span>');
-    if(showAny) html+=row('Any colour','<label class="sl" style="margin:0"><input type="checkbox" class="s-anyColor"'+(s.anyColor?' checked':'')+'> full spectrum (random hues)</label><span></span>');
+    if(showAny) html+=row('Any color','<label class="sl" style="margin:0"><input type="checkbox" class="s-anyColor"'+(s.anyColor?' checked':'')+'> full spectrum (random hues)</label><span></span>');
     html+=
       row('Hold','<input type="range" class="s-hold" min="0" max="1000" step="10" value="'+s.hold+'"><span style="display:flex;gap:6px;align-items:center"><input type="number" class="numin s-holdN" min="0" max="1000" value="'+s.hold+'"><span class="val s-holdV"></span></span>')+
       row('Fade','<input type="range" class="s-fade" min="80" max="1500" step="20" value="'+s.fade+'"><span style="display:flex;gap:6px;align-items:center"><input type="number" class="numin s-fadeN" min="80" max="1500" value="'+s.fade+'"><span class="val s-fadeV"></span></span>')+
@@ -1236,7 +1236,7 @@ function buildLayerBody(card,L){
     const cmOpt=colModes.map(m=>'<option value="'+m[0]+'"'+(m[0]===cm?' selected':'')+'>'+m[1]+'</option>').join('');
     body.innerHTML='<div class="ph" style="margin:0 0 4px">Pattern</div><div class="patgrid">'+pbtns+'</div>'+
       '<div class="ctl">'+
-      row('Colours','<select class="s-colMode">'+cmOpt+'</select><span></span>')+
+      row('Colors','<select class="s-colMode">'+cmOpt+'</select><span></span>')+
       row('Color 1','<input type="color" class="s-color" value="'+s.color+'"><span></span>')+
       row('Color 2','<input type="color" class="s-color2" value="'+s.color2+'"><span></span>')+
       row('Color 3','<input type="color" class="s-color3" value="'+(s.color3||'#00ff00')+'"><span></span>')+
@@ -1257,7 +1257,7 @@ function buildLayerBody(card,L){
     body.innerHTML='<div class="ph">Media layer — port of the GIF engine lands in Stage 2. (Use the GIF → keyboard panel below for now.)</div>';
   }
   buildAdjustBlock(body,L);   // shared per-layer adjust controls appended to every type
-  attachHex(body);            // typeable hex box on every colour picker (incl. reactive palette)
+  attachHex(body);            // typeable hex box on every color picker (incl. reactive palette)
 }
 // shared "Adjust" block (brightness / saturation / contrast / gamma / rotate / speed + Static) on every card
 function buildAdjustBlock(body,L){
@@ -1290,7 +1290,7 @@ function buildAdjustBlock(body,L){
 restoreLayers();                  // bring back saved layer settings from a previous session
 layers.forEach(ensureSettings);   // backfill any missing fields
 buildLayerCards();
-attachHex(document.getElementById('gifPanel'));   // typeable hex box on the GIF bar-colour picker
+attachHex(document.getElementById('gifPanel'));   // typeable hex box on the GIF bar-color picker
 document.getElementById('layersPanel').addEventListener('input', scheduleSaveLayers);    // persist edits (debounced)
 document.getElementById('layersPanel').addEventListener('change', scheduleSaveLayers);
 // while testing keys, don't let a focused <select> hijack letter presses (type-ahead); keep arrow/enter nav
@@ -1362,7 +1362,7 @@ async function applyOnboard(){
   if(gifPlaying) await gifStopFn();
   const clamp=v=>Math.max(1,Math.min(6,Math.round(v||1)));
   const eff=+document.getElementById('obEffect').value;
-  const colourful=document.getElementById('obColorful').checked;
+  const colorful=document.getElementById('obColorful').checked;
   const [pr,pg,pb]=hexToRgb(document.getElementById('obPrimary').value);
   const [sr,sg,sb]=hexToRgb(document.getElementById('obSecondary').value);
   const bright=clamp(+document.getElementById('obBri').value);
@@ -1372,14 +1372,14 @@ async function applyOnboard(){
   allled[1]=pr; allled[2]=pg; allled[3]=pb;
   allled[4]=255;
   allled[5]=sr; allled[6]=sg; allled[7]=sb;
-  allled[8]=colourful?1:0;
+  allled[8]=colorful?1:0;
   allled[9]=bright;
   allled[10]=speed;
   // bytes 11..15 stay 0
   try{
     await device.sendReport(reportId, buildPkt(0x23, 16, 0, allled, 0, true));
     const lbl=document.getElementById('obEffect').selectedOptions[0].textContent;
-    log('onboard effect applied: '+lbl+(colourful?' (colourful)':' (solid)')+' · bri '+bright+' · spd '+speed,'ok');
+    log('onboard effect applied: '+lbl+(colorful?' (colorful)':' (solid)')+' · bri '+bright+' · spd '+speed,'ok');
     obSetStatus('effect set — runs on the keyboard','ok');
   }catch(e){ log('onboard apply failed: '+e.message,'err'); obSetStatus('apply failed','err'); }
 }
