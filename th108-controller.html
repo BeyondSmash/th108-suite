@@ -1105,14 +1105,14 @@ function buildLayerBody(card,L){
 // shared "Adjust" block (brightness / saturation / contrast / gamma / rotate / speed + Static) on every card
 function buildAdjustBlock(body,L){
   const s=L.settings;
-  // [label, rawMin, rawMax, decimals, unit] — decimals>0 → the number field shows raw/100 (gamma 1.00, speed 1.0×); slider stays raw
-  const CFG={ bri:['Brightness',0,200,0,'%'], sat:['Saturation',0,300,0,'%'], con:['Contrast',50,250,0,'%'],
-              gam:['Gamma',50,300,2,''], rot:['Rotate',0,360,0,'°'], spd:['Speed',0,400,1,'×'] };
+  // [label, rawMin, rawMax, decimals, unit, default] — decimals>0 → number shows raw/100 (gamma 1.00, speed 1.0×); slider stays raw
+  const CFG={ bri:['Brightness',0,200,0,'%',100], sat:['Saturation',0,300,0,'%',100], con:['Contrast',50,250,0,'%',100],
+              gam:['Gamma',50,300,2,'',100], rot:['Rotate',0,360,0,'°',0], spd:['Speed',0,400,1,'×',100] };
   const disp=(key,raw)=>{ const d=CFG[key][3]; return d?(raw/100).toFixed(d):String(raw); };
-  const ctl=key=>{ const c=CFG[key], dec=c[3];
+  const ctl=key=>{ const c=CFG[key], dec=c[3], frac=(c[5]-c[1])/(c[2]-c[1]);   // tick at the default value
     const nMin=dec?c[1]/100:c[1], nMax=dec?c[2]/100:c[2], nStep=dec?1/Math.pow(10,dec):1;
     return '<label>'+c[0]+'</label>'+
-      '<input type="range" class="a-'+key+'" min="'+c[1]+'" max="'+c[2]+'" value="'+s[key]+'">'+
+      '<span class="srange" style="width:100%;min-width:30px"><input type="range" class="a-'+key+'" min="'+c[1]+'" max="'+c[2]+'" value="'+s[key]+'"><i class="tick" style="left:calc(7px + (100% - 14px)*'+frac+')"></i></span>'+
       '<span style="display:flex;gap:4px;align-items:center"><input type="number" class="numin a-'+key+'N" min="'+nMin+'" max="'+nMax+'" step="'+nStep+'" value="'+disp(key,s[key])+'"><span class="val" style="min-width:10px">'+c[4]+'</span></span>'; };
   const adj=document.createElement('div');
   adj.innerHTML=
@@ -1121,10 +1121,10 @@ function buildAdjustBlock(body,L){
       '<label>Static</label><label class="sl" style="margin:0"><input type="checkbox" class="a-frozen"'+(s.frozen?' checked':'')+'> freeze animation</label><span></span>'+
     '</div></div>';
   body.appendChild(adj.firstChild);
-  Object.keys(CFG).forEach(key=>{ const c=CFG[key], min=c[1], max=c[2], dec=c[3];
+  Object.keys(CFG).forEach(key=>{ const c=CFG[key], min=c[1], max=c[2], dec=c[3], def=c[5], thr=Math.max(1,Math.round((max-min)*0.03));
     const rng=body.querySelector('.a-'+key), num=body.querySelector('.a-'+key+'N');
     const apply=raw=>{ raw=Math.max(min,Math.min(max,Math.round(raw||0))); s[key]=raw; rng.value=raw; return raw; };
-    rng.addEventListener('input',e=>{ num.value=disp(key,apply(+e.target.value)); });
+    rng.addEventListener('input',e=>{ snap(e.target, def, thr); num.value=disp(key,apply(+e.target.value)); });   // snap+flash at default
     num.addEventListener('input',e=>{ const v=parseFloat(e.target.value); if(!isNaN(v)) apply(dec?v*100:v); });   // don't reformat while typing
     rng.value=s[key]; num.value=disp(key,s[key]);
   });
