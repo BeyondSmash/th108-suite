@@ -28,7 +28,7 @@
   .ok{color:#3fb950}.err{color:#f85149}.dim{color:#8b949e}.in{color:#d29922}
   .hint{ color:#8b949e; font-size:13px; }
   kbd{ background:#21262d; border:1px solid #30363d; border-radius:4px; padding:1px 6px; font-family:ui-monospace,monospace; }
-  .sl{ color:#8b949e; display:flex; align-items:center; gap:6px; }
+  .sl{ color:#8b949e; display:inline-flex; align-items:center; gap:6px; }   /* shrink to content so clicking empty row space doesn't toggle the checkbox */
   .srange{ position:relative; display:inline-block; width:110px; height:20px; }
   .srange input[type=range]{ -webkit-appearance:none; appearance:none; position:absolute; left:0; top:50%; transform:translateY(-50%); width:100%; height:14px; margin:0; background:transparent; }
   .srange input[type=range]::-webkit-slider-runnable-track{ height:4px; background:#30363d; border-radius:2px; }
@@ -63,6 +63,7 @@
   .numin{ font:inherit; width:48px; background:#161b22; color:#e6edf3; border:1px solid #30363d; border-radius:6px; padding:2px 4px; }
   .lhead .numin{ width:42px; }
   .hexin{ background:#161b22; color:#e6edf3; border:1px solid #30363d; border-radius:6px; padding:2px 6px; font:inherit; width:74px; }
+  .cwrap{ display:inline-flex; align-items:center; gap:6px; flex-wrap:wrap; }
 </style>
 </head>
 <body>
@@ -234,15 +235,16 @@ function attachHex(scope){
     ci.dataset.hex='1';
     const tx=document.createElement('input');
     tx.type='text'; tx.className='hexin'; tx.maxLength=7; tx.spellcheck=false;
-    tx.value=ci.value;
-    ci.insertAdjacentElement('afterend', tx);
-    ci.addEventListener('input',()=>{ tx.value=ci.value; });   // picker → text box
+    tx.value=ci.value.toUpperCase();
+    const wrap=document.createElement('span'); wrap.className='cwrap';
+    ci.parentNode.insertBefore(wrap, ci); wrap.appendChild(ci); wrap.appendChild(tx);   // colour+hex share ONE grid cell (keeps the row layout aligned)
+    let fromText=false;
+    ci.addEventListener('input',()=>{ if(!fromText) tx.value=ci.value.toUpperCase(); });   // picker → text box (uppercase; skip while text box drives)
     tx.addEventListener('input',()=>{                          // text box → picker (+ propagate)
       let v=tx.value.trim(); if(v[0]!=='#') v='#'+v;
       if(/^#[0-9a-fA-F]{6}$/.test(v)){
-        ci.value=v.toLowerCase();
-        ci.dispatchEvent(new Event('input',{bubbles:true}));   // drive existing per-colour wiring
-      }   // partial/invalid → leave the text as typed, don't reformat
+        fromText=true; ci.value=v.toLowerCase(); ci.dispatchEvent(new Event('input',{bubbles:true})); fromText=false;   // drive wiring, don't reformat the text box
+      }   // partial/invalid → leave the text as typed
     });
   });
 }
@@ -473,14 +475,15 @@ function renderPattern(L,now){
       const b=0.5+0.5*Math.sin((nx*scaleK - t*speedK)*2*Math.PI);
       R=cr*b; G=cg*b; B=cb*b;
     } else if(pat==='breathing'){
-      const b=0.5+0.5*Math.sin(t*speedK*2*Math.PI);
+      const rate=0.1+spd*0.6;                                   // gentle breathe (~0.4 Hz default, like the Background pulse) — was too fast/harsh
+      const bb=0.5+0.5*Math.sin(t*rate*2*Math.PI), b=0.12+0.88*bb;   // floor so it never fully extinguishes
       R=cr*b; G=cg*b; B=cb*b;
     } else if(pat==='ripple'){
       const dx=nx-0.5, dy=ny-0.5, dist=Math.sqrt(dx*dx+dy*dy);
       const b=0.5+0.5*Math.sin((dist*scaleK*4 - t*speedK)*2*Math.PI);
       R=cr*b; G=cg*b; B=cb*b;
     } else if(pat==='scan'){
-      const p=(t*speedK)%1, d=Math.abs(nx-p), w=0.05+(1-scl)*0.12;   // narrower bar at higher scale
+      const p=(t*speedK)%1; let d=Math.abs(nx-p); d=Math.min(d,1-d); const w=0.05+(1-scl)*0.12;   // wrapped distance → bar exits right & re-enters left, no jerk
       const b=Math.exp(-(d*d)/(2*w*w));
       R=cr*b; G=cg*b; B=cb*b;
     } else if(pat==='twinkle'){
@@ -489,7 +492,7 @@ function renderPattern(L,now){
       R=cr*b; G=cg*b; B=cb*b;
     } else if(pat==='rain'){
       const col=Math.round(nx*scaleK*4), colH=patHash(col*7+13);
-      const dropY=(t*speedK + colH)%1, d=Math.abs(ny-dropY), w=0.08;
+      const dropY=(t*speedK + colH)%1; let d=Math.abs(ny-dropY); d=Math.min(d,1-d); const w=0.08;   // wrapped → drop re-enters top seamlessly
       const b=Math.exp(-(d*d)/(2*w*w));
       R=cr*b; G=cg*b; B=cb*b;
     } else if(pat==='fire'){
