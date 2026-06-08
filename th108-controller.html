@@ -88,7 +88,7 @@
       <label class="sl">brightness <span class="srange"><input type="range" id="gifBri" min="10" max="100" value="100"></span></label>
       <label class="sl">sample
         <select id="gifSample" style="font:inherit;background:#0d1117;color:#e6edf3;border:1px solid #30363d;border-radius:6px;padding:2px 4px">
-          <option value="average">Average (area)</option><option value="center">Center pixel</option><option value="gaussian">Gaussian (centre-weighted)</option><option value="vivid">Most vivid pixel</option><option value="dominant">Dominant colour</option><option value="standout">Standout (max contrast)</option>
+          <option value="average">Average (area)</option><option value="center">Center pixel</option><option value="gaussian">Gaussian (centre-weighted)</option><option value="vivid">Most vivid pixel</option><option value="bright">Brightest pixel (text/logos)</option><option value="dominant">Dominant colour</option><option value="standout">Standout (max contrast)</option>
         </select></label>
       <label class="sl">bars
         <select id="gifBars" style="font:inherit;background:#0d1117;color:#e6edf3;border:1px solid #30363d;border-radius:6px;padding:2px 4px">
@@ -252,7 +252,7 @@ function barColor(fr){
 // map each key's source patch -> one raw rgb, via the chosen strategy (saturation/etc. applied later at output)
 function sampleKeyColors(fr){
   const data=fr.img.data, SW=fr.w, SH=fr.h, cr=gifCrop(SW,SH), bc=barColor(fr), rgb=new Uint8Array(INDICES.length*3);
-  const mode=document.getElementById('gifSample').value, N = mode==='center' ? 0 : 3;   // 0 = single centre sample, else 4×4 grid
+  const mode=document.getElementById('gifSample').value, N = mode==='center' ? 0 : 4;   // 0 = single centre sample, else 5×5 grid (denser → catches thin strokes)
   const rot=gifRotRad(), cs=Math.cos(rot), sn=Math.sin(rot), ccx=cr.cx+cr.cw/2, ccy=cr.cy+cr.ch/2;   // rotate sampling around crop centre
   for(let k=0;k<INDICES.length;k++){
     const L=LAYOUT[INDICES[k]];
@@ -270,6 +270,8 @@ function sampleKeyColors(fr){
     if(!n){ rgb[t]=bc[0]; rgb[t+1]=bc[1]; rgb[t+2]=bc[2]; continue; }   // fully outside → bar colour
     if(mode==='vivid'){                                        // most saturated pixel
       let bi=0,bs=-1; for(let i=0;i<n;i++){ const s=Math.max(SR[i],SG[i],SB[i])-Math.min(SR[i],SG[i],SB[i]); if(s>bs){bs=s;bi=i;} } R=SR[bi];G=SG[bi];B=SB[bi];
+    } else if(mode==='bright'){                                 // brightest pixel — any bright stroke in the patch lights the key (legible text/logos)
+      let bi=0,bl=-1; for(let i=0;i<n;i++){ const L=0.299*SR[i]+0.587*SG[i]+0.114*SB[i]; if(L>bl){bl=L;bi=i;} } R=SR[bi];G=SG[bi];B=SB[bi];
     } else if(mode==='standout'){                              // pixel furthest from the patch average (max local contrast)
       let mr=0,mg=0,mb=0; for(let i=0;i<n;i++){mr+=SR[i];mg+=SG[i];mb+=SB[i];} mr/=n;mg/=n;mb/=n;
       let bi=0,bd=-1; for(let i=0;i<n;i++){ const dr=SR[i]-mr,dg=SG[i]-mg,db=SB[i]-mb,d=dr*dr+dg*dg+db*db; if(d>bd){bd=d;bi=i;} } R=SR[bi];G=SG[bi];B=SB[bi];
