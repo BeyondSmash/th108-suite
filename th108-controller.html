@@ -28,6 +28,10 @@
   .ok{color:#3fb950}.err{color:#f85149}.dim{color:#8b949e}.in{color:#d29922}
   .hint{ color:#8b949e; font-size:13px; }
   kbd{ background:#21262d; border:1px solid #30363d; border-radius:4px; padding:1px 6px; font-family:ui-monospace,monospace; }
+  .sl{ color:#8b949e; display:flex; align-items:center; gap:6px; }
+  .srange{ position:relative; display:inline-block; width:110px; height:20px; }
+  .srange input[type=range]{ position:absolute; left:0; top:50%; transform:translateY(-50%); width:100%; margin:0; }
+  .srange .tick{ position:absolute; top:1px; bottom:1px; width:2px; background:#58a6ff; transform:translateX(-50%); pointer-events:none; border-radius:1px; }   /* marks the snap/default value */
 </style>
 </head>
 <body>
@@ -61,15 +65,24 @@
       <input type="file" id="gifFile" accept="image/*" />
       <button id="gifPlay" class="go" disabled>Play GIF ▶</button>
       <button id="gifStop" class="stop" disabled>Stop GIF ⏹</button>
-      <label style="color:#8b949e;display:flex;align-items:center;gap:6px">zoom <input type="range" id="gifZoom" min="20" max="500" value="100" style="width:100px"></label>
       <button id="gifReset">reset position</button>
-      <label style="color:#8b949e;display:flex;align-items:center;gap:6px">bars
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:8px">
+      <input id="gifUrl" type="text" placeholder="paste an image / GIF URL…" style="flex:1;min-width:180px;font:inherit;background:#0d1117;color:#e6edf3;border:1px solid #30363d;border-radius:6px;padding:5px 8px">
+      <button id="gifUrlLoad">Load URL</button>
+      <button id="gifPaste">Paste image (Ctrl+V)</button>
+    </div>
+    <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-top:8px">
+      <label class="sl">zoom <span class="srange"><input type="range" id="gifZoom" min="20" max="500" value="100"><i class="tick" style="left:calc(7px + (100% - 14px)*.167)"></i></span></label>
+      <label class="sl">saturation <span class="srange"><input type="range" id="gifSat" min="100" max="300" value="170"><i class="tick" style="left:calc(7px + (100% - 14px)*.35)"></i></span></label>
+      <label class="sl">contrast <span class="srange"><input type="range" id="gifContrast" min="50" max="250" value="100"><i class="tick" style="left:calc(7px + (100% - 14px)*.25)"></i></span></label>
+      <label class="sl">gamma <span class="srange"><input type="range" id="gifGamma" min="100" max="300" value="180"><i class="tick" style="left:calc(7px + (100% - 14px)*.40)"></i></span></label>
+      <label class="sl">brightness <span class="srange"><input type="range" id="gifBri" min="10" max="100" value="100"></span></label>
+      <label class="sl">bars
         <select id="gifBars" style="font:inherit;background:#0d1117;color:#e6edf3;border:1px solid #30363d;border-radius:6px;padding:2px 4px">
           <option value="black">Black</option><option value="sampled">Sampled</option><option value="custom">Custom →</option>
         </select></label>
       <input type="color" id="gifBarColor" value="#000000" style="width:38px;height:26px;background:none;border:1px solid #30363d;border-radius:6px">
-      <label style="color:#8b949e;display:flex;align-items:center;gap:6px">saturation <input type="range" id="gifSat" min="100" max="300" value="170" style="width:100px"></label>
-      <label style="color:#8b949e;display:flex;align-items:center;gap:6px;margin-left:auto">brightness <input type="range" id="gifBri" min="10" max="100" value="100" style="width:100px"></label>
     </div>
     <div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:10px">
       <div>
@@ -241,9 +254,13 @@ function sampleKeyColors(fr){
   return rgb;
 }
 function resampleAll(){ for(const fr of gifFrames) fr.rgb=sampleKeyColors(fr); }
-function adjustRGB(r,g,b){                            // saturation + brightness — averaging/LEDs wash colours out, so boost
-  const s=(+document.getElementById('gifSat').value)/100, br=gifBri();
+function adjustRGB(r,g,b){                            // saturation + contrast + gamma + brightness (help the LEDs vs the monitor)
+  const s=(+document.getElementById('gifSat').value)/100, c=(+document.getElementById('gifContrast').value)/100,
+        gm=(+document.getElementById('gifGamma').value)/100, br=gifBri();
   if(s!==1){ const y=0.299*r+0.587*g+0.114*b; r=y+(r-y)*s; g=y+(g-y)*s; b=y+(b-y)*s; }
+  if(c!==1){ r=(r-128)*c+128; g=(g-128)*c+128; b=(b-128)*c+128; }                                // contrast — push colours apart so they pop
+  r=Math.max(0,Math.min(255,r)); g=Math.max(0,Math.min(255,g)); b=Math.max(0,Math.min(255,b));
+  if(gm!==1){ r=255*Math.pow(r/255,gm); g=255*Math.pow(g/255,gm); b=255*Math.pow(b/255,gm); }   // crush faint bleed → truer colour on the LEDs
   return [Math.max(0,Math.min(255,r*br))|0, Math.max(0,Math.min(255,g*br))|0, Math.max(0,Math.min(255,b*br))|0];
 }
 function gifFlat(rgb){                                // -> flat [idx,r,g,b,...] for sendFrame
@@ -278,12 +295,12 @@ function drawSrc(){
   cv._map={sc};
 }
 function refresh(){ if(!gifFrames.length) return; resampleAll(); drawSrc(); drawKb(gifFrames[gifIdx].rgb); }
-async function loadGif(file){
+async function loadMedia(blob, name){
   document.getElementById('gifPlay').disabled=true;
-  log('decoding '+file.name+'…','dim');
+  log('decoding '+name+'…','dim');
   try{
     if(!window.ImageDecoder) throw new Error('ImageDecoder unsupported — use Chrome/Edge');
-    const dec=new ImageDecoder({data:await file.arrayBuffer(), type:file.type||'image/gif'});
+    const dec=new ImageDecoder({data:await blob.arrayBuffer(), type:blob.type||'image/gif'});
     await dec.tracks.ready;
     const track=dec.tracks.selectedTrack, tmp=document.createElement('canvas'), tctx=tmp.getContext('2d',{willReadFrequently:true});
     const frames=[];
@@ -306,9 +323,9 @@ async function loadGif(file){
     if(!frames.length) throw new Error('no frames decoded');
     gifFrames=frames; gifIdx=0; czoom=1; cpanX=cpanY=0; document.getElementById('gifZoom').value=100;
     refresh();
-    document.getElementById('gifInfo').textContent=file.name+': '+frames.length+' frame(s), source '+frames[0].w+'×'+frames[0].h+' → 104 keys';
+    document.getElementById('gifInfo').textContent=name+': '+frames.length+' frame(s), source '+frames[0].w+'×'+frames[0].h+' → 104 keys';
     document.getElementById('gifPlay').disabled=!device;
-    log('decoded '+frames.length+' frame(s) from '+file.name,'ok');
+    log('decoded '+frames.length+' frame(s) from '+name,'ok');
   }catch(e){ log('GIF decode failed: '+e.message,'err'); }
 }
 async function gifTick(){
@@ -345,7 +362,7 @@ let gifDrag=false, gifLast=null;
     drawSrc(); const fr=gifFrames[gifIdx]; if(fr){ fr.rgb=sampleKeyColors(fr); drawKb(fr.rgb); } });
   cv.addEventListener('pointerup',()=>{ if(gifDrag){ gifDrag=false; resampleAll(); } });
 })();
-document.getElementById('gifFile').addEventListener('change',e=>{ if(e.target.files[0]) loadGif(e.target.files[0]); });
+document.getElementById('gifFile').addEventListener('change',e=>{ if(e.target.files[0]) loadMedia(e.target.files[0], e.target.files[0].name); });
 document.getElementById('gifPlay').addEventListener('click',gifPlay);
 document.getElementById('gifStop').addEventListener('click',gifStopFn);
 const snap=(el,target,thr)=>{ if(Math.abs((+el.value)-target)<=thr) el.value=target; };   // magnetic detent at the default value
@@ -355,6 +372,29 @@ document.getElementById('gifBri').addEventListener('input',()=>{ if(gifFrames[gi
 document.getElementById('gifSat').addEventListener('input',e=>{ snap(e.target,170,8); if(gifFrames[gifIdx]) drawKb(gifFrames[gifIdx].rgb); });   // saturation/brightness apply at output → preview only
 document.getElementById('gifBars').addEventListener('change',refresh);                                                      // bar fill affects out-of-bounds keys → resample
 document.getElementById('gifBarColor').addEventListener('input',refresh);
+document.getElementById('gifContrast').addEventListener('input',e=>{ snap(e.target,100,8); if(gifFrames[gifIdx]) drawKb(gifFrames[gifIdx].rgb); });
+document.getElementById('gifGamma').addEventListener('input',e=>{ snap(e.target,180,8); if(gifFrames[gifIdx]) drawKb(gifFrames[gifIdx].rgb); });
+// load by URL (CORS-permitting) and from the clipboard (paste button + Ctrl+V anywhere on the page)
+async function loadFromUrl(url){
+  if(!url) return;
+  log('fetching '+url+'…','dim');
+  try{ const r=await fetch(url,{mode:'cors'}); if(!r.ok) throw new Error('HTTP '+r.status);
+    const blob=await r.blob(); if(!/^image\//.test(blob.type)) throw new Error('not an image ('+(blob.type||'unknown type')+')');
+    await loadMedia(blob,(url.split('/').pop()||'url-image').split('?')[0]);
+  }catch(e){ log('URL load failed: '+e.message+' — the host may block cross-origin fetch (CORS)','err'); }
+}
+document.getElementById('gifUrlLoad').addEventListener('click',()=>loadFromUrl(document.getElementById('gifUrl').value.trim()));
+document.getElementById('gifUrl').addEventListener('keydown',e=>{ if(e.key==='Enter') loadFromUrl(e.target.value.trim()); });
+document.getElementById('gifPaste').addEventListener('click',async()=>{
+  try{ const items=await navigator.clipboard.read();
+    for(const it of items){ const ty=it.types.find(t=>t.startsWith('image/')); if(ty) return loadMedia(await it.getType(ty),'pasted-image'); }
+    log('no image on the clipboard','dim');
+  }catch(e){ log('clipboard read failed: '+e.message+' — copy the image again, or just press Ctrl+V on the page','err'); }
+});
+window.addEventListener('paste',e=>{
+  const items=e.clipboardData&&e.clipboardData.items; if(!items) return;
+  for(const it of items){ if(it.type&&it.type.startsWith('image/')){ const b=it.getAsFile(); if(b){ e.preventDefault(); loadMedia(b,'pasted-image'); return; } } }
+});
 
 window.addEventListener('keydown',(e)=>{
   if(!running) return;
