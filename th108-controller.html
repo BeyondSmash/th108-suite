@@ -733,11 +733,12 @@ function composite(){
 }
 
 // ----- master loop (separate worker from the GIF's tickW) -----
-let running=false, layerInFlight=false;
+let running=false, layerInFlight=false, _lastFlat=null, _lastSent=0;
+function flatEq(a,b){ if(!b||a.length!==b.length) return false; for(let i=0;i<a.length;i++) if(a[i]!==b[i]) return false; return true; }
 const layerW=(()=>{ try{ return new Worker(URL.createObjectURL(new Blob(['let t;onmessage=e=>{if(e.data.stop){clearTimeout(t);return;}clearTimeout(t);t=setTimeout(()=>postMessage(1),e.data.delay);};'],{type:'text/javascript'}))); }catch(_){ return null; } })();
 function masterRate(){
   let f=1; for(const L of layers) if(L.enabled) f=Math.max(f,L.fps);
-  return Math.min(f, fpsCap(), 60);
+  return Math.min(f, fpsCap(), 30);   // hard-cap layer streaming at 30fps — the board's HID pipe wedges above this sustained (full-frame paint ≈ 8 writes/frame)
 }
 async function layerTick(){
   if(!running) return;
@@ -745,8 +746,14 @@ async function layerTick(){
   try{
     const now=performance.now();
     for(const L of layers){ if(L.enabled && now-L.lastTick >= 1000/Math.max(1,L.fps)){ renderLayer(L,now); L.lastTick=now; } }
-    if(!layerInFlight){ layerInFlight=true; await sendFrame(composite()); layerInFlight=false; }
-    else delay=20;   // device busy — retry soon
+    if(!layerInFlight){
+      layerInFlight=true;
+      const flat=composite();
+      if(!flatEq(flat,_lastFlat) || now-_lastSent>=1000){   // skip unchanged frames; resend ≥1×/s as a keepalive so firmware doesn't reclaim the board
+        if(await sendFrame(flat)){ _lastFlat=flat; _lastSent=now; }
+      }
+      layerInFlight=false;
+    } else delay=20;   // device busy — retry soon
   }catch(err){ layerInFlight=false; delay=300; log('layer render error: '+(err&&err.message||err),'err'); }   // one bad frame must not freeze the whole loop
   if(running){ if(layerW) layerW.postMessage({delay}); else setTimeout(layerTick,delay); }
 }
@@ -755,7 +762,7 @@ if(layerW) layerW.onmessage=layerTick;
 function start(){
   if(running||!device) return;
   if(gifPlaying){ gifStopFn(); }                            // layers + GIF are mutually exclusive
-  running=true; reactFg.fill(0); reactLastT=0; reactT.fill(-1e12); reactDown.fill(0); reactUp.fill(-1e12);
+  running=true; _lastFlat=null; _sendStalls=0; reactFg.fill(0); reactLastT=0; reactT.fill(-1e12); reactDown.fill(0); reactUp.fill(-1e12);
   const now=performance.now(); for(const L of layers) L.lastTick=0;
   document.getElementById('start').disabled=true; document.getElementById('stop').disabled=false;
   log('layers started','ok'); layerTick();
