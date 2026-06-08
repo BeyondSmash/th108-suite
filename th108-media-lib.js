@@ -39,7 +39,11 @@
   }
 
   async function add(blob,name){
-    const rec={ name:name||'media', type:blob.type||'', addedAt:Date.now(), blob, thumb:await makeThumb(blob) };
+    const rec={ kind:'single', name:name||'media', type:blob.type||'', addedAt:Date.now(), blob, thumb:await makeThumb(blob) };
+    const s=await store('readwrite'); rec.id=await reqP(s.add(rec)); return rec;
+  }
+  async function addSequence(blobs,name){     // a PNG/image folder/sequence stored as one item (array of blobs, in order)
+    const rec={ kind:'seq', name:name||'sequence', addedAt:Date.now(), blobs:[...blobs], frames:blobs.length, thumb:await makeThumb(blobs[0]) };
     const s=await store('readwrite'); rec.id=await reqP(s.add(rec)); return rec;
   }
   async function list(){ const s=await store('readonly'); const all=await reqP(s.getAll()); return (all||[]).sort((a,b)=>b.addedAt-a.addedAt); }
@@ -65,5 +69,5 @@
     }
   }
 
-  window.TH108Media={ available, add, list, get, remove, mountPicker };
+  window.TH108Media={ available, add, addSequence, list, get, remove, mountPicker };
 })();
