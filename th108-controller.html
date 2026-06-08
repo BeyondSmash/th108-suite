@@ -1084,6 +1084,9 @@ layers.forEach(ensureSettings);   // backfill any missing fields
 buildLayerCards();
 document.getElementById('layersPanel').addEventListener('input', scheduleSaveLayers);    // persist edits (debounced)
 document.getElementById('layersPanel').addEventListener('change', scheduleSaveLayers);
+// while testing keys, don't let a focused <select> hijack letter presses (type-ahead); keep arrow/enter nav
+document.addEventListener('keydown',e=>{ if(e.target && e.target.tagName==='SELECT' && e.key && e.key.length===1) e.preventDefault(); }, true);
+document.addEventListener('change',e=>{ if(e.target && e.target.tagName==='SELECT') e.target.blur(); }, true);   // drop focus after picking so testing keys won't change it
 
 // ===== Edit-layout mode: drag .block panels between columns (persisted) =====
 const LAYOUT_KEY='th108_layout';
