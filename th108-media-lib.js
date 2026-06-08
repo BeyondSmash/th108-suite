@@ -55,7 +55,7 @@
     if(!available){ el.innerHTML='<span style="color:#f85149">IndexedDB unavailable — open the page via http://localhost:8123 (not file://) for the library to work.</span>'; return; }
     let items=[]; try{ items=await list(); }catch(e){ el.innerHTML='<span style="color:#f85149">library error: '+e.message+'</span>'; return; }
     el.innerHTML='';
-    if(!items.length){ el.innerHTML='<span style="color:#8b949e">library empty — load a file / URL / paste and it’s saved here automatically.</span>'; return; }
+    if(!items.length){ el.innerHTML='<span style="color:#8b949e">library empty — load media, then click “★ Add to Library” to save it here.</span>'; return; }
     for(const it of items){
       const card=document.createElement('div'); card.style.cssText='position:relative;display:inline-block;margin:4px;cursor:pointer;vertical-align:top'; card.title=it.name+'  ('+(it.type||'?')+')';
       const img=document.createElement('img'); img.src=it.thumb||''; img.alt=it.name;
