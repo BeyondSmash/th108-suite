@@ -62,6 +62,7 @@
   .lhead .llvl{ font-weight:600; color:#58a6ff; font-size:12px; min-width:50px; }
   .numin{ font:inherit; width:48px; background:#161b22; color:#e6edf3; border:1px solid #30363d; border-radius:6px; padding:2px 4px; }
   .lhead .numin{ width:42px; }
+  .hexin{ background:#161b22; color:#e6edf3; border:1px solid #30363d; border-radius:6px; padding:2px 6px; font:inherit; width:74px; }
 </style>
 </head>
 <body>
@@ -225,6 +226,26 @@ async function connect(){
 // ===== layer compositor engine =====
 function fpsCap(){ return +document.getElementById('gifFps').value || 60; }   // global output FPS cap (shared with GIF) — lower = less compute
 function hexToRgb(h){ return [parseInt(h.substr(1,2),16),parseInt(h.substr(3,2),16),parseInt(h.substr(5,2),16)]; }
+// add a typeable hex text box next to every <input type=color> within `scope` (idempotent)
+function attachHex(scope){
+  if(!scope) return;
+  scope.querySelectorAll('input[type="color"]').forEach(ci=>{
+    if(ci.dataset.hex==='1') return;       // already enhanced
+    ci.dataset.hex='1';
+    const tx=document.createElement('input');
+    tx.type='text'; tx.className='hexin'; tx.maxLength=7; tx.spellcheck=false;
+    tx.value=ci.value;
+    ci.insertAdjacentElement('afterend', tx);
+    ci.addEventListener('input',()=>{ tx.value=ci.value; });   // picker → text box
+    tx.addEventListener('input',()=>{                          // text box → picker (+ propagate)
+      let v=tx.value.trim(); if(v[0]!=='#') v='#'+v;
+      if(/^#[0-9a-fA-F]{6}$/.test(v)){
+        ci.value=v.toLowerCase();
+        ci.dispatchEvent(new Event('input',{bubbles:true}));   // drive existing per-colour wiring
+      }   // partial/invalid → leave the text as typed, don't reformat
+    });
+  });
+}
 
 const NLED=INDICES.length;
 // reactive needs a per-LED-index intensity buffer (KEYMAP gives an LED index, not a 0..NLED slot)
@@ -313,6 +334,7 @@ function renderReactive(L,now){
   // random-mode per-key state: _seen = press-time the colour was assigned for, _col = locked RGB
   if(!L._seen || L._seen.length!==NLED){ L._seen=new Float64Array(NLED).fill(-1e12); L._col=new Uint8Array(NLED*3); }
   if(L._lastHue===undefined) L._lastHue=-1; if(L._lastPalI===undefined) L._lastPalI=-1;
+  if(L._seqI===undefined) L._seqI=0;   // round-robin pointer for sequential mode
   const palList=(Array.isArray(s.pal)?s.pal:[]).filter(h=>typeof h==='string' && h.length===7 && h[0]==='#');
   const tsec=now/1000;
   for(let k=0;k<NLED;k++){
@@ -338,6 +360,17 @@ function renderReactive(L,now){
           if(palList.length>1){ for(let tries=0; tries<6 && pi===L._lastPalI; tries++) pi=Math.floor(Math.random()*palList.length); }
           L._lastPalI=pi; rgb=hexToRgb(palList[pi]);
         } else { rgb=[255,255,255]; }
+        L._col[k*3]=rgb[0]; L._col[k*3+1]=rgb[1]; L._col[k*3+2]=rgb[2];
+        L._seen[k]=reactT[idx];
+      }
+      cr=L._col[k*3]; cg=L._col[k*3+1]; cb=L._col[k*3+2];
+    }
+    else if(mode==='sequential'){
+      // lock the NEXT colour in the chosen sequence on each new press (round-robin)
+      if(reactT[idx]!==L._seen[k]){
+        const seq = s.seqSrc==='palette' ? palList.map(hexToRgb) : [A,B,C];
+        const rgb = seq.length ? seq[L._seqI % seq.length] : [255,255,255];
+        L._seqI = (L._seqI+1) % (seq.length||1);
         L._col[k*3]=rgb[0]; L._col[k*3+1]=rgb[1]; L._col[k*3+2]=rgb[2];
         L._seen[k]=reactT[idx];
       }
@@ -948,7 +981,7 @@ function ensureSettings(L){
     colorA:'#ff0000', colorB:'#0000ff', angle:0, scroll:0, phase:0 };
   if(L.type==='background'){ ['color','period','bgMin','bgMax'].forEach(k=>{ if(s[k]===undefined)s[k]=def[k]; }); if(s.color===undefined)s.color='#00ffff'; }
   else if(L.type==='reactive'){ const rd={ color:'#ff8c00', colorB:'#00ffff', colorC:'#00ff00', mode:'single', hold:0, fade:380, isolate:false,
-      style:'fade', pal:['#ff0000','#00ff00','#0000ff','#ffff00','#ff00ff'], anyColor:false };
+      style:'fade', pal:['#ff0000','#00ff00','#0000ff','#ffff00','#ff00ff'], anyColor:false, seqSrc:'abc' };
     Object.keys(rd).forEach(k=>{ if(s[k]===undefined)s[k]=rd[k]; });
     if(!Array.isArray(s.pal)) s.pal=rd.pal.slice(); }
   else if(L.type==='gradient'){ ['colorA','colorB','angle','scroll','phase'].forEach(k=>{ if(s[k]===undefined)s[k]=def[k]; }); }
@@ -977,32 +1010,49 @@ function buildLayerBody(card,L){
     const mxv=c('.s-bgMaxV'), upMx=()=>mxv.textContent=s.bgMax+'%';
     c('.s-bgMax').addEventListener('input',e=>{ s.bgMax=+e.target.value; upMx(); }); upMx();
   } else if(L.type==='reactive'){
-    const modes=[['single','Single colour'],['ab','A–B shimmer'],['rgb','RGB shimmer'],['random','Random']];
-    const mopt=modes.map(m=>'<option value="'+m[0]+'"'+(m[0]===s.mode?' selected':'')+'>'+m[1]+'</option>').join('');
+    const mode=s.mode||'single', seqSrc=s.seqSrc||'abc';
+    const modes=[['single','Single colour'],['ab','A–B shimmer'],['rgb','RGB shimmer'],['random','Random'],['sequential','Sequential']];
+    const mopt=modes.map(m=>'<option value="'+m[0]+'"'+(m[0]===mode?' selected':'')+'>'+m[1]+'</option>').join('');
     const styles=[['fade','Fade'],['double-blink','Double-blink'],['blink','Blink'],['pulse','Pulse'],['ramp','Ramp (in→out)'],['strobe','Strobe'],['heartbeat','Heartbeat']];
     const sopt=styles.map(m=>'<option value="'+m[0]+'"'+(m[0]===(s.style||'fade')?' selected':'')+'>'+m[1]+'</option>').join('');
     const palDefs=['#ff0000','#00ff00','#0000ff','#ffff00','#ff00ff'];
     const palHtml=[0,1,2,3,4].map(i=>'<input type="color" class="s-pal" data-i="'+i+'" value="'+((s.pal&&s.pal[i])||palDefs[i])+'">').join(' ');
-    body.innerHTML='<div class="ctl">'+
+    // decide which colour controls this mode needs
+    const showA = mode==='single' || mode==='ab' || mode==='rgb' || (mode==='sequential' && seqSrc==='abc');
+    const showB = mode==='ab' || mode==='rgb' || (mode==='sequential' && seqSrc==='abc');
+    const showC = mode==='rgb' || (mode==='sequential' && seqSrc==='abc');
+    const showPal = mode==='random' || (mode==='sequential' && seqSrc==='palette');
+    const showAny = mode==='random';
+    const aLabel = mode==='single' ? 'Colour' : 'Color A';
+    let html='<div class="ctl">'+
       row('Mode','<select class="s-mode">'+mopt+'</select><span></span>')+
-      row('Style','<select class="s-style">'+sopt+'</select><span></span>')+
-      row('Color A','<input type="color" class="s-color" value="'+s.color+'"><span></span>')+
-      row('Color B','<input type="color" class="s-colorB" value="'+s.colorB+'"><span></span>')+
-      row('Color C','<input type="color" class="s-colorC" value="'+s.colorC+'"><span></span>')+
-      row('Palette','<span style="display:flex;gap:4px;align-items:center;flex-wrap:wrap">'+palHtml+'</span><span></span>')+
-      row('Any colour','<label class="sl" style="margin:0"><input type="checkbox" class="s-anyColor"'+(s.anyColor?' checked':'')+'> full spectrum (random hues)</label><span></span>')+
+      row('Style','<select class="s-style">'+sopt+'</select><span></span>');
+    if(mode==='sequential'){
+      const srcOpt=[['abc','A/B/C'],['palette','Palette']].map(o=>'<option value="'+o[0]+'"'+(o[0]===seqSrc?' selected':'')+'>'+o[1]+'</option>').join('');
+      html+=row('Source','<select class="s-seqSrc">'+srcOpt+'</select><span></span>');
+    }
+    if(showA) html+=row(aLabel,'<input type="color" class="s-color" value="'+s.color+'"><span></span>');
+    if(showB) html+=row('Color B','<input type="color" class="s-colorB" value="'+s.colorB+'"><span></span>');
+    if(showC) html+=row('Color C','<input type="color" class="s-colorC" value="'+s.colorC+'"><span></span>');
+    if(showPal) html+=row('Palette','<span style="display:flex;gap:4px;align-items:center;flex-wrap:wrap">'+palHtml+'</span><span></span>');
+    if(showAny) html+=row('Any colour','<label class="sl" style="margin:0"><input type="checkbox" class="s-anyColor"'+(s.anyColor?' checked':'')+'> full spectrum (random hues)</label><span></span>');
+    html+=
       row('Hold','<input type="range" class="s-hold" min="0" max="1000" step="10" value="'+s.hold+'"><span style="display:flex;gap:6px;align-items:center"><input type="number" class="numin s-holdN" min="0" max="1000" value="'+s.hold+'"><span class="val s-holdV"></span></span>')+
       row('Fade','<input type="range" class="s-fade" min="80" max="1500" step="20" value="'+s.fade+'"><span style="display:flex;gap:6px;align-items:center"><input type="number" class="numin s-fadeN" min="80" max="1500" value="'+s.fade+'"><span class="val s-fadeV"></span></span>')+
       row('Isolate','<label class="sl" style="margin:0"><input type="checkbox" class="s-isolate"'+(s.isolate?' checked':'')+'> punch through layers below</label><span></span>')+
     '</div>';
-    body.querySelector('.s-mode').addEventListener('change',e=>s.mode=e.target.value);
+    body.innerHTML=html;
+    // Mode change → store + rebuild body so contextual controls refresh (rebuild re-runs attachHex)
+    body.querySelector('.s-mode').addEventListener('change',e=>{ s.mode=e.target.value; buildLayerBody(card,L); });
     body.querySelector('.s-style').addEventListener('change',e=>s.style=e.target.value);
+    const seqSel=body.querySelector('.s-seqSrc');
+    if(seqSel) seqSel.addEventListener('change',e=>{ s.seqSrc=e.target.value; buildLayerBody(card,L); });
     if(!Array.isArray(s.pal)) s.pal=palDefs.slice();
     body.querySelectorAll('.s-pal').forEach(inp=>inp.addEventListener('input',e=>{ s.pal[+e.target.dataset.i]=e.target.value; }));
-    body.querySelector('.s-anyColor').addEventListener('change',e=>s.anyColor=e.target.checked);
-    body.querySelector('.s-color').addEventListener('input',e=>s.color=e.target.value);
-    body.querySelector('.s-colorB').addEventListener('input',e=>s.colorB=e.target.value);
-    body.querySelector('.s-colorC').addEventListener('input',e=>s.colorC=e.target.value);
+    const anyEl=body.querySelector('.s-anyColor'); if(anyEl) anyEl.addEventListener('change',e=>s.anyColor=e.target.checked);
+    const colA=body.querySelector('.s-color'); if(colA) colA.addEventListener('input',e=>s.color=e.target.value);
+    const colB=body.querySelector('.s-colorB'); if(colB) colB.addEventListener('input',e=>s.colorB=e.target.value);
+    const colC=body.querySelector('.s-colorC'); if(colC) colC.addEventListener('input',e=>s.colorC=e.target.value);
     body.querySelector('.s-isolate').addEventListener('change',e=>s.isolate=e.target.checked);
     const hd=body.querySelector('.s-hold'), hdn=body.querySelector('.s-holdN'), hv=body.querySelector('.s-holdV');
     const setHold=v=>{ v=Math.max(0,Math.min(1000,Math.round(v||0))); s.hold=v; hd.value=v; hdn.value=v; hv.textContent='ms'; };
@@ -1050,6 +1100,7 @@ function buildLayerBody(card,L){
     body.innerHTML='<div class="ph">Media layer — port of the GIF engine lands in Stage 2. (Use the GIF → keyboard panel below for now.)</div>';
   }
   buildAdjustBlock(body,L);   // shared per-layer adjust controls appended to every type
+  attachHex(body);            // typeable hex box on every colour picker (incl. reactive palette)
 }
 // shared "Adjust" block (brightness / saturation / contrast / gamma / rotate / speed + Static) on every card
 function buildAdjustBlock(body,L){
@@ -1082,6 +1133,7 @@ function buildAdjustBlock(body,L){
 restoreLayers();                  // bring back saved layer settings from a previous session
 layers.forEach(ensureSettings);   // backfill any missing fields
 buildLayerCards();
+attachHex(document.getElementById('gifPanel'));   // typeable hex box on the GIF bar-colour picker
 document.getElementById('layersPanel').addEventListener('input', scheduleSaveLayers);    // persist edits (debounced)
 document.getElementById('layersPanel').addEventListener('change', scheduleSaveLayers);
 // while testing keys, don't let a focused <select> hijack letter presses (type-ahead); keep arrow/enter nav
