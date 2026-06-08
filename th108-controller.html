@@ -426,7 +426,8 @@ async function gifTick(){
   if(!gifPlaying||!gifFrames.length) return;
   const fr=gifFrames[gifIdx]; let delay=Math.max(1000/fpsCap(), (fr.delayMs|0)/gifSpeed());
   if(!inFlight){ inFlight=true; const ok=await sendFrame(gifFlat(fr.rgb)); inFlight=false;
-    if(ok){ if(!document.hidden){ drawKb(fr.rgb); drawSrc(); } if(!document.getElementById('gifStatic').checked) gifIdx=(gifIdx+1)%gifFrames.length; } }   // skip canvas when hidden; hold frame when static
+    if(ok){ if(!document.hidden && !gifDrag){ drawKb(fr.rgb); drawSrc(); }                       // while dragging the crop, let the drag handler own the canvas
+      if(!gifDrag && !document.getElementById('gifStatic').checked) gifIdx=(gifIdx+1)%gifFrames.length; } }   // freeze frame during drag / when static
   else delay=20;                                            // device busy — retry soon without advancing
   if(gifPlaying){ if(tickW) tickW.postMessage({delay}); else setTimeout(gifTick, delay); }   // worker timer survives background-tab throttling
 }
