@@ -1,7 +1,18 @@
 const test = require('node:test');
 const assert = require('node:assert');
 const path = require('node:path');
+const http = require('node:http');
 const { createServer } = require('./server.js');
+
+// raw request so we can set Host/Origin (fetch won't let us) — needed to exercise the security guards
+function raw(server, method, p, headers) {
+  return new Promise((resolve) => {
+    const req = http.request({ host: '127.0.0.1', port: server.port, path: p, method, headers: headers || {} }, (res) => {
+      let b = ''; res.on('data', c => b += c); res.on('end', () => resolve({ code: res.statusCode, body: b }));
+    });
+    req.end();
+  });
+}
 
 function fakeControl() {
   return {
@@ -39,9 +50,29 @@ test('bad /config json → 400, no save', async () => {
   const server = createServer({ control: ctl, root: path.join(__dirname, '..'), port: 0 });
   await server.listening;
   try {
-    const res = await fetch(`http://127.0.0.1:${server.port}/config`, { method: 'POST', body: 'not json{' });
+    const res = await fetch(`http://127.0.0.1:${server.port}/config`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: 'not json{' });
     assert.equal(res.status, 400);
     assert.equal(ctl.saved, null);
+  } finally { server.close(); }
+});
+
+test('security guards: foreign Host, cross-Origin POST, and non-JSON /config are rejected', async () => {
+  const ctl = fakeControl();
+  const server = createServer({ control: ctl, root: path.join(__dirname, '..'), port: 0 });
+  await server.listening;
+  try {
+    // DNS-rebinding: a request whose Host isn't our loopback host is refused
+    assert.equal((await raw(server, 'POST', '/yield', { host: 'evil.example:1234' })).code, 403);
+    // CSRF: same loopback Host (auto) but a foreign Origin is refused
+    assert.equal((await raw(server, 'POST', '/yield', { origin: 'http://evil.example' })).code, 403);
+    // /config without application/json is refused (forces a CORS preflight cross-origin)
+    assert.equal((await raw(server, 'POST', '/config', { 'content-type': 'text/plain' })).code, 415);
+    // none of the above reached the control object
+    assert.deepEqual(ctl.calls, []);
+    // sanity: a same-origin POST (loopback Host, matching Origin) still works
+    const ok = await raw(server, 'POST', '/yield', { origin: `http://127.0.0.1:${server.port}` });
+    assert.equal(ok.code, 200);
+    assert.ok(ctl.calls.includes('yield'));
   } finally { server.close(); }
 });
 

@@ -10,18 +10,33 @@ const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.json': 'applica
 
 // control = { yield(), resume(), saveConfig(cfg), status() }
 function createServer({ control, root, port = 8123, watchdogMs = 5000 }) {
-  let lastBeat = Date.now(), yielded = false, wd = null;
+  let lastBeat = Date.now(), yielded = false, wd = null, boundPort = port;
   function armWatchdog() {
     clearInterval(wd);
     wd = setInterval(() => {
       if (yielded && Date.now() - lastBeat > watchdogMs) { control.resume(); yielded = false; }
     }, Math.max(50, Math.floor(watchdogMs / 4)));
   }
-  const readBody = (req) => new Promise((res) => { let b = ''; req.on('data', c => b += c); req.on('end', () => res(b)); });
+  const readBody = (req) => new Promise((resolve, reject) => {   // capped to 64 KiB to avoid memory-DoS
+    let b = '', over = false;
+    req.on('data', c => { if (over) return; b += c; if (b.length > 65536) { over = true; req.destroy(); reject(new Error('body too large')); } });
+    req.on('end', () => { if (!over) resolve(b); });
+  });
   const sendJson = (res, code, obj) => { res.writeHead(code, { 'content-type': 'application/json' }); res.end(JSON.stringify(obj)); };
 
   const srv = http.createServer(async (req, res) => {
     const u = req.url.split('?')[0];
+    // Loopback-only + CSRF/DNS-rebinding guard: this is an always-on local service with state-changing
+    // endpoints. The server binds 127.0.0.1 only; a DNS-rebound request carries the attacker's Host (not
+    // localhost), and a cross-site POST carries a foreign Origin — reject both. /config additionally
+    // requires application/json (forces a CORS preflight that fails cross-origin).
+    const host = req.headers.host || '';
+    if (host !== `127.0.0.1:${boundPort}` && host !== `localhost:${boundPort}`) return sendJson(res, 403, { error: 'forbidden host' });
+    if (req.method === 'POST') {
+      const origin = req.headers.origin;
+      if (origin && origin !== `http://${host}` && origin !== `http://127.0.0.1:${boundPort}` && origin !== `http://localhost:${boundPort}`) return sendJson(res, 403, { error: 'cross-origin denied' });
+      if (u === '/config' && !String(req.headers['content-type'] || '').includes('application/json')) return sendJson(res, 415, { error: 'content-type must be application/json' });
+    }
     try {
       if (req.method === 'GET' && u === '/status') return sendJson(res, 200, control.status());
       if (req.method === 'POST' && u === '/yield') { control.yield(); yielded = true; lastBeat = Date.now(); armWatchdog(); return sendJson(res, 200, { ok: true }); }
@@ -51,7 +66,7 @@ function createServer({ control, root, port = 8123, watchdogMs = 5000 }) {
   });
 
   const server = { port, close: () => { clearInterval(wd); srv.close(); } };
-  server.listening = new Promise((resolve) => srv.listen(port, '127.0.0.1', () => { server.port = srv.address().port; resolve(); }));
+  server.listening = new Promise((resolve) => srv.listen(port, '127.0.0.1', () => { boundPort = server.port = srv.address().port; resolve(); }));
   return server;
 }
 
