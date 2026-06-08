@@ -86,6 +86,10 @@
       <label class="sl">gamma <span class="srange"><input type="range" id="gifGamma" min="100" max="300" value="180"><i class="tick" style="left:calc(7px + (100% - 14px)*.40)"></i></span></label>
       <label class="sl">speed <span class="srange"><input type="range" id="gifSpeed" min="25" max="400" value="100"><i class="tick" style="left:calc(7px + (100% - 14px)*.20)"></i></span></label>
       <label class="sl">brightness <span class="srange"><input type="range" id="gifBri" min="10" max="100" value="100"></span></label>
+      <label class="sl">map
+        <select id="gifMap" style="font:inherit;background:#0d1117;color:#e6edf3;border:1px solid #30363d;border-radius:6px;padding:2px 4px">
+          <option value="physical">Physical</option><option value="grid">Grid (uniform)</option>
+        </select></label>
       <label class="sl">sample
         <select id="gifSample" style="font:inherit;background:#0d1117;color:#e6edf3;border:1px solid #30363d;border-radius:6px;padding:2px 4px">
           <option value="average">Average (area)</option><option value="center">Center pixel</option><option value="gaussian">Gaussian (centre-weighted)</option><option value="vivid">Most vivid pixel</option><option value="bright">Brightest pixel (text/logos)</option><option value="dominant">Dominant colour</option><option value="standout">Standout (max contrast)</option>
@@ -119,6 +123,13 @@ const KEYMAP = MAP.keymap, INDICES = MAP.indices;
 // physical full-size layout (LED index -> [x,y,w,h] in key units) for mapping/positioning an image/GIF onto the keys
 const BOARDW=22.5, BOARDH=6.5;   // full-size + numpad ≈ 3.46:1
 const LAYOUT={"0":[0,0,1,1],"1":[2,0,1,1],"2":[3,0,1,1],"3":[4,0,1,1],"4":[5,0,1,1],"5":[6.5,0,1,1],"6":[7.5,0,1,1],"7":[8.5,0,1,1],"8":[9.5,0,1,1],"9":[11,0,1,1],"10":[12,0,1,1],"11":[13,0,1,1],"12":[14,0,1,1],"16":[0,1.5,1,1],"17":[1,1.5,1,1],"18":[2,1.5,1,1],"19":[3,1.5,1,1],"20":[4,1.5,1,1],"21":[5,1.5,1,1],"22":[6,1.5,1,1],"23":[7,1.5,1,1],"24":[8,1.5,1,1],"25":[9,1.5,1,1],"26":[10,1.5,1,1],"27":[11,1.5,1,1],"28":[12,1.5,1,1],"29":[18.5,1.5,1,1],"30":[19.5,1.5,1,1],"31":[20.5,1.5,1,1],"32":[0,2.5,1.5,1],"33":[1.5,2.5,1,1],"34":[2.5,2.5,1,1],"35":[3.5,2.5,1,1],"36":[4.5,2.5,1,1],"37":[5.5,2.5,1,1],"38":[6.5,2.5,1,1],"39":[7.5,2.5,1,1],"40":[8.5,2.5,1,1],"41":[9.5,2.5,1,1],"42":[10.5,2.5,1,1],"43":[11.5,2.5,1,1],"44":[12.5,2.5,1,1],"45":[18.5,2.5,1,1],"46":[19.5,2.5,1,1],"47":[20.5,2.5,1,1],"48":[0,3.5,1.75,1],"49":[1.75,3.5,1,1],"50":[2.75,3.5,1,1],"51":[3.75,3.5,1,1],"52":[4.75,3.5,1,1],"53":[5.75,3.5,1,1],"54":[6.75,3.5,1,1],"55":[7.75,3.5,1,1],"56":[8.75,3.5,1,1],"57":[9.75,3.5,1,1],"58":[10.75,3.5,1,1],"59":[11.75,3.5,1,1],"60":[13.5,2.5,1.5,1],"61":[18.5,3.5,1,1],"62":[19.5,3.5,1,1],"63":[20.5,3.5,1,1],"64":[0,4.5,2.25,1],"65":[2.25,4.5,1,1],"66":[3.25,4.5,1,1],"67":[4.25,4.5,1,1],"68":[5.25,4.5,1,1],"69":[6.25,4.5,1,1],"70":[7.25,4.5,1,1],"71":[8.25,4.5,1,1],"72":[9.25,4.5,1,1],"73":[10.25,4.5,1,1],"74":[11.25,4.5,1,1],"75":[12.25,4.5,2.75,1],"76":[12.75,3.5,2.25,1],"77":[18.5,4.5,1,1],"78":[19.5,4.5,1,1],"79":[20.5,4.5,1,1],"80":[0,5.5,1.5,1],"81":[1.5,5.5,1.25,1],"82":[2.75,5.5,1.25,1],"83":[4,5.5,6.25,1],"84":[10.25,5.5,1.25,1],"86":[11.5,5.5,1.25,1],"87":[12.75,5.5,2.25,1],"88":[15.25,5.5,1,1],"89":[16.25,5.5,1,1],"90":[16.25,4.5,1,1],"91":[17.25,5.5,1,1],"92":[13,1.5,2,1],"93":[18.5,5.5,2,1],"94":[20.5,5.5,1,1],"95":[21.5,4.5,1,2],"99":[15.25,0,1,1],"100":[16.25,0,1,1],"102":[17.25,0,1,1],"103":[15.25,1.5,1,1],"104":[16.25,1.5,1,1],"105":[17.25,1.5,1,1],"106":[15.25,2.5,1,1],"107":[16.25,2.5,1,1],"108":[17.25,2.5,1,1],"109":[21.5,1.5,1,1],"110":[21.5,2.5,1,2]};
+// uniform-grid positions (LED index -> [col,row]); the "Grid" mapping gives every key an equal cell — best for legible text/pixel art
+const GW=21, GH=6, GRID={"0":[0,0],"1":[2,0],"2":[3,0],"3":[4,0],"4":[5,0],"5":[6,0],"6":[7,0],"7":[8,0],"8":[9,0],"9":[10,0],"10":[11,0],"11":[12,0],"12":[13,0],"16":[0,1],"17":[1,1],"18":[2,1],"19":[3,1],"20":[4,1],"21":[5,1],"22":[6,1],"23":[7,1],"24":[8,1],"25":[9,1],"26":[10,1],"27":[11,1],"28":[12,1],"29":[17,1],"30":[18,1],"31":[19,1],"32":[0,2],"33":[1,2],"34":[2,2],"35":[3,2],"36":[4,2],"37":[5,2],"38":[6,2],"39":[7,2],"40":[8,2],"41":[9,2],"42":[10,2],"43":[11,2],"44":[12,2],"45":[17,2],"46":[18,2],"47":[19,2],"48":[0,3],"49":[1,3],"50":[2,3],"51":[3,3],"52":[4,3],"53":[5,3],"54":[6,3],"55":[7,3],"56":[8,3],"57":[9,3],"58":[10,3],"59":[11,3],"60":[13,2],"61":[17,3],"62":[18,3],"63":[19,3],"64":[0,4],"65":[2,4],"66":[3,4],"67":[4,4],"68":[5,4],"69":[6,4],"70":[7,4],"71":[8,4],"72":[9,4],"73":[10,4],"74":[11,4],"75":[12,4],"76":[13,3],"77":[17,4],"78":[18,4],"79":[19,4],"80":[0,5],"81":[1,5],"82":[2,5],"83":[6,5],"84":[10,5],"85":[11,5],"86":[12,5],"87":[13,5],"88":[14,5],"89":[15,5],"90":[15,4],"91":[16,5],"92":[13,1],"93":[18,5],"94":[19,5],"95":[20,4],"99":[14,0],"100":[15,0],"102":[16,0],"103":[14,1],"104":[15,1],"105":[16,1],"106":[14,2],"107":[15,2],"108":[16,2],"109":[20,1],"110":[20,2]};
+function keyCell(idx){                                // -> [nx,ny,nw,nh] normalized centre+size, per the active mapping
+  if(document.getElementById('gifMap').value==='grid'){ const G=GRID[idx]; if(G) return [(G[0]+0.5)/GW,(G[1]+0.5)/GH,1/GW,1/GH]; }
+  const L=LAYOUT[idx]; if(L) return [(L[0]+L[2]/2)/BOARDW,(L[1]+L[3]/2)/BOARDH,L[2]/BOARDW,L[3]/BOARDH];
+  return [0.5,0.5,1/BOARDW,1/BOARDH];
+}
 
 // ===== WebHID transport (same proven path as the test page) =====
 const VENDOR=0x0C45, USAGE_PAGE=0xFF68, CMD=0x32;
@@ -255,9 +266,7 @@ function sampleKeyColors(fr){
   const mode=document.getElementById('gifSample').value, N = mode==='center' ? 0 : 4;   // 0 = single centre sample, else 5×5 grid (denser → catches thin strokes)
   const rot=gifRotRad(), cs=Math.cos(rot), sn=Math.sin(rot), ccx=cr.cx+cr.cw/2, ccy=cr.cy+cr.ch/2;   // rotate sampling around crop centre
   for(let k=0;k<INDICES.length;k++){
-    const L=LAYOUT[INDICES[k]];
-    let nx=0.5,ny=0.5,nw=1/BOARDW,nh=1/BOARDH;
-    if(L){ nx=(L[0]+L[2]/2)/BOARDW; ny=(L[1]+L[3]/2)/BOARDH; nw=L[2]/BOARDW; nh=L[3]/BOARDH; }
+    const c=keyCell(INDICES[k]), nx=c[0],ny=c[1],nw=c[2],nh=c[3];
     const sx=cr.cx+(nx-nw/2)*cr.cw, sy=cr.cy+(ny-nh/2)*cr.ch, sw=nw*cr.cw, sh=nh*cr.ch;
     const SR=[],SG=[],SB=[],SU=[],SV=[];                       // in-bounds samples of the patch
     for(let iy=0;iy<=N;iy++)for(let ix=0;ix<=N;ix++){
@@ -306,12 +315,11 @@ function gifFlat(rgb){                                // -> flat [idx,r,g,b,...]
 }
 // keyboard-shaped preview: each key drawn at its physical rect, in its sampled colour
 function drawKb(rgb){
-  const cv=document.getElementById('gifKb'), ctx=cv.getContext('2d'), pad=4;
-  const sx=(cv.width-2*pad)/BOARDW, sy=(cv.height-2*pad)/BOARDH;
+  const cv=document.getElementById('gifKb'), ctx=cv.getContext('2d'), pad=4, W=cv.width-2*pad, H=cv.height-2*pad;
   ctx.fillStyle='#0d1117'; ctx.fillRect(0,0,cv.width,cv.height);
-  for(let k=0;k<INDICES.length;k++){ const L=LAYOUT[INDICES[k]]; if(!L)continue; const t=k*3, c=adjustRGB(rgb[t],rgb[t+1],rgb[t+2]);
+  for(let k=0;k<INDICES.length;k++){ const t=k*3, c=adjustRGB(rgb[t],rgb[t+1],rgb[t+2]), q=keyCell(INDICES[k]);
     ctx.fillStyle='rgb('+c[0]+','+c[1]+','+c[2]+')';
-    ctx.fillRect(pad+L[0]*sx+0.75, pad+L[1]*sy+0.75, Math.max(1,L[2]*sx-1.5), Math.max(1,L[3]*sy-1.5)); }
+    ctx.fillRect(pad+(q[0]-q[2]/2)*W+0.75, pad+(q[1]-q[3]/2)*H+0.75, Math.max(1,q[2]*W-1.5), Math.max(1,q[3]*H-1.5)); }
 }
 // positioning canvas: the source frame (fit) with the keyboard crop-box overlaid; dims the cropped-out area
 function drawSrc(){
@@ -416,6 +424,7 @@ document.getElementById('gifBri').addEventListener('input',()=>{ if(gifFrames[gi
 document.getElementById('gifSat').addEventListener('input',e=>{ snap(e.target,170,8); if(gifFrames[gifIdx]) drawKb(gifFrames[gifIdx].rgb); });   // saturation/brightness apply at output → preview only
 document.getElementById('gifBars').addEventListener('change',refresh);                                                      // bar fill affects out-of-bounds keys → resample
 document.getElementById('gifSample').addEventListener('change',refresh);                                                    // sampling strategy → resample
+document.getElementById('gifMap').addEventListener('change',refresh);                                                       // physical vs uniform-grid mapping → resample
 document.getElementById('gifBarColor').addEventListener('input',refresh);
 document.getElementById('gifContrast').addEventListener('input',e=>{ snap(e.target,100,8); if(gifFrames[gifIdx]) drawKb(gifFrames[gifIdx].rgb); });
 document.getElementById('gifGamma').addEventListener('input',e=>{ snap(e.target,180,8); if(gifFrames[gifIdx]) drawKb(gifFrames[gifIdx].rgb); });
