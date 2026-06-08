@@ -513,12 +513,24 @@ function patColorize(mode, field, bright, C1, C2, C3){
   const rgb=hsv2rgb(field,1,1);                   // 'rainbow' (default)
   return [rgb[0]*bright, rgb[1]*bright, rgb[2]*bright];
 }
+// per-pattern params: each pattern in a layer keeps its OWN colours/speed/scale/gap/centre.
+// Stored under s.pp[patternName]; old flat s.* values migrate into the active pattern's slot on first access.
+const PAT_DEFAULTS={ colMode:'rainbow', color:'#00ffff', color2:'#ff00ff', color3:'#00ff00', speed:50, scale:10, gap:150, cox:-8, coy:-10 };
+function patParams(s){
+  if(!s.pp){                                              // one-time migration: existing flat values belong to the currently-selected pattern
+    const seed={ colMode:s.colMode, color:s.color, color2:s.color2, color3:s.color3, speed:s.speed, scale:s.scale, gap:s.gap, cox:s.cox, coy:s.coy };
+    Object.keys(seed).forEach(k=>{ if(seed[k]==null) delete seed[k]; });
+    s.pp={}; s.pp[s.pattern]=Object.assign({}, PAT_DEFAULTS, seed);
+  }
+  if(!s.pp[s.pattern]) s.pp[s.pattern]=Object.assign({}, PAT_DEFAULTS);   // a freshly-selected pattern starts from defaults
+  return s.pp[s.pattern];
+}
 function renderPattern(L,now){
   const s=L.settings, out=L.rgb, t=now/1000;
-  const pat=s.pattern, [cr,cg,cb]=hexToRgb(s.color), [c2r,c2g,c2b]=hexToRgb(s.color2);
-  const C1=hexToRgb(s.color), C2=hexToRgb(s.color2), C3=hexToRgb(s.color3||'#00ff00');
-  const colMode=s.colMode||'rainbow';                     // rainbow | c1 | c12 | palette
-  const spd=(s.speed||0)/100, scl=(s.scale||0)/100;       // 0..1 normalized controls
+  const pp=patParams(s), pat=s.pattern;
+  const C1=hexToRgb(pp.color||'#00ffff'), C2=hexToRgb(pp.color2||'#ff00ff'), C3=hexToRgb(pp.color3||'#00ff00');
+  const colMode=pp.colMode||'rainbow';                    // rainbow | c1 | c12 | palette
+  const spd=(pp.speed||0)/100, scl=(pp.scale||0)/100;      // 0..1 normalized controls
   const speedK=spd*2;                                      // hue/phase cycles per second-ish
   const scaleK=0.5+scl*5;                                  // spatial frequency (waves/ripples/rainbow span)
   for(let k=0;k<NLED;k++){
@@ -590,10 +602,10 @@ function renderPattern(L,now){
       done=true;
     } else if(pat==='color-fountain'){
       // expanding DARK bands (absence of light) radiating from ~the home-row (K/L). Scale = band thickness+depth, Gap = spacing between rings
-      const cx=0.5+(s.cox!=null?s.cox:-8)/100, cy=0.5-(s.coy!=null?s.coy:-10)/100;   // centre = signed offset from board centre (X+ = right, Y+ = up); defaults ≈ K/L
+      const cx=0.5+(pp.cox!=null?pp.cox:-8)/100, cy=0.5-(pp.coy!=null?pp.coy:-10)/100;   // centre = signed offset from board centre (X+ = right, Y+ = up); defaults ≈ K/L
       const dx=(nx-cx)*BOARDW, dy=(ny-cy)*BOARDH, dist=Math.sqrt(dx*dx+dy*dy)/13.6;   // PHYSICAL units → TRUE circular rings (normalized space made ~3.46:1 ellipses)
       const sp2=0.2+spd*0.6, w=0.02+scl*0.20, depth=0.45+scl*0.55, edge=0.05;
-      const gapFrac=0.12+((s.gap!=null?s.gap:150)/100)*0.6, spacing=2*w+edge+gapFrac, nr=Math.max(1,Math.min(10,Math.ceil(1/spacing))); let ring=0;   // spacing = ring width + empty gap → the gap stays constant as Scale thickens the rings
+      const gapFrac=0.12+((pp.gap!=null?pp.gap:150)/100)*0.6, spacing=2*w+edge+gapFrac, nr=Math.max(1,Math.min(10,Math.ceil(1/spacing))); let ring=0;   // spacing = ring width + empty gap → the gap stays constant as Scale thickens the rings
       for(let i=0;i<nr;i++){ const r=((t*sp2)+i*spacing)%1;
         const env=Math.min(1,r/0.12)*Math.min(1,(1-r)/0.12);   // plateau: deep through its travel, soft only at birth/death (seamless)
         const d=Math.abs(dist-r), band = d<=w ? 1 : (d<w+edge ? 1-(d-w)/edge : 0);   // flat-topped band → wider w is clearly thicker
@@ -1233,40 +1245,42 @@ function buildLayerBody(card,L){
     const sv=c('.s-scrollV'), upS=()=>sv.textContent=(s.scroll).toFixed(2);
     c('.s-scroll').addEventListener('input',e=>{ s.scroll=(+e.target.value)/100; upS(); }); upS();
   } else if(L.type==='pattern'){
+    const pp=patParams(s);                                 // per-pattern params — each pattern remembers its own colours/speed/scale/etc.
     const pats=['rainbow','spectrum','radial-rainbow','wave','breathing','ripple','scan','twinkle','rain','fire','comet','gradient-flow','static','snowfall','color-fountain','colorful-interchange','turning-peaks','two-birds','layered-mountains','gentle-rain','back-forth','bloom','plasma','aurora'];
     const pbtns=pats.map(p=>'<button type="button" class="patbtn'+(p===s.pattern?' sel':'')+'" data-p="'+p+'">'+p+'</button>').join('');
     const colModes=[['rainbow','Rainbow'],['c1','Color 1'],['c12','Color 1→2'],['palette','Palette']];
-    const cm=s.colMode||'rainbow';
+    const cm=pp.colMode||'rainbow';
     const cmOpt=colModes.map(m=>'<option value="'+m[0]+'"'+(m[0]===cm?' selected':'')+'>'+m[1]+'</option>').join('');
+    const fountain=(s.pattern==='color-fountain');
     body.innerHTML='<div class="ph" style="margin:0 0 4px">Pattern</div><div class="patgrid">'+pbtns+'</div>'+
       '<div class="ctl">'+
       row('Colors','<select class="s-colMode">'+cmOpt+'</select><span></span>')+
-      row('Color 1','<input type="color" class="s-color" value="'+s.color+'"><span></span>')+
-      row('Color 2','<input type="color" class="s-color2" value="'+s.color2+'"><span></span>')+
-      row('Color 3','<input type="color" class="s-color3" value="'+(s.color3||'#00ff00')+'"><span></span>')+
-      row('Speed','<span class="srange" style="width:100%"><input type="range" class="s-speed" min="0" max="100" value="'+s.speed+'"><i class="tick" style="left:calc(7px + (100% - 14px)*0.5)"></i></span><span class="val s-speedV"></span>')+
-      row('Scale','<span class="srange" style="width:100%"><input type="range" class="s-scale" min="0" max="'+(s.pattern==='color-fountain'?50:100)+'" value="'+s.scale+'"><i class="tick" style="left:calc(7px + (100% - 14px)*'+(s.pattern==='color-fountain'?0.2:0.10)+')"></i></span><span style="display:flex;gap:4px;align-items:center"><input type="number" class="numin s-scaleN" min="0" max="'+(s.pattern==='color-fountain'?50:100)+'" value="'+s.scale+'"><span class="val">%</span></span>')+
-      (s.pattern==='color-fountain' ? (
-        row('Ring gap','<span class="srange" style="width:100%"><input type="range" class="s-gap" min="0" max="300" value="'+(s.gap!=null?s.gap:150)+'"><i class="tick" style="left:calc(7px + (100% - 14px)*0.5)"></i></span><span class="val s-gapV"></span>')+
-        row('Center X','<span class="srange" style="width:100%"><input type="range" class="s-cx" min="-50" max="50" value="'+(s.cox!=null?s.cox:-8)+'"><i class="tick" style="left:calc(7px + (100% - 14px)*0.5)"></i></span><span class="val s-cxV"></span>')+
-        row('Center Y','<span class="srange" style="width:100%"><input type="range" class="s-cy" min="-50" max="50" value="'+(s.coy!=null?s.coy:-10)+'"><i class="tick" style="left:calc(7px + (100% - 14px)*0.5)"></i></span><span class="val s-cyV"></span>')
+      row('Color 1','<input type="color" class="s-color" value="'+(pp.color||'#00ffff')+'"><span></span>')+
+      row('Color 2','<input type="color" class="s-color2" value="'+(pp.color2||'#ff00ff')+'"><span></span>')+
+      row('Color 3','<input type="color" class="s-color3" value="'+(pp.color3||'#00ff00')+'"><span></span>')+
+      row('Speed','<span class="srange" style="width:100%"><input type="range" class="s-speed" min="0" max="100" value="'+(pp.speed!=null?pp.speed:50)+'"><i class="tick" style="left:calc(7px + (100% - 14px)*0.5)"></i></span><span class="val s-speedV"></span>')+
+      row('Scale','<span class="srange" style="width:100%"><input type="range" class="s-scale" min="0" max="'+(fountain?50:100)+'" value="'+(pp.scale!=null?pp.scale:10)+'"><i class="tick" style="left:calc(7px + (100% - 14px)*'+(fountain?0.2:0.10)+')"></i></span><span style="display:flex;gap:4px;align-items:center"><input type="number" class="numin s-scaleN" min="0" max="'+(fountain?50:100)+'" value="'+(pp.scale!=null?pp.scale:10)+'"><span class="val">%</span></span>')+
+      (fountain ? (
+        row('Ring gap','<span class="srange" style="width:100%"><input type="range" class="s-gap" min="0" max="300" value="'+(pp.gap!=null?pp.gap:150)+'"><i class="tick" style="left:calc(7px + (100% - 14px)*0.5)"></i></span><span class="val s-gapV"></span>')+
+        row('Center X','<span class="srange" style="width:100%"><input type="range" class="s-cx" min="-50" max="50" value="'+(pp.cox!=null?pp.cox:-8)+'"><i class="tick" style="left:calc(7px + (100% - 14px)*0.5)"></i></span><span class="val s-cxV"></span>')+
+        row('Center Y','<span class="srange" style="width:100%"><input type="range" class="s-cy" min="-50" max="50" value="'+(pp.coy!=null?pp.coy:-10)+'"><i class="tick" style="left:calc(7px + (100% - 14px)*0.5)"></i></span><span class="val s-cyV"></span>')
       ) : '')+
     '</div>';
     const c=q=>body.querySelector(q);
-    body.querySelectorAll('.patbtn').forEach(btn=>btn.addEventListener('click',()=>{ s.pattern=btn.dataset.p; buildLayerBody(card,L); scheduleSaveLayers(); }));   // rebuild so pattern-specific controls (e.g. Ring gap) show
-    c('.s-colMode').addEventListener('change',e=>{ s.colMode=e.target.value; scheduleSaveLayers(); });
-    c('.s-color').addEventListener('input',e=>s.color=e.target.value);
-    c('.s-color2').addEventListener('input',e=>s.color2=e.target.value);
-    c('.s-color3').addEventListener('input',e=>s.color3=e.target.value);
-    const spv=c('.s-speedV'), upSp=()=>spv.textContent=s.speed+'%';
-    c('.s-speed').addEventListener('input',e=>{ snap(e.target,50,4); s.speed=+e.target.value; upSp(); }); upSp();
-    const scMax=(s.pattern==='color-fountain'?50:100), scsl=c('.s-scale'), scn=c('.s-scaleN');
-    scsl.addEventListener('input',e=>{ snap(e.target,10,4); const v=Math.max(0,Math.min(scMax,Math.round(+e.target.value||0))); s.scale=v; scn.value=v; });
-    scn.addEventListener('input',e=>{ const v=Math.max(0,Math.min(scMax,Math.round(+e.target.value||0))); s.scale=v; scsl.value=v; });   // type-in; don't reformat while typing
-    const gp=c('.s-gap'); if(gp){ const gpv=c('.s-gapV'), upGp=()=>{ gpv.textContent=(s.gap!=null?s.gap:150)+'%'; }; gp.addEventListener('input',e=>{ snap(e.target,150,8); s.gap=+e.target.value; upGp(); }); upGp();
+    body.querySelectorAll('.patbtn').forEach(btn=>btn.addEventListener('click',()=>{ s.pattern=btn.dataset.p; buildLayerBody(card,L); scheduleSaveLayers(); }));   // rebuild → restores that pattern's own saved params + its pattern-specific controls
+    c('.s-colMode').addEventListener('change',e=>{ pp.colMode=e.target.value; scheduleSaveLayers(); });
+    c('.s-color').addEventListener('input',e=>pp.color=e.target.value);
+    c('.s-color2').addEventListener('input',e=>pp.color2=e.target.value);
+    c('.s-color3').addEventListener('input',e=>pp.color3=e.target.value);
+    const spv=c('.s-speedV'), upSp=()=>spv.textContent=(pp.speed!=null?pp.speed:50)+'%';
+    c('.s-speed').addEventListener('input',e=>{ snap(e.target,50,4); pp.speed=+e.target.value; upSp(); }); upSp();
+    const scMax=(fountain?50:100), scsl=c('.s-scale'), scn=c('.s-scaleN');
+    scsl.addEventListener('input',e=>{ snap(e.target,10,4); const v=Math.max(0,Math.min(scMax,Math.round(+e.target.value||0))); pp.scale=v; scn.value=v; });
+    scn.addEventListener('input',e=>{ const v=Math.max(0,Math.min(scMax,Math.round(+e.target.value||0))); pp.scale=v; scsl.value=v; });   // type-in; don't reformat while typing
+    const gp=c('.s-gap'); if(gp){ const gpv=c('.s-gapV'), upGp=()=>{ gpv.textContent=(pp.gap!=null?pp.gap:150)+'%'; }; gp.addEventListener('input',e=>{ snap(e.target,150,8); pp.gap=+e.target.value; upGp(); }); upGp();
       const sgn=v=>(v>0?'+':'')+v;
-      const cxi=c('.s-cx'), cxv=c('.s-cxV'), upCx=()=>{ cxv.textContent=sgn(s.cox!=null?s.cox:-8); }; cxi.addEventListener('input',e=>{ snap(e.target,0,3); s.cox=+e.target.value; upCx(); }); upCx();
-      const cyi=c('.s-cy'), cyv=c('.s-cyV'), upCy=()=>{ cyv.textContent=sgn(s.coy!=null?s.coy:-10); }; cyi.addEventListener('input',e=>{ snap(e.target,0,3); s.coy=+e.target.value; upCy(); }); upCy(); }
+      const cxi=c('.s-cx'), cxv=c('.s-cxV'), upCx=()=>{ cxv.textContent=sgn(pp.cox!=null?pp.cox:-8); }; cxi.addEventListener('input',e=>{ snap(e.target,0,3); pp.cox=+e.target.value; upCx(); }); upCx();
+      const cyi=c('.s-cy'), cyv=c('.s-cyV'), upCy=()=>{ cyv.textContent=sgn(pp.coy!=null?pp.coy:-10); }; cyi.addEventListener('input',e=>{ snap(e.target,0,3); pp.coy=+e.target.value; upCy(); }); upCy(); }
   } else {   // media — Stage 1 placeholder
     body.innerHTML='<div class="ph">Media layer — port of the GIF engine lands in Stage 2. (Use the GIF → keyboard panel below for now.)</div>';
   }
