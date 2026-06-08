@@ -217,7 +217,7 @@ function gifCrop(SW,SH){
 function barColor(fr){
   const m=document.getElementById('gifBars').value;
   if(m==='custom'){ const h=document.getElementById('gifBarColor').value; return [parseInt(h.substr(1,2),16),parseInt(h.substr(3,2),16),parseInt(h.substr(5,2),16)]; }
-  if(m==='sampled') return fr.avg||[0,0,0];
+  if(m==='sampled') return fr.edge||[0,0,0];
   return [0,0,0];
 }
 // area-average the source region each key covers -> per-key raw rgb (saturation/brightness applied later at output)
@@ -293,10 +293,13 @@ async function loadGif(file){
       const s=Math.min(1, MAXDIM/Math.max(vw,vh)), dw=Math.max(1,Math.round(vw*s)), dh=Math.max(1,Math.round(vh*s));
       tmp.width=dw; tmp.height=dh; tctx.clearRect(0,0,dw,dh); tctx.drawImage(vf,0,0,dw,dh);
       const dur=vf.duration; if(vf.close) vf.close();
-      const id=tctx.getImageData(0,0,dw,dh);
-      let ar=0,ag=0,ab=0,an=0, stp=Math.max(1,(dw*dh/1500)|0)*4;     // average colour (subsampled) for the "sampled" bar fill
-      for(let o=0;o<id.data.length;o+=stp){ ar+=id.data[o]; ag+=id.data[o+1]; ab+=id.data[o+2]; an++; }
-      frames.push({img:id, w:dw, h:dh, delayMs: dur?Math.max(20,dur/1000):100, avg:[ar/an|0,ag/an|0,ab/an|0], rgb:new Uint8Array(INDICES.length*3)});
+      const id=tctx.getImageData(0,0,dw,dh), D=id.data;
+      // "sampled" bar fill = average of the frame's BORDER pixels (the colour that sits next to the bars), not a muddy whole-frame average
+      let er=0,eg=0,eb=0,en=0;
+      const accRow=y=>{ for(let x=0;x<dw;x++){ const o=(y*dw+x)*4; er+=D[o];eg+=D[o+1];eb+=D[o+2];en++; } };
+      const accCol=x=>{ for(let y=0;y<dh;y++){ const o=(y*dw+x)*4; er+=D[o];eg+=D[o+1];eb+=D[o+2];en++; } };
+      accRow(0); accRow(dh-1); accCol(0); accCol(dw-1);
+      frames.push({img:id, w:dw, h:dh, delayMs: dur?Math.max(20,dur/1000):100, edge:[er/en|0,eg/en|0,eb/en|0], rgb:new Uint8Array(INDICES.length*3)});
       if(track.frameCount && i>=track.frameCount-1) break;
       if(i>=300){ log('frame cap reached (300) — truncating','dim'); break; }
     }
