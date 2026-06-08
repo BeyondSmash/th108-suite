@@ -178,6 +178,11 @@ async function connect(){
     setStatus(`connected: ${device.productName} · iface 0x${(sc.usagePage||0).toString(16)} · reportId=${reportId} · report=${reportLen}B`,'ok');
     log(`screen interface bound. largest output report = ${reportLen} bytes (need ~4104 for the screen).`, reportLen>=4096?'ok':'err');
     if(reportLen<4096) log('⚠ that report looks too small — the screen channel may be a different interface. Pick another entry in the chooser.', 'err');
+    // also bind the 0xFF68 control interface (clock 0x34 / slot 0x51 live here, not the screen interface)
+    const cc=findControl(all);
+    if(cc){ ctrl=cc.d; ctrlReportId=cc.reportId; ctrlLen=cc.bytes||64; if(!ctrl.opened) await ctrl.open();
+      log('✓ control interface bound (0xFF68 usage 0x61) for clock/slot — report='+ctrlLen+'B','ok'); }
+    else log('control interface (0xFF68) not in this grant — clock/slot will prompt to add it on first use.','dim');
     document.getElementById('upload').disabled=false;
     document.getElementById('switchSlot').disabled=false;
     document.getElementById('syncClock').disabled=false;
@@ -614,52 +619,79 @@ async function upload(){
   }
 }
 
-// Switch the displayed built-in slot (cmd 0x51) — instant, un-sticks a frozen screen.
+// Switch the displayed built-in slot (cmd 0x51) — the clock-screen probe. Goes on the 0xFF68 control
+// interface (where 0x34 lives), not the screen interface.
 async function switchSlot(idx){
-  if(!device){ return; }
-  const pkt=new Uint8Array(reportLen||4104);
-  pkt[0]=0xAA; pkt[1]=0x51; pkt[8]=idx&0xFF;
-  try{ await device.sendReport(reportId, pkt); log('switched to built-in slot '+idx+' (0x51)','ok'); }
-  catch(e){ log('slot switch failed: '+e.message,'err'); }
+  if(uploading){ log('⚠ wait for the upload to finish before switching slots.','err'); return; }
+  if(!(await ensureCtrl())){ log('✗ slot switch: no 0xFF68 control interface available.','err'); return; }
+  const pkt=new Uint8Array(ctrlLen||64); pkt[0]=0xAA; pkt[1]=0x51; pkt[8]=idx&0xFF;
+  log('slot → '+hex(pkt.slice(0,10))+'… (index '+idx+')','dim');
+  try{ await sendAwaitAck(ctrl, ctrlReportId, pkt, 0x51); log('✓ switched to built-in slot '+idx+' (0x51) — watch the LCD','ok'); }
+  catch(e){ log('✗ slot switch ('+idx+'): '+e.message+(/timeout/.test(e.message)?' (no 55 51 ACK)':''),'err'); }
 }
 document.getElementById('switchSlot').addEventListener('click', ()=>switchSlot(+document.getElementById('slot').value));
 
-// ---- clock: set the keyboard's built-in clock to PC time (cmd 0x34, captured from the official "Time Correction") ----
-// Sent on the screen interface like switchSlot (0x51) — control cmds are accepted there. If no ACK comes,
-// 0x34 may instead need the 0xFF68 control interface (the log hint below says so).
-function buildTimePkt(d){
-  const pkt=new Uint8Array(reportLen||4104);
-  pkt[0]=0xAA; pkt[1]=0x34; pkt[2]=0x38; pkt[6]=0x01;                       // prefix, cmd=set-time, payloadLen=56, isLast=1
-  pkt[8]=0x5A; pkt[9]=0x01; pkt[10]=0x5A;                                   // fixed preamble
-  pkt[11]=(d.getFullYear()-2000)&0xFF; pkt[12]=d.getMonth()+1; pkt[13]=d.getDate();
-  pkt[14]=d.getHours(); pkt[15]=d.getMinutes(); pkt[16]=d.getSeconds();     // plain-binary y/m/d h:m:s
-  return pkt;
+// ---- the 0xFF68 control interface — clock (0x34) and slot-switch (0x51) live here, NOT on the screen interface ----
+let ctrl=null, ctrlReportId=0, ctrlLen=0;
+function findControl(devices){
+  const pick=test=>{
+    for(const d of devices) for(const col of d.collections||[]){
+      if(test(col)) for(const or of col.outputReports||[]){
+        const bytes=(or.items||[]).reduce((n,it)=>n+(it.reportCount||0)*((it.reportSize||8)/8),0);
+        if(bytes && bytes<=128) return {d, reportId:or.reportId||0, bytes};   // small control report, not the 4104B screen one
+      }
+    }
+    return null;
+  };
+  return pick(c=>c.usagePage===0xFF68 && c.usage===0x61) || pick(c=>c.usagePage===0xFF68);
 }
-// send a control packet and resolve on its 0x55 <cmd> ACK (one-shot listener; clock/probe never run during an upload)
-function sendAwaitAck(pkt, ackCmd, ms=3000){
+async function ensureCtrl(){
+  if(ctrl && ctrl.opened) return true;
+  try{
+    const picked=await navigator.hid.requestDevice({filters:[{vendorId:VENDOR,usagePage:0xFF68,usage:0x61}]});
+    const known=await navigator.hid.getDevices();
+    const cc=findControl([...picked,...known.filter(k=>!picked.includes(k))]);
+    if(!cc) return false;
+    ctrl=cc.d; ctrlReportId=cc.reportId; ctrlLen=cc.bytes||64; if(!ctrl.opened) await ctrl.open();
+    log('✓ control interface bound (0xFF68) — report='+ctrlLen+'B','ok');
+    return true;
+  }catch(e){ log('control-interface grant failed: '+e.message,'err'); return false; }
+}
+// send a control packet on a given interface and resolve on its 0x55 <cmd> ACK (one-shot listener)
+function sendAwaitAck(dev, repId, pkt, ackCmd, ms=3000){
   return new Promise((resolve,reject)=>{
     let done=false;
     const on=e=>{ const b=new Uint8Array(e.data.buffer); if(b[0]===0x55 && b[1]===ackCmd && !done){ done=true; cleanup(); resolve(b); } };
-    function cleanup(){ clearTimeout(to); device.removeEventListener('inputreport', on); }
+    function cleanup(){ clearTimeout(to); dev.removeEventListener('inputreport', on); }
     const to=setTimeout(()=>{ if(!done){ done=true; cleanup(); reject(new Error('ACK timeout')); } }, ms);
-    device.addEventListener('inputreport', on);
-    device.sendReport(reportId, pkt).catch(err=>{ if(!done){ done=true; cleanup(); reject(err); } });
+    dev.addEventListener('inputreport', on);
+    dev.sendReport(repId, pkt).catch(err=>{ if(!done){ done=true; cleanup(); reject(err); } });
   });
 }
+// clock: set the keyboard's built-in clock to PC time (cmd 0x34, captured from official "Time Correction")
+function buildTimePkt(d, len){
+  const pkt=new Uint8Array(len||64);
+  pkt[0]=0xAA; pkt[1]=0x34; pkt[2]=0x38; pkt[6]=0x01;                       // prefix, cmd=set-time, payloadLen=56, isLast=1
+  pkt[8]=0x5A; pkt[9]=0x01; pkt[10]=0x5A;                                   // fixed preamble
+  pkt[11]=(d.getFullYear()-2000)&0xFF; pkt[12]=d.getMonth()+1; pkt[13]=d.getDate();
+  pkt[14]=d.getHours(); pkt[15]=d.getMinutes(); pkt[16]=d.getSeconds();     // plain-binary y/m/d h:m:s (24h)
+  return pkt;
+}
 async function syncClock(){
-  if(!device){ return; }
   if(uploading){ log('⚠ wait for the upload to finish before syncing the clock.','err'); return; }
-  const d=new Date(), ts=d.toLocaleString();
-  log('clock → sending '+hex(buildTimePkt(d).slice(0,17))+'… ('+ts+')','dim');
-  try{ await sendAwaitAck(buildTimePkt(d), 0x34); log('✓ clock synced to '+ts+' — view it with FN+knob → scroll right → click.','ok'); }
-  catch(e){ log('✗ clock sync: '+e.message+(/timeout/.test(e.message)?' (no 55 34 ACK — 0x34 may need the 0xFF68 control interface)':''),'err'); }
+  if(!(await ensureCtrl())){ log('✗ clock: no 0xFF68 control interface available.','err'); return; }
+  const d=new Date(), ts=d.toLocaleString(), pkt=buildTimePkt(d, ctrlLen);
+  log('clock → '+hex(pkt.slice(0,17))+'… ('+ts+')','dim');
+  try{ await sendAwaitAck(ctrl, ctrlReportId, pkt, 0x34); log('✓ clock synced to '+ts+' — view it with FN+knob → scroll right → click.','ok'); }
+  catch(e){ log('✗ clock sync: '+e.message,'err'); }
 }
 document.getElementById('syncClock').addEventListener('click', syncClock);
-setInterval(()=>{ const e=document.getElementById('clockNow'); if(e) e.textContent='PC time: '+new Date().toLocaleTimeString(); }, 1000);
+setInterval(()=>{ const e=document.getElementById('clockNow'); if(e) e.textContent='PC time: '+new Date().toLocaleTimeString(); }, 250);
 
 document.getElementById('connect').addEventListener('click', connect);
 // after a replug the keyboard comes back as a NEW HID device — the old handle is dead, so detect it and force a reconnect
 navigator.hid.addEventListener('disconnect', e=>{
+  if(ctrl && e.device===ctrl) ctrl=null;
   if(device && e.device===device){
     device=null;
     setStatus('disconnected (replug?) — click Connect again','err');
