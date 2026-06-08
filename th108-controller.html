@@ -589,11 +589,12 @@ function renderPattern(L,now){
       R=(235+(cc[0]-235)*0.5)*b; G=(245+(cc[1]-245)*0.5)*b; B=(255+(cc[2]-255)*0.5)*b;   // white→color blend, dimmed by b
       done=true;
     } else if(pat==='color-fountain'){
-      // lit field with an expanding DARK band (absence of light) radiating out. Scale → band THICKNESS *and* depth (thicker = wider + blacker)
-      const dx=nx-0.5, dy=ny-0.5, dist=Math.sqrt(dx*dx+dy*dy)/0.72;   // normalized radius
-      const sp2=0.2+spd*0.6, w=0.02+scl*0.20, depth=0.45+scl*0.55, edge=0.05; let ring=0;
-      for(let i=0;i<3;i++){ const r=((t*sp2)+i/3)%1;
-        const env=Math.min(1,r/0.12)*Math.min(1,(1-r)/0.12);   // plateau: stays deep through its travel, soft only at birth/death (seamless)
+      // expanding DARK bands (absence of light) radiating from ~the home-row (K/L). Scale = band thickness+depth, Gap = spacing between rings
+      const dx=nx-0.42, dy=ny-0.60, dist=Math.sqrt(dx*dx+dy*dy)/0.85;   // origin near K/L; normalized so rings reach the far corner
+      const sp2=0.2+spd*0.6, w=0.02+scl*0.20, depth=0.45+scl*0.55, edge=0.05;
+      const gap=0.15+((s.gap!=null?s.gap:50)/100)*0.55, nr=Math.min(8,Math.ceil(1/gap)+1); let ring=0;   // Gap → radial spacing between rings
+      for(let i=0;i<nr;i++){ const r=((t*sp2)+i*gap)%1;
+        const env=Math.min(1,r/0.12)*Math.min(1,(1-r)/0.12);   // plateau: deep through its travel, soft only at birth/death (seamless)
         const d=Math.abs(dist-r), band = d<=w ? 1 : (d<w+edge ? 1-(d-w)/edge : 0);   // flat-topped band → wider w is clearly thicker
         ring=Math.max(ring, band*env); }
       bright=1-ring*depth;                                      // thicker (high Scale) also penetrates deeper black
@@ -1137,7 +1138,7 @@ function ensureSettings(L){
     Object.keys(rd).forEach(k=>{ if(s[k]===undefined)s[k]=rd[k]; });
     if(!Array.isArray(s.pal)) s.pal=rd.pal.slice(); }
   else if(L.type==='gradient'){ ['colorA','colorB','angle','scroll','phase'].forEach(k=>{ if(s[k]===undefined)s[k]=def[k]; }); }
-  else if(L.type==='pattern'){ const pd={ pattern:'rainbow', color:'#00ffff', color2:'#ff00ff', color3:'#00ff00', colMode:'rainbow', speed:50, scale:50 };
+  else if(L.type==='pattern'){ const pd={ pattern:'rainbow', color:'#00ffff', color2:'#ff00ff', color3:'#00ff00', colMode:'rainbow', speed:50, scale:50, gap:50 };
     Object.keys(pd).forEach(k=>{ if(s[k]===undefined)s[k]=pd[k]; }); }
   // common per-layer adjust fields — backfilled for EVERY layer type
   const cd={ bri:100, sat:100, con:100, gam:100, rot:0, spd:100, frozen:false };
@@ -1244,9 +1245,10 @@ function buildLayerBody(card,L){
       row('Color 3','<input type="color" class="s-color3" value="'+(s.color3||'#00ff00')+'"><span></span>')+
       row('Speed','<span class="srange" style="width:100%"><input type="range" class="s-speed" min="0" max="100" value="'+s.speed+'"><i class="tick" style="left:calc(7px + (100% - 14px)*0.5)"></i></span><span class="val s-speedV"></span>')+
       row('Scale','<span class="srange" style="width:100%"><input type="range" class="s-scale" min="0" max="100" value="'+s.scale+'"><i class="tick" style="left:calc(7px + (100% - 14px)*0.5)"></i></span><span class="val s-scaleV"></span>')+
+      (s.pattern==='color-fountain' ? row('Ring gap','<span class="srange" style="width:100%"><input type="range" class="s-gap" min="0" max="100" value="'+(s.gap!=null?s.gap:50)+'"><i class="tick" style="left:calc(7px + (100% - 14px)*0.5)"></i></span><span class="val s-gapV"></span>') : '')+
     '</div>';
     const c=q=>body.querySelector(q);
-    body.querySelectorAll('.patbtn').forEach(btn=>btn.addEventListener('click',()=>{ s.pattern=btn.dataset.p; body.querySelectorAll('.patbtn').forEach(b=>b.classList.toggle('sel',b===btn)); scheduleSaveLayers(); }));
+    body.querySelectorAll('.patbtn').forEach(btn=>btn.addEventListener('click',()=>{ s.pattern=btn.dataset.p; buildLayerBody(card,L); scheduleSaveLayers(); }));   // rebuild so pattern-specific controls (e.g. Ring gap) show
     c('.s-colMode').addEventListener('change',e=>{ s.colMode=e.target.value; scheduleSaveLayers(); });
     c('.s-color').addEventListener('input',e=>s.color=e.target.value);
     c('.s-color2').addEventListener('input',e=>s.color2=e.target.value);
@@ -1255,6 +1257,7 @@ function buildLayerBody(card,L){
     c('.s-speed').addEventListener('input',e=>{ snap(e.target,50,4); s.speed=+e.target.value; upSp(); }); upSp();
     const scv=c('.s-scaleV'), upSc=()=>scv.textContent=s.scale+'%';
     c('.s-scale').addEventListener('input',e=>{ snap(e.target,50,4); s.scale=+e.target.value; upSc(); }); upSc();
+    const gp=c('.s-gap'); if(gp){ const gpv=c('.s-gapV'), upGp=()=>{ gpv.textContent=(s.gap!=null?s.gap:50)+'%'; }; gp.addEventListener('input',e=>{ snap(e.target,50,4); s.gap=+e.target.value; upGp(); }); upGp(); }
   } else {   // media — Stage 1 placeholder
     body.innerHTML='<div class="ph">Media layer — port of the GIF engine lands in Stage 2. (Use the GIF → keyboard panel below for now.)</div>';
   }
