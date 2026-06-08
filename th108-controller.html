@@ -230,10 +230,15 @@ const NLED=INDICES.length;
 // reactive needs a per-LED-index intensity buffer (KEYMAP gives an LED index, not a 0..NLED slot)
 let reactFg=new Float32Array(256), reactLastT=0;
 let reactT=new Float64Array(256).fill(-1e12);   // press time (performance.now) per LED index; -1e12 = never pressed
+let reactDown=new Uint8Array(256), reactUp=new Float64Array(256).fill(-1e12);   // physically held? + release time (envelope runs from release)
 window.addEventListener('keydown',(e)=>{
-  if(!running) return;
+  if(!running || e.repeat) return;                       // ignore OS auto-repeat so a held key holds (doesn't re-trigger/loop)
   const idx=KEYMAP[e.code];
-  if(idx!==undefined) reactT[idx]=performance.now();   // stamp press time; renderReactive holds then fades. (no preventDefault — typing still works)
+  if(idx!==undefined){ reactDown[idx]=1; reactT[idx]=performance.now(); reactUp[idx]=-1e12; }   // (no preventDefault — typing still works)
+});
+window.addEventListener('keyup',(e)=>{
+  const idx=KEYMAP[e.code];
+  if(idx!==undefined){ reactDown[idx]=0; reactUp[idx]=performance.now(); }   // release → fade/envelope begins
 });
 
 // 4 fixed layers, index 0 = bottom … 3 = top
@@ -312,8 +317,7 @@ function renderReactive(L,now){
   const tsec=now/1000;
   for(let k=0;k<NLED;k++){
     const o=k*3, idx=INDICES[k];
-    const elapsed=now-reactT[idx];
-    let inten = reactEnvelope(elapsed, hold, fade, style);
+    let inten = reactDown[idx] ? 1 : reactEnvelope(now-reactUp[idx], hold, fade, style);   // full while physically held; fade/animate from release
     L._inten[k]=inten;
     if(inten<=0){ out[o]=out[o+1]=out[o+2]=0; continue; }
     let cr,cg,cb;
@@ -539,7 +543,7 @@ if(layerW) layerW.onmessage=layerTick;
 function start(){
   if(running||!device) return;
   if(gifPlaying){ gifStopFn(); }                            // layers + GIF are mutually exclusive
-  running=true; reactFg.fill(0); reactLastT=0; reactT.fill(-1e12);
+  running=true; reactFg.fill(0); reactLastT=0; reactT.fill(-1e12); reactDown.fill(0); reactUp.fill(-1e12);
   const now=performance.now(); for(const L of layers) L.lastTick=0;
   document.getElementById('start').disabled=true; document.getElementById('stop').disabled=false;
   log('layers started','ok'); layerTick();
@@ -1050,32 +1054,28 @@ function buildLayerBody(card,L){
 // shared "Adjust" block (brightness / saturation / contrast / gamma / rotate / speed + Static) on every card
 function buildAdjustBlock(body,L){
   const s=L.settings;
-  const r=(label,key,min,max,html)=>'<label>'+label+'</label>'+html;
-  // each row: range + typeable number + readout, mirroring the existing typeable controls
-  const ctl=(label,key,min,max)=>
-    '<label>'+label+'</label>'+
-    '<input type="range" class="a-'+key+'" min="'+min+'" max="'+max+'" value="'+s[key]+'">'+
-    '<span style="display:flex;gap:6px;align-items:center"><input type="number" class="numin a-'+key+'N" min="'+min+'" max="'+max+'" value="'+s[key]+'"><span class="val a-'+key+'V"></span></span>';
+  // [label, rawMin, rawMax, decimals, unit] — decimals>0 → the number field shows raw/100 (gamma 1.00, speed 1.0×); slider stays raw
+  const CFG={ bri:['Brightness',0,200,0,'%'], sat:['Saturation',0,300,0,'%'], con:['Contrast',50,250,0,'%'],
+              gam:['Gamma',50,300,2,''], rot:['Rotate',0,360,0,'°'], spd:['Speed',0,400,1,'×'] };
+  const disp=(key,raw)=>{ const d=CFG[key][3]; return d?(raw/100).toFixed(d):String(raw); };
+  const ctl=key=>{ const c=CFG[key], dec=c[3];
+    const nMin=dec?c[1]/100:c[1], nMax=dec?c[2]/100:c[2], nStep=dec?1/Math.pow(10,dec):1;
+    return '<label>'+c[0]+'</label>'+
+      '<input type="range" class="a-'+key+'" min="'+c[1]+'" max="'+c[2]+'" value="'+s[key]+'">'+
+      '<span style="display:flex;gap:4px;align-items:center"><input type="number" class="numin a-'+key+'N" min="'+nMin+'" max="'+nMax+'" step="'+nStep+'" value="'+disp(key,s[key])+'"><span class="val" style="min-width:10px">'+c[4]+'</span></span>'; };
   const adj=document.createElement('div');
   adj.innerHTML=
     '<div class="lbody" style="margin-top:8px"><div class="ph" style="margin-bottom:6px">Adjust</div><div class="ctl">'+
-      ctl('Brightness','bri',0,200)+
-      ctl('Saturation','sat',0,300)+
-      ctl('Contrast','con',50,250)+
-      ctl('Gamma','gam',50,300)+
-      ctl('Rotate','rot',0,360)+
-      ctl('Speed','spd',0,400)+
+      ctl('bri')+ctl('sat')+ctl('con')+ctl('gam')+ctl('rot')+ctl('spd')+
       '<label>Static</label><label class="sl" style="margin:0"><input type="checkbox" class="a-frozen"'+(s.frozen?' checked':'')+'> freeze animation</label><span></span>'+
     '</div></div>';
   body.appendChild(adj.firstChild);
-  const fmt={ bri:v=>v+'%', sat:v=>v+'%', con:v=>v+'%', gam:v=>(v/100).toFixed(2), rot:v=>v+'°', spd:v=>(v/100).toFixed(1)+'×' };
-  ['bri','sat','con','gam','rot','spd'].forEach(key=>{
-    const rng=body.querySelector('.a-'+key), num=body.querySelector('.a-'+key+'N'), out=body.querySelector('.a-'+key+'V');
-    const min=+rng.min, max=+rng.max;
-    const set=v=>{ v=Math.max(min,Math.min(max,Math.round(v||0))); s[key]=v; rng.value=v; num.value=v; out.textContent=fmt[key](v); };
-    rng.addEventListener('input',e=>set(+e.target.value));
-    num.addEventListener('input',e=>set(+e.target.value));
-    set(s[key]);
+  Object.keys(CFG).forEach(key=>{ const c=CFG[key], min=c[1], max=c[2], dec=c[3];
+    const rng=body.querySelector('.a-'+key), num=body.querySelector('.a-'+key+'N');
+    const apply=raw=>{ raw=Math.max(min,Math.min(max,Math.round(raw||0))); s[key]=raw; rng.value=raw; return raw; };
+    rng.addEventListener('input',e=>{ num.value=disp(key,apply(+e.target.value)); });
+    num.addEventListener('input',e=>{ const v=parseFloat(e.target.value); if(!isNaN(v)) apply(dec?v*100:v); });   // don't reformat while typing
+    rng.value=s[key]; num.value=disp(key,s[key]);
   });
   body.querySelector('.a-frozen').addEventListener('change',e=>{ s.frozen=e.target.checked; });
 }
