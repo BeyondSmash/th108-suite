@@ -55,17 +55,27 @@
     </div>
   </div>
 
-  <div class="panel">
+  <div class="panel" style="max-width:1000px">
     <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
       <b>GIF → keyboard lighting</b>
       <input type="file" id="gifFile" accept="image/*" />
       <button id="gifPlay" class="go" disabled>Play GIF ▶</button>
       <button id="gifStop" class="stop" disabled>Stop GIF ⏹</button>
-      <label style="color:#8b949e;display:flex;align-items:center;gap:6px;margin-left:auto">brightness
-        <input type="range" id="gifBri" min="10" max="100" value="100" style="width:120px"></label>
+      <label style="color:#8b949e;display:flex;align-items:center;gap:6px">zoom <input type="range" id="gifZoom" min="100" max="500" value="100" style="width:110px"></label>
+      <button id="gifReset">reset position</button>
+      <label style="color:#8b949e;display:flex;align-items:center;gap:6px;margin-left:auto">brightness <input type="range" id="gifBri" min="10" max="100" value="100" style="width:110px"></label>
     </div>
-    <canvas id="gifPrev" width="210" height="63" style="margin-top:10px;width:420px;height:126px;image-rendering:pixelated;border:1px solid #30363d;border-radius:4px;background:#000"></canvas>
-    <div class="hint" id="gifInfo" style="margin-top:6px">load an image/GIF — each frame is sampled onto the key grid and streamed at its real speed, looping. Plays instead of the pulse effect. Raw RGB (no LCD-style colour correction needed).</div>
+    <div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:10px">
+      <div>
+        <div class="hint" style="margin:0 0 4px">position — drag to pan, zoom to scale (blue box = the keyboard area)</div>
+        <canvas id="gifSrc" width="360" height="190" style="border:1px solid #30363d;border-radius:4px;background:#000;cursor:move;touch-action:none"></canvas>
+      </div>
+      <div>
+        <div class="hint" style="margin:0 0 4px">keyboard preview — what each key will show</div>
+        <canvas id="gifKb" width="468" height="135" style="border:1px solid #30363d;border-radius:4px;background:#0d1117"></canvas>
+      </div>
+    </div>
+    <div class="hint" id="gifInfo" style="margin-top:6px">load an image/GIF — sampled onto the 104 keys (physical layout, ~3.46:1). Raw RGB, area-averaged. Plays instead of the pulse effect; bold shapes read best.</div>
   </div>
 
   <div id="log"></div>
@@ -75,9 +85,9 @@
 const MAP = {"keymap":{"Escape":0,"F1":1,"F2":2,"F3":3,"F4":4,"F5":5,"F6":6,"F7":7,"F8":8,"F9":9,"F10":10,"F11":11,"F12":12,"PrintScreen":99,"ScrollLock":100,"Pause":102,"Backquote":16,"Digit1":17,"Digit2":18,"Digit3":19,"Digit4":20,"Digit5":21,"Digit6":22,"Digit7":23,"Digit8":24,"Digit9":25,"Digit0":26,"Minus":27,"Equal":28,"Backspace":92,"Insert":103,"Home":104,"PageUp":105,"NumLock":29,"NumpadDivide":30,"NumpadMultiply":31,"NumpadSubtract":109,"Tab":32,"KeyQ":33,"KeyW":34,"KeyE":35,"KeyR":36,"KeyT":37,"KeyY":38,"KeyU":39,"KeyI":40,"KeyO":41,"KeyP":42,"BracketLeft":43,"BracketRight":44,"Backslash":60,"Delete":106,"End":107,"PageDown":108,"Numpad7":45,"Numpad8":46,"Numpad9":47,"NumpadAdd":110,"CapsLock":48,"KeyA":49,"KeyS":50,"KeyD":51,"KeyF":52,"KeyG":53,"KeyH":54,"KeyJ":55,"KeyK":56,"KeyL":57,"Semicolon":58,"Quote":59,"Enter":76,"Numpad4":61,"Numpad5":62,"Numpad6":63,"ShiftLeft":64,"KeyZ":65,"KeyX":66,"KeyC":67,"KeyV":68,"KeyB":69,"KeyN":70,"KeyM":71,"Comma":72,"Period":73,"Slash":74,"ShiftRight":75,"ArrowUp":90,"Numpad1":77,"Numpad2":78,"Numpad3":79,"NumpadEnter":95,"ControlLeft":80,"MetaLeft":81,"AltLeft":82,"Space":83,"AltRight":84,"ContextMenu":86,"ControlRight":87,"ArrowLeft":88,"ArrowDown":89,"ArrowRight":91,"Numpad0":93,"NumpadDecimal":94},
 "indices":[0,1,2,3,4,5,6,7,8,9,10,11,12,99,100,102,16,17,18,19,20,21,22,23,24,25,26,27,28,92,103,104,105,29,30,31,109,32,33,34,35,36,37,38,39,40,41,42,43,44,60,106,107,108,45,46,47,110,48,49,50,51,52,53,54,55,56,57,58,59,76,61,62,63,64,65,66,67,68,69,70,71,72,73,74,75,90,77,78,79,95,80,81,82,83,84,85,86,87,88,89,91,93,94]};
 const KEYMAP = MAP.keymap, INDICES = MAP.indices;
-// per-key grid positions (LED index -> [col,row]) for sampling an image/GIF onto the physical key layout
-const MAXCOL=20, MAXROW=5;
-const POS={"0":[0,0],"1":[2,0],"2":[3,0],"3":[4,0],"4":[5,0],"5":[6,0],"6":[7,0],"7":[8,0],"8":[9,0],"9":[10,0],"10":[11,0],"11":[12,0],"12":[13,0],"16":[0,1],"17":[1,1],"18":[2,1],"19":[3,1],"20":[4,1],"21":[5,1],"22":[6,1],"23":[7,1],"24":[8,1],"25":[9,1],"26":[10,1],"27":[11,1],"28":[12,1],"29":[17,1],"30":[18,1],"31":[19,1],"32":[0,2],"33":[1,2],"34":[2,2],"35":[3,2],"36":[4,2],"37":[5,2],"38":[6,2],"39":[7,2],"40":[8,2],"41":[9,2],"42":[10,2],"43":[11,2],"44":[12,2],"45":[17,2],"46":[18,2],"47":[19,2],"48":[0,3],"49":[1,3],"50":[2,3],"51":[3,3],"52":[4,3],"53":[5,3],"54":[6,3],"55":[7,3],"56":[8,3],"57":[9,3],"58":[10,3],"59":[11,3],"60":[13,2],"61":[17,3],"62":[18,3],"63":[19,3],"64":[0,4],"65":[2,4],"66":[3,4],"67":[4,4],"68":[5,4],"69":[6,4],"70":[7,4],"71":[8,4],"72":[9,4],"73":[10,4],"74":[11,4],"75":[12,4],"76":[13,3],"77":[17,4],"78":[18,4],"79":[19,4],"80":[0,5],"81":[1,5],"82":[2,5],"83":[6,5],"84":[10,5],"85":[11,5],"86":[12,5],"87":[13,5],"88":[14,5],"89":[15,5],"90":[15,4],"91":[16,5],"92":[13,1],"93":[18,5],"94":[19,5],"95":[20,4],"99":[14,0],"100":[15,0],"102":[16,0],"103":[14,1],"104":[15,1],"105":[16,1],"106":[14,2],"107":[15,2],"108":[16,2],"109":[20,1],"110":[20,2]};
+// physical full-size layout (LED index -> [x,y,w,h] in key units) for mapping/positioning an image/GIF onto the keys
+const BOARDW=22.5, BOARDH=6.5;   // full-size + numpad ≈ 3.46:1
+const LAYOUT={"0":[0,0,1,1],"1":[2,0,1,1],"2":[3,0,1,1],"3":[4,0,1,1],"4":[5,0,1,1],"5":[6.5,0,1,1],"6":[7.5,0,1,1],"7":[8.5,0,1,1],"8":[9.5,0,1,1],"9":[11,0,1,1],"10":[12,0,1,1],"11":[13,0,1,1],"12":[14,0,1,1],"16":[0,1.5,1,1],"17":[1,1.5,1,1],"18":[2,1.5,1,1],"19":[3,1.5,1,1],"20":[4,1.5,1,1],"21":[5,1.5,1,1],"22":[6,1.5,1,1],"23":[7,1.5,1,1],"24":[8,1.5,1,1],"25":[9,1.5,1,1],"26":[10,1.5,1,1],"27":[11,1.5,1,1],"28":[12,1.5,1,1],"29":[18.5,1.5,1,1],"30":[19.5,1.5,1,1],"31":[20.5,1.5,1,1],"32":[0,2.5,1.5,1],"33":[1.5,2.5,1,1],"34":[2.5,2.5,1,1],"35":[3.5,2.5,1,1],"36":[4.5,2.5,1,1],"37":[5.5,2.5,1,1],"38":[6.5,2.5,1,1],"39":[7.5,2.5,1,1],"40":[8.5,2.5,1,1],"41":[9.5,2.5,1,1],"42":[10.5,2.5,1,1],"43":[11.5,2.5,1,1],"44":[12.5,2.5,1,1],"45":[18.5,2.5,1,1],"46":[19.5,2.5,1,1],"47":[20.5,2.5,1,1],"48":[0,3.5,1.75,1],"49":[1.75,3.5,1,1],"50":[2.75,3.5,1,1],"51":[3.75,3.5,1,1],"52":[4.75,3.5,1,1],"53":[5.75,3.5,1,1],"54":[6.75,3.5,1,1],"55":[7.75,3.5,1,1],"56":[8.75,3.5,1,1],"57":[9.75,3.5,1,1],"58":[10.75,3.5,1,1],"59":[11.75,3.5,1,1],"60":[13.5,2.5,1.5,1],"61":[18.5,3.5,1,1],"62":[19.5,3.5,1,1],"63":[20.5,3.5,1,1],"64":[0,4.5,2.25,1],"65":[2.25,4.5,1,1],"66":[3.25,4.5,1,1],"67":[4.25,4.5,1,1],"68":[5.25,4.5,1,1],"69":[6.25,4.5,1,1],"70":[7.25,4.5,1,1],"71":[8.25,4.5,1,1],"72":[9.25,4.5,1,1],"73":[10.25,4.5,1,1],"74":[11.25,4.5,1,1],"75":[12.25,4.5,2.75,1],"76":[12.75,3.5,2.25,1],"77":[18.5,4.5,1,1],"78":[19.5,4.5,1,1],"79":[20.5,4.5,1,1],"80":[0,5.5,1.5,1],"81":[1.5,5.5,1.25,1],"82":[2.75,5.5,1.25,1],"83":[4,5.5,6.25,1],"84":[10.25,5.5,1.25,1],"86":[11.5,5.5,1.25,1],"87":[12.75,5.5,2.25,1],"88":[15.25,5.5,1,1],"89":[16.25,5.5,1,1],"90":[16.25,4.5,1,1],"91":[17.25,5.5,1,1],"92":[13,1.5,2,1],"93":[18.5,5.5,2,1],"94":[20.5,5.5,1,1],"95":[21.5,4.5,1,2],"99":[15.25,0,1,1],"100":[16.25,0,1,1],"102":[17.25,0,1,1],"103":[15.25,1.5,1,1],"104":[16.25,1.5,1,1],"105":[17.25,1.5,1,1],"106":[15.25,2.5,1,1],"107":[16.25,2.5,1,1],"108":[17.25,2.5,1,1],"109":[21.5,1.5,1,1],"110":[21.5,2.5,1,2]};
 
 // ===== WebHID transport (same proven path as the test page) =====
 const VENDOR=0x0C45, USAGE_PAGE=0xFF68, CMD=0x32;
@@ -183,41 +193,69 @@ async function stop(){
   log('effect stopped (board cleared)','dim');
 }
 
-// ===== GIF -> per-key lighting: sample each frame onto the key grid, stream via 0x32, loop =====
-const SAMPLE_W=210, SAMPLE_H=63;
-let gifFrames=[], gifPlaying=false, gifIdx=0, gifPrevCtx=null;
-function coverDrawVF(ctx,img,W,H){                          // cover-fit (crop to fill) the frame into WxH
-  const iw=img.displayWidth||img.codedWidth||img.width, ih=img.displayHeight||img.codedHeight||img.height;
-  const ir=iw/ih, tr=W/H; let sw,sh,sx,sy;
-  if(ir>tr){ sh=ih; sw=ih*tr; sx=(iw-sw)/2; sy=0; } else { sw=iw; sh=iw/tr; sx=0; sy=(ih-sh)/2; }
-  ctx.drawImage(img, sx,sy,sw,sh, 0,0,W,H);
+// ===== GIF -> per-key lighting: physical-layout sampling + drag/zoom positioning, stream via 0x32, loop =====
+const MAXDIM=340;                                    // cap decoded frame size (we only need ~104 samples) — keeps memory/CPU low
+let gifFrames=[], gifPlaying=false, gifIdx=0;        // frame = {img:ImageData, w, h, delayMs, rgb:Uint8Array}
+let czoom=1, cpanX=0, cpanY=0, srcTmp=null;          // GIF position transform (source-pixel pan + zoom)
+function gifBri(){ return (+document.getElementById('gifBri').value)/100; }
+// the board-aspect source rect that maps onto the keyboard, given zoom/pan — clamped to the source
+function gifCrop(SW,SH){
+  const tr=BOARDW/BOARDH, ir=SW/SH; let cw0,ch0;
+  if(ir>tr){ ch0=SH; cw0=SH*tr; } else { cw0=SW; ch0=SW/tr; }
+  const cw=cw0/czoom, ch=ch0/czoom, mX=(SW-cw)/2, mY=(SH-ch)/2;
+  cpanX=Math.max(-mX,Math.min(mX,cpanX)); cpanY=Math.max(-mY,Math.min(mY,cpanY));
+  return {cx:(SW-cw)/2+cpanX, cy:(SH-ch)/2+cpanY, cw, ch};
 }
-function sampleFrame(data,W,H){                             // pixel under each key -> raw rgb (no colour correction; RGB LEDs are true)
-  const rgb=new Uint8Array(INDICES.length*3);
+// area-average the source region each key covers -> per-key raw rgb (no colour correction; RGB LEDs are true)
+function sampleKeyColors(fr){
+  const data=fr.img.data, SW=fr.w, SH=fr.h, cr=gifCrop(SW,SH), rgb=new Uint8Array(INDICES.length*3);
   for(let k=0;k<INDICES.length;k++){
-    const p=POS[INDICES[k]]||[MAXCOL/2,MAXROW/2];
-    const x=Math.round(p[0]/MAXCOL*(W-1)), y=Math.round(p[1]/MAXROW*(H-1));
-    const o=(y*W+x)*4, t=k*3;
-    rgb[t]=data[o]; rgb[t+1]=data[o+1]; rgb[t+2]=data[o+2];
+    const L=LAYOUT[INDICES[k]];
+    let nx=0.5,ny=0.5,nw=1/BOARDW,nh=1/BOARDH;
+    if(L){ nx=(L[0]+L[2]/2)/BOARDW; ny=(L[1]+L[3]/2)/BOARDH; nw=L[2]/BOARDW; nh=L[3]/BOARDH; }
+    const sx=cr.cx+(nx-nw/2)*cr.cw, sy=cr.cy+(ny-nh/2)*cr.ch, sw=nw*cr.cw, sh=nh*cr.ch;
+    let r=0,g=0,b=0,n=0;
+    for(let iy=0;iy<=2;iy++)for(let ix=0;ix<=2;ix++){
+      const px=Math.max(0,Math.min(SW-1,Math.round(sx+sw*ix/2))), py=Math.max(0,Math.min(SH-1,Math.round(sy+sh*iy/2)));
+      const o=(py*SW+px)*4; r+=data[o]; g+=data[o+1]; b+=data[o+2]; n++;
+    }
+    const t=k*3; rgb[t]=r/n|0; rgb[t+1]=g/n|0; rgb[t+2]=b/n|0;
   }
   return rgb;
 }
-function gifBri(){ return (+document.getElementById('gifBri').value)/100; }
-function gifFlat(rgb){                                      // -> flat [idx,r,g,b,...] for sendFrame, with brightness applied live
+function resampleAll(){ for(const fr of gifFrames) fr.rgb=sampleKeyColors(fr); }
+function gifFlat(rgb){                                // -> flat [idx,r,g,b,...] for sendFrame, brightness applied live
   const b=gifBri(), flat=new Array(INDICES.length*4);
   for(let k=0;k<INDICES.length;k++){ const t=k*3,o=k*4;
     flat[o]=INDICES[k]; flat[o+1]=(rgb[t]*b)|0; flat[o+2]=(rgb[t+1]*b)|0; flat[o+3]=(rgb[t+2]*b)|0; }
   return flat;
 }
-function drawPreview(rgb){                                  // keyboard-shaped preview of what each key will show
-  if(!gifPrevCtx) gifPrevCtx=document.getElementById('gifPrev').getContext('2d');
-  const cv=gifPrevCtx.canvas, cw=cv.width/(MAXCOL+1), ch=cv.height/(MAXROW+1), b=gifBri();
-  gifPrevCtx.fillStyle='#000'; gifPrevCtx.fillRect(0,0,cv.width,cv.height);
-  for(let k=0;k<INDICES.length;k++){ const p=POS[INDICES[k]]; if(!p)continue; const t=k*3;
-    gifPrevCtx.fillStyle='rgb('+((rgb[t]*b)|0)+','+((rgb[t+1]*b)|0)+','+((rgb[t+2]*b)|0)+')';
-    gifPrevCtx.fillRect(p[0]*cw+0.5, p[1]*ch+0.5, cw-1, ch-1);
-  }
+// keyboard-shaped preview: each key drawn at its physical rect, in its sampled colour
+function drawKb(rgb){
+  const cv=document.getElementById('gifKb'), ctx=cv.getContext('2d'), pad=4, b=gifBri();
+  const sx=(cv.width-2*pad)/BOARDW, sy=(cv.height-2*pad)/BOARDH;
+  ctx.fillStyle='#0d1117'; ctx.fillRect(0,0,cv.width,cv.height);
+  for(let k=0;k<INDICES.length;k++){ const L=LAYOUT[INDICES[k]]; if(!L)continue; const t=k*3;
+    ctx.fillStyle='rgb('+((rgb[t]*b)|0)+','+((rgb[t+1]*b)|0)+','+((rgb[t+2]*b)|0)+')';
+    ctx.fillRect(pad+L[0]*sx+0.75, pad+L[1]*sy+0.75, Math.max(1,L[2]*sx-1.5), Math.max(1,L[3]*sy-1.5)); }
 }
+// positioning canvas: the source frame (fit) with the keyboard crop-box overlaid; dims the cropped-out area
+function drawSrc(){
+  const cv=document.getElementById('gifSrc'), ctx=cv.getContext('2d');
+  ctx.fillStyle='#000'; ctx.fillRect(0,0,cv.width,cv.height);
+  const fr=gifFrames[gifIdx]; if(!fr){ cv._map=null; return; }
+  if(!srcTmp) srcTmp=document.createElement('canvas');
+  srcTmp.width=fr.w; srcTmp.height=fr.h; srcTmp.getContext('2d').putImageData(fr.img,0,0);
+  const sc=Math.min(cv.width/fr.w, cv.height/fr.h), dw=fr.w*sc, dh=fr.h*sc, ox=(cv.width-dw)/2, oy=(cv.height-dh)/2;
+  ctx.drawImage(srcTmp, ox,oy,dw,dh);
+  const cr=gifCrop(fr.w,fr.h), rx=ox+cr.cx*sc, ry=oy+cr.cy*sc, rw=cr.cw*sc, rh=cr.ch*sc;
+  ctx.fillStyle='rgba(1,4,9,.6)';
+  ctx.fillRect(ox,oy,dw,ry-oy); ctx.fillRect(ox,ry+rh,dw,oy+dh-(ry+rh));
+  ctx.fillRect(ox,ry,rx-ox,rh); ctx.fillRect(rx+rw,ry,ox+dw-(rx+rw),rh);
+  ctx.strokeStyle='#58a6ff'; ctx.lineWidth=2; ctx.strokeRect(rx,ry,rw,rh);
+  cv._map={sc};
+}
+function refresh(){ if(!gifFrames.length) return; resampleAll(); drawSrc(); drawKb(gifFrames[gifIdx].rgb); }
 async function loadGif(file){
   document.getElementById('gifPlay').disabled=true;
   log('decoding '+file.name+'…','dim');
@@ -225,23 +263,22 @@ async function loadGif(file){
     if(!window.ImageDecoder) throw new Error('ImageDecoder unsupported — use Chrome/Edge');
     const dec=new ImageDecoder({data:await file.arrayBuffer(), type:file.type||'image/gif'});
     await dec.tracks.ready;
-    const track=dec.tracks.selectedTrack;
-    const cvs=document.createElement('canvas'); cvs.width=SAMPLE_W; cvs.height=SAMPLE_H;
-    const ctx=cvs.getContext('2d',{willReadFrequently:true});
+    const track=dec.tracks.selectedTrack, tmp=document.createElement('canvas'), tctx=tmp.getContext('2d',{willReadFrequently:true});
     const frames=[];
     for(let i=0;;i++){
       let res; try{ res=await dec.decode({frameIndex:i}); }catch(err){ break; }
-      const vf=res.image;
-      ctx.clearRect(0,0,SAMPLE_W,SAMPLE_H); coverDrawVF(ctx,vf,SAMPLE_W,SAMPLE_H);
-      const data=ctx.getImageData(0,0,SAMPLE_W,SAMPLE_H).data;
+      const vf=res.image, vw=vf.displayWidth||vf.codedWidth, vh=vf.displayHeight||vf.codedHeight;
+      const s=Math.min(1, MAXDIM/Math.max(vw,vh)), dw=Math.max(1,Math.round(vw*s)), dh=Math.max(1,Math.round(vh*s));
+      tmp.width=dw; tmp.height=dh; tctx.clearRect(0,0,dw,dh); tctx.drawImage(vf,0,0,dw,dh);
       const dur=vf.duration; if(vf.close) vf.close();
-      frames.push({rgb:sampleFrame(data,SAMPLE_W,SAMPLE_H), delayMs: dur?Math.max(20,dur/1000):100});
+      frames.push({img:tctx.getImageData(0,0,dw,dh), w:dw, h:dh, delayMs: dur?Math.max(20,dur/1000):100, rgb:new Uint8Array(INDICES.length*3)});
       if(track.frameCount && i>=track.frameCount-1) break;
-      if(i>=2000) break;
+      if(i>=300){ log('frame cap reached (300) — truncating','dim'); break; }
     }
     if(!frames.length) throw new Error('no frames decoded');
-    gifFrames=frames; gifIdx=0; drawPreview(frames[0].rgb);
-    document.getElementById('gifInfo').textContent=file.name+': '+frames.length+' frame(s) mapped to '+INDICES.length+' keys';
+    gifFrames=frames; gifIdx=0; czoom=1; cpanX=cpanY=0; document.getElementById('gifZoom').value=100;
+    refresh();
+    document.getElementById('gifInfo').textContent=file.name+': '+frames.length+' frame(s), source '+frames[0].w+'×'+frames[0].h+' → 104 keys';
     document.getElementById('gifPlay').disabled=!device;
     log('decoded '+frames.length+' frame(s) from '+file.name,'ok');
   }catch(e){ log('GIF decode failed: '+e.message,'err'); }
@@ -250,7 +287,7 @@ async function gifTick(){
   if(!gifPlaying||!gifFrames.length) return;
   const fr=gifFrames[gifIdx]; let delay=Math.max(33, fr.delayMs|0);
   if(!inFlight){ inFlight=true; const ok=await sendFrame(gifFlat(fr.rgb)); inFlight=false;
-    if(ok){ drawPreview(fr.rgb); gifIdx=(gifIdx+1)%gifFrames.length; } }
+    if(ok){ drawKb(fr.rgb); drawSrc(); gifIdx=(gifIdx+1)%gifFrames.length; } }
   else delay=20;                                            // device busy — retry soon without advancing
   if(gifPlaying) setTimeout(gifTick, delay);
 }
@@ -270,10 +307,22 @@ async function gifStopFn(){
   const off=[]; INDICES.forEach(i=>off.push(i,0,0,0)); await sendFrame(off);
   log('GIF playback stopped (board cleared)','dim');
 }
+// drag-to-pan on the positioning canvas (image follows the cursor; full resample on release)
+let gifDrag=false, gifLast=null;
+(function(){
+  const cv=document.getElementById('gifSrc');
+  cv.addEventListener('pointerdown',e=>{ if(!gifFrames.length)return; gifDrag=true; gifLast={x:e.clientX,y:e.clientY}; cv.setPointerCapture(e.pointerId); });
+  cv.addEventListener('pointermove',e=>{ if(!gifDrag||!cv._map)return;
+    cpanX-=(e.clientX-gifLast.x)/cv._map.sc; cpanY-=(e.clientY-gifLast.y)/cv._map.sc; gifLast={x:e.clientX,y:e.clientY};
+    drawSrc(); const fr=gifFrames[gifIdx]; if(fr){ fr.rgb=sampleKeyColors(fr); drawKb(fr.rgb); } });
+  cv.addEventListener('pointerup',()=>{ if(gifDrag){ gifDrag=false; resampleAll(); } });
+})();
 document.getElementById('gifFile').addEventListener('change',e=>{ if(e.target.files[0]) loadGif(e.target.files[0]); });
 document.getElementById('gifPlay').addEventListener('click',gifPlay);
 document.getElementById('gifStop').addEventListener('click',gifStopFn);
-document.getElementById('gifBri').addEventListener('input',()=>{ if(gifFrames[gifIdx]) drawPreview(gifFrames[gifIdx].rgb); });
+document.getElementById('gifZoom').addEventListener('input',e=>{ czoom=(+e.target.value)/100; refresh(); });
+document.getElementById('gifReset').addEventListener('click',()=>{ czoom=1; cpanX=cpanY=0; document.getElementById('gifZoom').value=100; refresh(); });
+document.getElementById('gifBri').addEventListener('input',()=>{ if(gifFrames[gifIdx]) drawKb(gifFrames[gifIdx].rgb); });
 
 window.addEventListener('keydown',(e)=>{
   if(!running) return;
