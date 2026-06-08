@@ -78,6 +78,10 @@
       <label class="sl">contrast <span class="srange"><input type="range" id="gifContrast" min="50" max="250" value="100"><i class="tick" style="left:calc(7px + (100% - 14px)*.25)"></i></span></label>
       <label class="sl">gamma <span class="srange"><input type="range" id="gifGamma" min="100" max="300" value="180"><i class="tick" style="left:calc(7px + (100% - 14px)*.40)"></i></span></label>
       <label class="sl">brightness <span class="srange"><input type="range" id="gifBri" min="10" max="100" value="100"></span></label>
+      <label class="sl">sample
+        <select id="gifSample" style="font:inherit;background:#0d1117;color:#e6edf3;border:1px solid #30363d;border-radius:6px;padding:2px 4px">
+          <option value="average">Average (area)</option><option value="center">Center pixel</option><option value="gaussian">Gaussian (centre-weighted)</option><option value="vivid">Most vivid pixel</option>
+        </select></label>
       <label class="sl">bars
         <select id="gifBars" style="font:inherit;background:#0d1117;color:#e6edf3;border:1px solid #30363d;border-radius:6px;padding:2px 4px">
           <option value="black">Black</option><option value="sampled">Sampled</option><option value="custom">Custom →</option>
@@ -233,23 +237,28 @@ function barColor(fr){
   if(m==='sampled') return fr.edge||[0,0,0];
   return [0,0,0];
 }
-// area-average the source region each key covers -> per-key raw rgb (saturation/brightness applied later at output)
+// map each key's source patch -> one raw rgb, via the chosen strategy (saturation/etc. applied later at output)
 function sampleKeyColors(fr){
   const data=fr.img.data, SW=fr.w, SH=fr.h, cr=gifCrop(SW,SH), bc=barColor(fr), rgb=new Uint8Array(INDICES.length*3);
+  const mode=document.getElementById('gifSample').value, N = mode==='center' ? 0 : 3;   // 0 = single centre sample, else 4×4 grid
   for(let k=0;k<INDICES.length;k++){
     const L=LAYOUT[INDICES[k]];
     let nx=0.5,ny=0.5,nw=1/BOARDW,nh=1/BOARDH;
     if(L){ nx=(L[0]+L[2]/2)/BOARDW; ny=(L[1]+L[3]/2)/BOARDH; nw=L[2]/BOARDW; nh=L[3]/BOARDH; }
     const sx=cr.cx+(nx-nw/2)*cr.cw, sy=cr.cy+(ny-nh/2)*cr.ch, sw=nw*cr.cw, sh=nh*cr.ch;
-    let r=0,g=0,b=0,n=0;
-    for(let iy=0;iy<=2;iy++)for(let ix=0;ix<=2;ix++){
-      const fx=sx+sw*ix/2, fy=sy+sh*iy/2;
-      if(fx<0||fy<0||fx>=SW||fy>=SH) continue;                 // outside the source → contributes the bar fill
-      const o=(((fy)|0)*SW+((fx)|0))*4; r+=data[o]; g+=data[o+1]; b+=data[o+2]; n++;
+    let r=0,g=0,b=0,ws=0, bSat=-1,br2=0,bg2=0,bb2=0, anyIn=false;
+    for(let iy=0;iy<=N;iy++)for(let ix=0;ix<=N;ix++){
+      const u = N?ix/N:0.5, v = N?iy/N:0.5, fx=sx+sw*u, fy=sy+sh*v;
+      if(fx<0||fy<0||fx>=SW||fy>=SH) continue;                 // outside the source → bar fill
+      const o=((fy|0)*SW+(fx|0))*4, pr=data[o],pg=data[o+1],pb=data[o+2]; anyIn=true;
+      if(mode==='vivid'){ const sat=Math.max(pr,pg,pb)-Math.min(pr,pg,pb); if(sat>bSat){ bSat=sat; br2=pr; bg2=pg; bb2=pb; } }
+      else if(mode==='gaussian'){ const du=u-0.5,dv=v-0.5, w=Math.exp(-(du*du+dv*dv)*8); r+=pr*w; g+=pg*w; b+=pb*w; ws+=w; }
+      else { r+=pr; g+=pg; b+=pb; ws++; }                      // average + center
     }
     const t=k*3;
-    if(n){ rgb[t]=r/n|0; rgb[t+1]=g/n|0; rgb[t+2]=b/n|0; }
-    else { rgb[t]=bc[0]; rgb[t+1]=bc[1]; rgb[t+2]=bc[2]; }     // fully outside → bar colour
+    if(!anyIn){ rgb[t]=bc[0]; rgb[t+1]=bc[1]; rgb[t+2]=bc[2]; }
+    else if(mode==='vivid'){ rgb[t]=br2; rgb[t+1]=bg2; rgb[t+2]=bb2; }
+    else { rgb[t]=r/ws|0; rgb[t+1]=g/ws|0; rgb[t+2]=b/ws|0; }
   }
   return rgb;
 }
@@ -371,6 +380,7 @@ document.getElementById('gifReset').addEventListener('click',()=>{ czoom=1; cpan
 document.getElementById('gifBri').addEventListener('input',()=>{ if(gifFrames[gifIdx]) drawKb(gifFrames[gifIdx].rgb); });
 document.getElementById('gifSat').addEventListener('input',e=>{ snap(e.target,170,8); if(gifFrames[gifIdx]) drawKb(gifFrames[gifIdx].rgb); });   // saturation/brightness apply at output → preview only
 document.getElementById('gifBars').addEventListener('change',refresh);                                                      // bar fill affects out-of-bounds keys → resample
+document.getElementById('gifSample').addEventListener('change',refresh);                                                    // sampling strategy → resample
 document.getElementById('gifBarColor').addEventListener('input',refresh);
 document.getElementById('gifContrast').addEventListener('input',e=>{ snap(e.target,100,8); if(gifFrames[gifIdx]) drawKb(gifFrames[gifIdx].rgb); });
 document.getElementById('gifGamma').addEventListener('input',e=>{ snap(e.target,180,8); if(gifFrames[gifIdx]) drawKb(gifFrames[gifIdx].rgb); });
