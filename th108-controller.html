@@ -61,9 +61,15 @@
       <input type="file" id="gifFile" accept="image/*" />
       <button id="gifPlay" class="go" disabled>Play GIF ▶</button>
       <button id="gifStop" class="stop" disabled>Stop GIF ⏹</button>
-      <label style="color:#8b949e;display:flex;align-items:center;gap:6px">zoom <input type="range" id="gifZoom" min="100" max="500" value="100" style="width:110px"></label>
+      <label style="color:#8b949e;display:flex;align-items:center;gap:6px">zoom <input type="range" id="gifZoom" min="20" max="500" value="100" style="width:100px"></label>
       <button id="gifReset">reset position</button>
-      <label style="color:#8b949e;display:flex;align-items:center;gap:6px;margin-left:auto">brightness <input type="range" id="gifBri" min="10" max="100" value="100" style="width:110px"></label>
+      <label style="color:#8b949e;display:flex;align-items:center;gap:6px">bars
+        <select id="gifBars" style="font:inherit;background:#0d1117;color:#e6edf3;border:1px solid #30363d;border-radius:6px;padding:2px 4px">
+          <option value="black">Black</option><option value="sampled">Sampled</option><option value="custom">Custom →</option>
+        </select></label>
+      <input type="color" id="gifBarColor" value="#000000" style="width:38px;height:26px;background:none;border:1px solid #30363d;border-radius:6px">
+      <label style="color:#8b949e;display:flex;align-items:center;gap:6px">saturation <input type="range" id="gifSat" min="100" max="300" value="170" style="width:100px"></label>
+      <label style="color:#8b949e;display:flex;align-items:center;gap:6px;margin-left:auto">brightness <input type="range" id="gifBri" min="10" max="100" value="100" style="width:100px"></label>
     </div>
     <div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:10px">
       <div>
@@ -203,12 +209,20 @@ function gifCrop(SW,SH){
   const tr=BOARDW/BOARDH, ir=SW/SH; let cw0,ch0;
   if(ir>tr){ ch0=SH; cw0=SH*tr; } else { cw0=SW; ch0=SW/tr; }
   const cw=cw0/czoom, ch=ch0/czoom, mX=(SW-cw)/2, mY=(SH-ch)/2;
-  cpanX=Math.max(-mX,Math.min(mX,cpanX)); cpanY=Math.max(-mY,Math.min(mY,cpanY));
+  cpanX = mX>0 ? Math.max(-mX,Math.min(mX,cpanX)) : 0;   // czoom<1 (zoomed out past cover) → crop exceeds source → centre it
+  cpanY = mY>0 ? Math.max(-mY,Math.min(mY,cpanY)) : 0;
   return {cx:(SW-cw)/2+cpanX, cy:(SH-ch)/2+cpanY, cw, ch};
 }
-// area-average the source region each key covers -> per-key raw rgb (no colour correction; RGB LEDs are true)
+// bar-fill colour for keys whose sample falls outside the source (zoomed out / fit)
+function barColor(fr){
+  const m=document.getElementById('gifBars').value;
+  if(m==='custom'){ const h=document.getElementById('gifBarColor').value; return [parseInt(h.substr(1,2),16),parseInt(h.substr(3,2),16),parseInt(h.substr(5,2),16)]; }
+  if(m==='sampled') return fr.avg||[0,0,0];
+  return [0,0,0];
+}
+// area-average the source region each key covers -> per-key raw rgb (saturation/brightness applied later at output)
 function sampleKeyColors(fr){
-  const data=fr.img.data, SW=fr.w, SH=fr.h, cr=gifCrop(SW,SH), rgb=new Uint8Array(INDICES.length*3);
+  const data=fr.img.data, SW=fr.w, SH=fr.h, cr=gifCrop(SW,SH), bc=barColor(fr), rgb=new Uint8Array(INDICES.length*3);
   for(let k=0;k<INDICES.length;k++){
     const L=LAYOUT[INDICES[k]];
     let nx=0.5,ny=0.5,nw=1/BOARDW,nh=1/BOARDH;
@@ -216,27 +230,35 @@ function sampleKeyColors(fr){
     const sx=cr.cx+(nx-nw/2)*cr.cw, sy=cr.cy+(ny-nh/2)*cr.ch, sw=nw*cr.cw, sh=nh*cr.ch;
     let r=0,g=0,b=0,n=0;
     for(let iy=0;iy<=2;iy++)for(let ix=0;ix<=2;ix++){
-      const px=Math.max(0,Math.min(SW-1,Math.round(sx+sw*ix/2))), py=Math.max(0,Math.min(SH-1,Math.round(sy+sh*iy/2)));
-      const o=(py*SW+px)*4; r+=data[o]; g+=data[o+1]; b+=data[o+2]; n++;
+      const fx=sx+sw*ix/2, fy=sy+sh*iy/2;
+      if(fx<0||fy<0||fx>=SW||fy>=SH) continue;                 // outside the source → contributes the bar fill
+      const o=(((fy)|0)*SW+((fx)|0))*4; r+=data[o]; g+=data[o+1]; b+=data[o+2]; n++;
     }
-    const t=k*3; rgb[t]=r/n|0; rgb[t+1]=g/n|0; rgb[t+2]=b/n|0;
+    const t=k*3;
+    if(n){ rgb[t]=r/n|0; rgb[t+1]=g/n|0; rgb[t+2]=b/n|0; }
+    else { rgb[t]=bc[0]; rgb[t+1]=bc[1]; rgb[t+2]=bc[2]; }     // fully outside → bar colour
   }
   return rgb;
 }
 function resampleAll(){ for(const fr of gifFrames) fr.rgb=sampleKeyColors(fr); }
-function gifFlat(rgb){                                // -> flat [idx,r,g,b,...] for sendFrame, brightness applied live
-  const b=gifBri(), flat=new Array(INDICES.length*4);
-  for(let k=0;k<INDICES.length;k++){ const t=k*3,o=k*4;
-    flat[o]=INDICES[k]; flat[o+1]=(rgb[t]*b)|0; flat[o+2]=(rgb[t+1]*b)|0; flat[o+3]=(rgb[t+2]*b)|0; }
+function adjustRGB(r,g,b){                            // saturation + brightness — averaging/LEDs wash colours out, so boost
+  const s=(+document.getElementById('gifSat').value)/100, br=gifBri();
+  if(s!==1){ const y=0.299*r+0.587*g+0.114*b; r=y+(r-y)*s; g=y+(g-y)*s; b=y+(b-y)*s; }
+  return [Math.max(0,Math.min(255,r*br))|0, Math.max(0,Math.min(255,g*br))|0, Math.max(0,Math.min(255,b*br))|0];
+}
+function gifFlat(rgb){                                // -> flat [idx,r,g,b,...] for sendFrame
+  const flat=new Array(INDICES.length*4);
+  for(let k=0;k<INDICES.length;k++){ const t=k*3,o=k*4, c=adjustRGB(rgb[t],rgb[t+1],rgb[t+2]);
+    flat[o]=INDICES[k]; flat[o+1]=c[0]; flat[o+2]=c[1]; flat[o+3]=c[2]; }
   return flat;
 }
 // keyboard-shaped preview: each key drawn at its physical rect, in its sampled colour
 function drawKb(rgb){
-  const cv=document.getElementById('gifKb'), ctx=cv.getContext('2d'), pad=4, b=gifBri();
+  const cv=document.getElementById('gifKb'), ctx=cv.getContext('2d'), pad=4;
   const sx=(cv.width-2*pad)/BOARDW, sy=(cv.height-2*pad)/BOARDH;
   ctx.fillStyle='#0d1117'; ctx.fillRect(0,0,cv.width,cv.height);
-  for(let k=0;k<INDICES.length;k++){ const L=LAYOUT[INDICES[k]]; if(!L)continue; const t=k*3;
-    ctx.fillStyle='rgb('+((rgb[t]*b)|0)+','+((rgb[t+1]*b)|0)+','+((rgb[t+2]*b)|0)+')';
+  for(let k=0;k<INDICES.length;k++){ const L=LAYOUT[INDICES[k]]; if(!L)continue; const t=k*3, c=adjustRGB(rgb[t],rgb[t+1],rgb[t+2]);
+    ctx.fillStyle='rgb('+c[0]+','+c[1]+','+c[2]+')';
     ctx.fillRect(pad+L[0]*sx+0.75, pad+L[1]*sy+0.75, Math.max(1,L[2]*sx-1.5), Math.max(1,L[3]*sy-1.5)); }
 }
 // positioning canvas: the source frame (fit) with the keyboard crop-box overlaid; dims the cropped-out area
@@ -271,7 +293,10 @@ async function loadGif(file){
       const s=Math.min(1, MAXDIM/Math.max(vw,vh)), dw=Math.max(1,Math.round(vw*s)), dh=Math.max(1,Math.round(vh*s));
       tmp.width=dw; tmp.height=dh; tctx.clearRect(0,0,dw,dh); tctx.drawImage(vf,0,0,dw,dh);
       const dur=vf.duration; if(vf.close) vf.close();
-      frames.push({img:tctx.getImageData(0,0,dw,dh), w:dw, h:dh, delayMs: dur?Math.max(20,dur/1000):100, rgb:new Uint8Array(INDICES.length*3)});
+      const id=tctx.getImageData(0,0,dw,dh);
+      let ar=0,ag=0,ab=0,an=0, stp=Math.max(1,(dw*dh/1500)|0)*4;     // average colour (subsampled) for the "sampled" bar fill
+      for(let o=0;o<id.data.length;o+=stp){ ar+=id.data[o]; ag+=id.data[o+1]; ab+=id.data[o+2]; an++; }
+      frames.push({img:id, w:dw, h:dh, delayMs: dur?Math.max(20,dur/1000):100, avg:[ar/an|0,ag/an|0,ab/an|0], rgb:new Uint8Array(INDICES.length*3)});
       if(track.frameCount && i>=track.frameCount-1) break;
       if(i>=300){ log('frame cap reached (300) — truncating','dim'); break; }
     }
@@ -313,7 +338,7 @@ let gifDrag=false, gifLast=null;
   const cv=document.getElementById('gifSrc');
   cv.addEventListener('pointerdown',e=>{ if(!gifFrames.length)return; gifDrag=true; gifLast={x:e.clientX,y:e.clientY}; cv.setPointerCapture(e.pointerId); });
   cv.addEventListener('pointermove',e=>{ if(!gifDrag||!cv._map)return;
-    cpanX-=(e.clientX-gifLast.x)/cv._map.sc; cpanY-=(e.clientY-gifLast.y)/cv._map.sc; gifLast={x:e.clientX,y:e.clientY};
+    cpanX+=(e.clientX-gifLast.x)/cv._map.sc; cpanY+=(e.clientY-gifLast.y)/cv._map.sc; gifLast={x:e.clientX,y:e.clientY};
     drawSrc(); const fr=gifFrames[gifIdx]; if(fr){ fr.rgb=sampleKeyColors(fr); drawKb(fr.rgb); } });
   cv.addEventListener('pointerup',()=>{ if(gifDrag){ gifDrag=false; resampleAll(); } });
 })();
@@ -323,6 +348,9 @@ document.getElementById('gifStop').addEventListener('click',gifStopFn);
 document.getElementById('gifZoom').addEventListener('input',e=>{ czoom=(+e.target.value)/100; refresh(); });
 document.getElementById('gifReset').addEventListener('click',()=>{ czoom=1; cpanX=cpanY=0; document.getElementById('gifZoom').value=100; refresh(); });
 document.getElementById('gifBri').addEventListener('input',()=>{ if(gifFrames[gifIdx]) drawKb(gifFrames[gifIdx].rgb); });
+document.getElementById('gifSat').addEventListener('input',()=>{ if(gifFrames[gifIdx]) drawKb(gifFrames[gifIdx].rgb); });   // saturation/brightness apply at output → preview only
+document.getElementById('gifBars').addEventListener('change',refresh);                                                      // bar fill affects out-of-bounds keys → resample
+document.getElementById('gifBarColor').addEventListener('input',refresh);
 
 window.addEventListener('keydown',(e)=>{
   if(!running) return;
