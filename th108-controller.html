@@ -593,7 +593,7 @@ function renderPattern(L,now){
       // expanding radial rings (soft falloff) radiating from center over a background color, seamless loop
       // lit field with an expanding DARK ring (absence of light) radiating out — each ring soft-fades in at center & out at edge
       const dx=nx-0.5, dy=ny-0.5, dist=Math.sqrt(dx*dx+dy*dy)/0.72;   // normalized radius
-      const sp2=0.2+spd*0.6, w=0.13-scl*0.095; let ring=0;     // Scale → ring sharpness: low = soft/wide, high = crisp/thin (more pronounced)
+      const sp2=0.2+spd*0.6, w=0.04+scl*0.14; let ring=0;      // Scale → ring THICKNESS: low = thin, high = thick (more pronounced)
       for(let i=0;i<3;i++){ const r=((t*sp2)+i/3)%1, env=Math.min(1,r/0.18)*Math.max(0,1-r), gd=Math.abs(dist-r);
         ring=Math.max(ring, Math.exp(-(gd*gd)/(2*w*w))*env); }
       bright=1-ring;                                            // dark ring carved from the lit field (Color 1 mode = pure C1 with dark rings)
@@ -1240,8 +1240,8 @@ function buildLayerBody(card,L){
       row('Color 1','<input type="color" class="s-color" value="'+s.color+'"><span></span>')+
       row('Color 2','<input type="color" class="s-color2" value="'+s.color2+'"><span></span>')+
       row('Color 3','<input type="color" class="s-color3" value="'+(s.color3||'#00ff00')+'"><span></span>')+
-      row('Speed','<input type="range" class="s-speed" min="0" max="100" value="'+s.speed+'"><span class="val s-speedV"></span>')+
-      row('Scale','<input type="range" class="s-scale" min="0" max="100" value="'+s.scale+'"><span class="val s-scaleV"></span>')+
+      row('Speed','<span class="srange" style="width:100%"><input type="range" class="s-speed" min="0" max="100" value="'+s.speed+'"><i class="tick" style="left:calc(7px + (100% - 14px)*0.5)"></i></span><span class="val s-speedV"></span>')+
+      row('Scale','<span class="srange" style="width:100%"><input type="range" class="s-scale" min="0" max="100" value="'+s.scale+'"><i class="tick" style="left:calc(7px + (100% - 14px)*0.5)"></i></span><span class="val s-scaleV"></span>')+
     '</div>';
     const c=q=>body.querySelector(q);
     body.querySelectorAll('.patbtn').forEach(btn=>btn.addEventListener('click',()=>{ s.pattern=btn.dataset.p; body.querySelectorAll('.patbtn').forEach(b=>b.classList.toggle('sel',b===btn)); scheduleSaveLayers(); }));
@@ -1250,9 +1250,9 @@ function buildLayerBody(card,L){
     c('.s-color2').addEventListener('input',e=>s.color2=e.target.value);
     c('.s-color3').addEventListener('input',e=>s.color3=e.target.value);
     const spv=c('.s-speedV'), upSp=()=>spv.textContent=s.speed+'%';
-    c('.s-speed').addEventListener('input',e=>{ s.speed=+e.target.value; upSp(); }); upSp();
+    c('.s-speed').addEventListener('input',e=>{ snap(e.target,50,4); s.speed=+e.target.value; upSp(); }); upSp();
     const scv=c('.s-scaleV'), upSc=()=>scv.textContent=s.scale+'%';
-    c('.s-scale').addEventListener('input',e=>{ s.scale=+e.target.value; upSc(); }); upSc();
+    c('.s-scale').addEventListener('input',e=>{ snap(e.target,50,4); s.scale=+e.target.value; upSc(); }); upSc();
   } else {   // media — Stage 1 placeholder
     body.innerHTML='<div class="ph">Media layer — port of the GIF engine lands in Stage 2. (Use the GIF → keyboard panel below for now.)</div>';
   }
