@@ -715,11 +715,13 @@ function masterRate(){
 }
 async function layerTick(){
   if(!running) return;
-  const now=performance.now();
-  for(const L of layers){ if(L.enabled && now-L.lastTick >= 1000/Math.max(1,L.fps)){ renderLayer(L,now); L.lastTick=now; } }
   let delay=1000/masterRate();
-  if(!layerInFlight){ layerInFlight=true; await sendFrame(composite()); layerInFlight=false; }
-  else delay=20;   // device busy — retry soon
+  try{
+    const now=performance.now();
+    for(const L of layers){ if(L.enabled && now-L.lastTick >= 1000/Math.max(1,L.fps)){ renderLayer(L,now); L.lastTick=now; } }
+    if(!layerInFlight){ layerInFlight=true; await sendFrame(composite()); layerInFlight=false; }
+    else delay=20;   // device busy — retry soon
+  }catch(err){ layerInFlight=false; delay=300; log('layer render error: '+(err&&err.message||err),'err'); }   // one bad frame must not freeze the whole loop
   if(running){ if(layerW) layerW.postMessage({delay}); else setTimeout(layerTick,delay); }
 }
 if(layerW) layerW.onmessage=layerTick;
