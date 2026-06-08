@@ -68,7 +68,7 @@
   <div class="panel" style="max-width:1000px">
     <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
       <b>GIF → keyboard lighting</b>
-      <input type="file" id="gifFile" accept="image/*" />
+      <input type="file" id="gifFile" accept="image/*,video/*" />
       <button id="gifPlay" class="go" disabled>Play GIF ▶</button>
       <button id="gifStop" class="stop" disabled>Stop GIF ⏹</button>
       <button id="gifReset">reset position</button>
@@ -77,7 +77,11 @@
       <input id="gifUrl" type="text" placeholder="paste an image / GIF URL…" style="flex:1;min-width:180px;font:inherit;background:#0d1117;color:#e6edf3;border:1px solid #30363d;border-radius:6px;padding:5px 8px">
       <button id="gifUrlLoad">Load URL</button>
       <button id="gifPaste">Paste image (Ctrl+V)</button>
+      <button id="gifSeqBtn" title="pick multiple images = one frame each (PNG folder / sequence)">+ PNG frames</button>
+      <input type="file" id="gifSeq" accept="image/*" multiple style="display:none">
+      <button id="gifLibBtn">📚 Library</button>
     </div>
+    <div id="gifLib" style="display:none;margin-top:8px;padding:8px;background:#0d1117;border:1px solid #30363d;border-radius:8px"></div>
     <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-top:8px">
       <label class="sl">zoom <span class="srange"><input type="range" id="gifZoom" min="20" max="500" value="100"><i class="tick" style="left:calc(7px + (100% - 14px)*.167)"></i></span></label>
       <label class="sl">rotate <span class="srange" id="gifRotRange"><input type="range" id="gifRot" min="0" max="360" value="0"></span></label>
@@ -115,6 +119,7 @@
 
   <div id="log"></div>
 
+<script src="th108-media-lib.js"></script>
 <script>
 // ===== baked-in TH108 V2 PRO map (KeyboardEvent.code -> LED index, + all LED indices) =====
 const MAP = {"keymap":{"Escape":0,"F1":1,"F2":2,"F3":3,"F4":4,"F5":5,"F6":6,"F7":7,"F8":8,"F9":9,"F10":10,"F11":11,"F12":12,"PrintScreen":99,"ScrollLock":100,"Pause":102,"Backquote":16,"Digit1":17,"Digit2":18,"Digit3":19,"Digit4":20,"Digit5":21,"Digit6":22,"Digit7":23,"Digit8":24,"Digit9":25,"Digit0":26,"Minus":27,"Equal":28,"Backspace":92,"Insert":103,"Home":104,"PageUp":105,"NumLock":29,"NumpadDivide":30,"NumpadMultiply":31,"NumpadSubtract":109,"Tab":32,"KeyQ":33,"KeyW":34,"KeyE":35,"KeyR":36,"KeyT":37,"KeyY":38,"KeyU":39,"KeyI":40,"KeyO":41,"KeyP":42,"BracketLeft":43,"BracketRight":44,"Backslash":60,"Delete":106,"End":107,"PageDown":108,"Numpad7":45,"Numpad8":46,"Numpad9":47,"NumpadAdd":110,"CapsLock":48,"KeyA":49,"KeyS":50,"KeyD":51,"KeyF":52,"KeyG":53,"KeyH":54,"KeyJ":55,"KeyK":56,"KeyL":57,"Semicolon":58,"Quote":59,"Enter":76,"Numpad4":61,"Numpad5":62,"Numpad6":63,"ShiftLeft":64,"KeyZ":65,"KeyX":66,"KeyC":67,"KeyV":68,"KeyB":69,"KeyN":70,"KeyM":71,"Comma":72,"Period":73,"Slash":74,"ShiftRight":75,"ArrowUp":90,"Numpad1":77,"Numpad2":78,"Numpad3":79,"NumpadEnter":95,"ControlLeft":80,"MetaLeft":81,"AltLeft":82,"Space":83,"AltRight":84,"ContextMenu":86,"ControlRight":87,"ArrowLeft":88,"ArrowDown":89,"ArrowRight":91,"Numpad0":93,"NumpadDecimal":94},
@@ -343,38 +348,75 @@ function drawSrc(){
   cv._map={sc};
 }
 function refresh(){ if(!gifFrames.length) return; resampleAll(); drawSrc(); drawKb(gifFrames[gifIdx].rgb); }
-async function loadMedia(blob, name){
-  document.getElementById('gifPlay').disabled=true;
-  log('decoding '+name+'…','dim');
+function pushFrame(frames, id, dw, dh, delayMs){      // border colour (the "sampled" bar fill) + push in our frame format
+  const D=id.data; let er=0,eg=0,eb=0,en=0;
+  const accRow=y=>{ for(let x=0;x<dw;x++){ const o=(y*dw+x)*4; er+=D[o];eg+=D[o+1];eb+=D[o+2];en++; } };
+  const accCol=x=>{ for(let y=0;y<dh;y++){ const o=(y*dw+x)*4; er+=D[o];eg+=D[o+1];eb+=D[o+2];en++; } };
+  accRow(0); accRow(dh-1); accCol(0); accCol(dw-1);
+  frames.push({img:id, w:dw, h:dh, delayMs, edge:[er/en|0,eg/en|0,eb/en|0], rgb:new Uint8Array(INDICES.length*3)});
+}
+async function decodeImage(blob){                      // GIF / WebP / APNG / static via ImageDecoder
+  if(!window.ImageDecoder) throw new Error('ImageDecoder unsupported — use Chrome/Edge');
+  const dec=new ImageDecoder({data:await blob.arrayBuffer(), type:blob.type||'image/gif'});
+  await dec.tracks.ready;
+  const track=dec.tracks.selectedTrack, tmp=document.createElement('canvas'), tctx=tmp.getContext('2d',{willReadFrequently:true}), frames=[];
+  for(let i=0;;i++){
+    let res; try{ res=await dec.decode({frameIndex:i}); }catch(err){ break; }
+    const vf=res.image, vw=vf.displayWidth||vf.codedWidth, vh=vf.displayHeight||vf.codedHeight;
+    const s=Math.min(1, MAXDIM/Math.max(vw,vh)), dw=Math.max(1,Math.round(vw*s)), dh=Math.max(1,Math.round(vh*s));
+    tmp.width=dw; tmp.height=dh; tctx.clearRect(0,0,dw,dh); tctx.drawImage(vf,0,0,dw,dh);
+    const dur=vf.duration; if(vf.close) vf.close();
+    pushFrame(frames, tctx.getImageData(0,0,dw,dh), dw, dh, dur?Math.max(20,dur/1000):100);
+    if(track.frameCount && i>=track.frameCount-1) break;
+    if(i>=300){ log('frame cap reached (300) — truncating','dim'); break; }
+  }
+  return frames;
+}
+function decodeVideo(blob){                            // MP4 / WebM via <video> frame-seek (~12fps, capped)
+  return new Promise((resolve,reject)=>{
+    const v=document.createElement('video'); v.muted=true; v.playsInline=true; v.preload='auto'; v.src=URL.createObjectURL(blob);
+    const FPS=12, CAP=300, frames=[];
+    v.onloadedmetadata=()=>{
+      const dur=v.duration; if(!isFinite(dur)||dur<=0){ URL.revokeObjectURL(v.src); reject(new Error('video has no seekable duration')); return; }
+      const vw=v.videoWidth, vh=v.videoHeight, s=Math.min(1,MAXDIM/Math.max(vw,vh)), dw=Math.max(1,vw*s|0), dh=Math.max(1,vh*s|0);
+      const c=document.createElement('canvas'); c.width=dw; c.height=dh; const cx=c.getContext('2d',{willReadFrequently:true});
+      const n=Math.min(CAP, Math.max(1, Math.round(dur*FPS))), step=dur/n; let i=0;
+      const next=()=>{ if(i>=n){ URL.revokeObjectURL(v.src); resolve(frames); return; } v.currentTime=Math.min(dur-1e-3, i*step); };
+      v.onseeked=()=>{ try{ cx.drawImage(v,0,0,dw,dh); pushFrame(frames, cx.getImageData(0,0,dw,dh), dw, dh, Math.round(1000/FPS)); }catch(_){ } i++; next(); };
+      v.onerror=()=>{ URL.revokeObjectURL(v.src); reject(new Error('video decode error')); };
+      next();
+    };
+    v.onerror=()=>reject(new Error('cannot load video'));
+  });
+}
+function installFrames(frames, label){
+  gifFrames=frames; gifIdx=0; czoom=1; cpanX=cpanY=0; document.getElementById('gifZoom').value=100;
+  refresh();
+  document.getElementById('gifInfo').textContent=label+': '+frames.length+' frame(s), source '+frames[0].w+'×'+frames[0].h+' → 104 keys';
+  document.getElementById('gifPlay').disabled=!device;
+  log('loaded '+frames.length+' frame(s): '+label,'ok');
+}
+async function loadMedia(blob, name, save){           // save (default true) → persist to the library
+  if(save===undefined) save=true;
+  document.getElementById('gifPlay').disabled=true; log('decoding '+name+'…','dim');
   try{
-    if(!window.ImageDecoder) throw new Error('ImageDecoder unsupported — use Chrome/Edge');
-    const dec=new ImageDecoder({data:await blob.arrayBuffer(), type:blob.type||'image/gif'});
-    await dec.tracks.ready;
-    const track=dec.tracks.selectedTrack, tmp=document.createElement('canvas'), tctx=tmp.getContext('2d',{willReadFrequently:true});
-    const frames=[];
-    for(let i=0;;i++){
-      let res; try{ res=await dec.decode({frameIndex:i}); }catch(err){ break; }
-      const vf=res.image, vw=vf.displayWidth||vf.codedWidth, vh=vf.displayHeight||vf.codedHeight;
-      const s=Math.min(1, MAXDIM/Math.max(vw,vh)), dw=Math.max(1,Math.round(vw*s)), dh=Math.max(1,Math.round(vh*s));
-      tmp.width=dw; tmp.height=dh; tctx.clearRect(0,0,dw,dh); tctx.drawImage(vf,0,0,dw,dh);
-      const dur=vf.duration; if(vf.close) vf.close();
-      const id=tctx.getImageData(0,0,dw,dh), D=id.data;
-      // "sampled" bar fill = average of the frame's BORDER pixels (the colour that sits next to the bars), not a muddy whole-frame average
-      let er=0,eg=0,eb=0,en=0;
-      const accRow=y=>{ for(let x=0;x<dw;x++){ const o=(y*dw+x)*4; er+=D[o];eg+=D[o+1];eb+=D[o+2];en++; } };
-      const accCol=x=>{ for(let y=0;y<dh;y++){ const o=(y*dw+x)*4; er+=D[o];eg+=D[o+1];eb+=D[o+2];en++; } };
-      accRow(0); accRow(dh-1); accCol(0); accCol(dw-1);
-      frames.push({img:id, w:dw, h:dh, delayMs: dur?Math.max(20,dur/1000):100, edge:[er/en|0,eg/en|0,eb/en|0], rgb:new Uint8Array(INDICES.length*3)});
-      if(track.frameCount && i>=track.frameCount-1) break;
-      if(i>=300){ log('frame cap reached (300) — truncating','dim'); break; }
-    }
+    const frames = /^video\//.test(blob.type) ? await decodeVideo(blob) : await decodeImage(blob);
     if(!frames.length) throw new Error('no frames decoded');
-    gifFrames=frames; gifIdx=0; czoom=1; cpanX=cpanY=0; document.getElementById('gifZoom').value=100;
-    refresh();
-    document.getElementById('gifInfo').textContent=name+': '+frames.length+' frame(s), source '+frames[0].w+'×'+frames[0].h+' → 104 keys';
-    document.getElementById('gifPlay').disabled=!device;
-    log('decoded '+frames.length+' frame(s) from '+name,'ok');
-  }catch(e){ log('GIF decode failed: '+e.message,'err'); }
+    installFrames(frames, name);
+    if(save && window.TH108Media && TH108Media.available) TH108Media.add(blob,name).then(refreshLib).catch(()=>{});
+  }catch(e){ log('media load failed: '+e.message,'err'); }
+}
+async function loadSequence(files){                    // a folder/selection of images → one frame each, in filename order
+  const arr=[...files].filter(f=>/^image\//.test(f.type)).sort((a,b)=>a.name.localeCompare(b.name,undefined,{numeric:true}));
+  if(!arr.length){ log('no image files selected','err'); return; }
+  log('decoding '+arr.length+' frame files…','dim');
+  const tmp=document.createElement('canvas'), tctx=tmp.getContext('2d',{willReadFrequently:true}), frames=[];
+  for(const f of arr){ const bmp=await createImageBitmap(f).catch(()=>null); if(!bmp) continue;
+    const s=Math.min(1,MAXDIM/Math.max(bmp.width,bmp.height)), dw=Math.max(1,bmp.width*s|0), dh=Math.max(1,bmp.height*s|0);
+    tmp.width=dw; tmp.height=dh; tctx.clearRect(0,0,dw,dh); tctx.drawImage(bmp,0,0,dw,dh); if(bmp.close) bmp.close();
+    pushFrame(frames, tctx.getImageData(0,0,dw,dh), dw, dh, 100); }
+  if(!frames.length){ log('no frames decoded','err'); return; }
+  installFrames(frames, arr.length+'-image sequence');
 }
 async function gifTick(){
   if(!gifPlaying||!gifFrames.length) return;
@@ -413,6 +455,10 @@ let gifDrag=false, gifLast=null;
   cv.addEventListener('pointerup',()=>{ if(gifDrag){ gifDrag=false; resampleAll(); } });
 })();
 document.getElementById('gifFile').addEventListener('change',e=>{ if(e.target.files[0]) loadMedia(e.target.files[0], e.target.files[0].name); });
+function refreshLib(){ const el=document.getElementById('gifLib'); if(el && el.style.display!=='none' && window.TH108Media && TH108Media.available) TH108Media.mountPicker(el, it=>loadMedia(it.blob, it.name, false)); }
+document.getElementById('gifLibBtn').addEventListener('click',()=>{ const el=document.getElementById('gifLib'); el.style.display = el.style.display==='none'?'block':'none'; refreshLib(); });
+document.getElementById('gifSeqBtn').addEventListener('click',()=>document.getElementById('gifSeq').click());
+document.getElementById('gifSeq').addEventListener('change',e=>{ if(e.target.files.length) loadSequence(e.target.files); });
 document.getElementById('gifPlay').addEventListener('click',gifPlay);
 document.getElementById('gifStop').addEventListener('click',gifStopFn);
 const flashSnap=el=>{ el.classList.add('snapped'); clearTimeout(el._st); el._st=setTimeout(()=>el.classList.remove('snapped'),250); };   // thumb flashes orange 250ms on snap
