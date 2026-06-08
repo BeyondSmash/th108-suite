@@ -153,6 +153,45 @@
     <div class="hint" id="gifInfo" style="margin-top:6px">load an image/GIF — sampled onto the 104 keys (physical layout, ~3.46:1). Raw RGB, area-averaged. Plays instead of the pulse effect; bold shapes read best.</div>
   </div>
 
+  <div class="panel block" id="onboardPanel">
+    <b>Onboard effects</b>
+    <p class="hint" style="margin:4px 0 10px">Firmware effects — run on the keyboard itself, persist without a PC. Setting one stops the live layers/GIF.</p>
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+      <label class="sl">effect
+        <select id="obEffect" style="font:inherit;background:#0d1117;color:#e6edf3;border:1px solid #30363d;border-radius:6px;padding:3px 6px">
+          <option value="1">1 · Static Bright</option>
+          <option value="2">2 · Single Point On</option>
+          <option value="3">3 · Single Point Off</option>
+          <option value="4">4 · Starry Sky</option>
+          <option value="5">5 · Snowfall</option>
+          <option value="6">6 · Floral Competition</option>
+          <option value="7">7 · Dynamic Breathing</option>
+          <option value="8" selected>8 · Spectrum Cycle</option>
+          <option value="9">9 · Color Fountain</option>
+          <option value="10">10 · Colorful Interchange</option>
+          <option value="11">11 · Flowing with the Waves</option>
+          <option value="12">12 · Turning Peaks</option>
+          <option value="13">13 · One Touch to Fire</option>
+          <option value="14">14 · Two Birds with One Stone</option>
+          <option value="15">15 · Ripples Spread</option>
+          <option value="16">16 · Endless Flow</option>
+          <option value="17">17 · Layered Mountains</option>
+          <option value="18">18 · Gentle Rain and Wind</option>
+          <option value="19">19 · Back and Forth</option>
+          <option value="20">20 · Custom</option>
+        </select></label>
+      <label class="sl" title="rainbow / multi-colour; uncheck to use the primary colour"><input type="checkbox" id="obColorful" checked> colourful (rainbow)</label>
+      <label class="sl">primary <input type="color" id="obPrimary" value="#00ffff"></label>
+      <label class="sl">secondary <input type="color" id="obSecondary" value="#ff00ff"></label>
+    </div>
+    <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-top:10px">
+      <label class="sl">brightness <span class="srange"><input type="range" id="obBri" min="1" max="6" value="4"></span><span class="val" id="obBriV" style="min-width:18px">4</span></label>
+      <label class="sl">speed <span class="srange"><input type="range" id="obSpeed" min="1" max="6" value="4"></span><span class="val" id="obSpeedV" style="min-width:18px">4</span></label>
+      <button id="obApply" class="go">Apply to keyboard</button>
+      <span id="obStatus" class="hint" style="margin:0"></span>
+    </div>
+  </div>
+
   <div id="log" class="block"></div>
    </div>
   </div>
@@ -1192,6 +1231,44 @@ function restoreLayout(){
   (saved.colR||[]).forEach(bid=>{ const b=document.getElementById(bid); if(b) colR.appendChild(b); });
 }
 restoreLayout();
+
+// ===== Onboard (firmware) effects: single 0x23 16-byte allledPack, persists on the keyboard =====
+attachHex(document.getElementById('onboardPanel'));   // typeable hex box on the primary/secondary pickers
+(function(){
+  const bri=document.getElementById('obBri'), briV=document.getElementById('obBriV');
+  const spd=document.getElementById('obSpeed'), spdV=document.getElementById('obSpeedV');
+  bri.addEventListener('input',()=>briV.textContent=bri.value);
+  spd.addEventListener('input',()=>spdV.textContent=spd.value);
+})();
+function obSetStatus(s,c=''){ const e=document.getElementById('obStatus'); e.textContent=s; e.className='hint '+c; e.style.margin='0'; }
+async function applyOnboard(){
+  if(!device){ log('connect first','err'); obSetStatus('connect first','err'); return; }
+  if(running) await stop();                 // firmware effect replaces the live host stream
+  if(gifPlaying) await gifStopFn();
+  const clamp=v=>Math.max(1,Math.min(6,Math.round(v||1)));
+  const eff=+document.getElementById('obEffect').value;
+  const colourful=document.getElementById('obColorful').checked;
+  const [pr,pg,pb]=hexToRgb(document.getElementById('obPrimary').value);
+  const [sr,sg,sb]=hexToRgb(document.getElementById('obSecondary').value);
+  const bright=clamp(+document.getElementById('obBri').value);
+  const speed=clamp(+document.getElementById('obSpeed').value);
+  const allled=new Uint8Array(16);
+  allled[0]=eff;
+  allled[1]=pr; allled[2]=pg; allled[3]=pb;
+  allled[4]=255;
+  allled[5]=sr; allled[6]=sg; allled[7]=sb;
+  allled[8]=colourful?1:0;
+  allled[9]=bright;
+  allled[10]=speed;
+  // bytes 11..15 stay 0
+  try{
+    await device.sendReport(reportId, buildPkt(0x23, 16, 0, allled, 0, true));
+    const lbl=document.getElementById('obEffect').selectedOptions[0].textContent;
+    log('onboard effect applied: '+lbl+(colourful?' (colourful)':' (solid)')+' · bri '+bright+' · spd '+speed,'ok');
+    obSetStatus('effect set — runs on the keyboard','ok');
+  }catch(e){ log('onboard apply failed: '+e.message,'err'); obSetStatus('apply failed','err'); }
+}
+document.getElementById('obApply').addEventListener('click',applyOnboard);
 </script>
 </body>
 </html>
