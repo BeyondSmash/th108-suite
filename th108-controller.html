@@ -390,7 +390,9 @@ async function stop(){
   const off=[]; INDICES.forEach(i=>off.push(i,0,0,0));
   await sendFrame(off);
   log('layers stopped (board cleared)','dim');
-  daemonHeartbeatStop(); daemonResume();   // hand the device back to the daemon when the user stops
+  // NOTE: do NOT hand back to the daemon here — the page still holds the WebHID device (stop only
+  // pauses rendering). Handing back now would make the daemon re-grab a device we still own (two
+  // writers → wedge). The daemon re-grabs only when the page releases the device (beforeunload).
 }
 
 // ===== GIF -> per-key lighting: physical-layout sampling + drag/zoom positioning, stream via 0x32, loop =====
