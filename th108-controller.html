@@ -270,6 +270,19 @@ function findWritable(devs){
   // the per-key control interface is 0xFF68 usage 0x61 — pick it explicitly, NOT just the first output report (which can be the screen iface 0xFF67)
   return pick(c=>c.usagePage===0xFF68 && c.usage===0x61) || pick(c=>c.usagePage===0xFF68) || pick(()=>true);
 }
+// ===== daemon auto-yield handshake =====
+// When the page is served by the background daemon (http://localhost:8123) the daemon OWNS the HID device.
+// Before opening WebHID we must ask it to release; while we hold the device we heartbeat + push config; on close we resume.
+// If no daemon is present (/status fails) every helper is a no-op and the page behaves exactly as before (direct WebHID).
+const DAEMON = { present:false, hb:null };
+async function daemonPing(){ try{ const r=await fetch('/status',{cache:'no-store'}); DAEMON.present = r.ok; }catch(_){ DAEMON.present=false; } }
+async function daemonYield(){ if(DAEMON.present){ try{ await fetch('/yield',{method:'POST'}); }catch(_){} } }
+function daemonHeartbeatStart(){ if(DAEMON.present && !DAEMON.hb) DAEMON.hb=setInterval(()=>{ if(navigator.sendBeacon) navigator.sendBeacon('/heartbeat'); else fetch('/heartbeat',{method:'POST'}); },3000); }
+function daemonHeartbeatStop(){ clearTimeout(DAEMON.hb); clearInterval(DAEMON.hb); DAEMON.hb=null; }
+function daemonPushConfig(){ if(DAEMON.present){ try{ fetch('/config',{method:'POST',headers:{'content-type':'application/json'},body:localStorage.getItem('th108_layers')||'[]'}); }catch(_){} } }
+function daemonResume(){ if(DAEMON.present){ if(navigator.sendBeacon) navigator.sendBeacon('/resume'); else fetch('/resume',{method:'POST',keepalive:true}); } }
+window.addEventListener('beforeunload', ()=>{ daemonHeartbeatStop(); daemonResume(); });
+
 async function bindDevice(devs, silent){
   const w=findWritable(devs);
   if(!w){ if(!silent) setStatus('no FF68 control interface found — re-pick the 0xff68 entry','err'); return false; }
@@ -285,13 +298,15 @@ async function bindDevice(devs, silent){
 async function connect(){
   if(!('hid' in navigator)){ setStatus('WebHID needs Chrome/Edge','err'); return; }
   try{
+    await daemonPing(); if(DAEMON.present) await daemonYield();   // daemon holds the device — make it release BEFORE we open, or the open fails
     const picked=await navigator.hid.requestDevice({filters:[{vendorId:VENDOR,usagePage:USAGE_PAGE,usage:0x61}]});
     if(!picked || !picked.length){ setStatus('connection cancelled','dim'); return; }   // respect Cancel — don't silently fall back to a previously-granted device
-    await bindDevice(picked, false);
+    const ok=await bindDevice(picked, false);
+    if(ok) daemonHeartbeatStart();   // tell the daemon's watchdog we're alive & holding the device
   }catch(e){ setStatus('connect failed: '+e.message,'err'); log('connect error: '+e.message,'err'); }
 }
 async function autoReconnect(){   // on page load: if the keyboard was granted in a past session, reconnect silently (keeps the convenience, without Cancel-means-connect)
-  try{ if(!('hid' in navigator)) return; const known=await navigator.hid.getDevices(); if(known && known.length) await bindDevice(known, true); }catch(_){ }
+  try{ if(!('hid' in navigator)) return; const known=await navigator.hid.getDevices(); if(known && known.length){ if(DAEMON.present) await daemonYield(); const ok=await bindDevice(known, true); if(ok) daemonHeartbeatStart(); } }catch(_){ }
 }
 
 // ===== layer compositor engine =====
@@ -375,6 +390,7 @@ async function stop(){
   const off=[]; INDICES.forEach(i=>off.push(i,0,0,0));
   await sendFrame(off);
   log('layers stopped (board cleared)','dim');
+  daemonHeartbeatStop(); daemonResume();   // hand the device back to the daemon when the user stops
 }
 
 // ===== GIF -> per-key lighting: physical-layout sampling + drag/zoom positioning, stream via 0x32, loop =====
@@ -754,7 +770,7 @@ function saveLayerOrder(){ try{ localStorage.setItem('th108_layerOrder', JSON.st
 // ----- persist full layer state (settings survive page refresh) -----
 let _slsT=0;
 function saveLayers(){ try{ localStorage.setItem('th108_layers', JSON.stringify(state.layers.map(L=>({name:L.name,enabled:L.enabled,type:L.type,opacity:L.opacity,blend:L.blend,fps:L.fps,settings:L.settings})))); }catch(_){ } }
-function scheduleSaveLayers(){ clearTimeout(_slsT); _slsT=setTimeout(saveLayers,400); }
+function scheduleSaveLayers(){ clearTimeout(_slsT); _slsT=setTimeout(()=>{ saveLayers(); daemonPushConfig(); },400); }   // mirror the edit to the daemon's config.json (no-op if no daemon)
 function restoreLayers(){ try{ const a=JSON.parse(localStorage.getItem('th108_layers')||'null'); if(!Array.isArray(a)) return;
   for(let i=0;i<state.layers.length&&i<a.length;i++){ const o=a[i]; if(!o) continue; const L=state.layers[i];
     if(o.name!=null)L.name=o.name; L.enabled=!!o.enabled; if(o.type)L.type=o.type; if(o.opacity!=null)L.opacity=o.opacity; if(o.blend)L.blend=o.blend; if(o.fps)L.fps=Math.min(30,o.fps);   // clamp any pre-cap saved fps
@@ -977,7 +993,7 @@ function restoreLayout(){
   (saved.colR||[]).forEach(bid=>{ const b=document.getElementById(bid); if(b) colR.appendChild(b); });
 }
 restoreLayout();
-autoReconnect();   // silently reconnect to an already-granted keyboard on load (no picker)
+daemonPing().then(autoReconnect);   // learn if the background daemon holds the device, THEN silently reconnect (yielding first if needed) — no picker
 
 // ===== Onboard (firmware) effects: single 0x23 16-byte allledPack, persists on the keyboard =====
 attachHex(document.getElementById('onboardPanel'));   // typeable hex box on the primary/secondary pickers
