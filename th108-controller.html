@@ -590,13 +590,14 @@ function renderPattern(L,now){
       R=(235+(cc[0]-235)*0.5)*b; G=(245+(cc[1]-245)*0.5)*b; B=(255+(cc[2]-255)*0.5)*b;   // white→color blend, dimmed by b
       done=true;
     } else if(pat==='color-fountain'){
-      // expanding radial rings (soft falloff) radiating from center over a background color, seamless loop
-      // lit field with an expanding DARK ring (absence of light) radiating out — each ring soft-fades in at center & out at edge
+      // lit field with an expanding DARK band (absence of light) radiating out. Scale → band THICKNESS *and* depth (thicker = wider + blacker)
       const dx=nx-0.5, dy=ny-0.5, dist=Math.sqrt(dx*dx+dy*dy)/0.72;   // normalized radius
-      const sp2=0.2+spd*0.6, w=0.04+scl*0.14; let ring=0;      // Scale → ring THICKNESS: low = thin, high = thick (more pronounced)
-      for(let i=0;i<3;i++){ const r=((t*sp2)+i/3)%1, env=Math.min(1,r/0.18)*Math.max(0,1-r), gd=Math.abs(dist-r);
-        ring=Math.max(ring, Math.exp(-(gd*gd)/(2*w*w))*env); }
-      bright=1-ring;                                            // dark ring carved from the lit field (Color 1 mode = pure C1 with dark rings)
+      const sp2=0.2+spd*0.6, w=0.02+scl*0.20, depth=0.45+scl*0.55, edge=0.05; let ring=0;
+      for(let i=0;i<3;i++){ const r=((t*sp2)+i/3)%1;
+        const env=Math.min(1,r/0.12)*Math.min(1,(1-r)/0.12);   // plateau: stays deep through its travel, soft only at birth/death (seamless)
+        const d=Math.abs(dist-r), band = d<=w ? 1 : (d<w+edge ? 1-(d-w)/edge : 0);   // flat-topped band → wider w is clearly thicker
+        ring=Math.max(ring, band*env); }
+      bright=1-ring*depth;                                      // thicker (high Scale) also penetrates deeper black
       field=dist*0.5 + t*0.1;                                   // color coord (only matters in rainbow / C1→2 / palette)
     } else if(pat==='colorful-interchange'){
       const N=6; field=Math.floor(((t*(0.2+spd))%1)*N)/N;   // whole board one stepped color coord, wraps cleanly
