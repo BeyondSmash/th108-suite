@@ -121,7 +121,7 @@
       <label class="sl">contrast <span class="srange"><input type="range" id="gifContrast" min="50" max="250" value="100"><i class="tick" style="left:calc(7px + (100% - 14px)*.25)"></i></span></label>
       <label class="sl">gamma <span class="srange"><input type="range" id="gifGamma" min="100" max="300" value="180"><i class="tick" style="left:calc(7px + (100% - 14px)*.40)"></i></span></label>
       <label class="sl">speed <span class="srange"><input type="range" id="gifSpeed" min="25" max="400" value="100"><i class="tick" style="left:calc(7px + (100% - 14px)*.20)"></i></span></label>
-      <label class="sl">fps <span class="srange"><input type="range" id="gifFps" min="5" max="60" value="60"></span><input type="number" id="gifFpsNum" class="numin" min="5" max="60" value="60"></label>
+      <label class="sl">fps <span class="srange"><input type="range" id="gifFps" min="5" max="60" value="60"><i class="tick" style="left:calc(7px + (100% - 14px)*0.4545)"></i></span><input type="number" id="gifFpsNum" class="numin" min="5" max="60" value="60"></label>
       <label class="sl" title="freeze on the current frame (no animation)"><input type="checkbox" id="gifStatic"> static</label>
       <label class="sl">brightness <span class="srange"><input type="range" id="gifBri" min="10" max="100" value="100"></span></label>
       <label class="sl">map
@@ -274,8 +274,9 @@ function renderGradient(L,now){
     if(!c){ out[o]=out[o+1]=out[o+2]=0; continue; }
     // project key centre (0..1) onto the axis, recentre to 0..1, add scroll phase
     let t=(c[0]-0.5)*ux+(c[1]-0.5)*uy+0.5+s.phase;
-    t=t-Math.floor(t);   // wrap so scroll is seamless
-    out[o]=ar+(r2-ar)*t|0; out[o+1]=ag+(g2-ag)*t|0; out[o+2]=ab+(b2-ab)*t|0; }
+    t=t-Math.floor(t);
+    const tt=1-Math.abs(1-2*t);   // triangle (A→B→A) so the scrolling gradient loops with no hard seam
+    out[o]=ar+(r2-ar)*tt|0; out[o+1]=ag+(g2-ag)*tt|0; out[o+2]=ab+(b2-ab)*tt|0; }
 }
 function renderMedia(L,now){ L.rgb.fill(0); }   // Stage 1 placeholder — GIF engine ported into layers in Stage 2
 
@@ -602,6 +603,7 @@ function enhanceSlider(id,def,fmt){
   host.appendChild(val); host.appendChild(rb);
 }
 [['gifZoom',100,v=>v+'%'],['gifRot',0,v=>v+'°'],['gifSat',170,v=>v+'%'],['gifContrast',100,v=>v+'%'],['gifGamma',180,v=>(v/100).toFixed(2)],['gifSpeed',100,v=>(v/100).toFixed(1)+'×'],['gifFps',60,v=>v+'fps'],['gifBri',100,v=>v+'%']].forEach(a=>enhanceSlider(a[0],a[1],a[2]));
+document.getElementById('gifFps').addEventListener('input',e=>{ snap(e.target,30,3); const n=document.getElementById('gifFpsNum'); if(n) n.value=e.target.value; });   // snap detent at 30fps
 // gifFps range <-> number input, synced (min 5 max 60); both drive fpsCap()
 (function(){ const fps=document.getElementById('gifFps'), fn=document.getElementById('gifFpsNum');
   const set=v=>{ v=Math.max(5,Math.min(60,Math.round(v||5))); fps.value=v; fn.value=v; };
@@ -660,7 +662,7 @@ function buildLayerCards(){
         '<input type="checkbox" class="le"'+(L.enabled?' checked':'')+' title="enable layer">'+
         '<input type="text" class="ln" value="'+L.name.replace(/"/g,'&quot;')+'">'+
         '<select class="lt">'+opt(TYPES,L.type)+'</select>'+
-        '<span class="lfield">opacity <input type="range" class="lo" min="0" max="100" value="'+Math.round(L.opacity*100)+'"><span class="lv lov">'+Math.round(L.opacity*100)+'%</span></span>'+
+        '<span class="lfield">opacity <input type="range" class="lo" min="0" max="100" value="'+Math.round(L.opacity*100)+'"><input type="number" class="numin lon" min="0" max="100" value="'+Math.round(L.opacity*100)+'"></span>'+
         '<select class="lbl">'+opt(BLENDS,L.blend)+'</select>'+
         '<span class="lfield">fps <input type="range" class="lf" min="1" max="60" value="'+L.fps+'"><input type="number" class="numin lfn" min="1" max="60" value="'+L.fps+'"></span>'+
       '</div>'+
@@ -670,7 +672,10 @@ function buildLayerCards(){
     card.querySelector('.le').addEventListener('change',e=>{ L.enabled=e.target.checked; card.classList.toggle('off',!L.enabled); });
     card.querySelector('.ln').addEventListener('input',e=>{ L.name=e.target.value; });
     card.querySelector('.lt').addEventListener('change',e=>{ L.type=e.target.value; ensureSettings(L); buildLayerBody(card,L); });
-    card.querySelector('.lo').addEventListener('input',e=>{ L.opacity=(+e.target.value)/100; card.querySelector('.lov').textContent=e.target.value+'%'; });
+    const lo=card.querySelector('.lo'), lon=card.querySelector('.lon');
+    const setOpa=v=>{ v=Math.max(0,Math.min(100,Math.round(v||0))); L.opacity=v/100; lo.value=v; lon.value=v; };
+    lo.addEventListener('input',e=>setOpa(+e.target.value));
+    lon.addEventListener('input',e=>setOpa(+e.target.value));
     card.querySelector('.lbl').addEventListener('change',e=>{ L.blend=e.target.value; });
     // fps: range <-> number input, synced bidirectionally (min 1 max 60)
     const lf=card.querySelector('.lf'), lfn=card.querySelector('.lfn');
