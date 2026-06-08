@@ -33,7 +33,16 @@ Device ACKs with `55 34 …` echoing the bytes = success.
 The clock is a **built-in firmware screen** (physically: FN+knob press → scroll right 1–2 → click to
 select). `0x34` only keeps that screen's time accurate; it does **not** overlay the clock on the GIF.
 
-## Key architectural point: two interfaces
+## Implementation note (2026-06-07, as built)
+
+The "two interfaces" assumption below turned out to be unnecessary: the existing `switchSlot()`
+already sends `cmd 0x51` successfully on the **screen interface** (the big-report one), so control
+commands are accepted there. The clock `0x34` is therefore sent on the same screen interface
+(`reportId`, `reportLen`-byte packet) as `switchSlot`, with no second interface opened. If hardware
+testing shows no `55 34` ACK, the fallback (open the `0xFF68` control interface) is logged as a hint.
+Part B's probe was already present as the `switchSlot` control — so only Part A (the time-sync) was new.
+
+## Key architectural point: two interfaces (superseded — see implementation note above)
 
 `th108-screen.html` currently binds only the **screen interface** (the one with the ~4104-byte output
 report) for GIF uploads (`cmd 0x50`). The clock (`0x34`) and slot-switch (`0x51`) are 64-byte control

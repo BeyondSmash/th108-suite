@@ -121,7 +121,13 @@
     <b style="margin-right:8px">Recover / slots:</b>
     <label>slot</label><input id="slot" type="number" value="0" min="0" max="7" style="width:48px" />
     <button id="switchSlot" disabled>Switch to built-in slot (0x51)</button>
-    <span class="sub">Un-sticks a frozen screen without replugging — and it's the cycle/slideshow primitive.</span>
+    <span class="sub">Un-sticks a frozen screen — also the screen-switch probe: step the slot # to find the built-in clock screen.</span>
+  </div>
+  <div class="row">
+    <b style="margin-right:8px">Clock:</b>
+    <button id="syncClock" disabled>Sync clock to PC time (0x34)</button>
+    <span id="clockNow" class="sub" style="font-variant-numeric:tabular-nums"></span>
+    <span class="sub">— sets the keyboard's built-in clock; view it with FN+knob → scroll right → click.</span>
   </div>
 
   <div class="row"><button id="copyReport">📋 Copy last upload report</button>
@@ -174,6 +180,7 @@ async function connect(){
     if(reportLen<4096) log('⚠ that report looks too small — the screen channel may be a different interface. Pick another entry in the chooser.', 'err');
     document.getElementById('upload').disabled=false;
     document.getElementById('switchSlot').disabled=false;
+    document.getElementById('syncClock').disabled=false;
   }catch(e){ setStatus('connect failed: '+e.message,'err'); log('connect error: '+e.message,'err'); }
 }
 
@@ -617,6 +624,39 @@ async function switchSlot(idx){
 }
 document.getElementById('switchSlot').addEventListener('click', ()=>switchSlot(+document.getElementById('slot').value));
 
+// ---- clock: set the keyboard's built-in clock to PC time (cmd 0x34, captured from the official "Time Correction") ----
+// Sent on the screen interface like switchSlot (0x51) — control cmds are accepted there. If no ACK comes,
+// 0x34 may instead need the 0xFF68 control interface (the log hint below says so).
+function buildTimePkt(d){
+  const pkt=new Uint8Array(reportLen||4104);
+  pkt[0]=0xAA; pkt[1]=0x34; pkt[2]=0x38; pkt[6]=0x01;                       // prefix, cmd=set-time, payloadLen=56, isLast=1
+  pkt[8]=0x5A; pkt[9]=0x01; pkt[10]=0x5A;                                   // fixed preamble
+  pkt[11]=(d.getFullYear()-2000)&0xFF; pkt[12]=d.getMonth()+1; pkt[13]=d.getDate();
+  pkt[14]=d.getHours(); pkt[15]=d.getMinutes(); pkt[16]=d.getSeconds();     // plain-binary y/m/d h:m:s
+  return pkt;
+}
+// send a control packet and resolve on its 0x55 <cmd> ACK (one-shot listener; clock/probe never run during an upload)
+function sendAwaitAck(pkt, ackCmd, ms=3000){
+  return new Promise((resolve,reject)=>{
+    let done=false;
+    const on=e=>{ const b=new Uint8Array(e.data.buffer); if(b[0]===0x55 && b[1]===ackCmd && !done){ done=true; cleanup(); resolve(b); } };
+    function cleanup(){ clearTimeout(to); device.removeEventListener('inputreport', on); }
+    const to=setTimeout(()=>{ if(!done){ done=true; cleanup(); reject(new Error('ACK timeout')); } }, ms);
+    device.addEventListener('inputreport', on);
+    device.sendReport(reportId, pkt).catch(err=>{ if(!done){ done=true; cleanup(); reject(err); } });
+  });
+}
+async function syncClock(){
+  if(!device){ return; }
+  if(uploading){ log('⚠ wait for the upload to finish before syncing the clock.','err'); return; }
+  const d=new Date(), ts=d.toLocaleString();
+  log('clock → sending '+hex(buildTimePkt(d).slice(0,17))+'… ('+ts+')','dim');
+  try{ await sendAwaitAck(buildTimePkt(d), 0x34); log('✓ clock synced to '+ts+' — view it with FN+knob → scroll right → click.','ok'); }
+  catch(e){ log('✗ clock sync: '+e.message+(/timeout/.test(e.message)?' (no 55 34 ACK — 0x34 may need the 0xFF68 control interface)':''),'err'); }
+}
+document.getElementById('syncClock').addEventListener('click', syncClock);
+setInterval(()=>{ const e=document.getElementById('clockNow'); if(e) e.textContent='PC time: '+new Date().toLocaleTimeString(); }, 1000);
+
 document.getElementById('connect').addEventListener('click', connect);
 // after a replug the keyboard comes back as a NEW HID device — the old handle is dead, so detect it and force a reconnect
 navigator.hid.addEventListener('disconnect', e=>{
@@ -626,6 +666,7 @@ navigator.hid.addEventListener('disconnect', e=>{
     log('⚠ keyboard disconnected — click "1 · Connect screen interface" again before uploading.','err');
     document.getElementById('upload').disabled=true;
     document.getElementById('switchSlot').disabled=true;
+    document.getElementById('syncClock').disabled=true;
   }
 });
 document.getElementById('upload').addEventListener('click', upload);
