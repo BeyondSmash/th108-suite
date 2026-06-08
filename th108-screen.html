@@ -674,7 +674,8 @@ function buildTimePkt(d, len){
   pkt[0]=0xAA; pkt[1]=0x34; pkt[2]=0x38; pkt[6]=0x01;                       // prefix, cmd=set-time, payloadLen=56, isLast=1
   pkt[8]=0x5A; pkt[9]=0x01; pkt[10]=0x5A;                                   // fixed preamble
   pkt[11]=(d.getFullYear()-2000)&0xFF; pkt[12]=d.getMonth()+1; pkt[13]=d.getDate();
-  pkt[14]=d.getHours(); pkt[15]=d.getMinutes(); pkt[16]=d.getSeconds();     // plain-binary y/m/d h:m:s (24h)
+  pkt[14]=d.getHours(); pkt[15]=d.getMinutes(); pkt[16]=d.getSeconds();     // plain-binary y/m/d h:m:s (always 24h — no 12h flag exists in the protocol)
+  pkt[17]=d.getDay();                                                       // day-of-week 0=Sun..6=Sat (official tool sends this as d[9])
   return pkt;
 }
 async function syncClock(){
