@@ -89,6 +89,8 @@
       <label class="sl">contrast <span class="srange"><input type="range" id="gifContrast" min="50" max="250" value="100"><i class="tick" style="left:calc(7px + (100% - 14px)*.25)"></i></span></label>
       <label class="sl">gamma <span class="srange"><input type="range" id="gifGamma" min="100" max="300" value="180"><i class="tick" style="left:calc(7px + (100% - 14px)*.40)"></i></span></label>
       <label class="sl">speed <span class="srange"><input type="range" id="gifSpeed" min="25" max="400" value="100"><i class="tick" style="left:calc(7px + (100% - 14px)*.20)"></i></span></label>
+      <label class="sl">fps <span class="srange"><input type="range" id="gifFps" min="5" max="60" value="60"></span></label>
+      <label class="sl" title="freeze on the current frame (no animation)"><input type="checkbox" id="gifStatic"> static</label>
       <label class="sl">brightness <span class="srange"><input type="range" id="gifBri" min="10" max="100" value="100"></span></label>
       <label class="sl">map
         <select id="gifMap" style="font:inherit;background:#0d1117;color:#e6edf3;border:1px solid #30363d;border-radius:6px;padding:2px 4px">
@@ -187,7 +189,8 @@ async function connect(){
 }
 
 // ===== effect loop =====
-let running=false, fg=new Float32Array(256), lastT=0, t0=0, inFlight=false;
+let running=false, fg=new Float32Array(256), lastT=0, t0=0, inFlight=false, lastFrameT=0;
+function fpsCap(){ return +document.getElementById('gifFps').value || 60; }   // output FPS cap (both effect + GIF) — lower = less compute
 
 function hexToRgb(h){ return [parseInt(h.substr(1,2),16),parseInt(h.substr(3,2),16),parseInt(h.substr(5,2),16)]; }
 const P={ get period(){return +period.value;}, get bgMin(){return +bgMin.value/100;}, get bgMax(){return +bgMax.value/100;},
@@ -215,9 +218,10 @@ function buildEffectFrame(now){
 
 async function loop(){
   if(!running) return;
-  if(!inFlight){
-    inFlight=true;
-    await sendFrame(buildEffectFrame(performance.now()));
+  const now=performance.now();
+  if(!inFlight && now-lastFrameT>=1000/fpsCap()){          // FPS cap → fewer frame builds + HID sends
+    lastFrameT=now; inFlight=true;
+    await sendFrame(buildEffectFrame(now));
     inFlight=false;
   }
   if(running) requestAnimationFrame(loop);
@@ -420,9 +424,9 @@ async function loadSequence(files){                    // a folder/selection of 
 }
 async function gifTick(){
   if(!gifPlaying||!gifFrames.length) return;
-  const fr=gifFrames[gifIdx]; let delay=Math.max(16, (fr.delayMs|0)/gifSpeed());
+  const fr=gifFrames[gifIdx]; let delay=Math.max(1000/fpsCap(), (fr.delayMs|0)/gifSpeed());
   if(!inFlight){ inFlight=true; const ok=await sendFrame(gifFlat(fr.rgb)); inFlight=false;
-    if(ok){ if(!document.hidden){ drawKb(fr.rgb); drawSrc(); } gifIdx=(gifIdx+1)%gifFrames.length; } }   // skip canvas work when tab hidden
+    if(ok){ if(!document.hidden){ drawKb(fr.rgb); drawSrc(); } if(!document.getElementById('gifStatic').checked) gifIdx=(gifIdx+1)%gifFrames.length; } }   // skip canvas when hidden; hold frame when static
   else delay=20;                                            // device busy — retry soon without advancing
   if(gifPlaying){ if(tickW) tickW.postMessage({delay}); else setTimeout(gifTick, delay); }   // worker timer survives background-tab throttling
 }
