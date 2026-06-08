@@ -47,7 +47,7 @@
   .lhead .lfield input[type=range]{ width:90px; }
   .lhead .lfield .lv{ font-family:ui-monospace,monospace; color:#58a6ff; min-width:34px; text-align:right; }
   .lbody{ margin-top:10px; padding-top:8px; border-top:1px solid #21262d; }
-  .lbody .ctl{ grid-template-columns:140px 1fr 64px; }
+  .lbody .ctl{ grid-template-columns:84px minmax(30px,1fr) auto; gap:7px 8px; }
   .lbody .ph{ color:#8b949e; font-size:13px; }
   #workspace{ display:flex; gap:16px; align-items:flex-start; flex-wrap:wrap; }
   .col{ flex:1 1 0; min-width:430px; }
@@ -917,7 +917,7 @@ let lcardDragging=null;
     const order=[...host.querySelectorAll('.lcard')].map(c=>layers[+c.dataset.n]);
     layers.length=0; for(let i=order.length-1;i>=0;i--) layers.push(order[i]);   // DOM top→bottom reversed = bottom→top array
     buildLayerCards();                                  // re-render so labels + dataset.n update
-    saveLayerOrder();
+    saveLayerOrder(); saveLayers();
     if(running){ const now=performance.now(); for(const L of layers){ renderLayer(L,now); L.lastTick=now; } }
   });
 })();
@@ -929,6 +929,15 @@ function lcardAfter(host,y){
   return closest;
 }
 function saveLayerOrder(){ try{ localStorage.setItem('th108_layerOrder', JSON.stringify(layers.map(L=>L.type+':'+L.name))); }catch(_){ } }
+// ----- persist full layer state (settings survive page refresh) -----
+let _slsT=0;
+function saveLayers(){ try{ localStorage.setItem('th108_layers', JSON.stringify(layers.map(L=>({name:L.name,enabled:L.enabled,type:L.type,opacity:L.opacity,blend:L.blend,fps:L.fps,settings:L.settings})))); }catch(_){ } }
+function scheduleSaveLayers(){ clearTimeout(_slsT); _slsT=setTimeout(saveLayers,400); }
+function restoreLayers(){ try{ const a=JSON.parse(localStorage.getItem('th108_layers')||'null'); if(!Array.isArray(a)) return;
+  for(let i=0;i<layers.length&&i<a.length;i++){ const o=a[i]; if(!o) continue; const L=layers[i];
+    if(o.name!=null)L.name=o.name; L.enabled=!!o.enabled; if(o.type)L.type=o.type; if(o.opacity!=null)L.opacity=o.opacity; if(o.blend)L.blend=o.blend; if(o.fps)L.fps=o.fps;
+    if(o.settings&&typeof o.settings==='object')L.settings=o.settings; }
+}catch(_){ } }
 // ensure a layer's settings object has the fields its current type needs (filling defaults on type switch)
 function ensureSettings(L){
   const s=L.settings, def={ color:'#00ffff', period:2600, bgMin:12, bgMax:55, fade:380,
@@ -1020,7 +1029,7 @@ function buildLayerBody(card,L){
     const popt=pats.map(p=>'<option'+(p===s.pattern?' selected':'')+'>'+p+'</option>').join('');
     body.innerHTML='<div class="ctl">'+
       row('Pattern','<select class="s-pat">'+popt+'</select><span></span>')+
-      row('Color','<input type="color" class="s-color" value="'+s.color+'"><span></span>')+
+      row('Color 1','<input type="color" class="s-color" value="'+s.color+'"><span></span>')+
       row('Color 2','<input type="color" class="s-color2" value="'+s.color2+'"><span></span>')+
       row('Speed','<input type="range" class="s-speed" min="0" max="100" value="'+s.speed+'"><span class="val s-speedV"></span>')+
       row('Scale','<input type="range" class="s-scale" min="0" max="100" value="'+s.scale+'"><span class="val s-scaleV"></span>')+
@@ -1070,8 +1079,11 @@ function buildAdjustBlock(body,L){
   });
   body.querySelector('.a-frozen').addEventListener('change',e=>{ s.frozen=e.target.checked; });
 }
-layers.forEach(ensureSettings);   // backfill common adjust fields onto the default layers too
+restoreLayers();                  // bring back saved layer settings from a previous session
+layers.forEach(ensureSettings);   // backfill any missing fields
 buildLayerCards();
+document.getElementById('layersPanel').addEventListener('input', scheduleSaveLayers);    // persist edits (debounced)
+document.getElementById('layersPanel').addEventListener('change', scheduleSaveLayers);
 
 // ===== Edit-layout mode: drag .block panels between columns (persisted) =====
 const LAYOUT_KEY='th108_layout';
