@@ -227,6 +227,8 @@ async function stop(){
 // ===== GIF -> per-key lighting: physical-layout sampling + drag/zoom positioning, stream via 0x32, loop =====
 const MAXDIM=340;                                    // cap decoded frame size (we only need ~104 samples) — keeps memory/CPU low
 let gifFrames=[], gifPlaying=false, gifIdx=0;        // frame = {img:ImageData, w, h, delayMs, rgb:Uint8Array}
+// background tabs throttle main-thread setTimeout to ~1fps; a Web Worker timer keeps playback at full rate when unfocused
+const tickW=(()=>{ try{ return new Worker(URL.createObjectURL(new Blob(['let t;onmessage=e=>{if(e.data.stop){clearTimeout(t);return;}clearTimeout(t);t=setTimeout(()=>postMessage(1),e.data.delay);};'],{type:'text/javascript'}))); }catch(_){ return null; } })();
 let czoom=1, cpanX=0, cpanY=0, srcTmp=null;          // GIF position transform (source-pixel pan + zoom)
 function gifBri(){ return (+document.getElementById('gifBri').value)/100; }
 function gifSpeed(){ return (+document.getElementById('gifSpeed').value)/100; }      // playback speed multiplier
@@ -368,10 +370,11 @@ async function gifTick(){
   if(!gifPlaying||!gifFrames.length) return;
   const fr=gifFrames[gifIdx]; let delay=Math.max(16, (fr.delayMs|0)/gifSpeed());
   if(!inFlight){ inFlight=true; const ok=await sendFrame(gifFlat(fr.rgb)); inFlight=false;
-    if(ok){ drawKb(fr.rgb); drawSrc(); gifIdx=(gifIdx+1)%gifFrames.length; } }
+    if(ok){ if(!document.hidden){ drawKb(fr.rgb); drawSrc(); } gifIdx=(gifIdx+1)%gifFrames.length; } }   // skip canvas work when tab hidden
   else delay=20;                                            // device busy — retry soon without advancing
-  if(gifPlaying) setTimeout(gifTick, delay);
+  if(gifPlaying){ if(tickW) tickW.postMessage({delay}); else setTimeout(gifTick, delay); }   // worker timer survives background-tab throttling
 }
+if(tickW) tickW.onmessage=gifTick;
 function gifPlay(){
   if(!device||!gifFrames.length||gifPlaying) return;
   if(running) stop();                                       // GIF mode replaces the reactive pulse
@@ -383,6 +386,7 @@ function gifPlay(){
 async function gifStopFn(){
   if(!gifPlaying) return;
   gifPlaying=false;
+  if(tickW) tickW.postMessage({stop:true});
   document.getElementById('gifPlay').disabled=!device; document.getElementById('gifStop').disabled=true;
   document.getElementById('start').disabled=!device;
   const off=[]; INDICES.forEach(i=>off.push(i,0,0,0)); await sendFrame(off);
