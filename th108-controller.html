@@ -590,7 +590,7 @@ function renderPattern(L,now){
       done=true;
     } else if(pat==='color-fountain'){
       // expanding DARK bands (absence of light) radiating from ~the home-row (K/L). Scale = band thickness+depth, Gap = spacing between rings
-      const cx=(s.cx!=null?s.cx:42)/100, cy=(s.cy!=null?s.cy:60)/100;   // ring centre (X/Y sliders; defaults ≈ K/L)
+      const cx=0.5+(s.cox!=null?s.cox:-8)/100, cy=0.5-(s.coy!=null?s.coy:-10)/100;   // centre = signed offset from board centre (X+ = right, Y+ = up); defaults ≈ K/L
       const dx=(nx-cx)*BOARDW, dy=(ny-cy)*BOARDH, dist=Math.sqrt(dx*dx+dy*dy)/13.6;   // PHYSICAL units → TRUE circular rings (normalized space made ~3.46:1 ellipses)
       const sp2=0.2+spd*0.6, w=0.02+scl*0.20, depth=0.45+scl*0.55, edge=0.05;
       const gapFrac=0.12+((s.gap!=null?s.gap:150)/100)*0.6, spacing=2*w+edge+gapFrac, nr=Math.max(1,Math.min(10,Math.ceil(1/spacing))); let ring=0;   // spacing = ring width + empty gap → the gap stays constant as Scale thickens the rings
@@ -1139,7 +1139,7 @@ function ensureSettings(L){
     Object.keys(rd).forEach(k=>{ if(s[k]===undefined)s[k]=rd[k]; });
     if(!Array.isArray(s.pal)) s.pal=rd.pal.slice(); }
   else if(L.type==='gradient'){ ['colorA','colorB','angle','scroll','phase'].forEach(k=>{ if(s[k]===undefined)s[k]=def[k]; }); }
-  else if(L.type==='pattern'){ const pd={ pattern:'rainbow', color:'#00ffff', color2:'#ff00ff', color3:'#00ff00', colMode:'rainbow', speed:50, scale:10, gap:150, cx:42, cy:60 };
+  else if(L.type==='pattern'){ const pd={ pattern:'rainbow', color:'#00ffff', color2:'#ff00ff', color3:'#00ff00', colMode:'rainbow', speed:50, scale:10, gap:150, cox:-8, coy:-10 };
     Object.keys(pd).forEach(k=>{ if(s[k]===undefined)s[k]=pd[k]; }); }
   // common per-layer adjust fields — backfilled for EVERY layer type
   const cd={ bri:100, sat:100, con:100, gam:100, rot:0, spd:100, frozen:false };
@@ -1245,11 +1245,11 @@ function buildLayerBody(card,L){
       row('Color 2','<input type="color" class="s-color2" value="'+s.color2+'"><span></span>')+
       row('Color 3','<input type="color" class="s-color3" value="'+(s.color3||'#00ff00')+'"><span></span>')+
       row('Speed','<span class="srange" style="width:100%"><input type="range" class="s-speed" min="0" max="100" value="'+s.speed+'"><i class="tick" style="left:calc(7px + (100% - 14px)*0.5)"></i></span><span class="val s-speedV"></span>')+
-      row('Scale','<span class="srange" style="width:100%"><input type="range" class="s-scale" min="0" max="100" value="'+s.scale+'"><i class="tick" style="left:calc(7px + (100% - 14px)*0.10)"></i></span><span class="val s-scaleV"></span>')+
+      row('Scale','<span class="srange" style="width:100%"><input type="range" class="s-scale" min="0" max="'+(s.pattern==='color-fountain'?20:100)+'" value="'+s.scale+'"><i class="tick" style="left:calc(7px + (100% - 14px)*'+(s.pattern==='color-fountain'?0.5:0.10)+')"></i></span><span class="val s-scaleV"></span>')+
       (s.pattern==='color-fountain' ? (
         row('Ring gap','<span class="srange" style="width:100%"><input type="range" class="s-gap" min="0" max="300" value="'+(s.gap!=null?s.gap:150)+'"><i class="tick" style="left:calc(7px + (100% - 14px)*0.5)"></i></span><span class="val s-gapV"></span>')+
-        row('Center X','<span class="srange" style="width:100%"><input type="range" class="s-cx" min="0" max="100" value="'+(s.cx!=null?s.cx:42)+'"></span><span class="val s-cxV"></span>')+
-        row('Center Y','<span class="srange" style="width:100%"><input type="range" class="s-cy" min="0" max="100" value="'+(s.cy!=null?s.cy:60)+'"></span><span class="val s-cyV"></span>')
+        row('Center X','<span class="srange" style="width:100%"><input type="range" class="s-cx" min="-50" max="50" value="'+(s.cox!=null?s.cox:-8)+'"><i class="tick" style="left:calc(7px + (100% - 14px)*0.5)"></i></span><span class="val s-cxV"></span>')+
+        row('Center Y','<span class="srange" style="width:100%"><input type="range" class="s-cy" min="-50" max="50" value="'+(s.coy!=null?s.coy:-10)+'"><i class="tick" style="left:calc(7px + (100% - 14px)*0.5)"></i></span><span class="val s-cyV"></span>')
       ) : '')+
     '</div>';
     const c=q=>body.querySelector(q);
@@ -1263,8 +1263,9 @@ function buildLayerBody(card,L){
     const scv=c('.s-scaleV'), upSc=()=>scv.textContent=s.scale+'%';
     c('.s-scale').addEventListener('input',e=>{ snap(e.target,10,4); s.scale=+e.target.value; upSc(); }); upSc();
     const gp=c('.s-gap'); if(gp){ const gpv=c('.s-gapV'), upGp=()=>{ gpv.textContent=(s.gap!=null?s.gap:150)+'%'; }; gp.addEventListener('input',e=>{ snap(e.target,150,8); s.gap=+e.target.value; upGp(); }); upGp();
-      const cxi=c('.s-cx'), cxv=c('.s-cxV'), upCx=()=>{ cxv.textContent=(s.cx!=null?s.cx:42)+'%'; }; cxi.addEventListener('input',e=>{ s.cx=+e.target.value; upCx(); }); upCx();
-      const cyi=c('.s-cy'), cyv=c('.s-cyV'), upCy=()=>{ cyv.textContent=(s.cy!=null?s.cy:60)+'%'; }; cyi.addEventListener('input',e=>{ s.cy=+e.target.value; upCy(); }); upCy(); }
+      const sgn=v=>(v>0?'+':'')+v;
+      const cxi=c('.s-cx'), cxv=c('.s-cxV'), upCx=()=>{ cxv.textContent=sgn(s.cox!=null?s.cox:-8); }; cxi.addEventListener('input',e=>{ snap(e.target,0,3); s.cox=+e.target.value; upCx(); }); upCx();
+      const cyi=c('.s-cy'), cyv=c('.s-cyV'), upCy=()=>{ cyv.textContent=sgn(s.coy!=null?s.coy:-10); }; cyi.addEventListener('input',e=>{ snap(e.target,0,3); s.coy=+e.target.value; upCy(); }); upCy(); }
   } else {   // media — Stage 1 placeholder
     body.innerHTML='<div class="ph">Media layer — port of the GIF engine lands in Stage 2. (Use the GIF → keyboard panel below for now.)</div>';
   }
@@ -1276,7 +1277,7 @@ function buildAdjustBlock(body,L){
   const s=L.settings;
   // [label, rawMin, rawMax, decimals, unit, default] — decimals>0 → number shows raw/100 (gamma 1.00, speed 1.0×); slider stays raw
   const CFG={ bri:['Brightness',0,200,0,'%',100], sat:['Saturation',0,300,0,'%',100], con:['Contrast',50,250,0,'%',100],
-              gam:['Gamma',50,300,2,'',100], rot:['Rotate',0,360,0,'°',0], spd:['Speed',0,400,1,'×',100] };
+              gam:['Gamma',50,300,2,'',100], rot:['Rotate',0,360,0,'°',0] };   // (per-layer "Speed" removed — each layer type has its own speed/period/scroll)
   const disp=(key,raw)=>{ const d=CFG[key][3]; return d?(raw/100).toFixed(d):String(raw); };
   const ctl=key=>{ const c=CFG[key], dec=c[3], frac=(c[5]-c[1])/(c[2]-c[1]);   // tick at the default value
     const nMin=dec?c[1]/100:c[1], nMax=dec?c[2]/100:c[2], nStep=dec?1/Math.pow(10,dec):1;
@@ -1286,7 +1287,7 @@ function buildAdjustBlock(body,L){
   const adj=document.createElement('div');
   adj.innerHTML=
     '<div class="lbody" style="margin-top:8px"><div class="ph" style="margin-bottom:6px">Adjust</div><div class="ctl">'+
-      ctl('bri')+ctl('sat')+ctl('con')+ctl('gam')+ctl('rot')+ctl('spd')+
+      ctl('bri')+ctl('sat')+ctl('con')+ctl('gam')+ctl('rot')+
       '<label>Static</label><label class="sl" style="margin:0"><input type="checkbox" class="a-frozen"'+(s.frozen?' checked':'')+'> freeze animation</label><span></span>'+
     '</div></div>';
   body.appendChild(adj.firstChild);
