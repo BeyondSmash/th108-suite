@@ -93,6 +93,7 @@
     <button id="importCfg" title="Load a layer setup from a JSON file (e.g. moved from the file:// page)">⬆ Import</button>
     <input type="file" id="importFile" accept="application/json,.json" style="display:none">
     <button id="lcdBtn" title="Open the LCD screen uploader">🖵 LCD screen</button>
+    <button id="resetKbBtn" title="Factory-reset the keyboard (recovers a wedged board; clears onboard config, NOT your host layers)">⟳ Reset keyboard</button>
     <span id="editHint" class="hint" style="display:none">drag a panel by its dashed outline to move it between columns / reorder</span>
   </div>
 
@@ -1105,6 +1106,18 @@ window.__lcdHost = {
   pauseLighting(){ this._was = running; if(running){ running=false; if(layerW) layerW.postMessage({stop:true}); } },
   resumeLighting(){ if(this._was && device && !running) start(); this._was=false; }
 };
+
+// Factory-reset the keyboard (cmd 0x0F 0xFF, captured from the official driver's "Reset all settings").
+// Recovery hatch if an upload ever wedges the board — works even when typing is dead (vendor iface still enumerates).
+document.getElementById('resetKbBtn').addEventListener('click', async ()=>{
+  if(!device){ log('connect first','err'); return; }
+  if(!confirm('Reset ALL keyboard settings to factory?\n\nClears the keyboard\'s onboard config/keymap (this is the recovery for a wedged board). Your host-side layers/GIF are NOT affected.')) return;
+  try{
+    const pkt=new Uint8Array(packLen); pkt[0]=0xAA; pkt[1]=0x0F; pkt[2]=0xFF;   // AA 0F FF = official buildPkt_ResettingAll
+    await device.sendReport(reportId, pkt);
+    log('✓ sent Reset all settings (AA 0F FF) — keyboard factory-reset','ok');
+  }catch(e){ log('reset failed: '+e.message,'err'); }
+});
 </script>
 </body>
 </html>
