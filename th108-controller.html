@@ -228,6 +228,7 @@
 <script src="th108-engine.js"></script>
 <script src="th108-lcd.js"></script>
 <script src="th108-hid.js"></script>
+<script src="th108-daemon-client.js"></script>
 <script>
 // shared engine (board map, renderers, compositor, state) — pull the bits we reference by short name
 const {KEYMAP, INDICES, NLED, BOARDW, BOARDH, hexToRgb} = TH108Engine;
@@ -258,15 +259,15 @@ const HID=TH108Hid.create({
   // bind: the user can sit in the device picker >watchdog, and the old code didn't beat until bound —
   // the daemon re-grabbed mid-pick and fought the page. (If the connect ends with no device, the click
   // handler / boot path stops the beats and POSTs /resume so the daemon isn't left orphaned.)
-  beforeConnect:async()=>{ await daemonPing(); if(DAEMON.present){ await daemonYield(); daemonHeartbeatStart(); } },
-  beforeAutoReconnect:async()=>{ if(DAEMON.present){ await daemonYield(); daemonHeartbeatStart(); } },   // page-load path: daemonPing() already ran
+  beforeConnect:async()=>{ await DC.ping(); if(DC.present){ await DC.yieldDevice(); DC.heartbeatStart(); } },
+  beforeAutoReconnect:async()=>{ if(DC.present){ await DC.yieldDevice(); DC.heartbeatStart(); } },   // page-load path: DC.ping() already ran
   onBound:devs=>{
     document.getElementById('start').disabled=false;
     if(gifFrames.length) document.getElementById('gifPlay').disabled=false;
     TH108LCD.setDevices(devs);
   },
   onConnected:()=>{   // tell the daemon's watchdog we're alive & holding the device
-    daemonHeartbeatStart();
+    DC.heartbeatStart();
     // a replug revokes the WebHID grant (no serial number on the TH108), so recovery is a manual Connect click —
     // honor the pending resume intent here too, making replug recovery ONE click instead of Connect+Start
     if(_wasRunning){ _wasRunning=false; start(); log('layers resumed','ok'); }
@@ -278,59 +279,18 @@ const HID=TH108Hid.create({
     document.getElementById('start').disabled=true; document.getElementById('stop').disabled=true;
   },
   onReconnected:()=>{
-    daemonHeartbeatStart();
+    DC.heartbeatStart();
     if(_wasRunning){ _wasRunning=false; start(); log('keyboard reconnected — layers resumed','ok'); }
     else log('keyboard reconnected','ok');
   }
 });
-// ===== daemon auto-yield handshake =====
+// ===== daemon auto-yield handshake — extracted to th108-daemon-client.js =====
 // When the page is served by the background daemon (http://localhost:8123) the daemon OWNS the HID device.
 // Before opening WebHID we must ask it to release; while we hold the device we heartbeat + push config; on close we resume.
-// If no daemon is present (/status fails) every helper is a no-op and the page behaves exactly as before (direct WebHID).
-const DAEMON = { present:false, hb:null };
-async function daemonPing(){ if(!/^https?:$/.test(location.protocol)){ DAEMON.present=false; return; }   // file:// page → no daemon server to talk to; skip (avoids a console CORS error)
-  try{ const r=await fetch('/status',{cache:'no-store'}); DAEMON.present = r.ok; }catch(_){ DAEMON.present=false; } }
-async function daemonYield(){ if(DAEMON.present){ try{ await fetch('/yield',{method:'POST'}); }catch(_){} } }
-// Heartbeat MUST run on a Web Worker timer: hidden tabs throttle main-thread intervals to once a MINUTE
-// (Chrome intensive throttling after ~5 min) — the old setInterval beat starved the daemon's watchdog,
-// which then "resumed" into a page that was alive and streaming → two writers → wedged board.
-const hbW=(()=>{ try{ return new Worker(URL.createObjectURL(new Blob(['let t=null;onmessage=e=>{clearInterval(t);t=null;if(e.data&&e.data.ms)t=setInterval(()=>postMessage(1),e.data.ms);};'],{type:'text/javascript'}))); }catch(_){ return null; } })();
-const daemonBeat=()=>{ if(navigator.sendBeacon) navigator.sendBeacon('/heartbeat'); else fetch('/heartbeat',{method:'POST'}); };
-if(hbW) hbW.onmessage=daemonBeat;
-function daemonHeartbeatStart(){ if(!DAEMON.present || DAEMON.hb) return;
-  daemonBeat();                                                       // first beat NOW — the yield→bind gap (device picker open) must be covered too
-  if(hbW){ DAEMON.hb=true; hbW.postMessage({ms:3000}); } else DAEMON.hb=setInterval(daemonBeat,3000); }
-function daemonHeartbeatStop(){ if(hbW) hbW.postMessage({}); if(DAEMON.hb && DAEMON.hb!==true) clearInterval(DAEMON.hb); DAEMON.hb=null; }
-function daemonPushConfig(){ if(DAEMON.present){ try{ fetch('/config',{method:'POST',headers:{'content-type':'application/json'},body:localStorage.getItem('th108_layers')||'[]'}); }catch(_){} } }
-function daemonResume(){ if(DAEMON.present){ if(navigator.sendBeacon) navigator.sendBeacon('/resume'); else fetch('/resume',{method:'POST',keepalive:true}); } }
-window.addEventListener('beforeunload', ()=>{ daemonHeartbeatStop(); daemonResume(); try{ TH108LCD.setDevices({}); }catch(_){ } });
-
-// ===== Background-daemon panel: status readout, auto-start toggle (HKCU Run key via the daemon), quit =====
-(function(){
-  const st=document.getElementById('dmnStatus'), auto=document.getElementById('dmnAuto'), quit=document.getElementById('dmnQuit');
-  let alive=false;
-  async function refresh(){
-    try{
-      const r=await fetch('/status',{cache:'no-store'}); if(!r.ok) throw 0;
-      const s=await r.json(); alive=true;
-      st.textContent='daemon: running · '+(s.paused?'yielded to this page':(s.deviceConnected?'driving the keyboard':'waiting for the keyboard'));
-      auto.disabled=false; quit.disabled=false;
-    }catch(_){ alive=false; st.textContent='daemon: not running — start it with setup.cmd (lighting then survives closing this tab)'; auto.disabled=true; quit.disabled=true; }
-  }
-  async function refreshAuto(){ if(!alive) return; try{ const r=await fetch('/autostart',{cache:'no-store'}); auto.checked=!!(await r.json()).enabled; }catch(_){ } }
-  auto.addEventListener('change',async()=>{
-    try{ await fetch('/autostart',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({on:auto.checked})});
-      log('daemon auto-start on login '+(auto.checked?'enabled':'disabled'),'ok'); }
-    catch(_){ log('auto-start toggle failed','err'); refreshAuto(); }
-  });
-  quit.addEventListener('click',async()=>{
-    if(!confirm('Quit the background daemon?\n\nAlways-on lighting and reactive-anywhere stop until setup.cmd or your next login starts it again. This page keeps working as-is.')) return;
-    try{ await fetch('/quit',{method:'POST'}); log('daemon quit','dim'); }catch(_){ }
-    setTimeout(refresh,600);
-  });
-  if(/^https?:$/.test(location.protocol)){ refresh().then(refreshAuto); setInterval(()=>refresh(),5000); }   // display-only poll; tab-throttling is fine
-  else { st.textContent='daemon: unavailable on file:// — open via http://localhost:8123'; auto.disabled=true; quit.disabled=true; }
-})();
+// If no daemon is present (/status fails) every DC call is a no-op and the page behaves exactly as before (direct WebHID).
+const DC = TH108DaemonClient.create({ log, getConfig: ()=>localStorage.getItem('th108_layers')||'[]' });
+window.addEventListener('beforeunload', ()=>{ DC.heartbeatStop(); DC.resume(); try{ TH108LCD.setDevices({}); }catch(_){ } });
+DC.mountPanel();   // Background-daemon panel: status readout, auto-start toggle (HKCU Run key via the daemon), quit
 
 // ===== layer compositor engine =====
 function fpsCap(){ return +document.getElementById('gifFps').value || 60; }   // global output FPS cap (shared with GIF) — lower = less compute
@@ -712,7 +672,7 @@ window.addEventListener('paste',e=>{
 });
 
 document.getElementById('connect').addEventListener('click',async()=>{ await HID.connect();
-  if(!HID.device && DAEMON.hb){ daemonHeartbeatStop(); daemonResume(); } });   // cancelled/failed pick after yielding → hand the device back
+  if(!HID.device && DC.beating){ DC.heartbeatStop(); DC.resume(); } });   // cancelled/failed pick after yielding → hand the device back
 document.getElementById('start').addEventListener('click',start);
 document.getElementById('stop').addEventListener('click',()=>{ _wasRunning=false; stop(); });   // a deliberate Stop also cancels any pending resume-on-reconnect
 
@@ -796,7 +756,7 @@ function saveLayerOrder(){ try{ localStorage.setItem('th108_layerOrder', JSON.st
 // ----- persist full layer state (settings survive page refresh) -----
 let _slsT=0;
 function saveLayers(){ try{ localStorage.setItem('th108_layers', JSON.stringify(state.layers.map(L=>({name:L.name,enabled:L.enabled,type:L.type,opacity:L.opacity,blend:L.blend,fps:L.fps,settings:L.settings})))); }catch(_){ } }
-function scheduleSaveLayers(){ clearTimeout(_slsT); _slsT=setTimeout(()=>{ saveLayers(); daemonPushConfig(); },400); }   // mirror the edit to the daemon's config.json (no-op if no daemon)
+function scheduleSaveLayers(){ clearTimeout(_slsT); _slsT=setTimeout(()=>{ saveLayers(); DC.pushConfig(); },400); }   // mirror the edit to the daemon's config.json (no-op if no daemon)
 function restoreLayers(){ try{ const a=JSON.parse(localStorage.getItem('th108_layers')||'null'); if(!Array.isArray(a)) return;
   for(let i=0;i<state.layers.length&&i<a.length;i++){ const o=a[i]; if(!o) continue; const L=state.layers[i];
     if(o.name!=null)L.name=o.name; L.enabled=!!o.enabled; if(o.type)L.type=o.type; if(o.opacity!=null)L.opacity=o.opacity; if(o.blend)L.blend=o.blend; if(o.fps)L.fps=Math.min(30,o.fps);   // clamp any pre-cap saved fps
@@ -1001,7 +961,7 @@ document.getElementById('importFile').addEventListener('change',async e=>{
     const arr=JSON.parse(await f.text());
     if(!Array.isArray(arr)) throw new Error('file is not a layer array');
     localStorage.setItem('th108_layers', JSON.stringify(arr));
-    daemonPushConfig();                                      // hand it straight to the daemon if one is serving this page
+    DC.pushConfig();                                         // hand it straight to the daemon if one is serving this page
     log('imported '+arr.length+' layers — reloading…','ok');
     location.reload();
   }catch(err){ alert('Import failed: '+(err&&err.message||err)); }
@@ -1044,8 +1004,8 @@ function restoreLayout(){
   (saved.colR||[]).forEach(bid=>{ const b=document.getElementById(bid); if(b) colR.appendChild(b); });
 }
 restoreLayout();
-daemonPing().then(async()=>{ await HID.autoReconnect();
-  if(!HID.device && DAEMON.hb){ daemonHeartbeatStop(); daemonResume(); } });   // learn if the daemon holds the device, THEN silently reconnect (yield first); failed re-bind → hand back
+DC.ping().then(async()=>{ await HID.autoReconnect();
+  if(!HID.device && DC.beating){ DC.heartbeatStop(); DC.resume(); } });   // learn if the daemon holds the device, THEN silently reconnect (yield first); failed re-bind → hand back
 // (sleep/wake + unplug/replug re-bind lives in th108-hid.js; this page's side is the onDisconnected/onReconnected callbacks up top)
 
 // ===== Onboard (firmware) effects: single 0x23 16-byte allledPack, persists on the keyboard =====
