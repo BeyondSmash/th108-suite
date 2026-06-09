@@ -1,5 +1,7 @@
 ' Launches the TH108 lighting daemon with no visible console window.
-Dim sh
+' Path-independent: resolves the daemon folder from this script's own location.
+Dim sh, fso
 Set sh = CreateObject("WScript.Shell")
-sh.CurrentDirectory = "path\to\th108-suite\th108-daemon"
+Set fso = CreateObject("Scripting.FileSystemObject")
+sh.CurrentDirectory = fso.GetParentFolderName(WScript.ScriptFullName)
 sh.Run "node daemon.js", 0, False
