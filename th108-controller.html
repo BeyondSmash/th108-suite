@@ -70,7 +70,7 @@
   .patbtn.sel{ background:#1f6feb; border-color:#1f6feb; color:#fff; }
   .lcdOverlay{position:fixed;inset:0;background:#0d1117;z-index:50;overflow:auto;padding:14px}
   .lcdOverlayBar{display:flex;align-items:center;gap:10px;margin-bottom:10px}
-  .lcdOverlayBar button{margin-left:auto}
+  .lcdOverlayBar button{margin-right:8px}
 </style>
 </head>
 <body>
@@ -209,7 +209,7 @@
   </div>
 
 <div id="lcdOverlay" class="lcdOverlay" style="display:none">
-  <div class="lcdOverlayBar"><b>LCD screen</b><span id="lcdDevNote" class="hint"></span><button id="lcdClose" title="Close (Esc)">✕</button></div>
+  <div class="lcdOverlayBar"><button id="lcdClose" title="Back (Esc)">← Back</button><b>LCD screen</b><span id="lcdDevNote" class="hint"></span></div>
   <div id="lcdBody"></div>
 </div>
 
@@ -1099,6 +1099,12 @@ function lcdHide(){ lcdOverlay.style.display='none'; TH108LCD.onHide(); }
 document.getElementById('lcdBtn').addEventListener('click', lcdShow);
 document.getElementById('lcdClose').addEventListener('click', lcdHide);
 document.addEventListener('keydown', e=>{ if(e.key==='Escape' && lcdOverlay.style.display==='block') lcdHide(); });
+// let the LCD module pause key-lighting during a flash upload, so the board is free for the 0x50 write (avoids ACK timeouts)
+window.__lcdHost = {
+  _was:false,
+  pauseLighting(){ this._was = running; if(running){ running=false; if(layerW) layerW.postMessage({stop:true}); } },
+  resumeLighting(){ if(this._was && device && !running) start(); this._was=false; }
+};
 </script>
 </body>
 </html>

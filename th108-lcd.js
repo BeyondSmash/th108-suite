@@ -37,12 +37,12 @@
   const clamp255 = x => x < 0 ? 0 : x > 255 ? 255 : x | 0;
   const cl01 = x => x < 0 ? 0 : x > 1 ? 1 : x;
 
-  function log(m, c) { // lightweight: append to the controller's #log if present, else console
-    const host = document.getElementById('log');
-    if (host) {
+  function log(m, c) {   // append to the LCD page's own log box (below the previews); fall back to the host #log / console
+    const box = (el && el.querySelector('#lcdLog')) || document.getElementById('log');
+    if (box) {
       const d = document.createElement('div'); if (c) d.className = c;
-      d.textContent = '[lcd ' + new Date().toISOString().substr(11, 12) + '] ' + m;
-      host.appendChild(d); host.scrollTop = host.scrollHeight;
+      d.textContent = '[' + new Date().toISOString().substr(11, 12) + '] ' + m;
+      box.appendChild(d); box.scrollTop = box.scrollHeight;
     } else console.log('[lcd]', m);
   }
 
@@ -58,6 +58,8 @@
     .lcd-tool button.go{ background:#238636; border-color:#238636; }
     .lcd-tool .row{ margin:12px 0; }
     .lcd-tool #lcdPreview,.lcd-tool #lcdPreviewActual{ image-rendering:pixelated; border:1px solid #30363d; width:320px; height:192px; background:#000; }
+    .lcd-tool .lcd-log{ width:646px; max-width:100%; height:130px; overflow:auto; background:#0d1117; border:1px solid #30363d; border-radius:6px; padding:6px 8px; font:11px/1.55 ui-monospace,monospace; color:#8b949e; white-space:pre-wrap; }
+    .lcd-tool .lcd-log .err{ color:#f85149; } .lcd-tool .lcd-log .ok{ color:#3fb950; } .lcd-tool .lcd-log .in{ color:#58a6ff; } .lcd-tool .lcd-log .dim{ color:#6e7681; }
     .lcd-tool label{ color:#8b949e; }
     .lcd-tool .sub,.lcd-tool .hint{ color:#8b949e; }
     .lcd-tool progress{ width:320px; }
@@ -125,9 +127,13 @@
       </div>
     </div>
     <div class="row" style="display:flex;gap:24px;align-items:flex-start;flex-wrap:wrap">
-      <div style="display:flex;gap:14px;flex-wrap:wrap">
-        <div><div class="sub" style="margin:0 0 4px">LCD preview — calibrated (what the screen shows)</div><canvas id="lcdPreview" width="160" height="96"></canvas></div>
-        <div><div class="sub" style="margin:0 0 4px">Actual — desktop colors (the true source)</div><canvas id="lcdPreviewActual" width="160" height="96"></canvas></div>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <div style="display:flex;gap:14px;flex-wrap:wrap">
+          <div><div class="sub" style="margin:0 0 4px">LCD preview — calibrated (what the screen shows)</div><canvas id="lcdPreview" width="160" height="96"></canvas></div>
+          <div><div class="sub" style="margin:0 0 4px">Actual — desktop colors (the true source)</div><canvas id="lcdPreviewActual" width="160" height="96"></canvas></div>
+        </div>
+        <div class="sub" style="margin:0">Log</div>
+        <div id="lcdLog" class="lcd-log"></div>
       </div>
       <div class="ctl" style="display:grid;grid-template-columns:auto 250px 60px 26px;gap:5px 8px;align-items:center">
         <div style="grid-column:1/5;display:flex;align-items:center;gap:8px;margin-bottom:2px">
@@ -497,6 +503,7 @@
     const upBtn = $('#lcdUpload'), fileInput = $('#lcdFile');
     upBtn.disabled = true; fileInput.disabled = true;
     stopPreview();
+    try { window.__lcdHost && window.__lcdHost.pauseLighting && window.__lcdHost.pauseLighting(); } catch (_) { }   // free the device — a flash upload can't run while key lighting streams 0x32
     showOverlay('Uploading to keyboard…', 0);
     const maxN = Math.max(1, +$('#lcdMaxFrames').value || 20);
     let up = sampleFrames(maxN);                            // evenly sample down to the frame cap (preserves whole animation)
@@ -541,11 +548,11 @@
         if (v === 0) { const t = new Uint8Array(4096); t.set(header, 0); t.set(n.slice(0, 3840), 256); data = t; }
         else { const a = 4096 * v - 256; data = n.slice(a, Math.min(a + 4096, n.length)); }
         const pkt = buildPktTFT(v, totalSize, data);
-        if (v === 0) log('first packet: ' + hex(pkt.slice(0, 12)) + '… (flash erase, up to 15s)', 'dim');
+        if (v === 0) log('first packet: ' + hex(pkt.slice(0, 12)) + '… (flash erase, up to 20s)', 'dim');
         let ok = false;
         for (let attempt = 0; attempt < 3 && !ok; attempt++) {
           D({ ev: 'send', chunk: v, attempt });
-          try { await sendOne(pkt, v === 0 ? 15000 : 5000); ok = true; D({ ev: 'ack', chunk: v }); }
+          try { await sendOne(pkt, v === 0 ? 20000 : 5000); ok = true; D({ ev: 'ack', chunk: v }); }
           catch (err) {
             D({ ev: 'retry', chunk: v, attempt, err: err.message });
             if (attempt === 2) { D({ ev: 'GIVEUP', chunk: v }); throw new Error(`chunk ${v} failed after 3 tries: ${err.message}`); }
@@ -574,6 +581,7 @@
       $('#lcdUpload').disabled = !scrDev;
       $('#lcdFile').disabled = false;
       tickPreview();   // resume the on-page preview animation
+      try { window.__lcdHost && window.__lcdHost.resumeLighting && window.__lcdHost.resumeLighting(); } catch (_) { }   // restore key lighting after the upload
     }
   }
 
