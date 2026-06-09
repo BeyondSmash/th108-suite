@@ -550,15 +550,15 @@
         const pkt = buildPktTFT(v, totalSize, data);
         if (v === 0) log('first packet: ' + hex(pkt.slice(0, 12)) + '… (flash erase, up to 20s)', 'dim');
         else if (v === S - 1) log('final chunk — keyboard committing + displaying the GIF (can take a while on big GIFs)…', 'dim');
-        let ok = false;
-        for (let attempt = 0; attempt < 3 && !ok; attempt++) {
-          D({ ev: 'send', chunk: v, attempt });
-          try { await sendOne(pkt, v === 0 ? 20000 : (v === S - 1 ? 30000 : 5000)); ok = true; D({ ev: 'ack', chunk: v }); }
-          catch (err) {
-            D({ ev: 'retry', chunk: v, attempt, err: err.message });
-            if (attempt === 2) { D({ ev: 'GIVEUP', chunk: v }); throw new Error(`chunk ${v} failed after 3 tries: ${err.message}`); }
-            log(`chunk ${v}: ${err.message} — resending (${attempt + 1}/2)…`, 'dim');
-          }
+        D({ ev: 'send', chunk: v });
+        // NEVER re-send a chunk. Re-sending while the firmware is mid flash-erase/commit corrupts adjacent
+        // flash (it wedged a board — recovered only via the official "Reset all settings"). The official driver
+        // is purely ACK-driven and never re-sends. So: one send, wait for the 0x55 0x41 ACK with a generous
+        // window, and on a real stall ABORT cleanly (no re-send). User power-cycles + retries the whole upload.
+        try { await sendOne(pkt, v === 0 ? 20000 : (v === S - 1 ? 30000 : 10000)); D({ ev: 'ack', chunk: v }); }
+        catch (err) {
+          D({ ev: 'GIVEUP', chunk: v, err: err.message });
+          throw new Error(`chunk ${v}: no ACK (${err.message}) — aborted WITHOUT re-sending (mid-write re-sends corrupt flash). Power-cycle the keyboard, then retry the whole upload.`);
         }
         if (v === 0) { D({ ev: 'settle' }); await new Promise(r => setTimeout(r, 250)); }  // let the flash erase fully settle before streaming
         const pct = Math.floor((v + 1) / S * 100);
