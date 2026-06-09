@@ -68,6 +68,9 @@
   .patbtn{ font:12px/1 inherit; background:#21262d; color:#c9d1d9; border:1px solid #30363d; border-radius:6px; padding:5px 8px; cursor:pointer; }
   .patbtn:hover{ border-color:#58a6ff; }
   .patbtn.sel{ background:#1f6feb; border-color:#1f6feb; color:#fff; }
+  .lcdOverlay{position:fixed;inset:0;background:#0d1117;z-index:50;overflow:auto;padding:14px}
+  .lcdOverlayBar{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+  .lcdOverlayBar button{margin-right:8px}
 </style>
 </head>
 <body>
@@ -89,6 +92,9 @@
     <button id="exportCfg" title="Download your layer setup as JSON (same format as the daemon's config.json)">⬇ Export</button>
     <button id="importCfg" title="Load a layer setup from a JSON file (e.g. moved from the file:// page)">⬆ Import</button>
     <input type="file" id="importFile" accept="application/json,.json" style="display:none">
+    <button id="lcdBtn" title="Open the LCD screen uploader">🖵 LCD screen</button>
+    <button id="resetKbBtn" title="Factory-reset the keyboard HARDWARE (recovers a wedged board; clears the keyboard's onboard config/keymap — NOT this page's settings)">⟳ Factory reset keyboard</button>
+    <button id="resetSiteBtn" title="Reset THIS page's settings (layers, per-pattern values, LCD calibration, layout) to defaults — keeps your media Library; does NOT touch the keyboard">↺ Reset all settings</button>
     <span id="editHint" class="hint" style="display:none">drag a panel by its dashed outline to move it between columns / reorder</span>
   </div>
 
@@ -204,8 +210,14 @@
    </div>
   </div>
 
+<div id="lcdOverlay" class="lcdOverlay" style="display:none">
+  <div class="lcdOverlayBar"><button id="lcdClose" title="Back (Esc)">← Back</button><b>LCD screen</b><span id="lcdDevNote" class="hint"></span></div>
+  <div id="lcdBody"></div>
+</div>
+
 <script src="th108-media-lib.js"></script>
 <script src="th108-engine.js"></script>
+<script src="th108-lcd.js"></script>
 <script>
 // shared engine (board map, renderers, compositor, state) — pull the bits we reference by short name
 const {KEYMAP, INDICES, NLED, BOARDW, BOARDH, hexToRgb} = TH108Engine;
@@ -273,6 +285,16 @@ function findWritable(devs){
   // the per-key control interface is 0xFF68 usage 0x61 — pick it explicitly, NOT just the first output report (which can be the screen iface 0xFF67)
   return pick(c=>c.usagePage===0xFF68 && c.usage===0x61) || pick(c=>c.usagePage===0xFF68) || pick(()=>true);
 }
+function findScreen(devs){
+  let best=null;
+  for(const d of devs) for(const col of d.collections||[]){
+    for(const or of col.outputReports||[]){
+      const bytes=(or.items||[]).reduce((n,it)=>n+(it.reportCount||0)*((it.reportSize||8)/8),0);
+      if(!best || bytes>best.bytes) best={d, reportId:or.reportId||0, bytes};
+    }
+  }
+  return best;
+}
 // ===== daemon auto-yield handshake =====
 // When the page is served by the background daemon (http://localhost:8123) the daemon OWNS the HID device.
 // Before opening WebHID we must ask it to release; while we hold the device we heartbeat + push config; on close we resume.
@@ -285,7 +307,7 @@ function daemonHeartbeatStart(){ if(DAEMON.present && !DAEMON.hb) DAEMON.hb=setI
 function daemonHeartbeatStop(){ clearTimeout(DAEMON.hb); clearInterval(DAEMON.hb); DAEMON.hb=null; }
 function daemonPushConfig(){ if(DAEMON.present){ try{ fetch('/config',{method:'POST',headers:{'content-type':'application/json'},body:localStorage.getItem('th108_layers')||'[]'}); }catch(_){} } }
 function daemonResume(){ if(DAEMON.present){ if(navigator.sendBeacon) navigator.sendBeacon('/resume'); else fetch('/resume',{method:'POST',keepalive:true}); } }
-window.addEventListener('beforeunload', ()=>{ daemonHeartbeatStop(); daemonResume(); });
+window.addEventListener('beforeunload', ()=>{ daemonHeartbeatStop(); daemonResume(); try{ TH108LCD.setDevices({}); }catch(_){ } });
 
 async function bindDevice(devs, silent){
   const w=findWritable(devs);
@@ -297,13 +319,19 @@ async function bindDevice(devs, silent){
   log('connected: '+device.productName+' · iface 0x'+(w.usagePage||0).toString(16)+'/0x'+(w.usage||0).toString(16)+' · reportId='+reportId+' · packLen='+packLen+' · '+INDICES.length+' LEDs','ok');
   document.getElementById('start').disabled=false;
   if(gifFrames.length) document.getElementById('gifPlay').disabled=false;
+  let screenDev=null, screenRid=0;
+  const sc=findScreen(devs);
+  if(sc && sc.bytes>=4096){ screenDev=sc.d; screenRid=sc.reportId; if(!screenDev.opened) await screenDev.open();
+    log('screen interface bound (report '+sc.bytes+'B) — LCD upload available','ok'); }
+  else log('screen interface not in this grant — LCD upload disabled until you re-pick the keyboard','dim');
+  TH108LCD.setDevices({ screen:screenDev, screenReportId:screenRid, control:device, controlReportId:reportId });
   return true;
 }
 async function connect(){
   if(!('hid' in navigator)){ setStatus('WebHID needs Chrome/Edge','err'); return; }
   try{
     await daemonPing(); if(DAEMON.present) await daemonYield();   // daemon holds the device — make it release BEFORE we open, or the open fails
-    const picked=await navigator.hid.requestDevice({filters:[{vendorId:VENDOR,usagePage:USAGE_PAGE,usage:0x61}]});
+    const picked=await navigator.hid.requestDevice({filters:[{vendorId:VENDOR}]});   // grant the whole keyboard so BOTH the control (0xFF68/0x61) AND screen (large report) interfaces are available (LCD upload needs the screen iface)
     if(!picked || !picked.length){ setStatus('connection cancelled','dim'); return; }   // respect Cancel — don't silently fall back to a previously-granted device
     const ok=await bindDevice(picked, false);
     if(ok) daemonHeartbeatStart();   // tell the daemon's watchdog we're alive & holding the device
@@ -1026,6 +1054,33 @@ function restoreLayout(){
 restoreLayout();
 daemonPing().then(autoReconnect);   // learn if the background daemon holds the device, THEN silently reconnect (yielding first if needed) — no picker
 
+// Survive sleep/wake + unplug/replug: WebHID invalidates the device handle when the keyboard re-enumerates,
+// so the old handle goes stale (Start layers silently hits a dead device). Auto re-bind the fresh handle and
+// resume layers if they were running — no manual reconnect/Start needed.
+let _wasRunning = false;
+navigator.hid.addEventListener('disconnect', e => {
+  if (!device || e.device !== device) return;            // only react to OUR control interface going away
+  _wasRunning = running;
+  if (running) { running = false; if (layerW) layerW.postMessage({ stop: true }); }
+  device = null; reportId = 0;
+  try { TH108LCD.setDevices({}); } catch (_) {}          // the screen handle is stale too
+  document.getElementById('start').disabled = true; document.getElementById('stop').disabled = true;
+  setStatus('keyboard disconnected (sleep/unplug) — reconnecting automatically…', 'dim');
+  log('keyboard disconnected — waiting for it to come back…', 'dim');
+});
+navigator.hid.addEventListener('connect', async e => {
+  if (device) return;                                     // already bound
+  if (e.device && e.device.vendorId !== VENDOR) return;   // not our keyboard
+  try { await daemonPing(); if (DAEMON.present) await daemonYield(); } catch (_) {}
+  const known = await navigator.hid.getDevices();
+  const ok = await bindDevice(known, true);               // re-open the FRESH handle (control + screen)
+  if (ok) {
+    daemonHeartbeatStart();
+    if (_wasRunning) { _wasRunning = false; start(); log('keyboard reconnected — layers resumed', 'ok'); }
+    else log('keyboard reconnected', 'ok');
+  }
+});
+
 // ===== Onboard (firmware) effects: single 0x23 16-byte allledPack, persists on the keyboard =====
 attachHex(document.getElementById('onboardPanel'));   // typeable hex box on the primary/secondary pickers
 (function(){
@@ -1064,6 +1119,39 @@ async function applyOnboard(){
 }
 document.getElementById('obApply').addEventListener('click',applyOnboard);
 document.getElementById('obBack').addEventListener('click',()=>{ if(!device){ log('connect first','err'); return; } if(!running) start(); else log('layers already running — they override the firmware effect','dim'); });   // resume host layers over the firmware effect
+
+// ===== LCD screen uploader overlay (th108-lcd.js) =====
+TH108LCD.mount(document.getElementById('lcdBody'));
+const lcdOverlay = document.getElementById('lcdOverlay');
+function lcdShow(){ lcdOverlay.style.display='block'; TH108LCD.onShow(); }
+function lcdHide(){ lcdOverlay.style.display='none'; TH108LCD.onHide(); }
+document.getElementById('lcdBtn').addEventListener('click', lcdShow);
+document.getElementById('lcdClose').addEventListener('click', lcdHide);
+document.addEventListener('keydown', e=>{ if(e.key==='Escape' && lcdOverlay.style.display==='block') lcdHide(); });
+// let the LCD module pause key-lighting during a flash upload, so the board is free for the 0x50 write (avoids ACK timeouts)
+window.__lcdHost = {
+  _was:false,
+  pauseLighting(){ this._was = running; if(running){ running=false; if(layerW) layerW.postMessage({stop:true}); } },
+  resumeLighting(){ if(this._was && device && !running) start(); this._was=false; }
+};
+
+// Factory-reset the keyboard (cmd 0x0F 0xFF, captured from the official driver's "Reset all settings").
+// Recovery hatch if an upload ever wedges the board — works even when typing is dead (vendor iface still enumerates).
+document.getElementById('resetKbBtn').addEventListener('click', async ()=>{
+  if(!device){ log('connect first','err'); return; }
+  if(!confirm('Factory-reset the KEYBOARD hardware?\n\nClears the keyboard\'s onboard config/keymap back to factory — this is the recovery for a wedged board. Does NOT touch this page\'s settings, your layers, or the LCD.')) return;
+  try{
+    const pkt=new Uint8Array(packLen); pkt[0]=0xAA; pkt[1]=0x0F; pkt[2]=0xFF;   // AA 0F FF = official buildPkt_ResettingAll
+    await device.sendReport(reportId, pkt);
+    log('✓ factory-reset the keyboard (AA 0F FF)','ok');
+  }catch(e){ log('keyboard reset failed: '+e.message,'err'); }
+});
+// Reset all of THIS page's settings (host-side localStorage), keeping the media Library (IndexedDB) + the keyboard untouched.
+document.getElementById('resetSiteBtn').addEventListener('click', ()=>{
+  if(!confirm('Reset all of THIS page\'s settings to defaults?\n\nClears your layers, per-pattern values, LCD calibration, and panel layout. Your saved media Library is kept, and the keyboard is NOT touched. The page will reload.')) return;
+  try{ localStorage.clear(); }catch(_){}
+  location.reload();
+});
 </script>
 </body>
 </html>
