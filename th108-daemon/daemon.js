@@ -18,6 +18,20 @@ const FPS = 30;
 const ts = () => new Date().toTimeString().slice(0, 8);   // timestamped logs — to correlate board mute events with system events
 const log = (...a) => console.log(ts(), ...a);
 
+// Tee everything (incl. the server's logs) into th108-daemon/daemon.log — the autostart daemon runs in a
+// hidden window, so without a file these logs vanish, and we're hunting recurring spontaneous board-mute
+// events whose timestamps need correlating with system/USB activity. ~1 MB cap, one .old generation.
+const LOG_PATH = path.join(__dirname, 'daemon.log');
+const _clog = console.log.bind(console);
+console.log = (...a) => {
+  _clog(...a);
+  try {
+    try { if (fs.statSync(LOG_PATH).size > 1_000_000) { fs.rmSync(LOG_PATH + '.old', { force: true }); fs.renameSync(LOG_PATH, LOG_PATH + '.old'); } } catch {}
+    fs.appendFileSync(LOG_PATH, a.join(' ') + '\n');
+  } catch {}
+};
+console.log(ts() + ' ───── daemon start ─────');
+
 // ----- config -----
 function loadConfig() {
   try { return JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8')); } catch { return null; }
@@ -55,6 +69,7 @@ function closeDevice() {
 // fresh handle first — unsolicited 0x55 ACK traffic means a live page is streaming (its yield expired
 // but it's still there); writing too would wedge the board. Back off and re-probe on a later tick.
 let probing = false, nextOpenAt = 0;
+let lastOkAt = 0, streakStart = 0, muteLogged = false, muteAt = 0;   // mute-episode tracking (transition logging)
 async function openIfPossible() {
   if (device || paused || probing) return;
   if (Date.now() < nextOpenAt) return;   // backoff after a mute/failed device — no 2s open/close churn against a wedged board
@@ -73,7 +88,7 @@ async function openIfPossible() {
     }
     device = d;
     send = T.makeSender(device, { ackTimeoutMs: 800 });
-    log('✓ device open');
+    if (!muteLogged) log('✓ device open');   // stay quiet during a mute-retry loop — the MUTE/recovered transition lines tell the story
   } catch { try { if (d) d.close(); } catch {} nextOpenAt = Date.now() + 5000; }
   finally { probing = false; }
 }
@@ -87,10 +102,21 @@ async function tick() {
     const flat = E.composeFrame(state, now);
     if (!E.flatEq(flat, state.lastFlat) || now - state.lastSent >= 1000) {
       const ok = await send(flat);
-      if (ok) { state.lastFlat = flat; state.lastSent = now; }
-      else {                    // stall → drop device, retry after a pause (a wedged board stays mute until replug)
+      if (ok) {
+        state.lastFlat = flat; state.lastSent = now;
+        if (!lastOkAt || muteLogged) {                     // streaming (re)started — one transition line, with mute duration if recovering
+          streakStart = Date.now();
+          if (muteLogged) { log(`✓ board RECOVERED — ACKing again (mute lasted ${Math.round((Date.now() - muteAt) / 1000)}s)`); muteLogged = false; }
+        }
+        lastOkAt = Date.now();
+      } else {                  // stall → drop device, retry after a pause (a wedged board stays mute until replug)
         closeDevice(); nextOpenAt = Date.now() + 5000;
-        log('… board not ACKing — retrying in 5s (replug clears a wedged board)');
+        if (!muteLogged) {                                 // one transition line per mute episode (the 5s retries stay silent)
+          muteLogged = true; muteAt = Date.now();
+          log('⚠ board went MUTE — no ACKs (' + (lastOkAt
+            ? 'was streaming ' + Math.round((muteAt - streakStart) / 60000) + ' min, last ACK ' + Math.round((muteAt - lastOkAt) / 1000) + 's ago'
+            : 'never ACKed since open') + ') — retrying every 5s; replug clears a true wedge');
+        }
       }
     }
   }
