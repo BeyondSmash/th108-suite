@@ -68,6 +68,9 @@
   .patbtn{ font:12px/1 inherit; background:#21262d; color:#c9d1d9; border:1px solid #30363d; border-radius:6px; padding:5px 8px; cursor:pointer; }
   .patbtn:hover{ border-color:#58a6ff; }
   .patbtn.sel{ background:#1f6feb; border-color:#1f6feb; color:#fff; }
+  .lcdOverlay{position:fixed;inset:0;background:#0d1117;z-index:50;overflow:auto;padding:14px}
+  .lcdOverlayBar{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+  .lcdOverlayBar button{margin-left:auto}
 </style>
 </head>
 <body>
@@ -89,6 +92,7 @@
     <button id="exportCfg" title="Download your layer setup as JSON (same format as the daemon's config.json)">⬇ Export</button>
     <button id="importCfg" title="Load a layer setup from a JSON file (e.g. moved from the file:// page)">⬆ Import</button>
     <input type="file" id="importFile" accept="application/json,.json" style="display:none">
+    <button id="lcdBtn" title="Open the LCD screen uploader">🖵 LCD screen</button>
     <span id="editHint" class="hint" style="display:none">drag a panel by its dashed outline to move it between columns / reorder</span>
   </div>
 
@@ -204,8 +208,14 @@
    </div>
   </div>
 
+<div id="lcdOverlay" class="lcdOverlay" style="display:none">
+  <div class="lcdOverlayBar"><b>LCD screen</b><span id="lcdDevNote" class="hint"></span><button id="lcdClose" title="Close (Esc)">✕</button></div>
+  <div id="lcdBody"></div>
+</div>
+
 <script src="th108-media-lib.js"></script>
 <script src="th108-engine.js"></script>
+<script src="th108-lcd.js"></script>
 <script>
 // shared engine (board map, renderers, compositor, state) — pull the bits we reference by short name
 const {KEYMAP, INDICES, NLED, BOARDW, BOARDH, hexToRgb} = TH108Engine;
@@ -273,6 +283,16 @@ function findWritable(devs){
   // the per-key control interface is 0xFF68 usage 0x61 — pick it explicitly, NOT just the first output report (which can be the screen iface 0xFF67)
   return pick(c=>c.usagePage===0xFF68 && c.usage===0x61) || pick(c=>c.usagePage===0xFF68) || pick(()=>true);
 }
+function findScreen(devs){
+  let best=null;
+  for(const d of devs) for(const col of d.collections||[]){
+    for(const or of col.outputReports||[]){
+      const bytes=(or.items||[]).reduce((n,it)=>n+(it.reportCount||0)*((it.reportSize||8)/8),0);
+      if(!best || bytes>best.bytes) best={d, reportId:or.reportId||0, bytes};
+    }
+  }
+  return best;
+}
 // ===== daemon auto-yield handshake =====
 // When the page is served by the background daemon (http://localhost:8123) the daemon OWNS the HID device.
 // Before opening WebHID we must ask it to release; while we hold the device we heartbeat + push config; on close we resume.
@@ -285,7 +305,7 @@ function daemonHeartbeatStart(){ if(DAEMON.present && !DAEMON.hb) DAEMON.hb=setI
 function daemonHeartbeatStop(){ clearTimeout(DAEMON.hb); clearInterval(DAEMON.hb); DAEMON.hb=null; }
 function daemonPushConfig(){ if(DAEMON.present){ try{ fetch('/config',{method:'POST',headers:{'content-type':'application/json'},body:localStorage.getItem('th108_layers')||'[]'}); }catch(_){} } }
 function daemonResume(){ if(DAEMON.present){ if(navigator.sendBeacon) navigator.sendBeacon('/resume'); else fetch('/resume',{method:'POST',keepalive:true}); } }
-window.addEventListener('beforeunload', ()=>{ daemonHeartbeatStop(); daemonResume(); });
+window.addEventListener('beforeunload', ()=>{ daemonHeartbeatStop(); daemonResume(); try{ TH108LCD.setDevices({}); }catch(_){ } });
 
 async function bindDevice(devs, silent){
   const w=findWritable(devs);
@@ -297,6 +317,12 @@ async function bindDevice(devs, silent){
   log('connected: '+device.productName+' · iface 0x'+(w.usagePage||0).toString(16)+'/0x'+(w.usage||0).toString(16)+' · reportId='+reportId+' · packLen='+packLen+' · '+INDICES.length+' LEDs','ok');
   document.getElementById('start').disabled=false;
   if(gifFrames.length) document.getElementById('gifPlay').disabled=false;
+  let screenDev=null, screenRid=0;
+  const sc=findScreen(devs);
+  if(sc && sc.bytes>=4096){ screenDev=sc.d; screenRid=sc.reportId; if(!screenDev.opened) await screenDev.open();
+    log('screen interface bound (report '+sc.bytes+'B) — LCD upload available','ok'); }
+  else log('screen interface not in this grant — LCD upload disabled until you re-pick the keyboard','dim');
+  TH108LCD.setDevices({ screen:screenDev, screenReportId:screenRid, control:device, controlReportId:reportId });
   return true;
 }
 async function connect(){
@@ -1064,6 +1090,15 @@ async function applyOnboard(){
 }
 document.getElementById('obApply').addEventListener('click',applyOnboard);
 document.getElementById('obBack').addEventListener('click',()=>{ if(!device){ log('connect first','err'); return; } if(!running) start(); else log('layers already running — they override the firmware effect','dim'); });   // resume host layers over the firmware effect
+
+// ===== LCD screen uploader overlay (th108-lcd.js) =====
+TH108LCD.mount(document.getElementById('lcdBody'));
+const lcdOverlay = document.getElementById('lcdOverlay');
+function lcdShow(){ lcdOverlay.style.display='block'; TH108LCD.onShow(); }
+function lcdHide(){ lcdOverlay.style.display='none'; TH108LCD.onHide(); }
+document.getElementById('lcdBtn').addEventListener('click', lcdShow);
+document.getElementById('lcdClose').addEventListener('click', lcdHide);
+document.addEventListener('keydown', e=>{ if(e.key==='Escape' && lcdOverlay.style.display==='block') lcdHide(); });
 </script>
 </body>
 </html>
