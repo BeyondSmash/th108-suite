@@ -166,7 +166,7 @@
     <div class="row">
       <button id="lcdUpload" class="go" disabled>Upload to screen ▶</button>
       <progress id="lcdProg" value="0" max="100"></progress>
-      <label style="margin-left:14px">max frames <input id="lcdMaxFrames" type="number" value="200" min="1" max="500" style="width:56px" /></label>
+      <label style="margin-left:14px">max frames <input id="lcdMaxFrames" type="number" value="33" min="1" max="33" title="hard-capped at 33 — the LCD flash region only holds ~33 frames (~1MB); more would overflow into config flash" style="width:56px" /></label>
       <span class="sub">leave high to keep every frame; lower only to shrink a very long GIF.</span>
     </div>
     <div class="row">
@@ -505,7 +505,10 @@
     stopPreview();
     try { window.__lcdHost && window.__lcdHost.pauseLighting && window.__lcdHost.pauseLighting(); } catch (_) { }   // free the device — a flash upload can't run while key lighting streams 0x32
     showOverlay('Uploading to keyboard…', 0);
-    const maxN = Math.max(1, +$('#lcdMaxFrames').value || 20);
+    const REGION_FRAMES = 33;                               // HARD cap = the official's max (33×30720 ≈ 1.01MB, 248 chunks). More overflows past the screen-flash region into config flash → corrupts the keyboard. The official samples long GIFs down to this.
+    const want = Math.max(1, +$('#lcdMaxFrames').value || 20);
+    const maxN = Math.min(REGION_FRAMES, want);
+    if (want > REGION_FRAMES) log(`capping ${want}→${REGION_FRAMES} frames to fit the LCD flash region (overflow would corrupt the keyboard)`, 'dim');
     let up = sampleFrames(maxN);                            // evenly sample down to the frame cap (preserves whole animation)
     if (up.length < frames.length) log(`sampling ${frames.length} → ${up.length} frames to fit the screen`, 'in');
     // Each frame = 30720B = 7.5 chunks; an EVEN frame count lands on a 4096B boundary so the 256B header
@@ -548,14 +551,13 @@
         if (v === 0) { const t = new Uint8Array(4096); t.set(header, 0); t.set(n.slice(0, 3840), 256); data = t; }
         else { const a = 4096 * v - 256; data = n.slice(a, Math.min(a + 4096, n.length)); }
         const pkt = buildPktTFT(v, totalSize, data);
-        if (v === 0) log('first packet: ' + hex(pkt.slice(0, 12)) + '… (flash erase, up to 20s)', 'dim');
-        else if (v === S - 1) log('final chunk — keyboard committing + displaying the GIF (can take a while on big GIFs)…', 'dim');
+        if (v === 0) log('first packet: ' + hex(pkt.slice(0, 12)) + '… (flash erase ~0.3s)', 'dim');
         D({ ev: 'send', chunk: v });
         // NEVER re-send a chunk. Re-sending while the firmware is mid flash-erase/commit corrupts adjacent
         // flash (it wedged a board — recovered only via the official "Reset all settings"). The official driver
         // is purely ACK-driven and never re-sends. So: one send, wait for the 0x55 0x41 ACK with a generous
         // window, and on a real stall ABORT cleanly (no re-send). User power-cycles + retries the whole upload.
-        try { await sendOne(pkt, v === 0 ? 20000 : (v === S - 1 ? 30000 : 10000)); D({ ev: 'ack', chunk: v }); }
+        try { await sendOne(pkt, v === 0 ? 6000 : 4000); D({ ev: 'ack', chunk: v }); }   // real ACKs land in ~0.14-0.26s; window is only to abort cleanly on a true stall (never re-sends)
         catch (err) {
           D({ ev: 'GIVEUP', chunk: v, err: err.message });
           throw new Error(`chunk ${v}: no ACK (${err.message}) — aborted WITHOUT re-sending (mid-write re-sends corrupt flash). Power-cycle the keyboard, then retry the whole upload.`);
