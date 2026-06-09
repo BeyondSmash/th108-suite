@@ -5,7 +5,8 @@
   "type": "commonjs",
   "main": "daemon.js",
   "scripts": {
-    "start": "node daemon.js"
+    "start": "node daemon.js",
+    "test": "node --test"
   },
   "dependencies": {
     "node-hid": "^3.1.2",

@@ -1,49 +1,62 @@
 # TH108 Lighting Daemon (always-on, type-anywhere)
 
-Runs the pulsing-cyan + keypress-reactive-orange effect as a background process, so it works in
-**any** app — no browser tab, no focus required. Same frame protocol as the browser controller,
-but driven by `node-hid` (raw HID) + `uiohook-napi` (system-wide keyboard hook).
+Runs **your saved controller lighting setup** as a background process, so it works in **any** app —
+no browser tab, no focus required. It renders the exact same layers as the WebHID controller page
+(via the shared `../th108-engine.js`), streams them over ACK-gated `node-hid` (raw HID), and drives
+the reactive layer from a system-wide keyboard hook (`uiohook-napi`).
+
+It also **serves the controller page** at `http://localhost:8123`, and hands the keyboard back and
+forth automatically: open the page to customize (it takes the device over WebHID), close it and the
+daemon resumes with whatever you changed.
 
 ## Requirements
 - Node.js 18+ (`node -v`).
-- Windows build prerequisites are usually **not** needed — `node-hid` and `uiohook-napi` ship
-  prebuilt binaries. If `npm install` tries to compile and fails, install the
+- `node-hid` and `uiohook-napi` ship prebuilt binaries, so `npm install` usually needs no compiler.
+  If it tries to compile and fails, install the
   [VS Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/) (Desktop C++).
-- The keyboard plugged in, and **nothing else streaming to it** (close the browser controller tab
-  and the stock software first — only one app should drive the lighting at a time).
 
 ## Install & run
 ```powershell
 cd "path\to\th108-suite\th108-daemon"
 npm install
-npm start
+node daemon.js
 ```
-You should see `✓ opening "Epomaker_TH108 V2PRO"`, `✓ mapped N keys to LEDs`, then the board starts
-breathing cyan and every key you press anywhere flashes orange. **Ctrl+C** stops it and clears the board.
+You'll see `✓ serving controller + control API on http://localhost:8123` and (once a config exists)
+`✓ device open`. Open **http://localhost:8123/** to customize. **Ctrl+C** stops it.
 
-## Tuning (environment variables)
+## How config works
+- Customize on the page as usual. Every edit is mirrored to **`config.json`** in this folder
+  (the daemon writes it from the page's pushed config — you don't manage it by hand).
+- On first run there's no `config.json`, so the daemon stays idle (board untouched) until you open
+  the page once and let it push your setup.
+- The daemon reloads `config.json` whenever it re-grabs the device (i.e. when you close the page).
+
+## The device handoff (automatic)
+The keyboard's control interface is single-owner, so the page and daemon never drive it at once:
+1. Open the page → it calls `/yield` → the daemon releases the device → you customize over WebHID.
+2. While open, the page sends heartbeats and pushes config.
+3. Close/refresh the page → it calls `/resume` (or the ~5 s heartbeat watchdog fires) → the daemon
+   re-grabs the device and runs your latest config.
+
+Control API (same origin, no CORS): `GET /status`, `POST /yield | /resume | /heartbeat | /config`.
+
+## Run on login (always-on)
 ```powershell
-$env:PERIOD=2000; $env:BG_MIN=10; $env:BG_MAX=60; $env:FADE=300; `
-$env:BG="0,255,255"; $env:KEY="255,140,0"; npm start
+powershell -ExecutionPolicy Bypass -File .\install-autostart.ps1   # register (hidden) at logon
+wscript "path\to\th108-suite\th108-daemon\start-hidden.vbs"  # start now
+powershell -ExecutionPolicy Bypass -File .\uninstall-autostart.ps1 # remove later
 ```
-- `PERIOD` — pulse period in ms (lower = faster breathing)
-- `BG_MIN` / `BG_MAX` — background brightness range, 0..1 (e.g. `0.1` / `0.6`)
-- `FADE` — key flash fade time in ms
-- `BG` / `KEY` — `"R,G,B"` for background and keypress colours
 
-## If some keys don't react
-The keypress→LED map is bridged through `uiohook-napi`'s key codes. If a particular key doesn't
-light, run in discovery mode and press it — it prints the raw keycode so the map can be fixed:
+## Tests
 ```powershell
-$env:DISCOVER=1; npm start
+npm test   # node --test: hid-transport + server unit tests (no hardware needed)
 ```
-Send me the `· unmapped keycode <n>` numbers for the keys that didn't react.
-
-## Run on login (optional, later)
-Once it's dialed in, we can register it to auto-start (Task Scheduler / a tray wrapper) so it's
-always on. Ask and I'll add it.
 
 ## Notes
 - The decorative side/ring/separator LEDs are firmware-controlled and can't be driven from software
-  (confirmed) — this daemon controls the **key** LEDs only, same as the browser controller.
-- `Fn` can't be captured (it never reaches the OS), so it won't flash.
+  (confirmed) — the daemon controls the **key** LEDs only, same as the browser controller.
+- `Fn` never reaches the OS, so it can't be captured for the reactive layer.
+- Media/GIF layers are **not** rendered by the daemon yet (use the page for GIF work); all other
+  layer types (background, reactive, gradient, patterns) render at full parity.
+- ACK-gated streaming: the board ACKs every write (`0x55 …`); the daemon waits for each ACK before
+  the next write, which is what keeps its HID pipe from wedging under sustained streaming.
