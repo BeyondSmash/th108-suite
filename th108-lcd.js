@@ -549,10 +549,11 @@
         else { const a = 4096 * v - 256; data = n.slice(a, Math.min(a + 4096, n.length)); }
         const pkt = buildPktTFT(v, totalSize, data);
         if (v === 0) log('first packet: ' + hex(pkt.slice(0, 12)) + '… (flash erase, up to 20s)', 'dim');
+        else if (v === S - 1) log('final chunk — keyboard committing + displaying the GIF (can take a while on big GIFs)…', 'dim');
         let ok = false;
         for (let attempt = 0; attempt < 3 && !ok; attempt++) {
           D({ ev: 'send', chunk: v, attempt });
-          try { await sendOne(pkt, v === 0 ? 20000 : 5000); ok = true; D({ ev: 'ack', chunk: v }); }
+          try { await sendOne(pkt, v === 0 ? 20000 : (v === S - 1 ? 30000 : 5000)); ok = true; D({ ev: 'ack', chunk: v }); }
           catch (err) {
             D({ ev: 'retry', chunk: v, attempt, err: err.message });
             if (attempt === 2) { D({ ev: 'GIVEUP', chunk: v }); throw new Error(`chunk ${v} failed after 3 tries: ${err.message}`); }
