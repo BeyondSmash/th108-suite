@@ -218,6 +218,7 @@
 <script src="th108-media-lib.js"></script>
 <script src="th108-engine.js"></script>
 <script src="th108-lcd.js"></script>
+<script src="th108-hid.js"></script>
 <script>
 // shared engine (board map, renderers, compositor, state) — pull the bits we reference by short name
 const {KEYMAP, INDICES, NLED, BOARDW, BOARDH, hexToRgb} = TH108Engine;
@@ -230,71 +231,37 @@ function keyCell(idx){                                // -> [nx,ny,nw,nh] normal
   return TH108Engine.keyCell(idx);   // physical layout (unknown index → null, no phantom key)
 }
 
-// ===== WebHID transport (same proven path as the test page) =====
-const VENDOR=0x0C45, USAGE_PAGE=0xFF68, CMD=0x32;
-let device=null, reportId=0, packLen=64;
-
+// ===== WebHID transport — extracted to th108-hid.js (binds 0xFF68/0x61 + ACK-gated 0x32 streaming) =====
 const out=document.getElementById('log');
 function log(m,c=''){ const d=document.createElement('div'); if(c)d.className=c;
   d.textContent='['+new Date().toISOString().substr(11,12)+'] '+m; out.appendChild(d);
   while(out.childNodes.length>200) out.removeChild(out.firstChild); out.scrollTop=out.scrollHeight; }
 function setStatus(s,c=''){ const e=document.getElementById('status'); e.textContent=s; e.className=c; }
 
-function buildPkt(cmd,len,off,chunk,aux,last){
-  const s=new Uint8Array(packLen);
-  s[0]=0xAA; s[1]=cmd; s[2]=len; s[3]=off&0xFF; s[4]=(off>>8)&0xFF; s[5]=aux&0xFF; s[6]=last?1:0; s.set(chunk,8);
-  return s;
-}
-let _sendStalls=0, _ackWaiter=null, _inRpts=0;
-function onInputReport(e){                          // the board replies with a 0x55 ACK per write on this iface — read it AND gate the next write on it
-  _inRpts++;
-  const b=new Uint8Array(e.data.buffer);
-  if(_inRpts===1) log('board input reports: id='+e.reportId+' first=['+Array.from(b.slice(0,8)).map(x=>x.toString(16).padStart(2,'0')).join(' ')+'…]','dim');
-  if(b[0]===0x55 && _ackWaiter){ const w=_ackWaiter; _ackWaiter=null; w(true); }
-}
-function waitAck(ms){ return new Promise(res=>{ _ackWaiter=res; setTimeout(()=>{ if(_ackWaiter===res){ _ackWaiter=null; res(false); } }, ms); }); }
-function noteStall(){
-  if(++_sendStalls===1 || _sendStalls%20===0) log('board not keeping up (no ACK) — pacing/dropping to keep the loop alive','dim');
-  if(_sendStalls>=15){ log('board unresponsive — stopping. Unplug/replug it, then Connect → Start layers.','err'); stop(); }
-}
-async function sendFrame(flat,aux=0){
-  if(!device) return false;
-  const room=packLen-8, n=Math.max(1,Math.ceil(flat.length/room));
-  for(let c=0;c<n;c++){
-    const off=c*room, chunk=flat.slice(off,off+room);
-    const ack=waitAck(800);                         // arm the ACK waiter BEFORE the write so we can't miss it
-    let timer; const wto=new Promise((_,rej)=>{ timer=setTimeout(()=>rej(new Error('__wstall__')),800); });
-    try{
-      await Promise.race([ device.sendReport(reportId, buildPkt(CMD,chunk.length,off,chunk,aux,c===n-1)), wto ]);
-      clearTimeout(timer);
-    }catch(e){ clearTimeout(timer);
-      if(e && e.message==='__wstall__'){ noteStall(); return false; }    // the write itself hung — drop frame, keep loop alive
-      log('send failed: '+e.message,'err'); stop(); return false;        // genuine error (e.g. unplugged)
-    }
-    // WAIT for the board's 0x55 ACK before sending the next chunk. This pacing matches the board's FIFO drain
-    // rate, which is the actual fix: firing chunks without waiting overran the FIFO and wedged the pipe.
-    if(!(await ack)){ noteStall(); return false; }
-    _sendStalls=0;
+let _wasRunning=false;   // layers were running when the keyboard went away (sleep/unplug) → resume on re-bind
+const HID=TH108Hid.create({
+  log, setStatus, ledCount:INDICES.length,
+  stopHost:()=>{ stop(); },                                                                  // board unresponsive / fatal send error
+  beforeConnect:async()=>{ await daemonPing(); if(DAEMON.present) await daemonYield(); },    // daemon holds the device — make it release BEFORE we open
+  beforeAutoReconnect:async()=>{ if(DAEMON.present) await daemonYield(); },                  // page-load path: daemonPing() already ran
+  onBound:devs=>{
+    document.getElementById('start').disabled=false;
+    if(gifFrames.length) document.getElementById('gifPlay').disabled=false;
+    TH108LCD.setDevices(devs);
+  },
+  onConnected:()=>daemonHeartbeatStart(),   // tell the daemon's watchdog we're alive & holding the device
+  onDisconnected:()=>{
+    _wasRunning=running;
+    if(running){ running=false; if(layerW) layerW.postMessage({stop:true}); }
+    try{ TH108LCD.setDevices({}); }catch(_){ }          // the screen handle is stale too
+    document.getElementById('start').disabled=true; document.getElementById('stop').disabled=true;
+  },
+  onReconnected:()=>{
+    daemonHeartbeatStart();
+    if(_wasRunning){ _wasRunning=false; start(); log('keyboard reconnected — layers resumed','ok'); }
+    else log('keyboard reconnected','ok');
   }
-  return true;
-}
-
-function findWritable(devs){
-  const grab=col=>{ const or=(col.outputReports||[])[0]; if(!or) return null; const it=(or.items||[])[0]||{}; return {reportId:or.reportId||0, packLen:it.reportCount||64, usagePage:col.usagePage, usage:col.usage}; };
-  const pick=test=>{ for(const d of devs) for(const col of d.collections||[]){ if(test(col)){ const g=grab(col); if(g) return Object.assign({d},g); } } return null; };
-  // the per-key control interface is 0xFF68 usage 0x61 — pick it explicitly, NOT just the first output report (which can be the screen iface 0xFF67)
-  return pick(c=>c.usagePage===0xFF68 && c.usage===0x61) || pick(c=>c.usagePage===0xFF68) || pick(()=>true);
-}
-function findScreen(devs){
-  let best=null;
-  for(const d of devs) for(const col of d.collections||[]){
-    for(const or of col.outputReports||[]){
-      const bytes=(or.items||[]).reduce((n,it)=>n+(it.reportCount||0)*((it.reportSize||8)/8),0);
-      if(!best || bytes>best.bytes) best={d, reportId:or.reportId||0, bytes};
-    }
-  }
-  return best;
-}
+});
 // ===== daemon auto-yield handshake =====
 // When the page is served by the background daemon (http://localhost:8123) the daemon OWNS the HID device.
 // Before opening WebHID we must ask it to release; while we hold the device we heartbeat + push config; on close we resume.
@@ -308,38 +275,6 @@ function daemonHeartbeatStop(){ clearTimeout(DAEMON.hb); clearInterval(DAEMON.hb
 function daemonPushConfig(){ if(DAEMON.present){ try{ fetch('/config',{method:'POST',headers:{'content-type':'application/json'},body:localStorage.getItem('th108_layers')||'[]'}); }catch(_){} } }
 function daemonResume(){ if(DAEMON.present){ if(navigator.sendBeacon) navigator.sendBeacon('/resume'); else fetch('/resume',{method:'POST',keepalive:true}); } }
 window.addEventListener('beforeunload', ()=>{ daemonHeartbeatStop(); daemonResume(); try{ TH108LCD.setDevices({}); }catch(_){ } });
-
-async function bindDevice(devs, silent){
-  const w=findWritable(devs);
-  if(!w){ if(!silent) setStatus('no FF68 control interface found — re-pick the 0xff68 entry','err'); return false; }
-  device=w.d; reportId=w.reportId; packLen=w.packLen;
-  if(!device.opened) await device.open();
-  if(!device._inHooked){ device._inHooked=true; device.addEventListener('inputreport', onInputReport); }   // read the board's ACK/status reports + gate sends on them
-  setStatus('connected: '+device.productName+' · reportId='+reportId+' · packLen='+packLen,'ok');
-  log('connected: '+device.productName+' · iface 0x'+(w.usagePage||0).toString(16)+'/0x'+(w.usage||0).toString(16)+' · reportId='+reportId+' · packLen='+packLen+' · '+INDICES.length+' LEDs','ok');
-  document.getElementById('start').disabled=false;
-  if(gifFrames.length) document.getElementById('gifPlay').disabled=false;
-  let screenDev=null, screenRid=0;
-  const sc=findScreen(devs);
-  if(sc && sc.bytes>=4096){ screenDev=sc.d; screenRid=sc.reportId; if(!screenDev.opened) await screenDev.open();
-    log('screen interface bound (report '+sc.bytes+'B) — LCD upload available','ok'); }
-  else log('screen interface not in this grant — LCD upload disabled until you re-pick the keyboard','dim');
-  TH108LCD.setDevices({ screen:screenDev, screenReportId:screenRid, control:device, controlReportId:reportId });
-  return true;
-}
-async function connect(){
-  if(!('hid' in navigator)){ setStatus('WebHID needs Chrome/Edge','err'); return; }
-  try{
-    await daemonPing(); if(DAEMON.present) await daemonYield();   // daemon holds the device — make it release BEFORE we open, or the open fails
-    const picked=await navigator.hid.requestDevice({filters:[{vendorId:VENDOR}]});   // grant the whole keyboard so BOTH the control (0xFF68/0x61) AND screen (large report) interfaces are available (LCD upload needs the screen iface)
-    if(!picked || !picked.length){ setStatus('connection cancelled','dim'); return; }   // respect Cancel — don't silently fall back to a previously-granted device
-    const ok=await bindDevice(picked, false);
-    if(ok) daemonHeartbeatStart();   // tell the daemon's watchdog we're alive & holding the device
-  }catch(e){ setStatus('connect failed: '+e.message,'err'); log('connect error: '+e.message,'err'); }
-}
-async function autoReconnect(){   // on page load: if the keyboard was granted in a past session, reconnect silently (keeps the convenience, without Cancel-means-connect)
-  try{ if(!('hid' in navigator)) return; const known=await navigator.hid.getDevices(); if(known && known.length){ if(DAEMON.present) await daemonYield(); const ok=await bindDevice(known, true); if(ok) daemonHeartbeatStart(); } }catch(_){ }
-}
 
 // ===== layer compositor engine =====
 function fpsCap(){ return +document.getElementById('gifFps').value || 60; }   // global output FPS cap (shared with GIF) — lower = less compute
@@ -395,7 +330,7 @@ async function layerTick(){
       layerInFlight=true;
       const flat=TH108Engine.composeFrame(state, now);   // engine renders due layers (≤30fps each) + composites → flat frame
       if(!TH108Engine.flatEq(flat, state.lastFlat) || now-state.lastSent>=1000){   // skip unchanged frames; resend ≥1×/s as a keepalive so firmware doesn't reclaim the board
-        if(await sendFrame(flat)){ state.lastFlat=flat; state.lastSent=now; }
+        if(await HID.sendFrame(flat)){ state.lastFlat=flat; state.lastSent=now; }
       }
       layerInFlight=false;
     } else delay=20;   // device busy — retry soon
@@ -405,9 +340,9 @@ async function layerTick(){
 if(layerW) layerW.onmessage=layerTick;
 
 function start(){
-  if(running||!device) return;
+  if(running||!HID.device) return;
   if(gifPlaying){ gifStopFn(); }                            // layers + GIF are mutually exclusive
-  running=true; state.lastFlat=null; state.lastSent=0; _sendStalls=0;
+  running=true; state.lastFlat=null; state.lastSent=0; HID.resetStalls();
   state.react.fg.fill(0); state.react.t.fill(-1e12); state.react.down.fill(0); state.react.up.fill(-1e12);
   for(const L of state.layers) L.lastTick=0;
   document.getElementById('start').disabled=true; document.getElementById('stop').disabled=false;
@@ -417,10 +352,10 @@ async function stop(){
   if(!running) return;
   running=false;
   if(layerW) layerW.postMessage({stop:true});
-  document.getElementById('start').disabled=!device; document.getElementById('stop').disabled=true;
+  document.getElementById('start').disabled=!HID.device; document.getElementById('stop').disabled=true;
   // black-out frame so it's visibly stopped
   const off=[]; INDICES.forEach(i=>off.push(i,0,0,0));
-  await sendFrame(off);
+  await HID.sendFrame(off);
   log('layers stopped (board cleared)','dim');
   // NOTE: do NOT hand back to the daemon here — the page still holds the WebHID device (stop only
   // pauses rendering). Handing back now would make the daemon re-grab a device we still own (two
@@ -587,7 +522,7 @@ function installFrames(frames, label){
   gifFrames=frames; gifIdx=0; czoom=1; cpanX=cpanY=0; document.getElementById('gifZoom').value=100;
   refresh();
   document.getElementById('gifInfo').textContent=label+': '+frames.length+' frame(s), source '+frames[0].w+'×'+frames[0].h+' → 104 keys';
-  document.getElementById('gifPlay').disabled=!device;
+  document.getElementById('gifPlay').disabled=!HID.device;
   log('loaded '+frames.length+' frame(s): '+label,'ok');
 }
 async function loadMedia(blob, name, save){           // save (default true) → persist to the library
@@ -617,7 +552,7 @@ async function loadSequence(files){                    // a folder/selection of 
 async function gifTick(){
   if(!gifPlaying||!gifFrames.length) return;
   const fr=gifFrames[gifIdx]; let delay=Math.max(1000/fpsCap(), (fr.delayMs|0)/gifSpeed());
-  if(!inFlight){ inFlight=true; const ok=await sendFrame(gifFlat(fr.rgb)); inFlight=false;
+  if(!inFlight){ inFlight=true; const ok=await HID.sendFrame(gifFlat(fr.rgb)); inFlight=false;
     if(ok){ if(!document.hidden && !gifDrag){ drawKb(fr.rgb); drawSrc(); }                       // while dragging the crop, let the drag handler own the canvas
       if(!gifDrag && !document.getElementById('gifStatic').checked) gifIdx=(gifIdx+1)%gifFrames.length; } }   // freeze frame during drag / when static
   else delay=20;                                            // device busy — retry soon without advancing
@@ -625,7 +560,7 @@ async function gifTick(){
 }
 if(tickW) tickW.onmessage=gifTick;
 function gifPlay(){
-  if(!device||!gifFrames.length||gifPlaying) return;
+  if(!HID.device||!gifFrames.length||gifPlaying) return;
   if(running) stop();                                       // GIF mode replaces the reactive pulse
   gifPlaying=true; gifIdx=0;
   document.getElementById('gifPlay').disabled=true; document.getElementById('gifStop').disabled=false;
@@ -636,9 +571,9 @@ async function gifStopFn(){
   if(!gifPlaying) return;
   gifPlaying=false;
   if(tickW) tickW.postMessage({stop:true});
-  document.getElementById('gifPlay').disabled=!device; document.getElementById('gifStop').disabled=true;
-  document.getElementById('start').disabled=!device;
-  const off=[]; INDICES.forEach(i=>off.push(i,0,0,0)); await sendFrame(off);
+  document.getElementById('gifPlay').disabled=!HID.device; document.getElementById('gifStop').disabled=true;
+  document.getElementById('start').disabled=!HID.device;
+  const off=[]; INDICES.forEach(i=>off.push(i,0,0,0)); await HID.sendFrame(off);
   log('GIF playback stopped (board cleared)','dim');
 }
 // drag-to-pan on the positioning canvas (image follows the cursor; full resample on release)
@@ -720,7 +655,7 @@ window.addEventListener('paste',e=>{
   for(const it of items){ if(it.type&&it.type.startsWith('image/')){ const b=it.getAsFile(); if(b){ e.preventDefault(); loadMedia(b,'pasted-image'); return; } } }
 });
 
-document.getElementById('connect').addEventListener('click',connect);
+document.getElementById('connect').addEventListener('click',()=>HID.connect());
 document.getElementById('start').addEventListener('click',start);
 document.getElementById('stop').addEventListener('click',stop);
 
@@ -1052,34 +987,8 @@ function restoreLayout(){
   (saved.colR||[]).forEach(bid=>{ const b=document.getElementById(bid); if(b) colR.appendChild(b); });
 }
 restoreLayout();
-daemonPing().then(autoReconnect);   // learn if the background daemon holds the device, THEN silently reconnect (yielding first if needed) — no picker
-
-// Survive sleep/wake + unplug/replug: WebHID invalidates the device handle when the keyboard re-enumerates,
-// so the old handle goes stale (Start layers silently hits a dead device). Auto re-bind the fresh handle and
-// resume layers if they were running — no manual reconnect/Start needed.
-let _wasRunning = false;
-navigator.hid.addEventListener('disconnect', e => {
-  if (!device || e.device !== device) return;            // only react to OUR control interface going away
-  _wasRunning = running;
-  if (running) { running = false; if (layerW) layerW.postMessage({ stop: true }); }
-  device = null; reportId = 0;
-  try { TH108LCD.setDevices({}); } catch (_) {}          // the screen handle is stale too
-  document.getElementById('start').disabled = true; document.getElementById('stop').disabled = true;
-  setStatus('keyboard disconnected (sleep/unplug) — reconnecting automatically…', 'dim');
-  log('keyboard disconnected — waiting for it to come back…', 'dim');
-});
-navigator.hid.addEventListener('connect', async e => {
-  if (device) return;                                     // already bound
-  if (e.device && e.device.vendorId !== VENDOR) return;   // not our keyboard
-  try { await daemonPing(); if (DAEMON.present) await daemonYield(); } catch (_) {}
-  const known = await navigator.hid.getDevices();
-  const ok = await bindDevice(known, true);               // re-open the FRESH handle (control + screen)
-  if (ok) {
-    daemonHeartbeatStart();
-    if (_wasRunning) { _wasRunning = false; start(); log('keyboard reconnected — layers resumed', 'ok'); }
-    else log('keyboard reconnected', 'ok');
-  }
-});
+daemonPing().then(()=>HID.autoReconnect());   // learn if the background daemon holds the device, THEN silently reconnect (yielding first if needed) — no picker
+// (sleep/wake + unplug/replug re-bind lives in th108-hid.js; this page's side is the onDisconnected/onReconnected callbacks up top)
 
 // ===== Onboard (firmware) effects: single 0x23 16-byte allledPack, persists on the keyboard =====
 attachHex(document.getElementById('onboardPanel'));   // typeable hex box on the primary/secondary pickers
@@ -1091,7 +1000,7 @@ attachHex(document.getElementById('onboardPanel'));   // typeable hex box on the
 })();
 function obSetStatus(s,c=''){ const e=document.getElementById('obStatus'); e.textContent=s; e.className='hint '+c; e.style.margin='0'; }
 async function applyOnboard(){
-  if(!device){ log('connect first','err'); obSetStatus('connect first','err'); return; }
+  if(!HID.device){ log('connect first','err'); obSetStatus('connect first','err'); return; }
   if(running) await stop();                 // firmware effect replaces the live host stream
   if(gifPlaying) await gifStopFn();
   const clamp=v=>Math.max(1,Math.min(6,Math.round(v||1)));
@@ -1111,14 +1020,14 @@ async function applyOnboard(){
   allled[10]=speed;
   // bytes 11..15 stay 0
   try{
-    await device.sendReport(reportId, buildPkt(0x23, 16, 0, allled, 0, true));
+    await HID.device.sendReport(HID.reportId, HID.buildPkt(0x23, 16, 0, allled, 0, true));
     const lbl=document.getElementById('obEffect').selectedOptions[0].textContent;
     log('onboard effect applied: '+lbl+(colorful?' (colorful)':' (solid)')+' · bri '+bright+' · spd '+speed,'ok');
     obSetStatus('effect set — runs on the keyboard','ok');
   }catch(e){ log('onboard apply failed: '+e.message,'err'); obSetStatus('apply failed','err'); }
 }
 document.getElementById('obApply').addEventListener('click',applyOnboard);
-document.getElementById('obBack').addEventListener('click',()=>{ if(!device){ log('connect first','err'); return; } if(!running) start(); else log('layers already running — they override the firmware effect','dim'); });   // resume host layers over the firmware effect
+document.getElementById('obBack').addEventListener('click',()=>{ if(!HID.device){ log('connect first','err'); return; } if(!running) start(); else log('layers already running — they override the firmware effect','dim'); });   // resume host layers over the firmware effect
 
 // ===== LCD screen uploader overlay (th108-lcd.js) =====
 TH108LCD.mount(document.getElementById('lcdBody'));
@@ -1132,17 +1041,17 @@ document.addEventListener('keydown', e=>{ if(e.key==='Escape' && lcdOverlay.styl
 window.__lcdHost = {
   _was:false,
   pauseLighting(){ this._was = running; if(running){ running=false; if(layerW) layerW.postMessage({stop:true}); } },
-  resumeLighting(){ if(this._was && device && !running) start(); this._was=false; }
+  resumeLighting(){ if(this._was && HID.device && !running) start(); this._was=false; }
 };
 
 // Factory-reset the keyboard (cmd 0x0F 0xFF, captured from the official driver's "Reset all settings").
 // Recovery hatch if an upload ever wedges the board — works even when typing is dead (vendor iface still enumerates).
 document.getElementById('resetKbBtn').addEventListener('click', async ()=>{
-  if(!device){ log('connect first','err'); return; }
+  if(!HID.device){ log('connect first','err'); return; }
   if(!confirm('Factory-reset the KEYBOARD hardware?\n\nClears the keyboard\'s onboard config/keymap back to factory — this is the recovery for a wedged board. Does NOT touch this page\'s settings, your layers, or the LCD.')) return;
   try{
-    const pkt=new Uint8Array(packLen); pkt[0]=0xAA; pkt[1]=0x0F; pkt[2]=0xFF;   // AA 0F FF = official buildPkt_ResettingAll
-    await device.sendReport(reportId, pkt);
+    const pkt=new Uint8Array(HID.packLen); pkt[0]=0xAA; pkt[1]=0x0F; pkt[2]=0xFF;   // AA 0F FF = official buildPkt_ResettingAll
+    await HID.device.sendReport(HID.reportId, pkt);
     log('✓ factory-reset the keyboard (AA 0F FF)','ok');
   }catch(e){ log('keyboard reset failed: '+e.message,'err'); }
 });
