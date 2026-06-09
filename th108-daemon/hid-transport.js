@@ -24,9 +24,16 @@ function openDevice(path) {
 // Build an ACK-gated sender bound to one open device.
 // Returns async sendFrame(flat) -> true on success, false on stall (never throws, so the loop survives).
 function makeSender(device, { packLen = 64, cmd = 0x32, ackTimeoutMs = 800 } = {}) {
-  let ackWaiter = null;
+  let ackWaiter = null, noise = 0;
   device.on('data', (buf) => {
     if (buf && buf[0] === 0x55 && ackWaiter) { const w = ackWaiter; ackWaiter = null; w(true); }
+    else if (buf && buf[0] === 0x55) {
+      // 0x55 with NO write pending = firmware broadcast (e.g. 55 23 from the onboard-effect engine).
+      // Dangerous: one of these landing while a write IS pending falsely satisfies the ACK gate →
+      // we outpace the board's FIFO → wedge. Count + log them so the rate shows up in daemon.log.
+      noise++;
+      if (noise === 1 || noise % 50 === 0) console.log(new Date().toTimeString().slice(0, 8) + ` … unsolicited 0x55 ${(buf[1] || 0).toString(16).padStart(2, '0')} broadcast from board (#${noise}) — firmware is chatty; ACK gate may be getting false hits`);
+    }
   });
   const waitAck = () => new Promise((res) => {
     ackWaiter = res;
