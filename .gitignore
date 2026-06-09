@@ -25,6 +25,11 @@ th108-daemon/node_modules/
 th108-config.json
 th108-daemon/config.json
 
+# --- local HID-sniffing / debug dumps (not for publish) ---
+dumped_*.txt
+*_copy_object*.txt
+.playwright-mcp/
+
 # Kept on purpose (safe to publish): README.md, LICENSE, th108-controller.html,
 # th108-screen.html, webhid-test.html, th108-keys.json + th108-map.json (factual key map),
 # th108-daemon/ source, TH108_lighting_controller_brief.md
