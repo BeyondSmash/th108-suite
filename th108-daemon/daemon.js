@@ -7,6 +7,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const { execFile } = require('child_process');
 const { uIOhook, UiohookKey } = require('uiohook-napi');
 const E = require('../th108-engine.js');
 const T = require('./hid-transport.js');
@@ -14,6 +15,8 @@ const { KEYMAP, INDICES, UIOHOOK_TO_CODE } = require('./th108-map.js');
 
 const CONFIG_PATH = path.join(__dirname, 'config.json');
 const FPS = 30;
+const ts = () => new Date().toTimeString().slice(0, 8);   // timestamped logs — to correlate board mute events with system events
+const log = (...a) => console.log(ts(), ...a);
 
 // ----- config -----
 function loadConfig() {
@@ -65,12 +68,12 @@ async function openIfPossible() {
     if (paused) { try { d.close(); } catch {} return; }   // yielded mid-probe — hand it straight back
     if (traffic > 0) {
       try { d.close(); } catch {}
-      console.log(`… another writer on the device (${traffic} reports during probe) — backing off`);
+      log(`… another writer on the device (${traffic} reports during probe) — backing off`);
       return;
     }
     device = d;
     send = T.makeSender(device, { ackTimeoutMs: 800 });
-    console.log('✓ device open');
+    log('✓ device open');
   } catch { try { if (d) d.close(); } catch {} nextOpenAt = Date.now() + 5000; }
   finally { probing = false; }
 }
@@ -87,12 +90,28 @@ async function tick() {
       if (ok) { state.lastFlat = flat; state.lastSent = now; }
       else {                    // stall → drop device, retry after a pause (a wedged board stays mute until replug)
         closeDevice(); nextOpenAt = Date.now() + 5000;
-        console.log('… board not ACKing — retrying in 5s (replug clears a wedged board)');
+        log('… board not ACKing — retrying in 5s (replug clears a wedged board)');
       }
     }
   }
 }
 timer = setInterval(() => { tick().catch(() => {}); }, Math.round(1000 / FPS));
+
+// ----- autostart = per-user HKCU Run key (NO admin needed, so the daemon can toggle it itself) -----
+const RUN_KEY = 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run', RUN_NAME = 'TH108LightingDaemon';
+const RUN_CMD = `wscript.exe "${path.join(__dirname, 'start-hidden.vbs')}"`;
+function getAutostart() {
+  if (process.platform !== 'win32') return Promise.resolve(false);
+  return new Promise((resolve) => execFile('reg', ['query', RUN_KEY, '/v', RUN_NAME], (err) => resolve(!err)));
+}
+function setAutostart(on) {
+  if (process.platform !== 'win32') return Promise.reject(new Error('autostart is Windows-only'));
+  const args = on ? ['add', RUN_KEY, '/v', RUN_NAME, '/t', 'REG_SZ', '/d', RUN_CMD, '/f']
+                  : ['delete', RUN_KEY, '/v', RUN_NAME, '/f'];
+  return new Promise((resolve, reject) =>
+    execFile('reg', args, (err) => (err && on) ? reject(new Error('registry write failed')) : resolve()));
+    // deleting an absent value errors — that's "already off", treat as success
+}
 
 // ----- control hooks for the server -----
 const control = {
@@ -103,6 +122,8 @@ const control = {
   // Persist the page's config; refresh live state immediately unless yielded to the page.
   saveConfig(cfg) { fs.writeFileSync(CONFIG_PATH, JSON.stringify(cfg)); if (!paused) rebuildState(); },
   status() { return { running: true, paused, deviceConnected: !!device, fps: FPS }; },
+  getAutostart, setAutostart,
+  quit() { shutdown(); },
 };
 module.exports = { control };
 

@@ -8,7 +8,9 @@ const path = require('node:path');
 const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.json': 'application/json',
                '.css': 'text/css', '.png': 'image/png', '.svg': 'image/svg+xml', '.ico': 'image/x-icon' };
 
-// control = { yield(), resume(), saveConfig(cfg), status() }
+const ts = () => new Date().toTimeString().slice(0, 8);   // timestamped logs — needed to correlate board mute events with system events
+
+// control = { yield(), resume(), saveConfig(cfg), status(), getAutostart(), setAutostart(on), quit() }
 // watchdogMs default: the page beats every 3s from a Web Worker timer (throttle-proof); 12s tolerates
 // 2-3 dropped beats before concluding the page is gone. The old 5s window was tighter than real page
 // behavior (heartbeats only started after device-bind, and main-thread timers throttle in hidden tabs)
@@ -19,7 +21,7 @@ function createServer({ control, root, port = 8123, watchdogMs = 12000 }) {
     clearInterval(wd);
     wd = setInterval(() => {
       if (yielded && Date.now() - lastBeat > watchdogMs) {
-        console.log(`[watchdog] no page heartbeat for >${watchdogMs}ms — resuming daemon control`);
+        console.log(`${ts()} [watchdog] no page heartbeat for >${watchdogMs}ms — resuming daemon control`);
         control.resume(); yielded = false;
       }
     }, Math.max(50, Math.floor(watchdogMs / 4)));
@@ -46,8 +48,22 @@ function createServer({ control, root, port = 8123, watchdogMs = 12000 }) {
     }
     try {
       if (req.method === 'GET' && u === '/status') return sendJson(res, 200, control.status());
-      if (req.method === 'POST' && u === '/yield') { console.log('[api] /yield — page is taking the device'); control.yield(); yielded = true; lastBeat = Date.now(); armWatchdog(); return sendJson(res, 200, { ok: true }); }
-      if (req.method === 'POST' && u === '/resume') { console.log('[api] /resume — page released the device'); control.resume(); yielded = false; clearInterval(wd); return sendJson(res, 200, { ok: true }); }
+      if (req.method === 'POST' && u === '/yield') { console.log(ts() + ' [api] /yield — page is taking the device'); control.yield(); yielded = true; lastBeat = Date.now(); armWatchdog(); return sendJson(res, 200, { ok: true }); }
+      if (req.method === 'POST' && u === '/resume') { console.log(ts() + ' [api] /resume — page released the device'); control.resume(); yielded = false; clearInterval(wd); return sendJson(res, 200, { ok: true }); }
+      if (req.method === 'GET' && u === '/autostart') return sendJson(res, 200, { enabled: await control.getAutostart() });
+      if (req.method === 'POST' && u === '/autostart') {
+        const b = await readBody(req); let on;
+        try { on = !!JSON.parse(b || '{}').on; } catch { return sendJson(res, 400, { error: 'bad json' }); }
+        await control.setAutostart(on);
+        console.log(ts() + ' [api] /autostart ' + (on ? 'on' : 'off'));
+        return sendJson(res, 200, { ok: true, enabled: on });
+      }
+      if (req.method === 'POST' && u === '/quit') {
+        console.log(ts() + ' [api] /quit — shutting down');
+        sendJson(res, 200, { ok: true });
+        setTimeout(() => control.quit(), 150);   // respond first, then exit
+        return;
+      }
       if (req.method === 'POST' && u === '/heartbeat') { lastBeat = Date.now(); return sendJson(res, 200, { ok: true }); }
       if (req.method === 'POST' && u === '/config') {
         const b = await readBody(req); let cfg;

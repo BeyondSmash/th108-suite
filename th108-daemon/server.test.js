@@ -16,11 +16,14 @@ function raw(server, method, p, headers) {
 
 function fakeControl() {
   return {
-    calls: [], _paused: false, saved: null,
+    calls: [], _paused: false, saved: null, _autostart: false,
     yield() { this.calls.push('yield'); this._paused = true; },
     resume() { this.calls.push('resume'); this._paused = false; },
     saveConfig(c) { this.calls.push('save'); this.saved = c; },
     status() { return { running: true, paused: this._paused, deviceConnected: true, fps: 30 }; },
+    getAutostart() { this.calls.push('getAutostart'); return Promise.resolve(this._autostart); },
+    setAutostart(on) { this.calls.push('setAutostart:' + on); this._autostart = !!on; return Promise.resolve(); },
+    quit() { this.calls.push('quit'); },
   };
 }
 
@@ -89,6 +92,25 @@ test('security guards: foreign Host, cross-Origin POST, and non-JSON /config are
     const ok = await raw(server, 'POST', '/yield', { origin: `http://127.0.0.1:${server.port}` });
     assert.equal(ok.code, 200);
     assert.ok(ctl.calls.includes('yield'));
+  } finally { server.close(); }
+});
+
+test('autostart endpoints read and write through control; /quit responds then quits', async () => {
+  const ctl = fakeControl();
+  const server = createServer({ control: ctl, root: path.join(__dirname, '..'), port: 0 });
+  await server.listening;
+  try {
+    assert.equal((await call(server, 'GET', '/autostart')).json.enabled, false);
+    assert.equal((await call(server, 'POST', '/autostart', { on: true })).json.enabled, true);
+    assert.ok(ctl.calls.includes('setAutostart:true'));
+    assert.equal((await call(server, 'GET', '/autostart')).json.enabled, true);
+    await call(server, 'POST', '/autostart', { on: false });
+    assert.equal(ctl._autostart, false);
+    const q = await call(server, 'POST', '/quit');
+    assert.equal(q.json.ok, true, '/quit must respond before exiting');
+    assert.ok(!ctl.calls.includes('quit'), 'quit is deferred past the response');
+    await new Promise(r => setTimeout(r, 250));
+    assert.ok(ctl.calls.includes('quit'), 'quit fires shortly after responding');
   } finally { server.close(); }
 });
 

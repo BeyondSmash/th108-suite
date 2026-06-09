@@ -107,6 +107,15 @@
     </div>
     <div id="layerCards"></div>
   </div>
+  <div class="panel block" id="daemonPanel">
+    <b>Background daemon</b>
+    <p class="hint" style="margin:4px 0 8px">Runs your layers always-on — reactive typing in any app — and takes over whenever this page is closed.</p>
+    <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+      <span id="dmnStatus" class="hint" style="margin:0">checking…</span>
+      <label class="sl" title="start the daemon hidden at every login (per-user registry entry, no admin)"><input type="checkbox" id="dmnAuto"> auto-start on login</label>
+      <button id="dmnQuit" title="stop the background daemon until setup.cmd or your next login starts it again — this page keeps working">✖ Quit daemon</button>
+    </div>
+  </div>
    </div>
    <div class="col" id="colR">
   <div class="panel block" id="gifPanel">
@@ -295,6 +304,33 @@ function daemonHeartbeatStop(){ if(hbW) hbW.postMessage({}); if(DAEMON.hb && DAE
 function daemonPushConfig(){ if(DAEMON.present){ try{ fetch('/config',{method:'POST',headers:{'content-type':'application/json'},body:localStorage.getItem('th108_layers')||'[]'}); }catch(_){} } }
 function daemonResume(){ if(DAEMON.present){ if(navigator.sendBeacon) navigator.sendBeacon('/resume'); else fetch('/resume',{method:'POST',keepalive:true}); } }
 window.addEventListener('beforeunload', ()=>{ daemonHeartbeatStop(); daemonResume(); try{ TH108LCD.setDevices({}); }catch(_){ } });
+
+// ===== Background-daemon panel: status readout, auto-start toggle (HKCU Run key via the daemon), quit =====
+(function(){
+  const st=document.getElementById('dmnStatus'), auto=document.getElementById('dmnAuto'), quit=document.getElementById('dmnQuit');
+  let alive=false;
+  async function refresh(){
+    try{
+      const r=await fetch('/status',{cache:'no-store'}); if(!r.ok) throw 0;
+      const s=await r.json(); alive=true;
+      st.textContent='daemon: running · '+(s.paused?'yielded to this page':(s.deviceConnected?'driving the keyboard':'waiting for the keyboard'));
+      auto.disabled=false; quit.disabled=false;
+    }catch(_){ alive=false; st.textContent='daemon: not running — start it with setup.cmd (lighting then survives closing this tab)'; auto.disabled=true; quit.disabled=true; }
+  }
+  async function refreshAuto(){ if(!alive) return; try{ const r=await fetch('/autostart',{cache:'no-store'}); auto.checked=!!(await r.json()).enabled; }catch(_){ } }
+  auto.addEventListener('change',async()=>{
+    try{ await fetch('/autostart',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({on:auto.checked})});
+      log('daemon auto-start on login '+(auto.checked?'enabled':'disabled'),'ok'); }
+    catch(_){ log('auto-start toggle failed','err'); refreshAuto(); }
+  });
+  quit.addEventListener('click',async()=>{
+    if(!confirm('Quit the background daemon?\n\nAlways-on lighting and reactive-anywhere stop until setup.cmd or your next login starts it again. This page keeps working as-is.')) return;
+    try{ await fetch('/quit',{method:'POST'}); log('daemon quit','dim'); }catch(_){ }
+    setTimeout(refresh,600);
+  });
+  if(/^https?:$/.test(location.protocol)){ refresh().then(refreshAuto); setInterval(()=>refresh(),5000); }   // display-only poll; tab-throttling is fine
+  else { st.textContent='daemon: unavailable on file:// — open via http://localhost:8123'; auto.disabled=true; quit.disabled=true; }
+})();
 
 // ===== layer compositor engine =====
 function fpsCap(){ return +document.getElementById('gifFps').value || 60; }   // global output FPS cap (shared with GIF) — lower = less compute
