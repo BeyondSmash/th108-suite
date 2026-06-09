@@ -86,6 +86,9 @@
 
   <div class="row" style="margin-top:4px">
     <button id="editBtn">✎ Edit layout</button>
+    <button id="exportCfg" title="Download your layer setup as JSON (same format as the daemon's config.json)">⬇ Export</button>
+    <button id="importCfg" title="Load a layer setup from a JSON file (e.g. moved from the file:// page)">⬆ Import</button>
+    <input type="file" id="importFile" accept="application/json,.json" style="display:none">
     <span id="editHint" class="hint" style="display:none">drag a panel by its dashed outline to move it between columns / reorder</span>
   </div>
 
@@ -959,6 +962,31 @@ function setEdit(on){
   document.getElementById('editHint').style.display = on?'inline':'none';
 }
 document.getElementById('editBtn').addEventListener('click',()=>setEdit(!editMode));
+
+// Export / Import the layer setup. Export's JSON IS the daemon's config.json format. Import also lets you
+// move settings across origins (e.g. file:// → http://localhost:8123, which don't share localStorage).
+document.getElementById('exportCfg').addEventListener('click',()=>{
+  saveLayers();                                              // flush current state to localStorage first
+  const data=localStorage.getItem('th108_layers')||'[]';
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([data],{type:'application/json'}));
+  a.download='th108-config.json'; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+  log('exported layer config ('+(JSON.parse(data).length)+' layers) → th108-config.json','ok');
+});
+document.getElementById('importCfg').addEventListener('click',()=>document.getElementById('importFile').click());
+document.getElementById('importFile').addEventListener('change',async e=>{
+  const f=e.target.files[0]; if(!f){ return; }
+  try{
+    const arr=JSON.parse(await f.text());
+    if(!Array.isArray(arr)) throw new Error('file is not a layer array');
+    localStorage.setItem('th108_layers', JSON.stringify(arr));
+    daemonPushConfig();                                      // hand it straight to the daemon if one is serving this page
+    log('imported '+arr.length+' layers — reloading…','ok');
+    location.reload();
+  }catch(err){ alert('Import failed: '+(err&&err.message||err)); }
+  e.target.value='';
+});
 
 let blockDragging=null;
 blocks().forEach(b=>{
