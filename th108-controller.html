@@ -329,7 +329,7 @@ async function connect(){
   if(!('hid' in navigator)){ setStatus('WebHID needs Chrome/Edge','err'); return; }
   try{
     await daemonPing(); if(DAEMON.present) await daemonYield();   // daemon holds the device — make it release BEFORE we open, or the open fails
-    const picked=await navigator.hid.requestDevice({filters:[{vendorId:VENDOR,usagePage:USAGE_PAGE,usage:0x61}]});
+    const picked=await navigator.hid.requestDevice({filters:[{vendorId:VENDOR}]});   // grant the whole keyboard so BOTH the control (0xFF68/0x61) AND screen (large report) interfaces are available (LCD upload needs the screen iface)
     if(!picked || !picked.length){ setStatus('connection cancelled','dim'); return; }   // respect Cancel — don't silently fall back to a previously-granted device
     const ok=await bindDevice(picked, false);
     if(ok) daemonHeartbeatStart();   // tell the daemon's watchdog we're alive & holding the device
