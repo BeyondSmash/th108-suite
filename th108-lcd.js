@@ -640,6 +640,7 @@
       } catch (e) { log('clipboard read failed: ' + e.message + ' — copy the image again, or just press Ctrl+V on the page', 'err'); }
     });
     pasteHandler = e => {
+      if (!shown) return;                 // ignore paste unless the LCD overlay is open (don't hijack the host page)
       const items = e.clipboardData && e.clipboardData.items; if (!items) return;
       for (const it of items) { if (it.type && it.type.startsWith('image/')) { const b = it.getAsFile(); if (b) { e.preventDefault(); loadBlob(b, 'pasted-image'); return; } } }
     };
@@ -700,6 +701,7 @@
     $('#lcdUndo').addEventListener('click', () => { if (hi > 0) { hi--; applySnap(hist[hi]); updateHistButtons(); } });
     $('#lcdRedo').addEventListener('click', () => { if (hi < hist.length - 1) { hi++; applySnap(hist[hi]); updateHistButtons(); } });
     keyHandler = e => {
+      if (!shown) return;                 // only handle Ctrl+Z/Y while the LCD overlay is open
       if ((e.ctrlKey || e.metaKey) && e.key === 'z') { e.preventDefault(); $('#lcdUndo').click(); }
       else if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.shiftKey && e.key === 'Z'))) { e.preventDefault(); $('#lcdRedo').click(); }
     };
@@ -768,8 +770,9 @@
       : 'not connected — connect on the main page first';
   }
 
-  function onShow() { startPreview(); }   // start preview only if frames are loaded (startPreview guards on frames.length)
-  function onHide() { stopPreview(); }
+  let shown = false;                      // true while the overlay is open — gates the window-level paste/keydown handlers
+  function onShow() { shown = true; startPreview(); }   // start preview only if frames are loaded (startPreview guards on frames.length)
+  function onHide() { shown = false; stopPreview(); }
 
   root.TH108LCD = { mount, setDevices, onShow, onHide };
 })(window);
