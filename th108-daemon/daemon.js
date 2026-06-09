@@ -47,30 +47,48 @@ function closeDevice() {
 }
 
 // Try to (re)open the control interface when we have none and aren't paused.
-function openIfPossible() {
-  if (device || paused) return;
+// PROBE BEFORE WRITING (defense in depth for the single-writer rule): Windows HID opens are SHARED,
+// so nothing at the OS level stops daemon + page from both holding the device. Listen ~1.5s on the
+// fresh handle first — unsolicited 0x55 ACK traffic means a live page is streaming (its yield expired
+// but it's still there); writing too would wedge the board. Back off and re-probe on a later tick.
+let probing = false, nextOpenAt = 0;
+async function openIfPossible() {
+  if (device || paused || probing) return;
+  if (Date.now() < nextOpenAt) return;   // backoff after a mute/failed device — no 2s open/close churn against a wedged board
   const p = T.findPath();
   if (!p) return;
+  probing = true;
+  let d = null;
   try {
-    device = T.openDevice(p);
+    d = T.openDevice(p);
+    const traffic = await T.probeTraffic(d, 1500);
+    if (paused) { try { d.close(); } catch {} return; }   // yielded mid-probe — hand it straight back
+    if (traffic > 0) {
+      try { d.close(); } catch {}
+      console.log(`… another writer on the device (${traffic} reports during probe) — backing off`);
+      return;
+    }
+    device = d;
     send = T.makeSender(device, { ackTimeoutMs: 800 });
     console.log('✓ device open');
-  } catch {
-    closeDevice();
-  }
+  } catch { try { if (d) d.close(); } catch {} nextOpenAt = Date.now() + 5000; }
+  finally { probing = false; }
 }
 
 // ----- render loop ~30fps -----
 async function tick() {
   if (paused) return;
-  openIfPossible();
+  await openIfPossible();
   if (device && send && state) {
     const now = performance.now();
     const flat = E.composeFrame(state, now);
     if (!E.flatEq(flat, state.lastFlat) || now - state.lastSent >= 1000) {
       const ok = await send(flat);
       if (ok) { state.lastFlat = flat; state.lastSent = now; }
-      else { closeDevice(); }   // stall → drop device, reconnect next tick
+      else {                    // stall → drop device, retry after a pause (a wedged board stays mute until replug)
+        closeDevice(); nextOpenAt = Date.now() + 5000;
+        console.log('… board not ACKing — retrying in 5s (replug clears a wedged board)');
+      }
     }
   }
 }

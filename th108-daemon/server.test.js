@@ -45,6 +45,22 @@ test('control endpoints drive the controller + watchdog auto-resumes', async () 
   } finally { server.close(); }
 });
 
+test('heartbeats hold the watchdog off; silence after them still resumes', async () => {
+  const ctl = fakeControl();
+  const server = createServer({ control: ctl, root: path.join(__dirname, '..'), port: 0, watchdogMs: 200 });
+  await server.listening;
+  try {
+    await call(server, 'POST', '/yield');
+    for (let i = 0; i < 6; i++) {              // beat every 70ms for ~420ms — well past watchdogMs
+      await new Promise(r => setTimeout(r, 70));
+      await call(server, 'POST', '/heartbeat');
+    }
+    assert.ok(!ctl.calls.includes('resume'), 'watchdog must NOT fire while heartbeats flow');
+    await new Promise(r => setTimeout(r, 400));   // then go silent → it must fire
+    assert.ok(ctl.calls.includes('resume'), 'watchdog must fire after heartbeats stop');
+  } finally { server.close(); }
+});
+
 test('bad /config json → 400, no save', async () => {
   const ctl = fakeControl();
   const server = createServer({ control: ctl, root: path.join(__dirname, '..'), port: 0 });

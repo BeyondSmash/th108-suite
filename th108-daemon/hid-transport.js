@@ -12,7 +12,14 @@ function findPath() {
   return m ? m.path : null;
 }
 
-function openDevice(path) { return new HID.HID(path); }
+function openDevice(path) {
+  const d = new HID.HID(path);
+  // node-hid emits 'error' from its read pump (wedged board, or a handle closed mid-read) — with no
+  // listener that's an UNCAUGHT exception that kills the whole daemon. Swallow it: the send/probe
+  // paths already detect and handle a dead device (stall → close → reopen with backoff).
+  d.on('error', () => {});
+  return d;
+}
 
 // Build an ACK-gated sender bound to one open device.
 // Returns async sendFrame(flat) -> true on success, false on stall (never throws, so the loop survives).
@@ -43,4 +50,17 @@ function makeSender(device, { packLen = 64, cmd = 0x32, ackTimeoutMs = 800 } = {
   };
 }
 
-module.exports = { findPath, openDevice, makeSender, VENDOR, USAGE_PAGE, USAGE };
+// Listen on a freshly-opened handle WITHOUT writing anything: input reports arriving on their own
+// (0x55 ACKs answering someone ELSE's writes, or FN-key broadcasts) mean another host process is
+// driving the device — e.g. a WebHID page whose yield expired but which is still alive and streaming.
+// Writing too would interleave two 0x32 streams and wedge the board's pipe; callers must back off.
+function probeTraffic(device, ms = 1500) {
+  return new Promise((resolve) => {
+    let n = 0;
+    const onData = () => { n++; };
+    device.on('data', onData);
+    setTimeout(() => { try { device.removeListener('data', onData); } catch {} resolve(n); }, ms);
+  });
+}
+
+module.exports = { findPath, openDevice, makeSender, probeTraffic, VENDOR, USAGE_PAGE, USAGE };

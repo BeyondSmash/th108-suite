@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert');
-const { makeSender } = require('./hid-transport.js');
+const { makeSender, probeTraffic } = require('./hid-transport.js');
 
 // fake node-hid device: records writes, fires a 0x55 ACK 'data' event after each write
 function fakeDevice() {
@@ -42,4 +42,29 @@ test('sendFrame returns false when write() throws', async () => {
   const dev = { on() {}, write() { throw new Error('device gone'); }, close() {} };
   const send = makeSender(dev, { packLen: 64, cmd: 0x32, ackTimeoutMs: 50 });
   assert.equal(await send([0, 1, 2, 3]), false);
+});
+
+// fake device for probeTraffic: lets the test emit unsolicited input reports (= another writer's ACKs)
+function fakeListener() {
+  const handlers = {};
+  return {
+    on(ev, cb) { (handlers[ev] ||= []).push(cb); },
+    removeListener(ev, cb) { handlers[ev] = (handlers[ev] || []).filter(f => f !== cb); },
+    emit(ev, ...a) { (handlers[ev] || []).forEach(cb => cb(...a)); },
+    listenerCount(ev) { return (handlers[ev] || []).length; },
+  };
+}
+
+test('probeTraffic counts unsolicited input reports (another writer streaming)', async () => {
+  const dev = fakeListener();
+  const p = probeTraffic(dev, 80);
+  dev.emit('data', Buffer.from([0x55, 0x32]));
+  dev.emit('data', Buffer.from([0x55, 0x32]));
+  assert.equal(await p, 2);
+  assert.equal(dev.listenerCount('data'), 0, 'probe must detach its listener');
+});
+
+test('probeTraffic resolves 0 on a silent device', async () => {
+  const dev = fakeListener();
+  assert.equal(await probeTraffic(dev, 60), 0);
 });

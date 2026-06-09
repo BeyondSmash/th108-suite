@@ -9,12 +9,19 @@ const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.json': 'applica
                '.css': 'text/css', '.png': 'image/png', '.svg': 'image/svg+xml', '.ico': 'image/x-icon' };
 
 // control = { yield(), resume(), saveConfig(cfg), status() }
-function createServer({ control, root, port = 8123, watchdogMs = 5000 }) {
+// watchdogMs default: the page beats every 3s from a Web Worker timer (throttle-proof); 12s tolerates
+// 2-3 dropped beats before concluding the page is gone. The old 5s window was tighter than real page
+// behavior (heartbeats only started after device-bind, and main-thread timers throttle in hidden tabs)
+// — the watchdog "resumed" into a live page and the two writers wedged the board.
+function createServer({ control, root, port = 8123, watchdogMs = 12000 }) {
   let lastBeat = Date.now(), yielded = false, wd = null, boundPort = port;
   function armWatchdog() {
     clearInterval(wd);
     wd = setInterval(() => {
-      if (yielded && Date.now() - lastBeat > watchdogMs) { control.resume(); yielded = false; }
+      if (yielded && Date.now() - lastBeat > watchdogMs) {
+        console.log(`[watchdog] no page heartbeat for >${watchdogMs}ms — resuming daemon control`);
+        control.resume(); yielded = false;
+      }
     }, Math.max(50, Math.floor(watchdogMs / 4)));
   }
   const readBody = (req) => new Promise((resolve, reject) => {   // capped to 64 KiB to avoid memory-DoS
@@ -39,8 +46,8 @@ function createServer({ control, root, port = 8123, watchdogMs = 5000 }) {
     }
     try {
       if (req.method === 'GET' && u === '/status') return sendJson(res, 200, control.status());
-      if (req.method === 'POST' && u === '/yield') { control.yield(); yielded = true; lastBeat = Date.now(); armWatchdog(); return sendJson(res, 200, { ok: true }); }
-      if (req.method === 'POST' && u === '/resume') { control.resume(); yielded = false; clearInterval(wd); return sendJson(res, 200, { ok: true }); }
+      if (req.method === 'POST' && u === '/yield') { console.log('[api] /yield — page is taking the device'); control.yield(); yielded = true; lastBeat = Date.now(); armWatchdog(); return sendJson(res, 200, { ok: true }); }
+      if (req.method === 'POST' && u === '/resume') { console.log('[api] /resume — page released the device'); control.resume(); yielded = false; clearInterval(wd); return sendJson(res, 200, { ok: true }); }
       if (req.method === 'POST' && u === '/heartbeat') { lastBeat = Date.now(); return sendJson(res, 200, { ok: true }); }
       if (req.method === 'POST' && u === '/config') {
         const b = await readBody(req); let cfg;
