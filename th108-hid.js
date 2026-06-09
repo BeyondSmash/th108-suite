@@ -58,7 +58,19 @@
     function waitAck(ms) { return new Promise(res => { _ackWaiter = res; setTimeout(() => { if (_ackWaiter === res) { _ackWaiter = null; res(false); } }, ms); }); }
     function noteStall() {
       if (++_sendStalls === 1 || _sendStalls % 20 === 0) log('board not keeping up (no ACK) — pacing/dropping to keep the loop alive', 'dim');
-      if (_sendStalls >= 15) { log('board unresponsive — stopping. Unplug/replug it, then Connect → Start layers.', 'err'); stopHost(); }
+      if (_sendStalls >= 15) { log('board unresponsive — stopping.', 'err'); stopHost(); releaseAfterFailure(); }
+    }
+    // ACK silence with NO disconnect event = the handle may be stale (a hub power blip can reset/re-enumerate
+    // the keyboard without Chrome firing 'disconnect' — observed when flipping an audio device on the same bus).
+    // Drop the dead handle and let the rebind poll pick up the fresh enumeration; cap retries so a genuinely
+    // wedged board (FIFO overrun) doesn't loop forever.
+    let _stallRetries = 0;
+    function releaseAfterFailure() {
+      if (!device) return;
+      try { device.close(); } catch (_) { }
+      device = null; reportId = 0;
+      if (++_stallRetries <= 2) { setStatus('board stopped responding — re-binding…', 'dim'); startRebindPoll(); }
+      else setStatus('board unresponsive after retries — unplug/replug it, then click Connect', 'err');
     }
     async function sendFrame(flat, aux = 0) {
       if (!device) return false;
@@ -78,7 +90,7 @@
         // WAIT for the board's 0x55 ACK before sending the next chunk. This pacing matches the board's FIFO drain
         // rate, which is the actual fix: firing chunks without waiting overran the FIFO and wedged the pipe.
         if (!(await ack)) { noteStall(); return false; }
-        _sendStalls = 0;
+        _sendStalls = 0; _stallRetries = 0;               // a clean ACK = the board genuinely recovered — re-arm the stall-rebind budget
       }
       return true;
     }
@@ -87,6 +99,7 @@
       const w = findWritable(devs);
       if (!w) { if (!silent) setStatus('no FF68 control interface found — re-pick the 0xff68 entry', 'err'); return false; }
       device = w.d; reportId = w.reportId; packLen = w.packLen;
+      stopRebindPoll();                                  // any successful bind path (event, poll, manual Connect) ends the recovery poll
       if (!device.opened) await device.open();
       if (!device._inHooked) { device._inHooked = true; device.addEventListener('inputreport', onInputReport); }   // read the board's ACK/status reports + gate sends on them
       setStatus('connected: ' + device.productName + ' · reportId=' + reportId + ' · packLen=' + packLen, 'ok');
@@ -115,6 +128,29 @@
       try { if (!('hid' in navigator)) return; const known = await navigator.hid.getDevices(); if (known && known.length) { await beforeAutoReconnect(); const ok = await bindDevice(known, true); if (ok) onConnected(); } } catch (_) { }
     }
 
+    // After a disconnect, ALSO poll getDevices() for the grant coming back — the navigator.hid 'connect' event
+    // is not reliable on every recovery path (it never fires after a physical replug here: Chrome REVOKES the
+    // grant on disconnect for devices without a serial number, and the TH108 reports none). The poll silently
+    // re-binds whenever the grant survived (sleep/wake, USB blips); when it was revoked, nothing we can do
+    // headlessly — prompt for the one Connect click.
+    let _pollT = null, _pollN = 0;
+    function stopRebindPoll() { if (_pollT) { clearInterval(_pollT); _pollT = null; } }
+    function startRebindPoll() {
+      stopRebindPoll(); _pollN = 0;
+      _pollT = setInterval(async () => {
+        if (device) { stopRebindPoll(); return; }
+        let known = []; try { known = await navigator.hid.getDevices(); } catch (_) { }
+        const w = findWritable(known);
+        if (w && w.usagePage === 0xFF68 && w.usage === 0x61) {
+          stopRebindPoll();
+          try { const ok = await bindDevice(known, true); if (ok) onReconnected(); }
+          catch (_) { device = null; reportId = 0; startRebindPoll(); }   // not ready yet — keep polling
+        } else if (++_pollN === 4) {   // ~6s with no grant in sight → it was a replug (grant revoked) — needs the user
+          setStatus('keyboard disconnected — if you replugged it, click "1 · Connect keyboard" to re-grant (Chrome forgets the permission on unplug)', 'dim');
+        }
+      }, 1500);
+    }
+
     // Survive sleep/wake + unplug/replug: WebHID invalidates the device handle when the keyboard re-enumerates,
     // so the old handle goes stale (Start layers silently hits a dead device). Auto re-bind the fresh handle and
     // let the host resume layers if they were running — no manual reconnect/Start needed.
@@ -125,14 +161,30 @@
         device = null; reportId = 0;
         setStatus('keyboard disconnected (sleep/unplug) — reconnecting automatically…', 'dim');
         log('keyboard disconnected — waiting for it to come back…', 'dim');
+        startRebindPoll();                                     // the 'connect' event alone is not enough — see startRebindPoll
       });
       navigator.hid.addEventListener('connect', async e => {
         if (device) return;                                     // already bound
         if (e.device && e.device.vendorId !== VENDOR) return;   // not our keyboard
         try { await beforeConnect(); } catch (_) { }
         const known = await navigator.hid.getDevices();
-        const ok = await bindDevice(known, true);               // re-open the FRESH handle (control + screen)
-        if (ok) onReconnected();
+        // a replug fires one connect event per HID interface as each re-enumerates — don't bind until the
+        // 0xFF68/0x61 control iface is actually back, or findWritable's fallback could grab the screen iface
+        // (writes ACK but don't drive LEDs) and lock out the later, correct events
+        const w = findWritable(known);
+        if (!w || w.usagePage !== 0xFF68 || w.usage !== 0x61) { log('keyboard re-enumerating — waiting for the control interface…', 'dim'); return; }
+        try {
+          const ok = await bindDevice(known, true);             // re-open the FRESH handle (control + screen)
+          if (ok) onReconnected();
+        } catch (err) {
+          device = null; reportId = 0;                          // bind failed mid-enumeration (e.g. open() too early) — release so the next connect event retries instead of seeing a broken "already bound" handle
+          log('reconnect attempt failed: ' + (err && err.message || err) + ' — retrying shortly', 'dim');
+          setTimeout(async () => {                              // the failed attempt may have been the LAST interface event — one delayed retry so we don't strand the page
+            if (device) return;
+            try { const ok = await bindDevice(await navigator.hid.getDevices(), true); if (ok) onReconnected(); }
+            catch (_) { device = null; reportId = 0; }
+          }, 1000);
+        }
       });
     }
 

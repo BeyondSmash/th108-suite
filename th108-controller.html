@@ -238,10 +238,13 @@ function log(m,c=''){ const d=document.createElement('div'); if(c)d.className=c;
   while(out.childNodes.length>200) out.removeChild(out.firstChild); out.scrollTop=out.scrollHeight; }
 function setStatus(s,c=''){ const e=document.getElementById('status'); e.textContent=s; e.className=c; }
 
-let _wasRunning=false;   // layers were running when the keyboard went away (sleep/unplug) → resume on re-bind
+let _wasRunning=false;   // layers were running when the keyboard went away (sleep/unplug/wedge) → resume on re-bind; cleared only by a deliberate Stop
 const HID=TH108Hid.create({
   log, setStatus, ledCount:INDICES.length,
-  stopHost:()=>{ stop(); },                                                                  // board unresponsive / fatal send error
+  // board unresponsive / fatal send error. On a physical unplug the failing WRITE lands before the disconnect
+  // event, so this stop() would clear `running` and the disconnect handler would see false — capture the
+  // resume intent HERE, or unplug/replug never auto-resumes (sleep/wake worked only because no write fails asleep).
+  stopHost:()=>{ _wasRunning=_wasRunning||running; stop(); },
   beforeConnect:async()=>{ await daemonPing(); if(DAEMON.present) await daemonYield(); },    // daemon holds the device — make it release BEFORE we open
   beforeAutoReconnect:async()=>{ if(DAEMON.present) await daemonYield(); },                  // page-load path: daemonPing() already ran
   onBound:devs=>{
@@ -249,9 +252,14 @@ const HID=TH108Hid.create({
     if(gifFrames.length) document.getElementById('gifPlay').disabled=false;
     TH108LCD.setDevices(devs);
   },
-  onConnected:()=>daemonHeartbeatStart(),   // tell the daemon's watchdog we're alive & holding the device
+  onConnected:()=>{   // tell the daemon's watchdog we're alive & holding the device
+    daemonHeartbeatStart();
+    // a replug revokes the WebHID grant (no serial number on the TH108), so recovery is a manual Connect click —
+    // honor the pending resume intent here too, making replug recovery ONE click instead of Connect+Start
+    if(_wasRunning){ _wasRunning=false; start(); log('layers resumed','ok'); }
+  },
   onDisconnected:()=>{
-    _wasRunning=running;
+    _wasRunning=_wasRunning||running;   // don't overwrite an intent already captured by stopHost (the write fails before the disconnect event on unplug)
     if(running){ running=false; if(layerW) layerW.postMessage({stop:true}); }
     try{ TH108LCD.setDevices({}); }catch(_){ }          // the screen handle is stale too
     document.getElementById('start').disabled=true; document.getElementById('stop').disabled=true;
@@ -657,7 +665,7 @@ window.addEventListener('paste',e=>{
 
 document.getElementById('connect').addEventListener('click',()=>HID.connect());
 document.getElementById('start').addEventListener('click',start);
-document.getElementById('stop').addEventListener('click',stop);
+document.getElementById('stop').addEventListener('click',()=>{ _wasRunning=false; stop(); });   // a deliberate Stop also cancels any pending resume-on-reconnect
 
 // ===== layer cards UI (built from the layers array; bottom layer listed last) =====
 const TYPES=['background','reactive','gradient','pattern','media'], BLENDS=['normal','add','screen','multiply','max'];
