@@ -87,10 +87,11 @@
       <label style="margin-left:14px"><input type="checkbox" id="lcdSwap" checked /> little-endian byte order (correct for TH108 — untick only if colors look wrong)</label>
     </div>
     <div class="row">
-      <input type="text" id="lcdUrl" placeholder="paste an image URL…" />
+      <input type="text" id="lcdUrl" placeholder="paste an image / GIF URL…" />
       <button id="lcdUrlLoad">Load URL</button>
-      <button id="lcdPaste">📋 Paste image</button>
-      <button id="lcdLibBtn">★ Library</button>
+      <button id="lcdPaste">Paste image (Ctrl+V)</button>
+      <button id="lcdSave" title="save the currently loaded image to the library">★ Add to Library</button>
+      <button id="lcdLibBtn">📚 Library</button>
       <span class="hint">URL load needs the host to allow cross-origin fetch (CORS). Ctrl+V also pastes.</span>
     </div>
     <div class="row" id="lcdLib" style="display:none"></div>
@@ -646,6 +647,12 @@
     };
     window.addEventListener('paste', pasteHandler);
     $('#lcdLibBtn').addEventListener('click', () => { const lib = $('#lcdLib'); lib.style.display = lib.style.display === 'none' ? 'block' : 'none'; refreshLib(); });
+    $('#lcdSave').addEventListener('click', async () => {   // save the loaded image to the shared media library (parity with the GIF→keyboard panel)
+      if (!currentFile) { log('load an image first', 'dim'); return; }
+      if (!(window.TH108Media && TH108Media.available)) { log('library unavailable — serve via http://localhost (not file://)', 'err'); return; }
+      try { await TH108Media.add(currentFile, (currentFile && currentFile.name) || 'lcd-image'); log('added to library', 'ok'); refreshLib(); }
+      catch (e) { log('add to library failed: ' + e.message, 'err'); }
+    });
 
     // ---- crop reposition / scale, undo·redo·reset ----
     $('#lcdCropUndo').addEventListener('click', () => { if (cropHi > 0) { cropHi--; cropApplySnap(cropHist[cropHi]); cropBtns(); } });
