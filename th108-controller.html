@@ -93,7 +93,8 @@
     <button id="importCfg" title="Load a layer setup from a JSON file (e.g. moved from the file:// page)">⬆ Import</button>
     <input type="file" id="importFile" accept="application/json,.json" style="display:none">
     <button id="lcdBtn" title="Open the LCD screen uploader">🖵 LCD screen</button>
-    <button id="resetKbBtn" title="Factory-reset the keyboard (recovers a wedged board; clears onboard config, NOT your host layers)">⟳ Reset keyboard</button>
+    <button id="resetKbBtn" title="Factory-reset the keyboard HARDWARE (recovers a wedged board; clears the keyboard's onboard config/keymap — NOT this page's settings)">⟳ Factory reset keyboard</button>
+    <button id="resetSiteBtn" title="Reset THIS page's settings (layers, per-pattern values, LCD calibration, layout) to defaults — keeps your media Library; does NOT touch the keyboard">↺ Reset all settings</button>
     <span id="editHint" class="hint" style="display:none">drag a panel by its dashed outline to move it between columns / reorder</span>
   </div>
 
@@ -1111,12 +1112,18 @@ window.__lcdHost = {
 // Recovery hatch if an upload ever wedges the board — works even when typing is dead (vendor iface still enumerates).
 document.getElementById('resetKbBtn').addEventListener('click', async ()=>{
   if(!device){ log('connect first','err'); return; }
-  if(!confirm('Reset ALL keyboard settings to factory?\n\nClears the keyboard\'s onboard config/keymap (this is the recovery for a wedged board). Your host-side layers/GIF are NOT affected.')) return;
+  if(!confirm('Factory-reset the KEYBOARD hardware?\n\nClears the keyboard\'s onboard config/keymap back to factory — this is the recovery for a wedged board. Does NOT touch this page\'s settings, your layers, or the LCD.')) return;
   try{
     const pkt=new Uint8Array(packLen); pkt[0]=0xAA; pkt[1]=0x0F; pkt[2]=0xFF;   // AA 0F FF = official buildPkt_ResettingAll
     await device.sendReport(reportId, pkt);
-    log('✓ sent Reset all settings (AA 0F FF) — keyboard factory-reset','ok');
-  }catch(e){ log('reset failed: '+e.message,'err'); }
+    log('✓ factory-reset the keyboard (AA 0F FF)','ok');
+  }catch(e){ log('keyboard reset failed: '+e.message,'err'); }
+});
+// Reset all of THIS page's settings (host-side localStorage), keeping the media Library (IndexedDB) + the keyboard untouched.
+document.getElementById('resetSiteBtn').addEventListener('click', ()=>{
+  if(!confirm('Reset all of THIS page\'s settings to defaults?\n\nClears your layers, per-pattern values, LCD calibration, and panel layout. Your saved media Library is kept, and the keyboard is NOT touched. The page will reload.')) return;
+  try{ localStorage.clear(); }catch(_){}
+  location.reload();
 });
 </script>
 </body>
