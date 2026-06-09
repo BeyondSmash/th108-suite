@@ -1054,6 +1054,33 @@ function restoreLayout(){
 restoreLayout();
 daemonPing().then(autoReconnect);   // learn if the background daemon holds the device, THEN silently reconnect (yielding first if needed) — no picker
 
+// Survive sleep/wake + unplug/replug: WebHID invalidates the device handle when the keyboard re-enumerates,
+// so the old handle goes stale (Start layers silently hits a dead device). Auto re-bind the fresh handle and
+// resume layers if they were running — no manual reconnect/Start needed.
+let _wasRunning = false;
+navigator.hid.addEventListener('disconnect', e => {
+  if (!device || e.device !== device) return;            // only react to OUR control interface going away
+  _wasRunning = running;
+  if (running) { running = false; if (layerW) layerW.postMessage({ stop: true }); }
+  device = null; reportId = 0;
+  try { TH108LCD.setDevices({}); } catch (_) {}          // the screen handle is stale too
+  document.getElementById('start').disabled = true; document.getElementById('stop').disabled = true;
+  setStatus('keyboard disconnected (sleep/unplug) — reconnecting automatically…', 'dim');
+  log('keyboard disconnected — waiting for it to come back…', 'dim');
+});
+navigator.hid.addEventListener('connect', async e => {
+  if (device) return;                                     // already bound
+  if (e.device && e.device.vendorId !== VENDOR) return;   // not our keyboard
+  try { await daemonPing(); if (DAEMON.present) await daemonYield(); } catch (_) {}
+  const known = await navigator.hid.getDevices();
+  const ok = await bindDevice(known, true);               // re-open the FRESH handle (control + screen)
+  if (ok) {
+    daemonHeartbeatStart();
+    if (_wasRunning) { _wasRunning = false; start(); log('keyboard reconnected — layers resumed', 'ok'); }
+    else log('keyboard reconnected', 'ok');
+  }
+});
+
 // ===== Onboard (firmware) effects: single 0x23 16-byte allledPack, persists on the keyboard =====
 attachHex(document.getElementById('onboardPanel'));   // typeable hex box on the primary/secondary pickers
 (function(){
