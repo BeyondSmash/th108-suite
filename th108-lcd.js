@@ -129,7 +129,7 @@
         <div><div class="sub" style="margin:0 0 4px">LCD preview — calibrated (what the screen shows)</div><canvas id="lcdPreview" width="160" height="96"></canvas></div>
         <div><div class="sub" style="margin:0 0 4px">Actual — desktop colors (the true source)</div><canvas id="lcdPreviewActual" width="160" height="96"></canvas></div>
       </div>
-      <div class="ctl" style="display:grid;grid-template-columns:64px 250px 60px 26px;gap:5px 8px;align-items:center">
+      <div class="ctl" style="display:grid;grid-template-columns:auto 250px 60px 26px;gap:5px 8px;align-items:center">
         <div style="grid-column:1/5;display:flex;align-items:center;gap:8px;margin-bottom:2px">
           <b>Per-channel RGB calibration</b><span id="lcdCalStatus" class="dim" style="font-weight:normal;color:#8b949e"></span>
           <span style="flex:1"></span>
