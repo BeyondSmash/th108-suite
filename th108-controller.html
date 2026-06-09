@@ -332,6 +332,7 @@ window.addEventListener('keyup',(e)=>{
 
 // ----- master loop (separate worker from the GIF's tickW) -----
 let running=false, layerInFlight=false;   // frame de-dupe / keepalive timing live on state.lastFlat / state.lastSent
+let obActive=false;   // a firmware (onboard) effect was applied → clicking a pattern auto-resumes layers, no "↩ Back to layers" needed
 const layerW=(()=>{ try{ return new Worker(URL.createObjectURL(new Blob(['let t;onmessage=e=>{if(e.data.stop){clearTimeout(t);return;}clearTimeout(t);t=setTimeout(()=>postMessage(1),e.data.delay);};'],{type:'text/javascript'}))); }catch(_){ return null; } })();
 function masterRate(){
   let f=1; for(const L of state.layers) if(L.enabled) f=Math.max(f,L.fps);
@@ -358,7 +359,7 @@ if(layerW) layerW.onmessage=layerTick;
 function start(){
   if(running||!HID.device) return;
   if(gifPlaying){ gifStopFn(); }                            // layers + GIF are mutually exclusive
-  running=true; state.lastFlat=null; state.lastSent=0; HID.resetStalls();
+  running=true; obActive=false; state.lastFlat=null; state.lastSent=0; HID.resetStalls();
   state.react.fg.fill(0); state.react.t.fill(-1e12); state.react.down.fill(0); state.react.up.fill(-1e12);
   for(const L of state.layers) L.lastTick=0;
   document.getElementById('start').disabled=true; document.getElementById('stop').disabled=false;
@@ -381,6 +382,7 @@ async function stop(){
 // ===== GIF -> per-key lighting: physical-layout sampling + drag/zoom positioning, stream via 0x32, loop =====
 const MAXDIM=340;                                    // cap decoded frame size (we only need ~104 samples) — keeps memory/CPU low
 let gifFrames=[], gifPlaying=false, gifIdx=0, currentSource=null, inFlight=false;   // currentSource = what to save to the library ({kind:'single',blob,name} | {kind:'seq',blobs,name})
+let gifPrevLayers=false;   // layers were running when Play GIF was clicked → Stop GIF hands back to them instead of leaving the board to the firmware
 // background tabs throttle main-thread setTimeout to ~1fps; a Web Worker timer keeps playback at full rate when unfocused
 const tickW=(()=>{ try{ return new Worker(URL.createObjectURL(new Blob(['let t;onmessage=e=>{if(e.data.stop){clearTimeout(t);return;}clearTimeout(t);t=setTimeout(()=>postMessage(1),e.data.delay);};'],{type:'text/javascript'}))); }catch(_){ return null; } })();
 let czoom=1, cpanX=0, cpanY=0, srcTmp=null;          // GIF position transform (source-pixel pan + zoom)
@@ -577,6 +579,7 @@ async function gifTick(){
 if(tickW) tickW.onmessage=gifTick;
 function gifPlay(){
   if(!HID.device||!gifFrames.length||gifPlaying) return;
+  gifPrevLayers=running; obActive=false;                    // remember what GIF playback replaced (and it overrides any firmware effect)
   if(running) stop();                                       // GIF mode replaces the reactive pulse
   gifPlaying=true; gifIdx=0;
   document.getElementById('gifPlay').disabled=true; document.getElementById('gifStop').disabled=false;
@@ -616,7 +619,11 @@ document.getElementById('gifSave').addEventListener('click',async()=>{
   catch(e){ log('add to library failed: '+e.message,'err'); }
 });
 document.getElementById('gifPlay').addEventListener('click',gifPlay);
-document.getElementById('gifStop').addEventListener('click',gifStopFn);
+document.getElementById('gifStop').addEventListener('click',async()=>{   // Stop GIF returns to whatever it replaced: layers if they were running, else dark
+  const back=gifPrevLayers; gifPrevLayers=false;
+  await gifStopFn();
+  if(back && HID.device && !running){ start(); log('layers resumed (GIF replaced them)','ok'); }
+});
 const flashSnap=el=>{ el.classList.add('snapped'); clearTimeout(el._st); el._st=setTimeout(()=>el.classList.remove('snapped'),250); };   // thumb flashes orange 250ms on snap
 const snap=(el,target,thr)=>{ if(Math.abs((+el.value)-target)<=thr){ if(+el.value!==target) el.value=target; if(!el._sn){ el._sn=true; flashSnap(el); } } else el._sn=false; };
 const snapMul=(el,step,thr)=>{ const v=+el.value, nr=Math.round(v/step)*step; if(Math.abs(v-nr)<=thr){ if(v!==nr) el.value=nr; if(el._sn!==nr){ el._sn=nr; flashSnap(el); } } else el._sn=null; };
@@ -872,7 +879,9 @@ function buildLayerBody(card,L){
       ) : '')+
     '</div>';
     const c=q=>body.querySelector(q);
-    body.querySelectorAll('.patbtn').forEach(btn=>btn.addEventListener('click',()=>{ s.pattern=btn.dataset.p; buildLayerBody(card,L); scheduleSaveLayers(); }));   // rebuild → restores that pattern's own saved params + its pattern-specific controls
+    body.querySelectorAll('.patbtn').forEach(btn=>btn.addEventListener('click',()=>{ s.pattern=btn.dataset.p; buildLayerBody(card,L); scheduleSaveLayers();   // rebuild → restores that pattern's own saved params + its pattern-specific controls
+    if(obActive && HID.device && !running && !gifPlaying) start();   // picking a pattern while a firmware effect is showing = "back to layers", no extra click
+  }));
     c('.s-colMode').addEventListener('change',e=>{ pp.colMode=e.target.value; scheduleSaveLayers(); });
     c('.s-color').addEventListener('input',e=>pp.color=e.target.value);
     c('.s-color2').addEventListener('input',e=>pp.color2=e.target.value);
@@ -1042,6 +1051,7 @@ async function applyOnboard(){
     const lbl=document.getElementById('obEffect').selectedOptions[0].textContent;
     log('onboard effect applied: '+lbl+(colorful?' (colorful)':' (solid)')+' · bri '+bright+' · spd '+speed,'ok');
     obSetStatus('effect set — runs on the keyboard','ok');
+    obActive=true;   // a pattern click can now auto-resume layers over this
   }catch(e){ log('onboard apply failed: '+e.message,'err'); obSetStatus('apply failed','err'); }
 }
 document.getElementById('obApply').addEventListener('click',applyOnboard);
