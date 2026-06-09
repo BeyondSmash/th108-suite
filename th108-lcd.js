@@ -551,13 +551,13 @@
         if (v === 0) { const t = new Uint8Array(4096); t.set(header, 0); t.set(n.slice(0, 3840), 256); data = t; }
         else { const a = 4096 * v - 256; data = n.slice(a, Math.min(a + 4096, n.length)); }
         const pkt = buildPktTFT(v, totalSize, data);
-        if (v === 0) log('first packet: ' + hex(pkt.slice(0, 12)) + '… (flash erase ~0.3s)', 'dim');
+        if (v === 0) log('first packet: ' + hex(pkt.slice(0, 12)) + '… (flash erase — up to ~15s for big GIFs)', 'dim');
         D({ ev: 'send', chunk: v });
         // NEVER re-send a chunk. Re-sending while the firmware is mid flash-erase/commit corrupts adjacent
         // flash (it wedged a board — recovered only via the official "Reset all settings"). The official driver
         // is purely ACK-driven and never re-sends. So: one send, wait for the 0x55 0x41 ACK with a generous
         // window, and on a real stall ABORT cleanly (no re-send). User power-cycles + retries the whole upload.
-        try { await sendOne(pkt, v === 0 ? 6000 : 4000); D({ ev: 'ack', chunk: v }); }   // real ACKs land in ~0.14-0.26s; window is only to abort cleanly on a true stall (never re-sends)
+        try { await sendOne(pkt, v === 0 ? 20000 : 4000); D({ ev: 'ack', chunk: v }); }   // chunk 0 = flash ERASE (scales with region size — up to ~15s for a ~1MB GIF); other chunks ACK in ~0.14s. Window only aborts cleanly on a true stall (never re-sends)
         catch (err) {
           D({ ev: 'GIVEUP', chunk: v, err: err.message });
           throw new Error(`chunk ${v}: no ACK (${err.message}) — aborted WITHOUT re-sending (mid-write re-sends corrupt flash). Power-cycle the keyboard, then retry the whole upload.`);
