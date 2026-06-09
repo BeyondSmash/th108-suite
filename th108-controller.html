@@ -275,7 +275,8 @@ function findWritable(devs){
 // Before opening WebHID we must ask it to release; while we hold the device we heartbeat + push config; on close we resume.
 // If no daemon is present (/status fails) every helper is a no-op and the page behaves exactly as before (direct WebHID).
 const DAEMON = { present:false, hb:null };
-async function daemonPing(){ try{ const r=await fetch('/status',{cache:'no-store'}); DAEMON.present = r.ok; }catch(_){ DAEMON.present=false; } }
+async function daemonPing(){ if(!/^https?:$/.test(location.protocol)){ DAEMON.present=false; return; }   // file:// page → no daemon server to talk to; skip (avoids a console CORS error)
+  try{ const r=await fetch('/status',{cache:'no-store'}); DAEMON.present = r.ok; }catch(_){ DAEMON.present=false; } }
 async function daemonYield(){ if(DAEMON.present){ try{ await fetch('/yield',{method:'POST'}); }catch(_){} } }
 function daemonHeartbeatStart(){ if(DAEMON.present && !DAEMON.hb) DAEMON.hb=setInterval(()=>{ if(navigator.sendBeacon) navigator.sendBeacon('/heartbeat'); else fetch('/heartbeat',{method:'POST'}); },3000); }
 function daemonHeartbeatStop(){ clearTimeout(DAEMON.hb); clearInterval(DAEMON.hb); DAEMON.hb=null; }
