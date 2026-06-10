@@ -48,7 +48,7 @@ window.TH108DaemonClient = (function () {
         try {
           const r = await fetch('/status', { cache: 'no-store' }); if (!r.ok) throw 0;
           const s = await r.json(); alive = true;
-          st.textContent = 'daemon: running · ' + (s.paused ? 'yielded to this page' : (s.deviceConnected ? 'driving the keyboard' : 'waiting for the keyboard'));
+          st.textContent = 'daemon: running · ' + (s.paused ? 'yielded to this page' : (s.deviceConnected ? 'driving the keyboard — layer edits here apply LIVE, no Connect needed' : 'waiting for the keyboard'));
           auto.disabled = false; quit.disabled = false;
           if (usb) { usb.disabled = false; if (document.activeElement !== usb) usb.checked = !!s.usbReset; }   // state rides /status; don't fight a click in progress
         } catch (_) { alive = false; st.textContent = 'daemon: not running — start it with setup.cmd (lighting then survives closing this tab)'; auto.disabled = true; quit.disabled = true; if (usb) usb.disabled = true; }

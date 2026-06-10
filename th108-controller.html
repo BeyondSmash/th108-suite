@@ -86,7 +86,8 @@
     <span id="status" class="dim">not connected</span>
   </div>
   <p class="hint">After Start, click this page once so it has keyboard focus, then type — pressed keys flash orange.
-     <br>⚠ <b>Browser keydown only fires while this tab is focused.</b> For type-anywhere/always-on we'd port this to a native host later.</p>
+     <br>⚠ <b>Browser keydown only fires while this tab is focused.</b> Reactive-in-any-app comes from the background daemon instead.
+     <br>💡 <b>Daemon running? Skip Connect for layer editing</b> — edits push to it live and reactive keeps working in every app. Connect is only for the GIF→keys, onboard-effect, and LCD tools (it takes the keyboard from the daemon until you close this tab).</p>
 
   <div class="row" style="margin-top:4px">
     <button id="editBtn">✎ Edit layout</button>
