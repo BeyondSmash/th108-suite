@@ -84,46 +84,55 @@
 
     <div class="row"><span id="lcdDevNote" class="hint">not connected — connect on the main page first</span></div>
 
-    <div class="row">
+    <div class="row" style="display:flex;align-items:center;flex-wrap:wrap;gap:6px">
+      <svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M10.3 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v10l-3.1-3.1a2 2 0 0 0-2.814.014L6 21"/><path d="m14 19.5 3-3 3 3"/><path d="M17 22v-5.5"/><circle cx="9" cy="9" r="2"/></svg>
       <input type="file" id="lcdFile" accept="image/*" />
       <label style="display:none"><input type="checkbox" id="lcdSwap" checked /> little-endian byte order</label><!-- hidden: correct for the TH108, and byte-order is jargon nobody should need; the checkbox stays wired for debugging via devtools -->
     </div>
     <div class="row">
       <input type="text" id="lcdUrl" placeholder="paste an image / GIF URL…" />
       <button id="lcdUrlLoad">Load URL</button>
-      <button id="lcdPaste">Paste image (Ctrl+V)</button>
+      <button id="lcdPaste">Paste Image (Ctrl+V)</button>
       <button id="lcdSave" title="save the currently loaded image to the library">★ Add to Library</button>
       <button id="lcdLibBtn">📚 Library</button>
       <span class="hint">URL load needs the host to allow cross-origin fetch (CORS). Ctrl+V also pastes.</span>
     </div>
     <div class="row" id="lcdLib" style="display:none"></div>
     <div class="row" style="display:flex;align-items:center;flex-wrap:wrap">
-      <b style="margin-right:8px">Fit mode:</b>
+      <button id="lcdUpload" class="go" disabled>Upload to Screen ▶</button>
+      <progress id="lcdProg" value="0" max="100"></progress>
+      <label style="margin-left:14px">Max Frames <input id="lcdMaxFrames" type="number" value="33" min="1" max="33" title="hard-capped at 33 — the LCD flash region only holds ~33 frames (~1MB); more would overflow into config flash" style="width:56px" /></label>
+      <span class="sub">leave high to keep every frame; lower only to shrink a very long GIF.</span>
+    </div>
+    <p class="sub" style="margin:-4px 0 10px;color:#d29922">
+      <b>Note:</b> Uploading writes the GIF to flash — the key lighting briefly blanks during the write, then resumes.</p>
+    <div class="row">
+      <b style="margin-right:8px">Fit Mode:</b>
       <label><input type="radio" name="lcdFit" value="cover" checked /> <b>Crop</b> (fill the screen, cut the edges)</label>
       <label style="margin-left:16px"><input type="radio" name="lcdFit" value="fit" /> <b>Fit</b> (whole GIF, bars, no crop)</label>
-      <span style="flex:1"></span>
-      <button id="lcdCcToggle" title="per-channel RGB calibration + global adjustments (shown beside the previews)">Color Correction ▸</button>
     </div>
-    <div class="row">
-      <b style="margin-right:8px">Fit bars:</b>
+    <div class="row" style="display:flex;align-items:center;flex-wrap:wrap">
+      <b style="margin-right:8px">Fit Bars:</b>
       <select id="lcdBarFill" style="font:inherit;background:#0d1117;color:#e6edf3;border:1px solid #30363d;border-radius:6px;padding:3px 6px">
         <option value="black">Black</option>
-        <option value="color">Solid color →</option>
+        <option value="color">Solid color…</option>
         <option value="blur">Blurred content</option>
         <option value="edge">Edge-color average</option>
       </select>
       <input type="color" id="lcdBarColor" value="#000000" style="margin-left:8px;width:48px;height:28px;background:none;border:1px solid #30363d;border-radius:6px" />
       <span class="hint">how to fill the bars when using Fit mode</span>
+      <span style="flex:1"></span>
+      <button id="lcdCcToggle" title="per-channel RGB calibration + global adjustments (shown beside the previews)">Color Correction ▸</button>
     </div>
     <div class="row" style="display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap">
       <div>
         <div class="sub" id="lcdCropLbl" style="margin:0 0 4px">load a GIF to see the crop guide</div>
         <canvas id="lcdCropGuide" style="border:1px solid #30363d;background:#000;border-radius:4px;cursor:move"></canvas>
         <div id="lcdCropCtls" style="display:none;gap:10px;align-items:center;margin-top:7px;flex-wrap:wrap">
-          <label style="display:flex;align-items:center;gap:6px">zoom <input type="range" id="lcdCropZoom" min="100" max="500" value="100" style="width:140px"></label>
+          <label style="display:flex;align-items:center;gap:6px">Zoom <input type="range" id="lcdCropZoom" min="100" max="500" value="100" style="width:140px"></label>
           <button id="lcdCropUndo" title="undo">↶</button>
           <button id="lcdCropRedo" title="redo">↷</button>
-          <button id="lcdCropReset">reset crop</button>
+          <button id="lcdCropReset">Reset Crop</button>
           <span class="sub" style="margin:0">drag the box above to reposition</span>
         </div>
       </div>
@@ -165,22 +174,12 @@
         <b>Calibrate by matching:</b> adjust the sliders until the <b>preview looks like how your LCD shows the image at default</b> (its washed / blue-purple tint). The upload automatically sends the <b>inverse</b> of those settings, so the LCD reverses its own distortion and ends up showing corrected colors. (Each upload writes the keyboard's flash.)</p>
       </div>
     </div>
-    <p class="sub" style="margin:6px 0 0;color:#d29922">
-      <b>Note:</b> Uploading writes the GIF to flash — the key lighting briefly blanks during the write, then resumes.</p>
-    <div class="row">
-      <button id="lcdUpload" class="go" disabled>Upload to screen ▶</button>
-      <progress id="lcdProg" value="0" max="100"></progress>
-      <label style="margin-left:14px">max frames <input id="lcdMaxFrames" type="number" value="33" min="1" max="33" title="hard-capped at 33 — the LCD flash region only holds ~33 frames (~1MB); more would overflow into config flash" style="width:56px" /></label>
-      <span class="sub">leave high to keep every frame; lower only to shrink a very long GIF.</span>
-    </div>
     <div class="row">
       <b style="margin-right:8px">Clock:</b>
-      <button id="lcdSyncClock" disabled>Sync clock to PC time (0x34)</button>
+      <button id="lcdSyncClock" disabled>Sync Clock to PC Time (0x34)</button>
       <span id="lcdClockNow" class="sub" style="font-variant-numeric:tabular-nums"></span>
       <span class="sub">— sets the keyboard's built-in clock; view it with FN+knob → scroll right → click.</span>
     </div>
-    <div class="row"><button id="lcdCopyReport">📋 Copy last upload report</button>
-      <span class="sub">if an upload stalls or fails, click this and paste it to me — it has the full timeline.</span></div>
     <div id="lcdStatus" class="sub"></div>
 
     <div id="lcdOvl">
@@ -274,7 +273,7 @@
       c.fillRect(0, ry, rx, rh); c.fillRect(rx + rw, ry, dispW - (rx + rw), rh);
       c.strokeStyle = '#58a6ff'; c.lineWidth = 2; c.setLineDash([6, 4]);
       c.strokeRect(rx + 1, ry + 1, rw - 2, rh - 2); c.setLineDash([]);
-      if (lbl) lbl.textContent = `source ${srcW}×${srcH} → drag to reposition, zoom to scale · ${(czoom * 100 | 0)}%`;
+      if (lbl) lbl.textContent = `${(currentFile && currentFile.name) || 'image'}: ${frames.length} frame(s), source ${srcW}×${srcH} → 160×96 LCD`;   // same shape as the GIF→Keyboard panel's info line
     }
     const ctls = $('#lcdCropCtls'); if (ctls) ctls.style.display = (srcCanvas && !isFit()) ? 'flex' : 'none';
   }
@@ -741,7 +740,8 @@
     // ---- upload / clock / report ----
     $('#lcdUpload').addEventListener('click', upload);
     $('#lcdSyncClock').addEventListener('click', syncClock);
-    $('#lcdCopyReport').addEventListener('click', () => {
+    // (the old "Copy last upload report" button is gone — the report still lands in the log, copyable from there)
+    if ($('#lcdCopyReport')) $('#lcdCopyReport').addEventListener('click', () => {
       if (!lastReport) { log('no upload report yet — run an upload first', 'dim'); return; }
       navigator.clipboard.writeText(lastReport)
         .then(() => log('📋 upload report copied to clipboard', 'ok'))
