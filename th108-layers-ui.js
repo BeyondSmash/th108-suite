@@ -58,9 +58,9 @@
             '<input type="checkbox" class="le"'+(L.enabled?' checked':'')+' title="enable layer">'+
             '<input type="text" class="ln" value="'+L.name.replace(/"/g,'&quot;')+'">'+
             '<select class="lt">'+opt(TYPES,L.type)+'</select>'+
-            '<span class="lfield">opacity <input type="range" class="lo" min="0" max="100" value="'+Math.round(L.opacity*100)+'"><input type="number" class="numin lon" min="0" max="100" value="'+Math.round(L.opacity*100)+'"></span>'+
+            '<span class="lfield">Opacity <input type="range" class="lo" min="0" max="100" value="'+Math.round(L.opacity*100)+'"><input type="number" class="numin lon" min="0" max="100" value="'+Math.round(L.opacity*100)+'"></span>'+
             '<select class="lbl">'+opt(BLENDS,L.blend)+'</select>'+
-            '<span class="lfield">fps <input type="range" class="lf" min="1" max="30" value="'+L.fps+'"><input type="number" class="numin lfn" min="1" max="30" value="'+L.fps+'"></span>'+
+            '<span class="lfield">FPS <input type="range" class="lf" min="1" max="30" value="'+L.fps+'"><input type="number" class="numin lfn" min="1" max="30" value="'+L.fps+'"></span>'+
           '</div>'+
           '<div class="lbody"></div>';
         host.appendChild(card);
@@ -93,7 +93,7 @@
     cards.addEventListener('dragover',e=>{
       if(!lcardDragging) return;   // don't interfere with block-layout drags
       e.preventDefault();
-      const after=lcardAfter(cards,e.clientY);
+      const after=lcardAfter(cards,e.clientY,e.clientX);
       if(after==null) cards.appendChild(lcardDragging);
       else if(after!==lcardDragging) cards.insertBefore(lcardDragging,after);
     });
@@ -107,12 +107,15 @@
       saveLayerOrder(); saveLayers();
       if(isRunning()){ const now=performance.now(); for(const L of state.layers){ E.renderLayer(L,now,state); L.lastTick=now; } }
     });
-    function lcardAfter(host,y){
+    function lcardAfter(host,y,x){
+      // row-major 2D walk — the cards sit in a multi-column grid now, so a pure Y-midpoint test ignores
+      // horizontal drags entirely (same-row moves never reorder). Above a card's row → before it; within
+      // the row and left of its center → before it; otherwise keep walking (= after it).
       const cardEls=[...host.querySelectorAll('.lcard:not(.ldragging)')];
-      let closest=null, cd=-Infinity;
-      for(const c of cardEls){ const r=c.getBoundingClientRect(), off=y-(r.top+r.height/2);
-        if(off<0 && off>cd){ cd=off; closest=c; } }
-      return closest;
+      for(const c of cardEls){ const r=c.getBoundingClientRect();
+        if(y < r.top) return c;
+        if(y < r.bottom && x < r.left + r.width/2) return c; }
+      return null;
     }
     function buildLayerBody(card,L){
       const body=card.querySelector('.lbody'), s=L.settings;
@@ -120,9 +123,9 @@
       if(L.type==='background'){
         body.innerHTML='<div class="ctl">'+
           row('Color','<input type="color" class="s-color" value="'+s.color+'"><span></span>')+
-          row('Pulse period','<input type="range" class="s-period" min="400" max="6000" step="100" value="'+s.period+'"><span class="val s-periodV"></span>')+
-          row('Min brightness','<input type="range" class="s-bgMin" min="0" max="100" value="'+s.bgMin+'"><span class="val s-bgMinV"></span>')+
-          row('Max brightness','<input type="range" class="s-bgMax" min="0" max="100" value="'+s.bgMax+'"><span class="val s-bgMaxV"></span>')+
+          row('Pulse Period','<input type="range" class="s-period" min="400" max="6000" step="100" value="'+s.period+'"><span class="val s-periodV"></span>')+
+          row('Min Brightness','<input type="range" class="s-bgMin" min="0" max="100" value="'+s.bgMin+'"><span class="val s-bgMinV"></span>')+
+          row('Max Brightness','<input type="range" class="s-bgMax" min="0" max="100" value="'+s.bgMax+'"><span class="val s-bgMaxV"></span>')+
         '</div>';
         const c=q=>body.querySelector(q);
         c('.s-color').addEventListener('input',e=>s.color=e.target.value);
@@ -158,11 +161,11 @@
         if(showB) html+=row('Color B','<input type="color" class="s-colorB" value="'+s.colorB+'"><span></span>');
         if(showC) html+=row('Color C','<input type="color" class="s-colorC" value="'+s.colorC+'"><span></span>');
         if(showPal) html+=row('Palette','<span style="display:flex;gap:4px;align-items:center;flex-wrap:wrap">'+palHtml+'</span><span></span>');
-        if(showAny) html+=row('Any color','<label class="sl" style="margin:0"><input type="checkbox" class="s-anyColor"'+(s.anyColor?' checked':'')+'> full spectrum (random hues)</label><span></span>');
+        if(showAny) html+=row('Any Color','<label class="sl" style="margin:0"><input type="checkbox" class="s-anyColor"'+(s.anyColor?' checked':'')+'> Full Spectrum (Random Hues)</label><span></span>');
         html+=
           row('Hold','<input type="range" class="s-hold" min="0" max="1000" step="10" value="'+s.hold+'"><span style="display:flex;gap:6px;align-items:center"><input type="number" class="numin s-holdN" min="0" max="1000" value="'+s.hold+'"><span class="val s-holdV"></span></span>')+
           row('Fade','<input type="range" class="s-fade" min="80" max="1500" step="20" value="'+s.fade+'"><span style="display:flex;gap:6px;align-items:center"><input type="number" class="numin s-fadeN" min="80" max="1500" value="'+s.fade+'"><span class="val s-fadeV"></span></span>')+
-          row('Isolate','<label class="sl" style="margin:0"><input type="checkbox" class="s-isolate"'+(s.isolate?' checked':'')+'> punch through layers below</label><span></span>')+
+          row('Isolate','<label class="sl" style="margin:0"><input type="checkbox" class="s-isolate"'+(s.isolate?' checked':'')+'> Punch Through Layers Below</label><span></span>')+
         '</div>';
         body.innerHTML=html;
         // Mode change → store + rebuild body so contextual controls refresh (rebuild re-runs attachHex)
@@ -262,7 +265,7 @@
       adj.innerHTML=
         '<div class="lbody" style="margin-top:8px"><div class="ph" style="margin-bottom:6px">Adjust</div><div class="ctl">'+
           ctl('bri')+ctl('sat')+ctl('con')+ctl('gam')+ctl('rot')+
-          '<label>Static</label><label class="sl" style="margin:0"><input type="checkbox" class="a-frozen"'+(s.frozen?' checked':'')+'> freeze animation</label><span></span>'+
+          '<label>Static</label><label class="sl" style="margin:0"><input type="checkbox" class="a-frozen"'+(s.frozen?' checked':'')+'> Freeze Animation</label><span></span>'+
         '</div></div>';
       body.appendChild(adj.firstChild);
       Object.keys(CFG).forEach(key=>{ const c=CFG[key], min=c[1], max=c[2], dec=c[3], def=c[5], thr=Math.max(1,Math.round((max-min)*0.03));
