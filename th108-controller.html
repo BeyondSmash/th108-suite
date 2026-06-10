@@ -80,7 +80,7 @@
 
   <div class="row">
     <button id="connect" class="primary">1 · Connect keyboard</button>
-    <span aria-hidden="true" style="color:#58a6ff;align-self:center;user-select:none;display:inline-flex;vertical-align:middle;margin:0 8px 8px 0" title="connecting hands the keyboard to this page — lighting stays on the firmware effect until you Start layers"><svg width="22" height="14" viewBox="0 0 22 14" fill="currentColor"><path d="M1 5.5h12V1l8 6-8 6V8.5H1z"/></svg></span>
+    <span aria-hidden="true" style="color:#58a6ff;align-self:center;user-select:none;display:inline-flex;vertical-align:middle;margin:0 8px 8px 0" title="Connect hands the keyboard from the daemon to this page and starts your layers automatically — Start/Stop control them afterwards"><svg width="22" height="14" viewBox="0 0 22 14" fill="currentColor"><path d="M1 5.5h12V1l8 6-8 6V8.5H1z"/></svg></span>
     <button id="start" class="go" disabled>2 · Start layers ▶</button>
     <button id="stop" class="stop" disabled>Stop ⏹</button>
     <span id="status" class="dim">not connected</span>
@@ -91,7 +91,7 @@
   <details class="hint" style="margin:6px 0 0">
     <summary style="cursor:pointer"><b>FAQ — quirks worth knowing</b></summary>
     <ul style="margin:6px 0 0 18px;padding:0">
-      <li><b>Lighting went static right after Connect?</b> Connecting hands the keyboard from the background daemon to this page, and nothing paints until you click <b>2 · Start layers</b> — the static look is the keyboard's own firmware effect filling that gap.</li>
+      <li><b>What does Connect actually do?</b> It hands the keyboard from the background daemon to this page and starts your layers automatically. Close the tab to hand it back to the daemon. (If you see the keyboard's own firmware effect instead, the layers aren't running — click <b>2 · Start layers</b>.)</li>
       <li><b>Keys only react while this tab is focused?</b> Once this page owns the keyboard (after Connect), it can only see keystrokes typed into this tab — a browser limit. Reactive-in-every-app comes from the background daemon: close this tab (or never Connect) and it takes over within a second.</li>
       <li><b>You don't need Connect to edit layers.</b> With the daemon running, every layer edit pushes to it live (~½&nbsp;s) and reactive keeps working everywhere. Connect is only for the GIF→keys player, onboard effects, and the LCD uploader.</li>
       <li><b>Lighting froze on a firmware effect by itself?</b> The board occasionally stops accepting host lighting (USB events — sleep, other devices power-cycling on the bus — can trigger it). The daemon auto-fixes this after ~30&nbsp;s with a USB restart (toggle in the Background-daemon panel); the manual cure is unplug/replug.</li>
@@ -280,6 +280,9 @@ const HID=TH108Hid.create({
     // a replug revokes the WebHID grant (no serial number on the TH108), so recovery is a manual Connect click —
     // honor the pending resume intent here too, making replug recovery ONE click instead of Connect+Start
     if(_wasRunning){ _wasRunning=false; start(); log('layers resumed','ok'); }
+    // connected means driving: auto-start the layers so there's no firmware-static gap between
+    // Connect and Start (user call 2026-06-09 — there's no case where you connect and want nothing painted)
+    else if(!running && !GIF.playing){ start(); }
   },
   onDisconnected:()=>{
     _wasRunning=_wasRunning||running;   // don't overwrite an intent already captured by stopHost (the write fails before the disconnect event on unplug)
@@ -499,8 +502,13 @@ function restoreLayout(){
   (saved.colR||[]).forEach(bid=>{ const b=document.getElementById(bid); if(b) colR.appendChild(b); });
 }
 restoreLayout();
-DC.ping().then(async()=>{ await HID.autoReconnect();
-  if(!HID.device && DC.beating){ DC.heartbeatStop(); DC.resume(); } });   // learn if the daemon holds the device, THEN silently reconnect (yield first); failed re-bind → hand back
+DC.ping().then(async()=>{
+  // Daemon present → opening the page must NOT steal the device: the daemon keeps driving (reactive-anywhere
+  // intact) and layer edits apply live through it. An explicit Connect click is what takes over now.
+  // No daemon → silent re-bind as before (and onConnected auto-starts the layers, so page-open = lighting on).
+  if(DC.present) return;
+  await HID.autoReconnect();
+  if(!HID.device && DC.beating){ DC.heartbeatStop(); DC.resume(); } });   // failed re-bind → hand back
 // (sleep/wake + unplug/replug re-bind lives in th108-hid.js; this page's side is the onDisconnected/onReconnected callbacks up top)
 
 // ===== Onboard (firmware) effects — extracted to th108-onboard.js (single 0x23 16-byte allledPack, persists on the keyboard) =====
