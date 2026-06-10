@@ -50,7 +50,14 @@ window.TH108DaemonClient = (function () {
           const s = await r.json(); alive = true;
           st.textContent = 'daemon: running · ' + (s.paused ? 'yielded to this page' : (s.deviceConnected ? 'driving the keyboard — layer edits here apply LIVE, no Connect needed' : 'waiting for the keyboard'));
           auto.disabled = false; quit.disabled = false;
-          if (usb) { usb.disabled = false; if (document.activeElement !== usb) usb.checked = !!s.usbReset; }   // state rides /status; don't fight a click in progress
+          // state rides /status; don't fight a click in progress. A daemon built before this setting
+          // doesn't report the field — show the toggle disabled (it would 404) instead of a false "off".
+          if (usb) {
+            const knows = 'usbReset' in s;
+            usb.disabled = !knows;
+            usb.title = knows ? '' : 'the running daemon predates this setting — restart it (Quit, then setup.cmd or next login) to enable';
+            if (knows && document.activeElement !== usb) usb.checked = !!s.usbReset;
+          }
         } catch (_) { alive = false; st.textContent = 'daemon: not running — start it with setup.cmd (lighting then survives closing this tab)'; auto.disabled = true; quit.disabled = true; if (usb) usb.disabled = true; }
       }
       async function refreshAuto() { if (!alive) return; try { const r = await fetch('/autostart', { cache: 'no-store' }); auto.checked = !!(await r.json()).enabled; } catch (_) {} }
