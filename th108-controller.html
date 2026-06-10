@@ -18,6 +18,7 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
     --accent:#fa8072; --blue:#98d0ff; --mint:#6ed2b7; --pink:#f9c5d8; --yellow:#ffd98c; --lav:#c9b8ff;
     --num:#c2553e; --ok:#1a7f4b; --err:#c93c32; --warn:#a87617;
     --tabbg:rgba(13,17,23,.05); --tabhl:#ffffff; --shadow:0 1px 2px rgba(13,17,23,.04);
+    --logoink:#1e3a5f;
     color-scheme:light;
   }
   [data-theme="dark"]{
@@ -25,6 +26,7 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
     --text:#f0f2f8; --muted:#8b949e; --border:#21262d; --ring:#21262d;
     --num:#ffa294; --ok:#3fb950; --err:#f85149; --warn:#d29922;
     --tabbg:rgba(240,242,248,.06); --tabhl:#21262d; --shadow:none;
+    --logoink:#8aa6d4;   /* navy reads as black on the night bg — same hue family, lifted for contrast */
     color-scheme:dark;
   }
   ::view-transition-old(root),::view-transition-new(root){ animation-duration:.45s; }
@@ -41,9 +43,22 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
   header{ position:sticky; top:0; z-index:40; display:flex; align-items:center; gap:18px;
           max-width:1240px; margin:0 auto; padding:16px 0 14px;
           background:color-mix(in srgb, var(--bg) 82%, transparent); backdrop-filter:blur(10px); }
-  .logo{ font-family:"Fraunces",Georgia,serif; font-weight:800; font-size:27px; letter-spacing:-.5px; user-select:none; }
-  .logo .l1{ color:#fa8072 } .logo .l2{ color:#ffc93c } .logo .l3{ color:#6ed2b7 } .logo .l4{ color:#98d0ff } .logo .l5{ color:#c9a9ff }
-  nav.tabs{ position:relative; display:flex; gap:2px; margin:0 auto; padding:5px; border-radius:999px; background:var(--tabbg); }
+  /* logo: navy ink under a subtle stipple texture that a linear gradient masks out toward the tail */
+  .logo{ font-family:"Fraunces",Georgia,serif; font-weight:800; font-size:27px; letter-spacing:-.5px; user-select:none;
+         color:var(--logoink);
+         mask-image:radial-gradient(circle, transparent .38px, #000 .52px), linear-gradient(105deg, #000 40%, rgba(0,0,0,.45) 100%);
+         mask-size:2px 2px, 100% 100%;
+         mask-composite:intersect;
+         -webkit-mask-image:radial-gradient(circle, transparent .38px, #000 .52px), linear-gradient(105deg, #000 40%, rgba(0,0,0,.45) 100%);
+         -webkit-mask-size:2px 2px, 100% 100%;
+         -webkit-mask-composite:source-in; }
+  /* the tab bar is lifted out of the root view transition (same recipe as the theme toggle) so the
+     pill highlight visibly SLIDES between tabs — inside the snapshot crossfade it would just fade */
+  nav.tabs{ position:relative; display:flex; gap:2px; margin:0 auto; padding:5px; border-radius:999px; background:var(--tabbg);
+            view-transition-name:tabbar; }
+  ::view-transition-image-pair(tabbar){ animation:none; }
+  ::view-transition-old(tabbar){ display:none; }
+  ::view-transition-new(tabbar){ animation:none; }
   nav.tabs .hl{ position:absolute; top:5px; bottom:5px; left:0; width:0; border-radius:999px; background:var(--tabhl);
                 box-shadow:var(--shadow); transition:left .3s cubic-bezier(.22,1,.36,1), width .3s cubic-bezier(.22,1,.36,1); }
   nav.tabs .tab{ position:relative; z-index:1; padding:7px 15px; border-radius:999px; cursor:pointer;
@@ -85,13 +100,19 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
     body{ padding:0 12px 32px; }
     nav.tabs .tab{ padding:7px 10px; font-size:12.5px; }
   }
-  .cardbar{ display:flex; align-items:center; gap:9px; margin:-6px -6px 10px; padding:6px; border-radius:14px; cursor:grab; }
+  .cardbar{ display:flex; align-items:center; gap:9px; margin:-6px -6px 10px; padding:6px; border-radius:14px; cursor:grab; touch-action:none; }
   .cardbar:active{ cursor:grabbing; }
   .cardbar .grip{ color:var(--muted); opacity:0; font-size:14px; transition:opacity .2s; }
   .card:hover .cardbar .grip{ opacity:.8; }
   .cardbar h2{ font-family:"Fraunces",Georgia,serif; font-weight:700; font-size:19.5px; margin:0; letter-spacing:-.2px; }
   .cardbar .aux{ margin-left:auto; font-size:12.5px; color:var(--muted); }
-  .card.dragging{ opacity:.45; }
+  /* pointer-drag mechanics (react-grid-layout feel): the grabbed card floats with the cursor at FULL
+     opacity with a lift shadow; a faded clone holds its grid slot as the drop shadow and lags behind
+     the neighbors' rearrangement (FLIP transitions set inline by the drag code) */
+  .card.lifted{ position:fixed; z-index:120; margin:0; cursor:grabbing; transition:none;
+                transform:scale(1.02); box-shadow:0 18px 48px rgba(13,17,23,.25); }
+  .card.ph-clone{ opacity:.35; pointer-events:none; box-shadow:none; overflow:hidden; }
+  body.cardDragging{ user-select:none; cursor:grabbing; }
   .card.deco{ display:flex; flex-direction:column; align-items:center; justify-content:center; gap:10px; min-height:208px; }
 
   /* ===== controls ===== */
@@ -138,8 +159,9 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
   .srange input[type=range].snapped::-moz-range-thumb{ background:var(--accent); }
   .srange .tick{ position:absolute; top:1px; bottom:1px; width:2px; background:var(--blue); transform:translateX(-50%); pointer-events:none; border-radius:1px; }   /* marks the snap/default value */
 
-  /* layer cards */
-  .lcard{ background:var(--inset); border-radius:18px; padding:12px; margin:10px 0; }
+  /* layer cards — bento sub-grid inside the compositor card (order still = stacking order, row-major) */
+  #layerCards{ display:grid; grid-template-columns:repeat(auto-fill,minmax(440px,1fr)); gap:12px; align-items:start; }
+  .lcard{ background:var(--inset); border-radius:18px; padding:12px; margin:0; }
   .lcard.off{ opacity:.55; }
   .lhead{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
   .lhead .ln{ font:inherit; background:var(--card); color:var(--text); border:1px solid var(--border); border-radius:9px; padding:4px 8px; width:120px; }
@@ -195,7 +217,7 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
 <body>
 
 <header>
-  <div class="logo"><span class="l1">t</span><span class="l2">h</span><span class="l3">1</span><span class="l4">0</span><span class="l5">8</span></div>
+  <div class="logo">th108</div>
   <nav class="tabs" id="tabs">
     <div class="hl" id="tabHl"></div>
     <div class="tab" data-page="home">Home</div>
@@ -229,7 +251,7 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
        GIF&nbsp;→&nbsp;keys, onboard effects and LCD uploads — the things the stock firmware can't do.</p>
   </div>
 
-  <div class="card s3" id="connectCard" data-pages="home lighting">
+  <div class="card s3" id="connectCard" data-pages="home">
     <div class="cardbar"><span class="grip">⠿</span><h2>Keyboard</h2><span class="aux dim" id="status">not connected</span></div>
     <div class="row">
       <button id="connect" class="primary">1 · Connect keyboard</button>
@@ -323,9 +345,9 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
   </div>
 
   <!-- ========== LIGHTING ========== -->
-  <div class="card s3" id="layersPanel" data-pages="lighting">
+  <div class="card s6" id="layersPanel" data-pages="lighting">
     <div class="cardbar"><span class="grip">⠿</span><h2>Layer compositor</h2>
-      <span class="aux">top of list = top layer · bottom = bottom layer</span></div>
+      <span class="aux">card order = layer stack · first card = top layer</span></div>
     <div id="layerCards"></div>
   </div>
 
@@ -666,31 +688,95 @@ if(curPage==='lcd'){ try{ TH108LCD.onShow(); }catch(_){ } }   // restored straig
 window.addEventListener('resize',moveHl);
 if(document.fonts && document.fonts.ready) document.fonts.ready.then(moveHl);   // tab widths shift once the webfonts land
 
-// ===== card dragging — grab any card by its title bar to reorder the bento grid (persisted) =====
+// ===== card dragging — pointer-based, react-grid-layout mechanics (reference site's feel) =====
+// Grab a card by its title bar: the card floats with the cursor (full opacity, lift shadow); a faded
+// clone of it holds a grid slot as the drop shadow; the surrounding cards FLIP-animate around it live,
+// and the clone trails them slightly (delayed). Drop settles the card into the clone's slot. Persisted.
 const LAYOUT_KEY='th108_layout2';   // ordered card ids (the old colL/colR format is obsolete)
 const gridEl=document.getElementById('grid');
-let cardDragging=null;
+let drag=null;   // {card, ph, dx, dy, w, h, sx, sy, live, raf}
+function visibleCards(){ return cardsAll().filter(c=>!c.hidden); }
+// FLIP: capture → mutate → invert with no transition → one reflow → ease back (the clone gets a small delay)
+function flipReorder(mutate){
+  const els=visibleCards().filter(c=>c!==drag.card);
+  const before=new Map(els.map(el=>[el,el.getBoundingClientRect()]));
+  mutate();
+  const moved=[];
+  for(const el of els){ const b=before.get(el), a=el.getBoundingClientRect();
+    const dx=b.left-a.left, dy=b.top-a.top;
+    if(dx||dy){ el.style.transition='none'; el.style.transform='translate('+dx+'px,'+dy+'px)'; moved.push(el); } }
+  if(!moved.length) return;
+  void gridEl.offsetHeight;   // commit the inverted positions in one reflow
+  for(const el of moved){
+    el.style.transition='transform .28s cubic-bezier(.22,1,.36,1)'+(el===drag.ph?' .06s':'');
+    el.style.transform='';
+  }
+}
+// insertion point in a row-major grid: the first visible card whose center is past the pointer (rows first, then columns)
+function insertionTarget(x,y){
+  for(const c of visibleCards()){ if(c===drag.card || c===drag.ph) continue;   // the clone is never a target — it IS the insertion marker (counting it stalls the probe on its own slot)
+    const r=c.getBoundingClientRect();
+    if(y < r.top + r.height/2 || (y < r.bottom && x < r.left + r.width/2)) return c; }
+  return null;   // past everything → append
+}
+function nextVisible(el){ let n=el.nextElementSibling; while(n && n.hidden) n=n.nextElementSibling; return n; }
+function liftCard(e){
+  const c=drag.card;
+  const ph=c.cloneNode(true);                                  // the drop-shadow clone
+  ph.removeAttribute('id'); ph.querySelectorAll('[id]').forEach(n=>n.removeAttribute('id'));   // clones must never win getElementById
+  ph.classList.add('ph-clone'); ph.classList.remove('lifted');
+  ph.style.height=drag.h+'px';
+  c.parentNode.insertBefore(ph,c);
+  drag.ph=ph;
+  c.classList.add('lifted');
+  c.style.width=drag.w+'px'; c.style.height=drag.h+'px';
+  document.body.classList.add('cardDragging');
+  drag.live=true;
+  positionCard(e);
+}
+function positionCard(e){ drag.card.style.left=(e.clientX-drag.dx)+'px'; drag.card.style.top=(e.clientY-drag.dy)+'px'; }
+function updateTarget(x,y){
+  const ph=drag.ph, t=insertionTarget(x,y);
+  if(t===ph) return;
+  if(t){ if(nextVisible(ph)!==t) flipReorder(()=>gridEl.insertBefore(ph,t)); }
+  else if(nextVisible(ph)) flipReorder(()=>gridEl.appendChild(ph));
+}
 cardsAll().forEach(c=>{
   const bar=c.querySelector('.cardbar'); if(!bar) return;
-  bar.addEventListener('mousedown',()=>{ c.draggable=true; });            // only a title-bar grab arms the drag —
-  c.addEventListener('mousedown',e=>{ if(!bar.contains(e.target)) c.draggable=false; });   // sliders/canvases inside stay usable
-  c.addEventListener('dragstart',e=>{
-    if(!c.draggable){ e.preventDefault(); return; }
-    cardDragging=c; c.classList.add('dragging');
-    try{ e.dataTransfer.effectAllowed='move'; e.dataTransfer.setData('text/plain','card'); }catch(_){ }
+  bar.addEventListener('pointerdown',e=>{
+    if(e.button!==0 || drag) return;
+    e.preventDefault();                                        // no text selection / native drag — sliders etc. outside the bar are untouched
+    const r=c.getBoundingClientRect();
+    drag={card:c, ph:null, dx:e.clientX-r.left, dy:e.clientY-r.top, w:r.width, h:r.height,
+          sx:e.clientX, sy:e.clientY, live:false, raf:0};
   });
-  c.addEventListener('dragend',()=>{ c.classList.remove('dragging'); c.draggable=false; cardDragging=null; saveLayout(); });
 });
-gridEl.addEventListener('dragover',e=>{
-  if(!cardDragging) return; e.preventDefault();
-  // insertion point in a row-major grid: the first visible card whose center is past the pointer (rows first, then columns)
-  const others=cardsAll().filter(c=>c!==cardDragging && !c.hidden);
-  let before=null;
-  for(const c of others){ const r=c.getBoundingClientRect();
-    if(e.clientY < r.top + r.height/2 || (e.clientY < r.bottom && e.clientX < r.left + r.width/2)){ before=c; break; } }
-  if(before){ if(before.previousElementSibling!==cardDragging) gridEl.insertBefore(cardDragging,before); }
-  else gridEl.appendChild(cardDragging);
+window.addEventListener('pointermove',e=>{
+  if(!drag) return;
+  if(!drag.live){ if(Math.hypot(e.clientX-drag.sx, e.clientY-drag.sy)<5) return; liftCard(e); }
+  positionCard(e);
+  drag.x=e.clientX; drag.y=e.clientY;                          // rAF-throttle the relayout probe, but ALWAYS
+  if(!drag.raf) drag.raf=requestAnimationFrame(()=>{           // probe the freshest coords (a queued probe must
+    if(drag){ drag.raf=0; updateTarget(drag.x,drag.y); } });   // not pin a fast flick to its stale position)
 });
+function endDrag(){
+  if(!drag) return;
+  if(!drag.live){ drag=null; return; }                         // it was just a click on the bar
+  if(drag.raf) cancelAnimationFrame(drag.raf);
+  const {card,ph}=drag; drag=null;
+  const r=ph.getBoundingClientRect();                          // settle the floating card into the clone's slot
+  card.style.transition='left .25s cubic-bezier(.22,1,.36,1), top .25s cubic-bezier(.22,1,.36,1), transform .25s, box-shadow .25s';
+  card.style.left=r.left+'px'; card.style.top=r.top+'px'; card.style.transform='none';
+  setTimeout(()=>{
+    gridEl.insertBefore(card,ph); ph.remove();
+    card.classList.remove('lifted'); card.style.cssText='';
+    visibleCards().forEach(c2=>{ c2.style.transition=''; c2.style.transform=''; });   // drop any leftover FLIP inline styles
+    document.body.classList.remove('cardDragging');
+    saveLayout();
+  },260);
+}
+window.addEventListener('pointerup',endDrag);
+window.addEventListener('pointercancel',endDrag);
 function saveLayout(){
   try{ localStorage.setItem(LAYOUT_KEY, JSON.stringify(cardsAll().map(c=>c.id))); }catch(_){ }
 }
