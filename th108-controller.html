@@ -231,6 +231,7 @@
 <script src="th108-daemon-client.js"></script>
 <script src="th108-layers-ui.js"></script>
 <script src="th108-gif-panel.js"></script>
+<script src="th108-onboard.js"></script>
 <script>
 // shared engine (board map, renderers, compositor, state) — pull the bits we reference by short name
 const {KEYMAP, INDICES, NLED, BOARDW, BOARDH, hexToRgb} = TH108Engine;
@@ -489,50 +490,17 @@ DC.ping().then(async()=>{ await HID.autoReconnect();
   if(!HID.device && DC.beating){ DC.heartbeatStop(); DC.resume(); } });   // learn if the daemon holds the device, THEN silently reconnect (yield first); failed re-bind → hand back
 // (sleep/wake + unplug/replug re-bind lives in th108-hid.js; this page's side is the onDisconnected/onReconnected callbacks up top)
 
-// ===== Onboard (firmware) effects: single 0x23 16-byte allledPack, persists on the keyboard =====
-attachHex(document.getElementById('onboardPanel'));   // typeable hex box on the primary/secondary pickers
-(function(){
-  const bri=document.getElementById('obBri'), briV=document.getElementById('obBriV');
-  const spd=document.getElementById('obSpeed'), spdV=document.getElementById('obSpeedV');
-  bri.addEventListener('input',()=>briV.textContent=bri.value);
-  spd.addEventListener('input',()=>spdV.textContent=spd.value);
-})();
-function obSetStatus(s,c=''){ const e=document.getElementById('obStatus'); e.textContent=s; e.className='hint '+c; e.style.margin='0'; }
-async function applyOnboard(){
-  if(!HID.device){ log('connect first','err'); obSetStatus('connect first','err'); return; }
-  if(running) await stop();                 // firmware effect replaces the live host stream
-  if(GIF.playing) await GIF.stop();
-  const clamp=v=>Math.max(1,Math.min(6,Math.round(v||1)));
-  const eff=+document.getElementById('obEffect').value;
-  const colorful=document.getElementById('obColorful').checked;
-  const [pr,pg,pb]=hexToRgb(document.getElementById('obPrimary').value);
-  const [sr,sg,sb]=hexToRgb(document.getElementById('obSecondary').value);
-  const bright=clamp(+document.getElementById('obBri').value);
-  const speed=clamp(+document.getElementById('obSpeed').value);
-  const allled=new Uint8Array(16);
-  allled[0]=eff;
-  allled[1]=pr; allled[2]=pg; allled[3]=pb;
-  allled[4]=255;
-  allled[5]=sr; allled[6]=sg; allled[7]=sb;
-  allled[8]=colorful?1:0;
-  allled[9]=bright;
-  allled[10]=speed;
-  // bytes 11..15 stay 0
-  try{
-    await HID.device.sendReport(HID.reportId, HID.buildPkt(0x23, 16, 0, allled, 0, true));
-    const lbl=document.getElementById('obEffect').selectedOptions[0].textContent;
-    log('onboard effect applied: '+lbl+(colorful?' (colorful)':' (solid)')+' · bri '+bright+' · spd '+speed,'ok');
-    obSetStatus('effect set — runs on the keyboard','ok');
-    obActive=true;   // a pattern click can now auto-resume layers over this
-    // Re-arm: a live 0x23 write can leave the board ACKing-but-IGNORING 0x32 paint, and only a handle
-    // close+reopen clears it (stream restarts don't). Re-bind quietly so "back to layers" paints first try.
-    await new Promise(r=>setTimeout(r,350));   // let the 0x23 ACK land before cycling the handle
-    if(await HID.rebind()) log('control interface re-bound (post-effect re-arm)','dim');
-    else log('post-effect re-bind failed — if layers don\'t paint, refresh the page','err');
-  }catch(e){ log('onboard apply failed: '+e.message,'err'); obSetStatus('apply failed','err'); }
-}
-document.getElementById('obApply').addEventListener('click',applyOnboard);
-document.getElementById('obBack').addEventListener('click',()=>{ if(!HID.device){ log('connect first','err'); return; } if(!running) start(); else log('layers already running — they override the firmware effect','dim'); });   // resume host layers over the firmware effect
+// ===== Onboard (firmware) effects — extracted to th108-onboard.js (single 0x23 16-byte allledPack, persists on the keyboard) =====
+const OB=TH108Onboard.create({
+  hid: HID, log, attachHex, hexToRgb,
+  panel: document.getElementById('onboardPanel'),
+  isRunning: ()=>running,
+  stopLayers: ()=>stop(),                                     // awaited — the firmware effect replaces the live host stream
+  startLayers: ()=>start(),
+  gifPlaying: ()=>GIF.playing,
+  stopGif: ()=>GIF.stop(),
+  setObActive: ()=>{ obActive=true; }                         // a pattern click can now auto-resume layers over this
+});
 
 // ===== LCD screen uploader overlay (th108-lcd.js) =====
 TH108LCD.mount(document.getElementById('lcdBody'));
