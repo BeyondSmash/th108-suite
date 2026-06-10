@@ -232,6 +232,29 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
   .kbkey.pop{ animation:kpop .25s ease; }
   @keyframes kpop{ 40%{ transform:scale(1.18); } }
 
+  /* hotkeys: binder palette (tabs + assignment grid) */
+  .bdtabs{ display:flex; gap:4px; flex-wrap:wrap; margin-bottom:10px; }
+  #bdGrid{ display:flex; flex-wrap:wrap; gap:6px; }
+  #bdGrid .patbtn{ padding:7px 12px; }
+
+  /* modals (spacebar focus overlay + keymap progress) — bento-styled */
+  .modal{ position:fixed; inset:0; z-index:200; display:none; align-items:center; justify-content:center;
+          background:color-mix(in srgb, var(--bg) 60%, transparent); backdrop-filter:blur(8px); }
+  .modal.open{ display:flex; }
+  .mbox{ background:var(--card); border-radius:28px; padding:32px 44px; text-align:center; min-width:380px;
+         position:relative; box-shadow:0 18px 48px rgba(13,17,23,.25); }
+  .mbox .mtag{ font-size:12.5px; font-weight:600; color:var(--muted); letter-spacing:.5px; }
+  #spaceTitle{ font-family:"Fraunces",Georgia,serif; font-weight:800; font-size:27px; margin:10px 0 6px; letter-spacing:-.3px; }
+  #spaceExit{ position:absolute; top:12px; right:14px; margin:0; padding:4px 11px; }
+  #kmProgBar{ height:10px; background:var(--inset); border-radius:6px; overflow:hidden; margin-top:14px; }
+  #kmProgFill{ height:100%; width:0%; background:linear-gradient(90deg, var(--mint), var(--blue)); transition:width .12s; }
+  #kmProgPct{ font-size:12px; color:var(--muted); margin-top:8px; }
+
+  /* profiles */
+  .profrow{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; background:var(--inset); border-radius:14px; padding:8px 10px; margin-bottom:8px; }
+  .profrow input[type=text]{ flex:1; min-width:140px; padding:5px 9px; background:var(--card); font-weight:600; }
+  .profrow button{ margin:0; padding:6px 12px; }
+
   /* ===== theme the LCD module's injected dark styles (body-prefixed = higher specificity) ===== */
   body .lcd-tool button{ background:var(--card); color:var(--text); border:0; box-shadow:0 0 0 2px var(--ring); border-radius:999px; padding:9px 16px; }
   body .lcd-tool button:hover:not(:disabled){ border:0; box-shadow:0 0 0 2px var(--accent); }
@@ -254,6 +277,7 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
     <div class="hl" id="tabHl"></div>
     <div class="tab" data-page="home">Home</div>
     <div class="tab" data-page="hotkeys">Hotkeys</div>
+    <div class="tab" data-page="profiles">Profiles</div>
     <div class="tab" data-page="faq">FAQ</div>
     <div class="tab" data-page="lighting">Lighting</div>
     <div class="tab" data-page="lcd">LCD Screen</div>
@@ -328,19 +352,48 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
     <div id="kbBoard"></div>
   </div>
 
-  <div class="card s4" id="hotkeysCard" data-pages="hotkeys">
-    <div class="cardbar"><span class="grip">⠿</span><h2>Hotkeys &amp; Keymap</h2></div>
-    <p style="font-size:14.5px">Remap any key on the board to a <b>decorative light function</b> — the firmware's
-       hidden per-key light controls (brightness, speed, effect switch and more), bound to whatever key you like.</p>
-    <p class="hint">Pick a key on the board above; the binding actions move in here from the key binder next
-       (it rewrites the full 512-byte keymap — single-key writes don't commit — shows a spacebar overlay while you
-       pick, and can set the knob to mute).</p>
-    <a class="btnlink" href="webhid-test.html" target="_blank" rel="noopener">Open the Key Binder ↗</a>
+  <div class="card s4" id="bindCard" data-pages="hotkeys">
+    <div class="cardbar"><span class="grip">⠿</span><h2>Assign to Key</h2><span class="aux" id="bdState">needs Connect</span></div>
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:0 0 10px">
+      <span class="hint" id="bdKey" style="font-weight:600">no key selected</span>
+      <button id="bdRevert" disabled title="put the selected key back to its factory character"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg> Restore Default</button>
+    </div>
+    <div class="bdtabs" id="bdTabs"></div>
+    <div id="bdGrid"></div>
+    <p class="hint" id="bdHint" style="margin:10px 0 0"></p>
+  </div>
+
+  <div class="card s2" id="decoTogglesCard" data-pages="hotkeys">
+    <div class="cardbar"><span class="grip">⠿</span><h2>Decorative Light Toggles</h2></div>
+    <p class="hint" style="margin:4px 0 10px">Click a light — your <b>Spacebar</b> becomes its cycle key and a
+       focus overlay opens; <kbd>Esc</kbd> or ✕ restores the Spacebar.</p>
+    <div id="spaceBtns" style="display:flex;flex-wrap:wrap;gap:6px"></div>
   </div>
 
   <div class="card s2 deco yellow" id="decoCard2" data-pages="hotkeys">
     <div class="keycaps"><span class="keycap">Fn</span><span class="keycap">🔆</span></div>
     <div class="cap" style="display:flex;align-items:center;gap:6px">Any Key <svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg> Any Light Function</div>
+  </div>
+
+  <!-- ========== PROFILES ========== -->
+  <div class="card s4" id="profilesCard" data-pages="profiles">
+    <div class="cardbar"><span class="grip">⠿</span><h2>Profiles</h2><span class="aux" id="profCount"></span></div>
+    <p class="hint" style="margin:4px 0 10px">Snapshot your whole lighting setup — layers, pattern settings, stacking
+       order — as a named profile. Apply, rename, export, or import them; up to 10. Click a name to rename it.</p>
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+      <button id="profSave" class="go"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/><path d="M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7"/><path d="M7 3v4a1 1 0 0 0 1 1h7"/></svg> Save Current as Profile</button>
+      <button id="profImport"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12"/><path d="m8 11 4 4 4-4"/><path d="M8 5H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-4"/></svg> Import</button>
+      <input type="file" id="profFile" accept="application/json,.json" style="display:none">
+    </div>
+    <div id="profList"></div>
+  </div>
+
+  <div class="card s2 faqcard" id="profHelpCard" data-pages="profiles">
+    <div class="cardbar"><span class="grip">⠿</span></div>
+    <h3>What's in a profile?</h3>
+    <p>The full Lighting-tab setup: all four layers with their pattern settings, plus the stacking order — the same
+       data the background daemon runs. Key bindings live in the keyboard's own flash, so they stay put across
+       profile switches. Exported files are daemon-compatible JSON.</p>
   </div>
 
   <!-- ========== FAQ ========== -->
@@ -496,6 +549,24 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
 
 </div>
 
+<!-- spacebar focus overlay + keymap progress (key binder) -->
+<div id="spaceOverlay" class="modal">
+  <div class="mbox">
+    <button id="spaceExit" title="exit and restore the Spacebar">✕</button>
+    <div class="mtag">YOUR SPACEBAR NOW CONTROLS</div>
+    <div id="spaceTitle">—</div>
+    <div id="spaceDesc">Tap <kbd>Space</kbd> to cycle.</div>
+    <div class="hint" style="margin-top:18px">Click ✕ or press <kbd>Esc</kbd> to exit and restore your Spacebar.</div>
+  </div>
+</div>
+<div id="kmProg" class="modal">
+  <div class="mbox" style="min-width:360px">
+    <div id="kmProgLbl" style="font-weight:600">Updating keyboard…</div>
+    <div id="kmProgBar"><div id="kmProgFill"></div></div>
+    <div id="kmProgPct">0%</div>
+  </div>
+</div>
+
 <script src="th108-media-lib.js"></script>
 <script src="th108-engine.js"></script>
 <script src="th108-lcd.js"></script>
@@ -504,6 +575,8 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
 <script src="th108-layers-ui.js"></script>
 <script src="th108-gif-panel.js"></script>
 <script src="th108-onboard.js"></script>
+<script src="th108-binder.js"></script>
+<script src="th108-profiles.js"></script>
 <script>
 // shared engine (board map, renderers, compositor, state) — pull the bits we reference by short name
 const {KEYMAP, INDICES, NLED, BOARDW, BOARDH, hexToRgb} = TH108Engine;
@@ -533,6 +606,7 @@ const HID=TH108Hid.create({
     document.getElementById('start').disabled=false;
     GIF.onDeviceBound();
     TH108LCD.setDevices(devs);
+    BINDER.setConnected(true);    // key-binding actions need the page to hold the device
   },
   onConnected:()=>{   // tell the daemon's watchdog we're alive & holding the device
     DC.heartbeatStart();
@@ -545,6 +619,7 @@ const HID=TH108Hid.create({
     _wasRunning=_wasRunning||running;   // don't overwrite an intent already captured by stopHost (the write fails before the disconnect event on unplug)
     if(running){ running=false; if(layerW) layerW.postMessage({stop:true}); }
     try{ TH108LCD.setDevices({}); }catch(_){ }          // the screen handle is stale too
+    try{ BINDER.setConnected(false); }catch(_){ }       // binding actions gate back to "needs Connect"
     document.getElementById('start').disabled=true; document.getElementById('stop').disabled=true;
   },
   onReconnected:()=>{
@@ -895,9 +970,9 @@ window.__lcdHost = {
 };
 
 // ===== Hotkeys tab: clickable physical keyboard, positioned from the engine's board map =====
-// Groundwork for porting the key binder in: selecting a key is step 1 of "bind <key> → <light function>".
-(function(){
-  const host=document.getElementById('kbBoard'); if(!host) return;
+// Selecting a key is step 1 of "assign <key> → <action>"; KBOARD exposes the selection to the binder.
+const KBOARD=(function(){
+  const host=document.getElementById('kbBoard'); if(!host) return {sel:null,onChange(){},clear(){}};
   const CODE_BY_IDX={}; for(const [code,idx] of Object.entries(KEYMAP)) CODE_BY_IDX[idx]=code;
   const NICE={Escape:'Esc',Backquote:'`',Minus:'-',Equal:'=',Backspace:'⌫',Tab:'Tab',BracketLeft:'[',BracketRight:']',
     Backslash:'\\',CapsLock:'Caps',Semicolon:';',Quote:"'",Enter:'Enter',ShiftLeft:'Shift',ShiftRight:'Shift',
@@ -913,7 +988,8 @@ window.__lcdHost = {
     if(code.startsWith('Numpad')) return code.slice(6);
     return code; };
   const PAL=['#98d0ff','#6ed2b7','#f9c5d8','#ffd98c','#fa8072','#c9b8ff'];   // per-key hover/select color, cycled
-  let selEl=null;
+  let selEl=null, sel=null; const subs=[];                                   // sel={idx,code,label} — the binder subscribes via onChange
+  const notify=()=>subs.forEach(cb=>{ try{ cb(sel); }catch(_){ } });
   INDICES.forEach((idx,k)=>{
     const cell=TH108Engine.keyCell(idx); if(!cell) return;
     const [cx,cy,w,h]=cell, code=CODE_BY_IDX[idx];
@@ -924,14 +1000,48 @@ window.__lcdHost = {
     d.style.setProperty('--kc', PAL[k%PAL.length]);
     d.addEventListener('click',()=>{
       if(selEl) selEl.classList.remove('sel');
-      if(selEl===d){ selEl=null; document.getElementById('kbSelInfo').textContent='no key selected'; return; }   // click again = deselect
-      selEl=d; d.classList.add('sel');
+      if(selEl===d){ selEl=null; sel=null; document.getElementById('kbSelInfo').textContent='no key selected'; notify(); return; }   // click again = deselect
+      selEl=d; sel={idx, code, label:d.textContent||'Space'}; d.classList.add('sel');
       d.classList.remove('pop'); void d.offsetWidth; d.classList.add('pop');   // restart the pop animation
       document.getElementById('kbSelInfo').textContent='Selected: '+(d.textContent||'Space')+' · '+(code||'Fn')+' · LED '+idx;
+      notify();
     });
     host.appendChild(d);
   });
+  return {
+    get sel(){ return sel; },
+    onChange(cb){ subs.push(cb); },
+    clear(){ if(selEl){ selEl.classList.remove('sel'); selEl=null; } sel=null;
+             document.getElementById('kbSelInfo').textContent='no key selected'; notify(); }
+  };
 })();
+
+// ===== key binder — extracted from webhid-test.html into th108-binder.js (palette mirrors the official driver) =====
+// Keymap writes need this page to hold the device (Connect), so the binder is gated on the HID bind state.
+// Lighting/GIF are paused around every keymap pass — 0x12/0x22 traffic must not interleave with 0x32 paint.
+const BINDER=TH108Binder.create({
+  hid: HID, log, board: KBOARD,
+  gifPlaying: ()=>GIF.playing,
+  stopGif: ()=>GIF.stop(),
+  pauseLighting: ()=>window.__lcdHost.pauseLighting(),
+  resumeLighting: ()=>window.__lcdHost.resumeLighting()
+});
+
+// ===== profiles — th108-profiles.js (named snapshots of the whole lighting setup, up to 10) =====
+const PROFILES=TH108Profiles.create({
+  log,
+  flushSave: ()=>LUI.save(),
+  getCurrent: ()=>({ layers: JSON.parse(localStorage.getItem('th108_layers')||'[]'),
+                     order: JSON.parse(localStorage.getItem('th108_layerOrder')||'null') }),
+  applyData: d=>{
+    localStorage.setItem('th108_layers', JSON.stringify(d.layers||[]));
+    if(d.order) localStorage.setItem('th108_layerOrder', JSON.stringify(d.order));
+    else localStorage.removeItem('th108_layerOrder');
+    DC.pushConfig();                                       // hand it straight to the daemon if one is serving this page
+    log('profile applied — reloading…','ok');
+    location.reload();                                     // layer cards rebuild from storage on boot (same flow as Toolbox Import)
+  }
+});
 
 // Factory-reset the keyboard (cmd 0x0F 0xFF, captured from the official driver's "Reset all settings").
 // Recovery hatch if an upload ever wedges the board — works even when typing is dead (vendor iface still enumerates).
