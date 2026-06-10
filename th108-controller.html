@@ -4,6 +4,8 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>th108 — Epomaker TH108 V2 PRO lighting suite</title>
+<script>/* before first paint: apply the saved theme so a dark-mode reload never flashes light */
+try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme')||'light'; }catch(_){ }</script>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect x='4' y='12' width='56' height='40' rx='10' fill='%23fa8072'/%3E%3Crect x='14' y='22' width='10' height='8' rx='2' fill='%23fff'/%3E%3Crect x='28' y='22' width='10' height='8' rx='2' fill='%23ffd98c'/%3E%3Crect x='42' y='22' width='10' height='8' rx='2' fill='%2398d0ff'/%3E%3Crect x='14' y='36' width='38' height='8' rx='2' fill='%236ed2b7'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -29,7 +31,11 @@
 
   *{ box-sizing:border-box; }
   body{ font:14px/1.55 "Plus Jakarta Sans",system-ui,sans-serif; background:var(--bg); color:var(--text);
-        margin:0; padding:0 24px 48px; transition:background-color .45s,color .45s; }
+        margin:0; padding:0 24px 48px; }
+  /* theme-change easing: ONLY as a fallback when the View Transitions API is missing (html.no-vt set at boot).
+     With VT active these must stay off — a live background-color transition lags the header's instant
+     color-mix(--bg) band, and the mismatch gets baked into the VT's "new" snapshot (visible seam mid-crossfade). */
+  html.no-vt body,html.no-vt .card,html.no-vt .lcard{ transition:background-color .45s,color .45s; }
 
   /* ===== header ===== */
   header{ position:sticky; top:0; z-index:40; display:flex; align-items:center; gap:18px;
@@ -43,19 +49,30 @@
   nav.tabs .tab{ position:relative; z-index:1; padding:7px 15px; border-radius:999px; cursor:pointer;
                  font-size:13.5px; font-weight:600; color:var(--muted); user-select:none; white-space:nowrap; transition:color .25s; }
   nav.tabs .tab.on{ color:var(--text); }
-  /* theme pill (sun/moon slider) */
+  /* theme pill (sun/moon slider). The knob must visibly SLIDE during the page crossfade, so the whole
+     button is lifted out of the root view transition and shown live (no snapshot fade) — standard
+     exclude-an-element recipe: own name + all its VT animations off, old image hidden. */
   #themeBtn{ all:unset; cursor:pointer; width:58px; height:31px; border-radius:999px; background:var(--tabbg);
-             position:relative; flex:none; }
+             position:relative; flex:none; view-transition-name:theme-toggle; }
+  ::view-transition-image-pair(theme-toggle){ animation:none; }
+  ::view-transition-old(theme-toggle){ display:none; }
+  ::view-transition-new(theme-toggle){ animation:none; }
   #themeBtn .knob{ position:absolute; top:4px; left:4px; width:23px; height:23px; border-radius:50%;
                    background:var(--tabhl); box-shadow:var(--shadow); display:flex; align-items:center; justify-content:center;
-                   font-size:12px; transition:transform .3s cubic-bezier(.22,1,.36,1); }
+                   transition:transform .45s cubic-bezier(.22,1,.36,1), background-color .45s; }
   [data-theme="dark"] #themeBtn .knob{ transform:translateX(27px); }
+  /* sun ⇄ moon SVG morph: the disc grows while a mask circle slides in to bite the crescent; rays fold away */
+  #themeBtn .kcore{ fill:#f2a23b; transition:r .45s, fill .45s; r:5; }
+  #themeBtn .kcut{ transition:cx .45s, cy .45s; cx:32px; cy:2px; }
+  #themeBtn .krays{ stroke:#f2a23b; opacity:1; transition:opacity .3s, transform .45s; transform-origin:12px 12px; }
+  [data-theme="dark"] #themeBtn .kcore{ r:8.5; fill:#ffd98c; }
+  [data-theme="dark"] #themeBtn .kcut{ cx:17px; cy:8px; }
+  [data-theme="dark"] #themeBtn .krays{ opacity:0; transform:rotate(45deg) scale(.55); }
 
   /* ===== bento grid ===== */
   #grid{ display:grid; grid-template-columns:repeat(6,1fr); gap:18px; max-width:1240px; margin:14px auto 0;
          grid-auto-flow:dense; align-items:start; }
-  .card{ background:var(--card); border-radius:28px; padding:24px; box-shadow:var(--shadow);
-         transition:background-color .45s; }
+  .card{ background:var(--card); border-radius:28px; padding:24px; box-shadow:var(--shadow); }
   .card[hidden]{ display:none !important; }   /* must beat .card.deco's display:flex (equal specificity, later rule) */
   .s2{ grid-column:span 2 } .s3{ grid-column:span 3 } .s4{ grid-column:span 4 } .s6{ grid-column:span 6 }
   @media (max-width:1040px){
@@ -80,7 +97,7 @@
   /* ===== controls ===== */
   button{ font:600 13.5px/1.4 "Plus Jakarta Sans",system-ui,sans-serif; background:var(--card); color:var(--text);
           border:0; box-shadow:0 0 0 2px var(--ring); border-radius:999px; padding:9px 16px; cursor:pointer;
-          margin:0 8px 8px 0; transition:box-shadow .2s, transform .15s, background-color .45s; }
+          margin:0 8px 8px 0; transition:box-shadow .2s, transform .15s; }
   button:hover:not(:disabled){ box-shadow:0 0 0 2px var(--accent); transform:translateY(-1px); }
   button:disabled{ opacity:.4; cursor:not-allowed; }
   button.primary{ background:var(--blue); color:#0d1117; box-shadow:none; }
@@ -122,7 +139,7 @@
   .srange .tick{ position:absolute; top:1px; bottom:1px; width:2px; background:var(--blue); transform:translateX(-50%); pointer-events:none; border-radius:1px; }   /* marks the snap/default value */
 
   /* layer cards */
-  .lcard{ background:var(--inset); border-radius:18px; padding:12px; margin:10px 0; transition:background-color .45s; }
+  .lcard{ background:var(--inset); border-radius:18px; padding:12px; margin:10px 0; }
   .lcard.off{ opacity:.55; }
   .lhead{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
   .lhead .ln{ font:inherit; background:var(--card); color:var(--text); border:1px solid var(--border); border-radius:9px; padding:4px 8px; width:120px; }
@@ -187,7 +204,18 @@
     <div class="tab" data-page="lighting">Lighting</div>
     <div class="tab" data-page="lcd">LCD Screen</div>
   </nav>
-  <button id="themeBtn" title="toggle light / dark (crossfades)" aria-label="Toggle light or dark theme"><span class="knob" id="themeKnob">☀️</span></button>
+  <button id="themeBtn" title="toggle light / dark (crossfades)" aria-label="Toggle light or dark theme">
+    <span class="knob"><svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true">
+      <mask id="kmask"><rect width="24" height="24" fill="#fff"/><circle class="kcut" cx="32" cy="2" r="7" fill="#000"/></mask>
+      <circle class="kcore" cx="12" cy="12" r="5" mask="url(#kmask)"/>
+      <g class="krays" stroke-linecap="round" stroke-width="2">
+        <line x1="12" y1="1.5" x2="12" y2="4"/><line x1="12" y1="20" x2="12" y2="22.5"/>
+        <line x1="1.5" y1="12" x2="4" y2="12"/><line x1="20" y1="12" x2="22.5" y2="12"/>
+        <line x1="4.6" y1="4.6" x2="6.3" y2="6.3"/><line x1="17.7" y1="17.7" x2="19.4" y2="19.4"/>
+        <line x1="4.6" y1="19.4" x2="6.3" y2="17.7"/><line x1="17.7" y1="6.3" x2="19.4" y2="4.6"/>
+      </g>
+    </svg></span>
+  </button>
 </header>
 
 <div id="grid">
@@ -595,10 +623,10 @@ document.addEventListener('keydown',e=>{ if(e.target && e.target.tagName==='SELE
 document.addEventListener('change',e=>{ if(e.target && e.target.tagName==='SELECT') e.target.blur(); }, true);   // drop focus after picking so testing keys won't change it
 
 // ===== theme (light/dark) — crossfaded via the View Transitions API (Chromium has it; WebHID already requires Chromium) =====
+if(!document.startViewTransition) document.documentElement.classList.add('no-vt');   // arms the CSS-transition fallback for the theme switch
 const THEME_KEY='th108_theme';
 function applyTheme(t){
-  document.documentElement.dataset.theme=t;
-  document.getElementById('themeKnob').textContent = t==='dark' ? '🌙' : '☀️';
+  document.documentElement.dataset.theme=t;   // knob slide + sun↔moon morph are pure CSS off this attribute
   try{ localStorage.setItem(THEME_KEY,t); }catch(_){ }
 }
 function setTheme(t){
