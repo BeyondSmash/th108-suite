@@ -86,7 +86,7 @@
 
     <div class="row">
       <input type="file" id="lcdFile" accept="image/*" />
-      <label style="margin-left:14px"><input type="checkbox" id="lcdSwap" checked /> little-endian byte order (correct for TH108 — untick only if colors look wrong)</label>
+      <label style="display:none"><input type="checkbox" id="lcdSwap" checked /> little-endian byte order</label><!-- hidden: correct for the TH108, and byte-order is jargon nobody should need; the checkbox stays wired for debugging via devtools -->
     </div>
     <div class="row">
       <input type="text" id="lcdUrl" placeholder="paste an image / GIF URL…" />
@@ -97,10 +97,12 @@
       <span class="hint">URL load needs the host to allow cross-origin fetch (CORS). Ctrl+V also pastes.</span>
     </div>
     <div class="row" id="lcdLib" style="display:none"></div>
-    <div class="row">
+    <div class="row" style="display:flex;align-items:center;flex-wrap:wrap">
       <b style="margin-right:8px">Fit mode:</b>
       <label><input type="radio" name="lcdFit" value="cover" checked /> <b>Crop</b> (fill the screen, cut the edges)</label>
       <label style="margin-left:16px"><input type="radio" name="lcdFit" value="fit" /> <b>Fit</b> (whole GIF, bars, no crop)</label>
+      <span style="flex:1"></span>
+      <button id="lcdCcToggle" title="per-channel RGB calibration + global adjustments (shown beside the previews)">Color Correction ▸</button>
     </div>
     <div class="row">
       <b style="margin-right:8px">Fit bars:</b>
@@ -135,6 +137,7 @@
         <div class="sub" style="margin:0">Log</div>
         <div id="lcdLog" class="lcd-log"></div>
       </div>
+      <div id="lcdCc" style="display:none;max-width:480px"><!-- collapsible "Color Correction" — toggled from the Fit-mode line, lives beside the previews -->
       <div class="ctl" style="display:grid;grid-template-columns:auto 250px 60px 26px;gap:5px 8px;align-items:center">
         <div style="grid-column:1/5;display:flex;align-items:center;gap:8px;margin-bottom:2px">
           <b>Per-channel RGB calibration</b><span id="lcdCalStatus" class="dim" style="font-weight:normal;color:#8b949e"></span>
@@ -158,9 +161,10 @@
         <label>Saturation</label><input type="range" id="lcdsaturation" min="0" max="200" value="100"><input type="number" class="num" id="lcdsaturationN"><button class="rst" data-id="lcdsaturation" title="reset">↺</button>
         <label>Contrast</label><input type="range" id="lcdcontrast" min="50" max="200" value="100"><input type="number" class="num" id="lcdcontrastN"><button class="rst" data-id="lcdcontrast" title="reset">↺</button>
       </div>
+      <p class="sub" style="margin:6px 0 0">
+        <b>Calibrate by matching:</b> adjust the sliders until the <b>preview looks like how your LCD shows the image at default</b> (its washed / blue-purple tint). The upload automatically sends the <b>inverse</b> of those settings, so the LCD reverses its own distortion and ends up showing corrected colors. (Each upload writes the keyboard's flash.)</p>
+      </div>
     </div>
-    <p class="sub" style="margin:6px 0 0">
-      <b>Calibrate by matching:</b> adjust the sliders until the <b>preview looks like how your LCD shows the image at default</b> (its washed / blue-purple tint). The upload automatically sends the <b>inverse</b> of those settings, so the LCD reverses its own distortion and ends up showing corrected colors. (Each upload writes the keyboard's flash.)</p>
     <p class="sub" style="margin:6px 0 0;color:#d29922">
       <b>Note:</b> Uploading writes the GIF to flash — the key lighting briefly blanks during the write, then resumes.</p>
     <div class="row">
@@ -640,6 +644,13 @@
 
     // ---- file picker ----
     $('#lcdFile').addEventListener('change', e => { const f = e.target.files[0]; if (f) { currentFile = f; cropResetState(); processFile(f).then(cropPush); } });
+
+    // ---- Color Correction collapsible (cal sliders + global adjustments, beside the previews) ----
+    $('#lcdCcToggle').addEventListener('click', () => {
+      const cc = $('#lcdCc'), open = cc.style.display !== 'none';
+      cc.style.display = open ? 'none' : 'block';
+      $('#lcdCcToggle').textContent = 'Color Correction ' + (open ? '▸' : '▾');
+    });
 
     // ---- URL / clipboard / library loaders (all route through processFile) ----
     $('#lcdUrlLoad').addEventListener('click', () => loadFromUrl($('#lcdUrl').value.trim()));
