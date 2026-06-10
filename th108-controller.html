@@ -194,7 +194,7 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
   .lhead .lgrip:active{ cursor:grabbing; }
   .lcard.ldragging{ opacity:.5; }
   .lhead .llvl{ font-weight:700; color:var(--num); font-size:12px; min-width:50px; }
-  .numin{ font:inherit; width:48px; background:var(--card); color:var(--text); border:1px solid var(--border); border-radius:8px; padding:2px 4px; }
+  .numin{ font:inherit; width:62px; background:var(--card); color:var(--text); border:1px solid var(--border); border-radius:8px; padding:2px 4px; }   /* triple-digit values (220, 900, 1.00) must not clip */
   .lhead .numin{ width:52px; }   /* "100" must not clip against the padding */
   .hexin{ background:var(--inset); color:var(--text); border:1px solid var(--border); border-radius:8px; padding:2px 6px; font:inherit; width:92px; }   /* fits all 7 chars of #RRGGBB without clipping */
   .cwrap{ display:inline-flex; align-items:center; gap:6px; flex-wrap:wrap; }
@@ -222,7 +222,7 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
   /* hotkeys: clickable physical keyboard (positions from the engine's board map) */
   #kbBoard{ position:relative; aspect-ratio:22.5/6.5; }
   .kbkey{ position:absolute; background:var(--inset); border-radius:9px; display:flex; align-items:center;
-          justify-content:center; font-size:var(--kbfs,11.5px); font-weight:var(--kbfw,600); color:var(--muted); cursor:pointer;
+          justify-content:center; font-size:15px; font-weight:600; color:var(--muted); cursor:pointer;   /* user-tuned via the (removed) debug slider */
           user-select:none; overflow:hidden; white-space:nowrap;
           transition:transform .12s, background-color .15s, color .15s, box-shadow .15s; }
   .kbkey:hover{ background:var(--kc,var(--blue)); color:#0d1117; transform:translateY(-2px) scale(1.07); z-index:2;
@@ -324,13 +324,7 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
 
   <!-- ========== HOTKEYS ========== -->
   <div class="card s6" id="kbBoardCard" data-pages="hotkeys">
-    <div class="cardbar"><span class="grip">⠿</span><h2>Pick a Key</h2>
-      <!-- TEMP DEBUG: key-label sizing — remove once the look is settled -->
-      <span class="aux" style="display:inline-flex;gap:12px;align-items:center">
-        <label class="sl" style="margin:0">Font <input type="range" id="kbFontDbg" min="8" max="18" step="0.5" value="11.5" style="width:90px"><span class="val" id="kbFontDbgV">11.5px</span></label>
-        <label class="sl" style="margin:0"><input type="checkbox" id="kbBoldDbg"> Bold</label>
-        <span id="kbSelInfo">no key selected</span>
-      </span></div>
+    <div class="cardbar"><span class="grip">⠿</span><h2>Pick a Key</h2><span class="aux" id="kbSelInfo">no key selected</span></div>
     <div id="kbBoard"></div>
   </div>
 
@@ -937,11 +931,6 @@ window.__lcdHost = {
     });
     host.appendChild(d);
   });
-  // TEMP DEBUG: live font-size / weight tuning for the key labels — delete with the cardbar controls
-  const fs=document.getElementById('kbFontDbg'), fb=document.getElementById('kbBoldDbg');
-  if(fs) fs.addEventListener('input',()=>{ host.style.setProperty('--kbfs', fs.value+'px');
-    document.getElementById('kbFontDbgV').textContent=fs.value+'px'; });
-  if(fb) fb.addEventListener('change',()=>{ host.style.setProperty('--kbfw', fb.checked?'800':'600'); });
 })();
 
 // Factory-reset the keyboard (cmd 0x0F 0xFF, captured from the official driver's "Reset all settings").
