@@ -188,8 +188,19 @@
       });
     }
 
+    // Close + reopen the control/screen handles and re-bind (grant permitting). Cure for the post-0x23
+    // "ignore" state: after a LIVE onboard-effect write the board can keep ACKing 0x32 paint while
+    // ignoring it — a same-handle stream restart does NOT clear it, but a handle close+reopen does
+    // (discovered 2026-06-09: a page refresh fixed it with no replug).
+    async function rebind() {
+      try { if (device) await device.close(); } catch (_) { }
+      device = null; reportId = 0;
+      try { const known = await navigator.hid.getDevices(); return await bindDevice(known, true); }
+      catch (_) { return false; }
+    }
+
     return {
-      connect, autoReconnect, bindDevice, sendFrame, buildPkt, findWritable, findScreen,
+      connect, autoReconnect, bindDevice, sendFrame, buildPkt, findWritable, findScreen, rebind,
       resetStalls() { _sendStalls = 0; },
       get device() { return device; },
       get reportId() { return reportId; },

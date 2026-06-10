@@ -1052,6 +1052,11 @@ async function applyOnboard(){
     log('onboard effect applied: '+lbl+(colorful?' (colorful)':' (solid)')+' · bri '+bright+' · spd '+speed,'ok');
     obSetStatus('effect set — runs on the keyboard','ok');
     obActive=true;   // a pattern click can now auto-resume layers over this
+    // Re-arm: a live 0x23 write can leave the board ACKing-but-IGNORING 0x32 paint, and only a handle
+    // close+reopen clears it (stream restarts don't). Re-bind quietly so "back to layers" paints first try.
+    await new Promise(r=>setTimeout(r,350));   // let the 0x23 ACK land before cycling the handle
+    if(await HID.rebind()) log('control interface re-bound (post-effect re-arm)','dim');
+    else log('post-effect re-bind failed — if layers don\'t paint, refresh the page','err');
   }catch(e){ log('onboard apply failed: '+e.message,'err'); obSetStatus('apply failed','err'); }
 }
 document.getElementById('obApply').addEventListener('click',applyOnboard);
