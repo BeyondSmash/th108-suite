@@ -88,6 +88,16 @@
   <p class="hint">After Start, click this page once so it has keyboard focus, then type — pressed keys flash orange.
      <br>⚠ <b>Browser keydown only fires while this tab is focused.</b> Reactive-in-any-app comes from the background daemon instead.
      <br>💡 <b>Daemon running? Skip Connect for layer editing</b> — edits push to it live and reactive keeps working in every app. Connect is only for the GIF→keys, onboard-effect, and LCD tools (it takes the keyboard from the daemon until you close this tab).</p>
+  <details class="hint" style="margin:6px 0 0">
+    <summary style="cursor:pointer"><b>FAQ — quirks worth knowing</b></summary>
+    <ul style="margin:6px 0 0 18px;padding:0">
+      <li><b>Lighting went static right after Connect?</b> Connecting hands the keyboard from the background daemon to this page, and nothing paints until you click <b>2 · Start layers</b> — the static look is the keyboard's own firmware effect filling that gap.</li>
+      <li><b>Keys only react while this tab is focused?</b> Once this page owns the keyboard (after Connect), it can only see keystrokes typed into this tab — a browser limit. Reactive-in-every-app comes from the background daemon: close this tab (or never Connect) and it takes over within a second.</li>
+      <li><b>You don't need Connect to edit layers.</b> With the daemon running, every layer edit pushes to it live (~½&nbsp;s) and reactive keeps working everywhere. Connect is only for the GIF→keys player, onboard effects, and the LCD uploader.</li>
+      <li><b>Lighting froze on a firmware effect by itself?</b> The board occasionally stops accepting host lighting (USB events — sleep, other devices power-cycling on the bus — can trigger it). The daemon auto-fixes this after ~30&nbsp;s with a USB restart (toggle in the Background-daemon panel); the manual cure is unplug/replug.</li>
+      <li><b>Media layer shows nothing?</b> It's a placeholder for now — use the GIF → keyboard panel instead.</li>
+    </ul>
+  </details>
 
   <div class="row" style="margin-top:4px">
     <button id="editBtn">✎ Edit layout</button>
@@ -245,7 +255,7 @@ const out=document.getElementById('log');
 function log(m,c=''){ const d=document.createElement('div'); if(c)d.className=c;
   d.textContent='['+new Date().toISOString().substr(11,12)+'] '+m; out.appendChild(d);
   while(out.childNodes.length>200) out.removeChild(out.firstChild); out.scrollTop=out.scrollHeight; }
-function setStatus(s,c=''){ const e=document.getElementById('status'); e.textContent=s; e.className=c; }
+function setStatus(s,c='',tip=''){ const e=document.getElementById('status'); e.textContent=s; e.className=c; e.title=tip; }   // tip = hover tooltip for the jargon behind a friendly status
 
 let _wasRunning=false;   // layers were running when the keyboard went away (sleep/unplug/wedge) → resume on re-bind; cleared only by a deliberate Stop
 const HID=TH108Hid.create({

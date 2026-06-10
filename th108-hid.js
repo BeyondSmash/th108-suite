@@ -102,7 +102,9 @@
       stopRebindPoll();                                  // any successful bind path (event, poll, manual Connect) ends the recovery poll
       if (!device.opened) await device.open();
       if (!device._inHooked) { device._inHooked = true; device.addEventListener('inputreport', onInputReport); }   // read the board's ACK/status reports + gate sends on them
-      setStatus('connected: ' + device.productName + ' · reportId=' + reportId + ' · packLen=' + packLen, 'ok');
+      // user-facing status; the wire jargon rides the hover tooltip (3rd arg) and the log keeps the full line
+      setStatus('Keyboard connected: ' + String(device.productName || 'unknown').replace(/_/g, ' '), 'ok',
+        'iface 0x' + (w.usagePage || 0).toString(16) + '/0x' + (w.usage || 0).toString(16) + ' · reportId=' + reportId + ' · packLen=' + packLen + ' · ' + opts.ledCount + ' LEDs');
       log('connected: ' + device.productName + ' · iface 0x' + (w.usagePage || 0).toString(16) + '/0x' + (w.usage || 0).toString(16) + ' · reportId=' + reportId + ' · packLen=' + packLen + ' · ' + opts.ledCount + ' LEDs', 'ok');
       let screenDev = null, screenRid = 0;
       const sc = findScreen(devs);
