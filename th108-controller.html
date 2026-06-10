@@ -33,7 +33,7 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
 
   *{ box-sizing:border-box; }
   body{ font:14px/1.55 "Plus Jakarta Sans",system-ui,sans-serif; background:var(--bg); color:var(--text);
-        margin:0; padding:0 24px 48px; }
+        margin:0; padding:0 24px 20px; }
   /* theme-change easing: ONLY as a fallback when the View Transitions API is missing (html.no-vt set at boot).
      With VT active these must stay off — a live background-color transition lags the header's instant
      color-mix(--bg) band, and the mismatch gets baked into the VT's "new" snapshot (visible seam mid-crossfade). */
@@ -41,7 +41,7 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
 
   /* ===== header ===== */
   header{ position:sticky; top:0; z-index:40; display:flex; align-items:center; gap:18px;
-          max-width:1240px; margin:0 auto; padding:16px 0 14px;
+          max-width:1240px; margin:0 auto; padding:10px 0;
           background:color-mix(in srgb, var(--bg) 82%, transparent); backdrop-filter:blur(10px); }
   /* logo: navy ink dissolving into stipple — solid at the head, then the ink fades while a dot pattern
      (with its own opacity ramp) takes over, so the erasure itself gradates as halftone toward the tail.
@@ -86,9 +86,9 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
   [data-theme="dark"] #themeBtn .krays{ opacity:0; transform:rotate(45deg) scale(.55); }
 
   /* ===== bento grid ===== */
-  #grid{ display:grid; grid-template-columns:repeat(6,1fr); gap:18px; max-width:1240px; margin:14px auto 0;
+  #grid{ display:grid; grid-template-columns:repeat(6,1fr); gap:16px; max-width:1240px; margin:8px auto 0;
          grid-auto-flow:dense; align-items:start; }
-  .card{ background:var(--card); border-radius:28px; padding:24px; box-shadow:var(--shadow); }
+  .card{ background:var(--card); border-radius:28px; padding:20px; box-shadow:var(--shadow); }
   .card[hidden]{ display:none !important; }   /* must beat .card.deco's display:flex (equal specificity, later rule) */
   .s2{ grid-column:span 2 } .s3{ grid-column:span 3 } .s4{ grid-column:span 4 } .s6{ grid-column:span 6 }
   @media (max-width:1040px){
@@ -158,7 +158,7 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
   #status{ font-weight:600; }
 
   /* log — always a dark terminal tile, both themes */
-  #log{ background:#010409; border-radius:18px; padding:12px 14px; height:170px; overflow:auto;
+  #log{ background:#010409; border-radius:18px; padding:12px 14px; height:118px; overflow:auto;
         white-space:pre-wrap; font-family:ui-monospace,monospace; font-size:12px; color:#8b949e; }
   #log .ok{color:#3fb950}#log .err{color:#f85149}#log .dim{color:#8b949e}#log .in{color:#d29922}
 
@@ -206,8 +206,8 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
   canvas.cv{ border:1px solid var(--border); border-radius:12px; background:#000; }
 
   /* bio + deco tiles */
-  .avatar{ width:76px; height:76px; border-radius:50%; background:var(--blue); display:flex; align-items:center;
-           justify-content:center; font-size:38px; margin-bottom:14px; }
+  .avatar{ width:60px; height:60px; border-radius:50%; background:var(--blue); display:flex; align-items:center;
+           justify-content:center; font-size:30px; margin-bottom:10px; }
   .bigtype{ font-family:"Fraunces",Georgia,serif; font-weight:800; font-size:25px; letter-spacing:-.4px; }
   .deco.pink{ background:var(--pink); color:#0d1117; }
   .deco.yellow{ background:var(--yellow); color:#0d1117; }
@@ -222,7 +222,7 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
   /* hotkeys: clickable physical keyboard (positions from the engine's board map) */
   #kbBoard{ position:relative; aspect-ratio:22.5/6.5; }
   .kbkey{ position:absolute; background:var(--inset); border-radius:9px; display:flex; align-items:center;
-          justify-content:center; font-size:11.5px; font-weight:600; color:var(--muted); cursor:pointer;
+          justify-content:center; font-size:var(--kbfs,11.5px); font-weight:var(--kbfw,600); color:var(--muted); cursor:pointer;
           user-select:none; overflow:hidden; white-space:nowrap;
           transition:transform .12s, background-color .15s, color .15s, box-shadow .15s; }
   .kbkey:hover{ background:var(--kc,var(--blue)); color:#0d1117; transform:translateY(-2px) scale(1.07); z-index:2;
@@ -317,14 +317,20 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
     <p class="hint" style="margin:6px 0 0">Drag any card by its title bar to rearrange the grid — the layout is saved.</p>
   </div>
 
-  <div class="card s3" id="logCard" data-pages="home">
+  <div class="card s6" id="logCard" data-pages="home">
     <div class="cardbar"><span class="grip">⠿</span><h2>Log</h2></div>
     <div id="log"></div>
   </div>
 
   <!-- ========== HOTKEYS ========== -->
   <div class="card s6" id="kbBoardCard" data-pages="hotkeys">
-    <div class="cardbar"><span class="grip">⠿</span><h2>Pick a Key</h2><span class="aux" id="kbSelInfo">no key selected</span></div>
+    <div class="cardbar"><span class="grip">⠿</span><h2>Pick a Key</h2>
+      <!-- TEMP DEBUG: key-label sizing — remove once the look is settled -->
+      <span class="aux" style="display:inline-flex;gap:12px;align-items:center">
+        <label class="sl" style="margin:0">Font <input type="range" id="kbFontDbg" min="8" max="18" step="0.5" value="11.5" style="width:90px"><span class="val" id="kbFontDbgV">11.5px</span></label>
+        <label class="sl" style="margin:0"><input type="checkbox" id="kbBoldDbg"> Bold</label>
+        <span id="kbSelInfo">no key selected</span>
+      </span></div>
     <div id="kbBoard"></div>
   </div>
 
@@ -795,6 +801,7 @@ cardsAll().forEach(c=>{
   const bar=c.querySelector('.cardbar'); if(!bar) return;
   bar.addEventListener('pointerdown',e=>{
     if(e.button!==0 || drag) return;
+    if(e.target.closest('input,button,select,a,label')) return;   // controls living IN a title bar (e.g. the debug sliders) must stay usable
     e.preventDefault();                                        // no text selection / native drag — sliders etc. outside the bar are untouched
     const r=c.getBoundingClientRect();
     drag={card:c, ph:null, dx:e.clientX-r.left, dy:e.clientY-r.top, w:r.width, h:r.height,
@@ -930,6 +937,11 @@ window.__lcdHost = {
     });
     host.appendChild(d);
   });
+  // TEMP DEBUG: live font-size / weight tuning for the key labels — delete with the cardbar controls
+  const fs=document.getElementById('kbFontDbg'), fb=document.getElementById('kbBoldDbg');
+  if(fs) fs.addEventListener('input',()=>{ host.style.setProperty('--kbfs', fs.value+'px');
+    document.getElementById('kbFontDbgV').textContent=fs.value+'px'; });
+  if(fb) fb.addEventListener('change',()=>{ host.style.setProperty('--kbfw', fb.checked?'800':'600'); });
 })();
 
 // Factory-reset the keyboard (cmd 0x0F 0xFF, captured from the official driver's "Reset all settings").
