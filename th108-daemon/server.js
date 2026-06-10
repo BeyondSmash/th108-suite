@@ -10,7 +10,7 @@ const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.json': 'applica
 
 const ts = () => new Date().toTimeString().slice(0, 8);   // timestamped logs — needed to correlate board mute events with system events
 
-// control = { yield(), resume(), saveConfig(cfg), status(), getAutostart(), setAutostart(on), quit() }
+// control = { yield(), resume(), saveConfig(cfg), status(), getAutostart(), setAutostart(on), setUsbReset(on), quit() }
 // watchdogMs default: the page beats every 3s from a Web Worker timer (throttle-proof); 12s tolerates
 // 2-3 dropped beats before concluding the page is gone. The old 5s window was tighter than real page
 // behavior (heartbeats only started after device-bind, and main-thread timers throttle in hidden tabs)
@@ -56,6 +56,13 @@ function createServer({ control, root, port = 8123, watchdogMs = 12000 }) {
         try { on = !!JSON.parse(b || '{}').on; } catch { return sendJson(res, 400, { error: 'bad json' }); }
         await control.setAutostart(on);
         console.log(ts() + ' [api] /autostart ' + (on ? 'on' : 'off'));
+        return sendJson(res, 200, { ok: true, enabled: on });
+      }
+      if (req.method === 'POST' && u === '/usbreset') {   // toggle the auto USB-restart wedge fix (state reads back via /status.usbReset)
+        const b = await readBody(req); let on;
+        try { on = !!JSON.parse(b || '{}').on; } catch { return sendJson(res, 400, { error: 'bad json' }); }
+        control.setUsbReset(on);
+        console.log(ts() + ' [api] /usbreset ' + (on ? 'on' : 'off'));
         return sendJson(res, 200, { ok: true, enabled: on });
       }
       if (req.method === 'POST' && u === '/quit') {

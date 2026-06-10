@@ -37,9 +37,11 @@ window.TH108DaemonClient = (function () {
     function pushConfig() { if (D.present) { try { fetch('/config', { method: 'POST', headers: { 'content-type': 'application/json' }, body: getConfig() }); } catch (_) {} } }
     function resume() { if (D.present) { if (navigator.sendBeacon) navigator.sendBeacon('/resume'); else fetch('/resume', { method: 'POST', keepalive: true }); } }
 
-    // Background-daemon panel: status readout, auto-start toggle (HKCU Run key via the daemon), quit.
+    // Background-daemon panel: status readout, auto-start toggle (HKCU Run key via the daemon),
+    // auto-USB-restart wedge-fix toggle (daemon settings.json via /usbreset), quit.
     function mountPanel() {
       const st = document.getElementById('dmnStatus'), auto = document.getElementById('dmnAuto'), quit = document.getElementById('dmnQuit');
+      const usb = document.getElementById('dmnUsbFix');
       if (!st || !auto || !quit) return;
       let alive = false;
       async function refresh() {
@@ -48,7 +50,8 @@ window.TH108DaemonClient = (function () {
           const s = await r.json(); alive = true;
           st.textContent = 'daemon: running · ' + (s.paused ? 'yielded to this page' : (s.deviceConnected ? 'driving the keyboard' : 'waiting for the keyboard'));
           auto.disabled = false; quit.disabled = false;
-        } catch (_) { alive = false; st.textContent = 'daemon: not running — start it with setup.cmd (lighting then survives closing this tab)'; auto.disabled = true; quit.disabled = true; }
+          if (usb) { usb.disabled = false; if (document.activeElement !== usb) usb.checked = !!s.usbReset; }   // state rides /status; don't fight a click in progress
+        } catch (_) { alive = false; st.textContent = 'daemon: not running — start it with setup.cmd (lighting then survives closing this tab)'; auto.disabled = true; quit.disabled = true; if (usb) usb.disabled = true; }
       }
       async function refreshAuto() { if (!alive) return; try { const r = await fetch('/autostart', { cache: 'no-store' }); auto.checked = !!(await r.json()).enabled; } catch (_) {} }
       auto.addEventListener('change', async () => {
@@ -56,6 +59,12 @@ window.TH108DaemonClient = (function () {
           await fetch('/autostart', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ on: auto.checked }) });
           log('daemon auto-start on login ' + (auto.checked ? 'enabled' : 'disabled'), 'ok');
         } catch (_) { log('auto-start toggle failed', 'err'); refreshAuto(); }
+      });
+      if (usb) usb.addEventListener('change', async () => {
+        try {
+          await fetch('/usbreset', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ on: usb.checked }) });
+          log('auto USB-restart wedge fix ' + (usb.checked ? 'enabled' : 'disabled'), 'ok');
+        } catch (_) { log('USB-restart toggle failed', 'err'); refresh(); }
       });
       quit.addEventListener('click', async () => {
         if (!confirm('Quit the background daemon?\n\nAlways-on lighting and reactive-anywhere stop until setup.cmd or your next login starts it again. This page keeps working as-is.')) return;
