@@ -1,125 +1,221 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="light">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>TH108 — pulsing cyan + keypress-reactive controller</title>
+<title>th108 — Epomaker TH108 V2 PRO lighting suite</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect x='4' y='12' width='56' height='40' rx='10' fill='%23fa8072'/%3E%3Crect x='14' y='22' width='10' height='8' rx='2' fill='%23fff'/%3E%3Crect x='28' y='22' width='10' height='8' rx='2' fill='%23ffd98c'/%3E%3Crect x='42' y='22' width='10' height='8' rx='2' fill='%2398d0ff'/%3E%3Crect x='14' y='36' width='38' height='8' rx='2' fill='%236ed2b7'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500..900&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
-  :root { color-scheme: dark; }
-  body { font:14px/1.5 system-ui,sans-serif; background:#0d1117; color:#e6edf3; margin:0; padding:24px; }
-  h1 { font-size:18px; margin:0 0 4px; }
-  .sub { color:#8b949e; margin:0 0 18px; }
-  button { font:inherit; background:#21262d; color:#e6edf3; border:1px solid #30363d;
-           border-radius:8px; padding:9px 14px; cursor:pointer; margin:0 8px 8px 0; }
-  button:hover:not(:disabled){ border-color:#58a6ff; }
+  /* ===== design tokens — bento light/dark (reference: nevflynn.com) ===== */
+  :root{
+    --bg:#f7f2f2; --card:#ffffff; --inset:#f4f1ee; --elev:#ffffff;
+    --text:#0d1117; --muted:#8a8f98; --border:#e8e4df; --ring:#eef0f6;
+    --accent:#fa8072; --blue:#98d0ff; --mint:#6ed2b7; --pink:#f9c5d8; --yellow:#ffd98c; --lav:#c9b8ff;
+    --num:#c2553e; --ok:#1a7f4b; --err:#c93c32; --warn:#a87617;
+    --tabbg:rgba(13,17,23,.05); --tabhl:#ffffff; --shadow:0 1px 2px rgba(13,17,23,.04);
+    color-scheme:light;
+  }
+  [data-theme="dark"]{
+    --bg:#090c10; --card:#0d1117; --inset:#161b22; --elev:#21262d;
+    --text:#f0f2f8; --muted:#8b949e; --border:#21262d; --ring:#21262d;
+    --num:#ffa294; --ok:#3fb950; --err:#f85149; --warn:#d29922;
+    --tabbg:rgba(240,242,248,.06); --tabhl:#21262d; --shadow:none;
+    color-scheme:dark;
+  }
+  ::view-transition-old(root),::view-transition-new(root){ animation-duration:.45s; }
+
+  *{ box-sizing:border-box; }
+  body{ font:14px/1.55 "Plus Jakarta Sans",system-ui,sans-serif; background:var(--bg); color:var(--text);
+        margin:0; padding:0 24px 48px; transition:background-color .45s,color .45s; }
+
+  /* ===== header ===== */
+  header{ position:sticky; top:0; z-index:40; display:flex; align-items:center; gap:18px;
+          max-width:1240px; margin:0 auto; padding:16px 0 14px;
+          background:color-mix(in srgb, var(--bg) 82%, transparent); backdrop-filter:blur(10px); }
+  .logo{ font-family:"Fraunces",Georgia,serif; font-weight:800; font-size:27px; letter-spacing:-.5px; user-select:none; }
+  .logo .l1{ color:#fa8072 } .logo .l2{ color:#ffc93c } .logo .l3{ color:#6ed2b7 } .logo .l4{ color:#98d0ff } .logo .l5{ color:#c9a9ff }
+  nav.tabs{ position:relative; display:flex; gap:2px; margin:0 auto; padding:5px; border-radius:999px; background:var(--tabbg); }
+  nav.tabs .hl{ position:absolute; top:5px; bottom:5px; left:0; width:0; border-radius:999px; background:var(--tabhl);
+                box-shadow:var(--shadow); transition:left .3s cubic-bezier(.22,1,.36,1), width .3s cubic-bezier(.22,1,.36,1); }
+  nav.tabs .tab{ position:relative; z-index:1; padding:7px 15px; border-radius:999px; cursor:pointer;
+                 font-size:13.5px; font-weight:600; color:var(--muted); user-select:none; white-space:nowrap; transition:color .25s; }
+  nav.tabs .tab.on{ color:var(--text); }
+  /* theme pill (sun/moon slider) */
+  #themeBtn{ all:unset; cursor:pointer; width:58px; height:31px; border-radius:999px; background:var(--tabbg);
+             position:relative; flex:none; }
+  #themeBtn .knob{ position:absolute; top:4px; left:4px; width:23px; height:23px; border-radius:50%;
+                   background:var(--tabhl); box-shadow:var(--shadow); display:flex; align-items:center; justify-content:center;
+                   font-size:12px; transition:transform .3s cubic-bezier(.22,1,.36,1); }
+  [data-theme="dark"] #themeBtn .knob{ transform:translateX(27px); }
+
+  /* ===== bento grid ===== */
+  #grid{ display:grid; grid-template-columns:repeat(6,1fr); gap:18px; max-width:1240px; margin:14px auto 0;
+         grid-auto-flow:dense; align-items:start; }
+  .card{ background:var(--card); border-radius:28px; padding:24px; box-shadow:var(--shadow);
+         transition:background-color .45s; }
+  .card[hidden]{ display:none !important; }   /* must beat .card.deco's display:flex (equal specificity, later rule) */
+  .s2{ grid-column:span 2 } .s3{ grid-column:span 3 } .s4{ grid-column:span 4 } .s6{ grid-column:span 6 }
+  @media (max-width:1040px){
+    #grid{ grid-template-columns:repeat(2,1fr); }
+    .s2{ grid-column:span 1 } .s3,.s4,.s6{ grid-column:span 2 }
+  }
+  @media (max-width:660px){
+    #grid{ grid-template-columns:1fr; }
+    .s2,.s3,.s4,.s6{ grid-column:span 1 }
+    body{ padding:0 12px 32px; }
+    nav.tabs .tab{ padding:7px 10px; font-size:12.5px; }
+  }
+  .cardbar{ display:flex; align-items:center; gap:9px; margin:-6px -6px 10px; padding:6px; border-radius:14px; cursor:grab; }
+  .cardbar:active{ cursor:grabbing; }
+  .cardbar .grip{ color:var(--muted); opacity:0; font-size:14px; transition:opacity .2s; }
+  .card:hover .cardbar .grip{ opacity:.8; }
+  .cardbar h2{ font-family:"Fraunces",Georgia,serif; font-weight:700; font-size:19.5px; margin:0; letter-spacing:-.2px; }
+  .cardbar .aux{ margin-left:auto; font-size:12.5px; color:var(--muted); }
+  .card.dragging{ opacity:.45; }
+  .card.deco{ display:flex; flex-direction:column; align-items:center; justify-content:center; gap:10px; min-height:208px; }
+
+  /* ===== controls ===== */
+  button{ font:600 13.5px/1.4 "Plus Jakarta Sans",system-ui,sans-serif; background:var(--card); color:var(--text);
+          border:0; box-shadow:0 0 0 2px var(--ring); border-radius:999px; padding:9px 16px; cursor:pointer;
+          margin:0 8px 8px 0; transition:box-shadow .2s, transform .15s, background-color .45s; }
+  button:hover:not(:disabled){ box-shadow:0 0 0 2px var(--accent); transform:translateY(-1px); }
   button:disabled{ opacity:.4; cursor:not-allowed; }
-  button.primary{ background:#1f6feb; border-color:#1f6feb; }
-  button.go{ background:#238636; border-color:#238636; }
-  button.stop{ background:#da3633; border-color:#da3633; }
-  .panel{ background:#161b22; border:1px solid #30363d; border-radius:10px; padding:16px; margin:12px 0; max-width:680px; }
+  button.primary{ background:var(--blue); color:#0d1117; box-shadow:none; }
+  button.go{ background:var(--mint); color:#0d1117; box-shadow:none; }
+  button.stop{ background:var(--accent); color:#0d1117; box-shadow:none; }
+  a.btnlink{ display:inline-block; text-decoration:none; font:600 13.5px/1.4 "Plus Jakarta Sans",system-ui,sans-serif;
+             background:var(--card); color:var(--text); box-shadow:0 0 0 2px var(--ring); border-radius:999px; padding:9px 16px; }
+  a.btnlink:hover{ box-shadow:0 0 0 2px var(--accent); }
+  select{ font:inherit; background:var(--inset); color:var(--text); border:1px solid var(--border); border-radius:10px; padding:4px 8px; }
+  input[type=text],input[type=number]{ font:inherit; background:var(--inset); color:var(--text); border:1px solid var(--border); border-radius:10px; }
+  input[type=checkbox],input[type=radio]{ accent-color:var(--accent); }
+  input[type=range]{ accent-color:var(--accent); }
+  input[type=color]{ width:48px; height:28px; background:none; border:1px solid var(--border); border-radius:8px; }
+  .tin{ padding:6px 10px; }
+  .hint{ color:var(--muted); font-size:13px; }
+  .sub{ color:var(--muted); margin:0 0 14px; }
+  kbd{ background:var(--inset); border:1px solid var(--border); border-radius:5px; padding:1px 6px; font-family:ui-monospace,monospace; }
+  .val{ font-family:ui-monospace,monospace; color:var(--num); text-align:right; }
+  .ok{color:var(--ok)}.err{color:var(--err)}.dim{color:var(--muted)}.in{color:var(--warn)}
+  #status{ font-weight:600; }
+
+  /* log — always a dark terminal tile, both themes */
+  #log{ background:#010409; border-radius:18px; padding:12px 14px; height:170px; overflow:auto;
+        white-space:pre-wrap; font-family:ui-monospace,monospace; font-size:12px; color:#8b949e; }
+  #log .ok{color:#3fb950}#log .err{color:#f85149}#log .dim{color:#8b949e}#log .in{color:#d29922}
+
   .ctl{ display:grid; grid-template-columns:160px 1fr 56px; gap:10px 14px; align-items:center; }
-  .ctl label{ color:#8b949e; }
-  input[type=range]{ width:100%; }
-  input[type=color]{ width:48px; height:28px; background:none; border:1px solid #30363d; border-radius:6px; }
-  .val{ font-family:ui-monospace,monospace; color:#58a6ff; text-align:right; }
-  #status{ margin-left:8px; }
-  #log{ margin-top:14px; background:#010409; border:1px solid #30363d; border-radius:8px; padding:10px;
-        height:150px; overflow:auto; white-space:pre-wrap; font-family:ui-monospace,monospace; font-size:12px; }
-  .ok{color:#3fb950}.err{color:#f85149}.dim{color:#8b949e}.in{color:#d29922}
-  .hint{ color:#8b949e; font-size:13px; }
-  kbd{ background:#21262d; border:1px solid #30363d; border-radius:4px; padding:1px 6px; font-family:ui-monospace,monospace; }
-  .sl{ color:#8b949e; display:inline-flex; align-items:center; gap:6px; justify-self:start; width:fit-content; }   /* shrink + don't stretch in grid → clicking empty row space won't toggle the checkbox */
+  .ctl label{ color:var(--muted); }
+  .ctl input[type=range]{ width:100%; }
+  .sl{ color:var(--muted); display:inline-flex; align-items:center; gap:6px; justify-self:start; width:fit-content; }   /* shrink + don't stretch in grid → clicking empty row space won't toggle the checkbox */
   .srange{ position:relative; display:inline-block; width:110px; height:20px; }
   .srange input[type=range]{ -webkit-appearance:none; appearance:none; position:absolute; left:0; top:50%; transform:translateY(-50%); width:100%; height:14px; margin:0; background:transparent; }
-  .srange input[type=range]::-webkit-slider-runnable-track{ height:4px; background:#30363d; border-radius:2px; }
-  .srange input[type=range]::-moz-range-track{ height:4px; background:#30363d; border-radius:2px; }
-  .srange input[type=range]::-webkit-slider-thumb{ -webkit-appearance:none; appearance:none; width:14px; height:14px; border-radius:50%; background:#c9d1d9; margin-top:-5px; cursor:pointer; }
-  .srange input[type=range]::-moz-range-thumb{ width:14px; height:14px; border:none; border-radius:50%; background:#c9d1d9; cursor:pointer; }
-  .srange input[type=range].snapped::-webkit-slider-thumb{ background:#ff8c00; }
-  .srange input[type=range].snapped::-moz-range-thumb{ background:#ff8c00; }
-  .srange .tick{ position:absolute; top:1px; bottom:1px; width:2px; background:#58a6ff; transform:translateX(-50%); pointer-events:none; border-radius:1px; }   /* marks the snap/default value */
-  .lcard{ background:#0d1117; border:1px solid #30363d; border-radius:8px; padding:10px; margin:8px 0; }
+  .srange input[type=range]::-webkit-slider-runnable-track{ height:4px; background:var(--border); border-radius:2px; }
+  .srange input[type=range]::-moz-range-track{ height:4px; background:var(--border); border-radius:2px; }
+  .srange input[type=range]::-webkit-slider-thumb{ -webkit-appearance:none; appearance:none; width:14px; height:14px; border-radius:50%; background:var(--text); margin-top:-5px; cursor:pointer; }
+  .srange input[type=range]::-moz-range-thumb{ width:14px; height:14px; border:none; border-radius:50%; background:var(--text); cursor:pointer; }
+  .srange input[type=range].snapped::-webkit-slider-thumb{ background:var(--accent); }
+  .srange input[type=range].snapped::-moz-range-thumb{ background:var(--accent); }
+  .srange .tick{ position:absolute; top:1px; bottom:1px; width:2px; background:var(--blue); transform:translateX(-50%); pointer-events:none; border-radius:1px; }   /* marks the snap/default value */
+
+  /* layer cards */
+  .lcard{ background:var(--inset); border-radius:18px; padding:12px; margin:10px 0; transition:background-color .45s; }
   .lcard.off{ opacity:.55; }
   .lhead{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
-  .lhead .ln{ font:inherit; background:#161b22; color:#e6edf3; border:1px solid #30363d; border-radius:6px; padding:4px 8px; width:120px; }
-  .lhead select{ font:inherit; background:#161b22; color:#e6edf3; border:1px solid #30363d; border-radius:6px; padding:3px 6px; }
-  .lhead .lfield{ display:flex; align-items:center; gap:6px; color:#8b949e; font-size:12px; }
+  .lhead .ln{ font:inherit; background:var(--card); color:var(--text); border:1px solid var(--border); border-radius:9px; padding:4px 8px; width:120px; }
+  .lhead select{ padding:3px 6px; }
+  .lhead .lfield{ display:flex; align-items:center; gap:6px; color:var(--muted); font-size:12px; }
   .lhead .lfield input[type=range]{ width:90px; }
-  .lhead .lfield .lv{ font-family:ui-monospace,monospace; color:#58a6ff; min-width:34px; text-align:right; }
-  .lbody{ margin-top:10px; padding-top:8px; border-top:1px solid #21262d; }
+  .lhead .lfield .lv{ font-family:ui-monospace,monospace; color:var(--num); min-width:34px; text-align:right; }
+  .lbody{ margin-top:10px; padding-top:8px; border-top:1px solid var(--border); }
   .lbody .ctl{ grid-template-columns:84px minmax(30px,1fr) auto; gap:7px 8px; }
-  .lbody .ph{ color:#8b949e; font-size:13px; }
-  #workspace{ display:flex; gap:16px; align-items:flex-start; flex-wrap:wrap; }
-  .col{ flex:1 1 0; min-width:430px; }
-  #colR{ min-width:540px; }
-  .col .panel{ max-width:none; }
-  body.editmode .block{ outline:2px dashed #58a6ff; outline-offset:3px; cursor:grab; }
-  body.editmode .block *{ pointer-events:none; }
-  .block.dragging{ opacity:.5; }
-  .lhead .lgrip{ cursor:grab; color:#8b949e; font-size:15px; user-select:none; padding:0 2px; }
+  .lbody .ph{ color:var(--muted); font-size:13px; }
+  .lhead .lgrip{ cursor:grab; color:var(--muted); font-size:15px; user-select:none; padding:0 2px; }
   .lhead .lgrip:active{ cursor:grabbing; }
   .lcard.ldragging{ opacity:.5; }
-  .lhead .llvl{ font-weight:600; color:#58a6ff; font-size:12px; min-width:50px; }
-  .numin{ font:inherit; width:48px; background:#161b22; color:#e6edf3; border:1px solid #30363d; border-radius:6px; padding:2px 4px; }
+  .lhead .llvl{ font-weight:700; color:var(--num); font-size:12px; min-width:50px; }
+  .numin{ font:inherit; width:48px; background:var(--card); color:var(--text); border:1px solid var(--border); border-radius:8px; padding:2px 4px; }
   .lhead .numin{ width:42px; }
-  .hexin{ background:#161b22; color:#e6edf3; border:1px solid #30363d; border-radius:6px; padding:2px 6px; font:inherit; width:74px; }
+  .hexin{ background:var(--inset); color:var(--text); border:1px solid var(--border); border-radius:8px; padding:2px 6px; font:inherit; width:74px; }
   .cwrap{ display:inline-flex; align-items:center; gap:6px; flex-wrap:wrap; }
   .patgrid{ display:flex; flex-wrap:wrap; gap:4px; margin-bottom:8px; }
-  .patbtn{ font:12px/1 inherit; background:#21262d; color:#c9d1d9; border:1px solid #30363d; border-radius:6px; padding:5px 8px; cursor:pointer; }
-  .patbtn:hover{ border-color:#58a6ff; }
-  .patbtn.sel{ background:#1f6feb; border-color:#1f6feb; color:#fff; }
-  .lcdOverlay{position:fixed;inset:0;background:#0d1117;z-index:50;overflow:auto;padding:14px}
-  .lcdOverlayBar{display:flex;align-items:center;gap:10px;margin-bottom:10px}
-  .lcdOverlayBar button{margin-right:8px}
+  .patbtn{ font:600 12px/1 "Plus Jakarta Sans",system-ui,sans-serif; background:var(--card); color:var(--text);
+           border:0; box-shadow:0 0 0 1.5px var(--ring); border-radius:999px; padding:6px 10px; cursor:pointer; margin:0; }
+  .patbtn:hover{ box-shadow:0 0 0 1.5px var(--accent); }
+  .patbtn.sel{ background:var(--accent); box-shadow:none; color:#0d1117; }
+  canvas.cv{ border:1px solid var(--border); border-radius:12px; background:#000; }
+
+  /* bio + deco tiles */
+  .avatar{ width:76px; height:76px; border-radius:50%; background:var(--blue); display:flex; align-items:center;
+           justify-content:center; font-size:38px; margin-bottom:14px; }
+  .bigtype{ font-family:"Fraunces",Georgia,serif; font-weight:800; font-size:25px; letter-spacing:-.4px; }
+  .deco.pink{ background:var(--pink); color:#0d1117; }
+  .deco.yellow{ background:var(--yellow); color:#0d1117; }
+  .keycaps{ display:flex; gap:8px; }
+  .keycap{ font-family:"Fraunces",Georgia,serif; font-weight:700; background:#fff; color:#0d1117; border-radius:12px;
+           min-width:52px; height:52px; display:flex; align-items:center; justify-content:center; font-size:21px;
+           box-shadow:0 3px 0 rgba(13,17,23,.18); padding:0 10px; }
+  .deco .cap{ font-size:13px; font-weight:600; opacity:.75; }
+  .faqcard h3{ font-family:"Fraunces",Georgia,serif; font-weight:700; font-size:17.5px; margin:0 0 8px; letter-spacing:-.2px; }
+  .faqcard p{ margin:0; color:var(--muted); font-size:13.5px; }
+
+  /* ===== theme the LCD module's injected dark styles (body-prefixed = higher specificity) ===== */
+  body .lcd-tool button{ background:var(--card); color:var(--text); border:0; box-shadow:0 0 0 2px var(--ring); border-radius:999px; padding:9px 16px; }
+  body .lcd-tool button:hover:not(:disabled){ border:0; box-shadow:0 0 0 2px var(--accent); }
+  body .lcd-tool button.go{ background:var(--mint); color:#0d1117; box-shadow:none; }
+  body .lcd-tool button.rst{ box-shadow:none; color:var(--muted); padding:1px 5px; }
+  body .lcd-tool button.rst:hover{ color:var(--text); }
+  body .lcd-tool label,body .lcd-tool .sub,body .lcd-tool .hint{ color:var(--muted); }
+  body .lcd-tool .num{ background:var(--inset); color:var(--num); border:1px solid var(--border); }
+  body .lcd-tool #lcdUrl{ background:var(--inset); color:var(--text); border:1px solid var(--border); }
+  body .lcd-tool #lcdPreview,body .lcd-tool #lcdPreviewActual{ border:1px solid var(--border); border-radius:8px; }
+  body .lcd-tool .lcd-log{ background:#010409; border:1px solid transparent; border-radius:12px; }
 </style>
 </head>
 <body>
-  <h1>Epomaker TH108 V2 PRO — live lighting controller</h1>
-  <p class="sub">Pulsing-cyan background + keypress-reactive yellow-orange, composited host-side and pushed
-     every frame over WebHID. Two layers at once — what the stock firmware won't do.</p>
 
-  <div class="row">
-    <button id="connect" class="primary" title="hands the keyboard from the daemon to this page and starts your layers automatically">Connect keyboard</button>
-    <button id="start" class="go" disabled title="resume the layers after a Stop">Start layers ▶</button>
-    <button id="stop" class="stop" disabled>Stop ⏹</button>
-    <span id="status" class="dim">not connected</span>
-  </div>
-  <p class="hint">After Start, click this page once so it has keyboard focus, then type — pressed keys flash orange.
-     <br>⚠ <b>Browser keydown only fires while this tab is focused.</b> Reactive-in-any-app comes from the background daemon instead.
-     <br>💡 <b>Daemon running? Skip Connect for layer editing</b> — edits push to it live and reactive keeps working in every app. Connect is only for the GIF→keys, onboard-effect, and LCD tools (it takes the keyboard from the daemon until you close this tab).</p>
-  <details class="hint" style="margin:6px 0 0">
-    <summary style="cursor:pointer"><b>FAQ — quirks worth knowing</b></summary>
-    <ul style="margin:6px 0 0 18px;padding:0">
-      <li><b>What does Connect actually do?</b> It hands the keyboard from the background daemon to this page and starts your layers automatically. Close the tab to hand it back to the daemon. (If you see the keyboard's own firmware effect instead, the layers aren't running — click <b>Start layers</b>.)</li>
-      <li><b>Keys only react while this tab is focused?</b> Once this page owns the keyboard (after Connect), it can only see keystrokes typed into this tab — a browser limit. Reactive-in-every-app comes from the background daemon: close this tab (or never Connect) and it takes over within a second.</li>
-      <li><b>You don't need Connect to edit layers.</b> With the daemon running, every layer edit pushes to it live (~½&nbsp;s) and reactive keeps working everywhere. Connect is only for the GIF→keys player, onboard effects, and the LCD uploader.</li>
-      <li><b>Lighting froze on a firmware effect by itself?</b> The board occasionally stops accepting host lighting (USB events — sleep, other devices power-cycling on the bus — can trigger it). The daemon auto-fixes this after ~30&nbsp;s with a USB restart (toggle in the Background-daemon panel); the manual cure is unplug/replug.</li>
-      <li><b>Media layer shows nothing?</b> It's a placeholder for now — use the GIF → keyboard panel instead.</li>
-    </ul>
-  </details>
+<header>
+  <div class="logo"><span class="l1">t</span><span class="l2">h</span><span class="l3">1</span><span class="l4">0</span><span class="l5">8</span></div>
+  <nav class="tabs" id="tabs">
+    <div class="hl" id="tabHl"></div>
+    <div class="tab" data-page="home">Home</div>
+    <div class="tab" data-page="hotkeys">Hotkeys</div>
+    <div class="tab" data-page="faq">FAQ</div>
+    <div class="tab" data-page="lighting">Lighting</div>
+    <div class="tab" data-page="lcd">LCD Screen</div>
+  </nav>
+  <button id="themeBtn" title="toggle light / dark (crossfades)" aria-label="Toggle light or dark theme"><span class="knob" id="themeKnob">☀️</span></button>
+</header>
 
-  <div class="row" style="margin-top:4px">
-    <button id="editBtn">✎ Edit layout</button>
-    <button id="exportCfg" title="Download your layer setup as JSON (same format as the daemon's config.json)">⬇ Export</button>
-    <button id="importCfg" title="Load a layer setup from a JSON file (e.g. moved from the file:// page)">⬆ Import</button>
-    <input type="file" id="importFile" accept="application/json,.json" style="display:none">
-    <button id="lcdBtn" title="Open the LCD screen uploader">🖵 LCD screen</button>
-    <button id="resetKbBtn" title="Factory-reset the keyboard HARDWARE (recovers a wedged board; clears the keyboard's onboard config/keymap — NOT this page's settings)">⟳ Factory reset keyboard</button>
-    <button id="resetSiteBtn" title="Reset THIS page's settings (layers, per-pattern values, LCD calibration, layout) to defaults — keeps your media Library; does NOT touch the keyboard">↺ Reset all settings</button>
-    <span id="editHint" class="hint" style="display:none">drag a panel by its dashed outline to move it between columns / reorder</span>
+<div id="grid">
+
+  <!-- ========== HOME ========== -->
+  <div class="card s3" id="bioCard" data-pages="home">
+    <div class="cardbar"><span class="grip">⠿</span></div>
+    <div class="avatar">⌨️</div>
+    <p style="margin:0;font-size:15px">I'm <span class="bigtype">th108</span>, the host-side lighting &amp; LCD suite
+       for the <b>Epomaker TH108 V2 PRO</b>. Four composited lighting layers, keypress-reactive in every app,
+       GIF&nbsp;→&nbsp;keys, onboard effects and LCD uploads — the things the stock firmware can't do.</p>
   </div>
 
-  <div id="workspace">
-   <div class="col" id="colL">
-  <div class="panel block" id="layersPanel">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
-      <b>Layer compositor</b>
-      <span class="hint" style="margin:0">top of list = top layer · bottom of list = bottom layer</span>
+  <div class="card s3" id="connectCard" data-pages="home lighting">
+    <div class="cardbar"><span class="grip">⠿</span><h2>Keyboard</h2><span class="aux dim" id="status">not connected</span></div>
+    <div class="row">
+      <button id="connect" class="primary">1 · Connect keyboard</button>
+      <span aria-hidden="true" style="color:var(--muted);align-self:center;user-select:none;display:inline-flex;vertical-align:middle;margin:0 8px 8px 0" title="connecting hands the keyboard to this page — lighting stays on the firmware effect until you Start layers"><svg width="22" height="14" viewBox="0 0 22 14" fill="currentColor"><path d="M1 5.5h12V1l8 6-8 6V8.5H1z"/></svg></span>
+      <button id="start" class="go" disabled>2 · Start layers ▶</button>
+      <button id="stop" class="stop" disabled>Stop ⏹</button>
     </div>
-    <div id="layerCards"></div>
+    <p class="hint">After Start, click this page once so it has keyboard focus, then type — pressed keys flash orange.
+       <br>⚠ <b>Browser keydown only fires while this tab is focused.</b> Reactive-in-any-app comes from the background daemon instead.
+       <br>💡 <b>Daemon running? Skip Connect for layer editing</b> — edits push to it live and reactive keeps working in every app. Connect is only for the GIF→keys, onboard-effect, and LCD tools (it takes the keyboard from the daemon until you close this tab).</p>
   </div>
-  <div class="panel block" id="daemonPanel">
-    <b>Background daemon</b>
+
+  <div class="card s3" id="daemonPanel" data-pages="home">
+    <div class="cardbar"><span class="grip">⠿</span><h2>Background daemon</h2></div>
     <p class="hint" style="margin:4px 0 8px">Runs your layers always-on — reactive typing in any app — and takes over whenever this page is closed.</p>
     <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
       <span id="dmnStatus" class="hint" style="margin:0">checking…</span>
@@ -128,18 +224,93 @@
       <button id="dmnQuit" title="stop the background daemon until setup.cmd or your next login starts it again — this page keeps working">✖ Quit daemon</button>
     </div>
   </div>
-   </div>
-   <div class="col" id="colR">
-  <div class="panel block" id="gifPanel">
+
+  <div class="card s3" id="toolboxCard" data-pages="home">
+    <div class="cardbar"><span class="grip">⠿</span><h2>Toolbox</h2></div>
+    <button id="exportCfg" title="Download your layer setup as JSON (same format as the daemon's config.json)">⬇ Export</button>
+    <button id="importCfg" title="Load a layer setup from a JSON file (e.g. moved from the file:// page)">⬆ Import</button>
+    <input type="file" id="importFile" accept="application/json,.json" style="display:none">
+    <button id="resetKbBtn" title="Factory-reset the keyboard HARDWARE (recovers a wedged board; clears the keyboard's onboard config/keymap — NOT this page's settings)">⟳ Factory reset keyboard</button>
+    <button id="resetSiteBtn" title="Reset THIS page's settings (layers, per-pattern values, LCD calibration, layout) to defaults — keeps your media Library; does NOT touch the keyboard">↺ Reset all settings</button>
+    <p class="hint" style="margin:6px 0 0">Drag any card by its title bar to rearrange the grid — the layout is saved.</p>
+  </div>
+
+  <div class="card s3 deco pink" id="decoCard" data-pages="home">
+    <div class="keycaps"><span class="keycap">t</span><span class="keycap">h</span><span class="keycap">1</span><span class="keycap">0</span><span class="keycap">8</span></div>
+    <div class="cap">Epomaker TH108 V2 PRO · 104 keys · knob · 160×96 LCD</div>
+  </div>
+
+  <div class="card s3" id="logCard" data-pages="home lighting">
+    <div class="cardbar"><span class="grip">⠿</span><h2>Log</h2></div>
+    <div id="log"></div>
+  </div>
+
+  <!-- ========== HOTKEYS ========== -->
+  <div class="card s4" id="hotkeysCard" data-pages="hotkeys">
+    <div class="cardbar"><span class="grip">⠿</span><h2>Hotkeys &amp; keymap</h2></div>
+    <p style="font-size:14.5px">Remap any key on the board to a <b>decorative light function</b> — the firmware's
+       hidden per-key light controls (brightness, speed, effect switch and more), bound to whatever key you like.</p>
+    <p class="hint">The binder rewrites the full 512-byte keymap (single-key writes don't commit), shows a spacebar
+       overlay while you pick, and can set the knob to mute. It currently lives on its own page — it moves into this
+       tab soon.</p>
+    <a class="btnlink" href="webhid-test.html" target="_blank" rel="noopener">Open the key binder ↗</a>
+  </div>
+
+  <div class="card s2 deco yellow" id="decoCard2" data-pages="hotkeys">
+    <div class="keycaps"><span class="keycap">Fn</span><span class="keycap">🔆</span></div>
+    <div class="cap">any key → any light function</div>
+  </div>
+
+  <!-- ========== FAQ ========== -->
+  <div class="card s2 faqcard" id="faq1" data-pages="faq">
+    <div class="cardbar"><span class="grip">⠿</span></div>
+    <h3>Lighting went static right after Connect?</h3>
+    <p>Connecting hands the keyboard from the background daemon to this page, and nothing paints until you click
+       <b>2 · Start layers</b> — the static look is the keyboard's own firmware effect filling that gap.</p>
+  </div>
+  <div class="card s2 faqcard" id="faq2" data-pages="faq">
+    <div class="cardbar"><span class="grip">⠿</span></div>
+    <h3>Keys only react while this tab is focused?</h3>
+    <p>Once this page owns the keyboard (after Connect), it can only see keystrokes typed into this tab — a browser
+       limit. Reactive-in-every-app comes from the background daemon: close this tab (or never Connect) and it takes
+       over within a second.</p>
+  </div>
+  <div class="card s2 faqcard" id="faq3" data-pages="faq">
+    <div class="cardbar"><span class="grip">⠿</span></div>
+    <h3>You don't need Connect to edit layers.</h3>
+    <p>With the daemon running, every layer edit pushes to it live (~½&nbsp;s) and reactive keeps working everywhere.
+       Connect is only for the GIF→keys player, onboard effects, and the LCD uploader.</p>
+  </div>
+  <div class="card s2 faqcard" id="faq4" data-pages="faq">
+    <div class="cardbar"><span class="grip">⠿</span></div>
+    <h3>Lighting froze on a firmware effect by itself?</h3>
+    <p>The board occasionally stops accepting host lighting (USB events — sleep, other devices power-cycling on the
+       bus — can trigger it). The daemon auto-fixes this after ~30&nbsp;s with a USB restart (toggle in the
+       Background-daemon card); the manual cure is unplug/replug.</p>
+  </div>
+  <div class="card s2 faqcard" id="faq5" data-pages="faq">
+    <div class="cardbar"><span class="grip">⠿</span></div>
+    <h3>Media layer shows nothing?</h3>
+    <p>It's a placeholder for now — use the GIF → keyboard card on the Lighting tab instead.</p>
+  </div>
+
+  <!-- ========== LIGHTING ========== -->
+  <div class="card s3" id="layersPanel" data-pages="lighting">
+    <div class="cardbar"><span class="grip">⠿</span><h2>Layer compositor</h2>
+      <span class="aux">top of list = top layer · bottom = bottom layer</span></div>
+    <div id="layerCards"></div>
+  </div>
+
+  <div class="card s6" id="gifPanel" data-pages="lighting">
+    <div class="cardbar"><span class="grip">⠿</span><h2>GIF → keyboard lighting</h2></div>
     <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-      <b>GIF → keyboard lighting</b>
       <input type="file" id="gifFile" accept="image/*,video/*" />
       <button id="gifPlay" class="go" disabled>Play GIF ▶</button>
       <button id="gifStop" class="stop" disabled>Stop GIF ⏹</button>
       <button id="gifReset">reset position</button>
     </div>
     <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:8px">
-      <input id="gifUrl" type="text" placeholder="paste an image / GIF URL…" style="flex:1;min-width:180px;font:inherit;background:#0d1117;color:#e6edf3;border:1px solid #30363d;border-radius:6px;padding:5px 8px">
+      <input id="gifUrl" type="text" class="tin" placeholder="paste an image / GIF URL…" style="flex:1;min-width:180px">
       <button id="gifUrlLoad">Load URL</button>
       <button id="gifPaste">Paste image (Ctrl+V)</button>
       <button id="gifSeqBtn" title="pick multiple image files = one frame each">+ PNG frames</button>
@@ -149,7 +320,7 @@
       <button id="gifSave" title="save the currently loaded media to the library">★ Add to Library</button>
       <button id="gifLibBtn">📚 Library</button>
     </div>
-    <div id="gifLib" style="display:none;margin-top:8px;padding:8px;background:#0d1117;border:1px solid #30363d;border-radius:8px"></div>
+    <div id="gifLib" style="display:none;margin-top:8px;padding:10px;background:var(--inset);border-radius:14px"></div>
     <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-top:8px">
       <label class="sl">zoom <span class="srange"><input type="range" id="gifZoom" min="20" max="500" value="100"><i class="tick" style="left:calc(7px + (100% - 14px)*.167)"></i></span></label>
       <label class="sl">rotate <span class="srange" id="gifRotRange"><input type="range" id="gifRot" min="0" max="360" value="0"></span></label>
@@ -161,38 +332,38 @@
       <label class="sl" title="freeze on the current frame (no animation)"><input type="checkbox" id="gifStatic"> static</label>
       <label class="sl">brightness <span class="srange"><input type="range" id="gifBri" min="10" max="100" value="100"></span></label>
       <label class="sl">map
-        <select id="gifMap" style="font:inherit;background:#0d1117;color:#e6edf3;border:1px solid #30363d;border-radius:6px;padding:2px 4px">
+        <select id="gifMap">
           <option value="physical">Physical</option><option value="grid">Grid (uniform)</option>
         </select></label>
       <label class="sl">sample
-        <select id="gifSample" style="font:inherit;background:#0d1117;color:#e6edf3;border:1px solid #30363d;border-radius:6px;padding:2px 4px">
+        <select id="gifSample">
           <option value="average">Average (area)</option><option value="center">Center pixel</option><option value="gaussian">Gaussian (center-weighted)</option><option value="vivid">Most vivid pixel</option><option value="bright">Brightest pixel (text/logos)</option><option value="dominant">Dominant color</option><option value="standout">Standout (max contrast)</option>
         </select></label>
       <label class="sl">bars
-        <select id="gifBars" style="font:inherit;background:#0d1117;color:#e6edf3;border:1px solid #30363d;border-radius:6px;padding:2px 4px">
+        <select id="gifBars">
           <option value="black">Black</option><option value="sampled">Sampled</option><option value="custom">Custom →</option>
         </select></label>
-      <input type="color" id="gifBarColor" value="#000000" style="width:38px;height:26px;background:none;border:1px solid #30363d;border-radius:6px">
+      <input type="color" id="gifBarColor" value="#000000" style="width:38px;height:26px">
     </div>
     <div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:10px">
       <div>
         <div class="hint" style="margin:0 0 4px">position — drag to pan, zoom to scale (blue box = the keyboard area)</div>
-        <canvas id="gifSrc" width="360" height="190" style="border:1px solid #30363d;border-radius:4px;background:#000;cursor:move;touch-action:none"></canvas>
+        <canvas id="gifSrc" class="cv" width="360" height="190" style="cursor:move;touch-action:none"></canvas>
       </div>
       <div>
         <div class="hint" style="margin:0 0 4px">keyboard preview — what each key will show</div>
-        <canvas id="gifKb" width="468" height="135" style="border:1px solid #30363d;border-radius:4px;background:#0d1117"></canvas>
+        <canvas id="gifKb" class="cv" width="468" height="135" style="background:#0d1117"></canvas>
       </div>
     </div>
     <div class="hint" id="gifInfo" style="margin-top:6px">load an image/GIF — sampled onto the 104 keys (physical layout, ~3.46:1). Raw RGB, area-averaged. Plays instead of the pulse effect; bold shapes read best.</div>
   </div>
 
-  <div class="panel block" id="onboardPanel">
-    <b>Onboard effects</b>
+  <div class="card s3" id="onboardPanel" data-pages="lighting">
+    <div class="cardbar"><span class="grip">⠿</span><h2>Onboard effects</h2></div>
     <p class="hint" style="margin:4px 0 10px">Firmware effects — run on the keyboard itself, persist without a PC. Setting one stops the live layers/GIF.</p>
     <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
       <label class="sl">effect
-        <select id="obEffect" style="font:inherit;background:#0d1117;color:#e6edf3;border:1px solid #30363d;border-radius:6px;padding:3px 6px">
+        <select id="obEffect">
           <option value="1">1 · Static Bright</option>
           <option value="2">2 · Single Point On</option>
           <option value="3">3 · Single Point Off</option>
@@ -227,13 +398,12 @@
     </div>
   </div>
 
-  <div id="log" class="block"></div>
-   </div>
+  <!-- ========== LCD SCREEN ========== -->
+  <div class="card s6" id="lcdCard" data-pages="lcd">
+    <div class="cardbar"><span class="grip">⠿</span><h2>LCD screen</h2></div>
+    <div id="lcdBody"></div>
   </div>
 
-<div id="lcdOverlay" class="lcdOverlay" style="display:none">
-  <div class="lcdOverlayBar"><button id="lcdClose" title="Back (Esc)">← Back</button><b>LCD screen</b><span id="lcdDevNote" class="hint"></span></div>
-  <div id="lcdBody"></div>
 </div>
 
 <script src="th108-media-lib.js"></script>
@@ -254,7 +424,7 @@ const out=document.getElementById('log');
 function log(m,c=''){ const d=document.createElement('div'); if(c)d.className=c;
   d.textContent='['+new Date().toISOString().substr(11,12)+'] '+m; out.appendChild(d);
   while(out.childNodes.length>200) out.removeChild(out.firstChild); out.scrollTop=out.scrollHeight; }
-function setStatus(s,c='',tip=''){ const e=document.getElementById('status'); e.textContent=s; e.className=c; e.title=tip; }   // tip = hover tooltip for the jargon behind a friendly status
+function setStatus(s,c='',tip=''){ const e=document.getElementById('status'); e.textContent=s; e.className='aux '+(c||'dim'); e.title=tip; }   // tip = hover tooltip for the jargon behind a friendly status
 
 let _wasRunning=false;   // layers were running when the keyboard went away (sleep/unplug/wedge) → resume on re-bind; cleared only by a deliberate Stop
 const HID=TH108Hid.create({
@@ -279,9 +449,6 @@ const HID=TH108Hid.create({
     // a replug revokes the WebHID grant (no serial number on the TH108), so recovery is a manual Connect click —
     // honor the pending resume intent here too, making replug recovery ONE click instead of Connect+Start
     if(_wasRunning){ _wasRunning=false; start(); log('layers resumed','ok'); }
-    // connected means driving: auto-start the layers so there's no firmware-static gap between
-    // Connect and Start (user call 2026-06-09 — there's no case where you connect and want nothing painted)
-    else if(!running && !GIF.playing){ start(); }
   },
   onDisconnected:()=>{
     _wasRunning=_wasRunning||running;   // don't overwrite an intent already captured by stopHost (the write fails before the disconnect event on unplug)
@@ -306,7 +473,7 @@ DC.mountPanel();   // Background-daemon panel: status readout, auto-start toggle
 // ===== layer compositor engine =====
 function fpsCap(){ return +document.getElementById('gifFps').value || 60; }   // global output FPS cap (shared with GIF) — lower = less compute
 // slider detent helpers — shared by the GIF panel module and the layer-cards module (injected into both)
-const flashSnap=el=>{ el.classList.add('snapped'); clearTimeout(el._st); el._st=setTimeout(()=>el.classList.remove('snapped'),250); };   // thumb flashes orange 250ms on snap
+const flashSnap=el=>{ el.classList.add('snapped'); clearTimeout(el._st); el._st=setTimeout(()=>el.classList.remove('snapped'),250); };   // thumb flashes on snap
 const snap=(el,target,thr)=>{ if(Math.abs((+el.value)-target)<=thr){ if(+el.value!==target) el.value=target; if(!el._sn){ el._sn=true; flashSnap(el); } } else el._sn=false; };
 const snapMul=(el,step,thr)=>{ const v=+el.value, nr=Math.round(v/step)*step; if(Math.abs(v-nr)<=thr){ if(v!==nr) el.value=nr; if(el._sn!==nr){ el._sn=nr; flashSnap(el); } } else el._sn=null; };
 // add a typeable hex text box next to every <input type=color> within `scope` (idempotent)
@@ -427,18 +594,84 @@ attachHex(document.getElementById('gifPanel'));   // typeable hex box on the GIF
 document.addEventListener('keydown',e=>{ if(e.target && e.target.tagName==='SELECT' && e.key && e.key.length===1) e.preventDefault(); }, true);
 document.addEventListener('change',e=>{ if(e.target && e.target.tagName==='SELECT') e.target.blur(); }, true);   // drop focus after picking so testing keys won't change it
 
-// ===== Edit-layout mode: drag .block panels between columns (persisted) =====
-const LAYOUT_KEY='th108_layout';
-let editMode=false;
-function blocks(){ return [...document.querySelectorAll('.block')]; }
-function setEdit(on){
-  editMode=on;
-  document.body.classList.toggle('editmode',on);
-  blocks().forEach(b=>b.draggable=on);
-  const btn=document.getElementById('editBtn'); btn.textContent = on?'✓ Done':'✎ Edit layout';
-  document.getElementById('editHint').style.display = on?'inline':'none';
+// ===== theme (light/dark) — crossfaded via the View Transitions API (Chromium has it; WebHID already requires Chromium) =====
+const THEME_KEY='th108_theme';
+function applyTheme(t){
+  document.documentElement.dataset.theme=t;
+  document.getElementById('themeKnob').textContent = t==='dark' ? '🌙' : '☀️';
+  try{ localStorage.setItem(THEME_KEY,t); }catch(_){ }
 }
-document.getElementById('editBtn').addEventListener('click',()=>setEdit(!editMode));
+function setTheme(t){
+  if(document.startViewTransition) document.startViewTransition(()=>applyTheme(t));   // true crossfade of the whole page
+  else applyTheme(t);                                                                 // fallback: the CSS color transitions still ease it
+}
+applyTheme(localStorage.getItem(THEME_KEY)||'light');
+document.getElementById('themeBtn').addEventListener('click',()=>setTheme(document.documentElement.dataset.theme==='dark'?'light':'dark'));
+
+// ===== header tabs — pages filter the bento cards (sliding pill highlight) =====
+const PAGE_KEY='th108_page';
+const tabsEl=document.getElementById('tabs'), tabHl=document.getElementById('tabHl');
+function cardsAll(){ return [...document.querySelectorAll('#grid .card')]; }
+function moveHl(){
+  const on=tabsEl.querySelector('.tab.on'); if(!on) return;
+  tabHl.style.left=on.offsetLeft+'px'; tabHl.style.width=on.offsetWidth+'px';
+}
+let curPage=null;
+function applyPage(p){
+  curPage=p;
+  tabsEl.querySelectorAll('.tab').forEach(t=>t.classList.toggle('on',t.dataset.page===p));
+  cardsAll().forEach(c=>{ c.hidden = !(c.dataset.pages||'').split(/\s+/).includes(p); });
+  moveHl();
+  try{ localStorage.setItem(PAGE_KEY,p); }catch(_){ }
+}
+function setPage(p){
+  if(p===curPage) return;
+  const wasLcd=curPage==='lcd';
+  if(document.startViewTransition) document.startViewTransition(()=>applyPage(p)); else applyPage(p);
+  // the LCD module re-reads the device on show and pauses its preview loop while hidden
+  if(p==='lcd'){ try{ TH108LCD.onShow(); }catch(_){ } }
+  else if(wasLcd){ try{ TH108LCD.onHide(); }catch(_){ } }
+}
+tabsEl.querySelectorAll('.tab').forEach(t=>t.addEventListener('click',()=>setPage(t.dataset.page)));
+applyPage(localStorage.getItem(PAGE_KEY)||'home');
+if(curPage==='lcd'){ try{ TH108LCD.onShow(); }catch(_){ } }   // restored straight onto the LCD tab
+window.addEventListener('resize',moveHl);
+if(document.fonts && document.fonts.ready) document.fonts.ready.then(moveHl);   // tab widths shift once the webfonts land
+
+// ===== card dragging — grab any card by its title bar to reorder the bento grid (persisted) =====
+const LAYOUT_KEY='th108_layout2';   // ordered card ids (the old colL/colR format is obsolete)
+const gridEl=document.getElementById('grid');
+let cardDragging=null;
+cardsAll().forEach(c=>{
+  const bar=c.querySelector('.cardbar'); if(!bar) return;
+  bar.addEventListener('mousedown',()=>{ c.draggable=true; });            // only a title-bar grab arms the drag —
+  c.addEventListener('mousedown',e=>{ if(!bar.contains(e.target)) c.draggable=false; });   // sliders/canvases inside stay usable
+  c.addEventListener('dragstart',e=>{
+    if(!c.draggable){ e.preventDefault(); return; }
+    cardDragging=c; c.classList.add('dragging');
+    try{ e.dataTransfer.effectAllowed='move'; e.dataTransfer.setData('text/plain','card'); }catch(_){ }
+  });
+  c.addEventListener('dragend',()=>{ c.classList.remove('dragging'); c.draggable=false; cardDragging=null; saveLayout(); });
+});
+gridEl.addEventListener('dragover',e=>{
+  if(!cardDragging) return; e.preventDefault();
+  // insertion point in a row-major grid: the first visible card whose center is past the pointer (rows first, then columns)
+  const others=cardsAll().filter(c=>c!==cardDragging && !c.hidden);
+  let before=null;
+  for(const c of others){ const r=c.getBoundingClientRect();
+    if(e.clientY < r.top + r.height/2 || (e.clientY < r.bottom && e.clientX < r.left + r.width/2)){ before=c; break; } }
+  if(before){ if(before.previousElementSibling!==cardDragging) gridEl.insertBefore(cardDragging,before); }
+  else gridEl.appendChild(cardDragging);
+});
+function saveLayout(){
+  try{ localStorage.setItem(LAYOUT_KEY, JSON.stringify(cardsAll().map(c=>c.id))); }catch(_){ }
+}
+function restoreLayout(){
+  let saved; try{ saved=JSON.parse(localStorage.getItem(LAYOUT_KEY)||'null'); }catch(_){ saved=null; }
+  if(!Array.isArray(saved)) return;
+  saved.forEach(id=>{ const c=document.getElementById(id); if(c && c.parentElement===gridEl) gridEl.appendChild(c); });
+}
+restoreLayout();
 
 // Export / Import the layer setup. Export's JSON IS the daemon's config.json format. Import also lets you
 // move settings across origins (e.g. file:// → http://localhost:8123, which don't share localStorage).
@@ -465,49 +698,8 @@ document.getElementById('importFile').addEventListener('change',async e=>{
   e.target.value='';
 });
 
-let blockDragging=null;
-blocks().forEach(b=>{
-  b.addEventListener('dragstart',e=>{ if(!editMode){ e.preventDefault(); return; }
-    blockDragging=b; b.classList.add('dragging');
-    try{ e.dataTransfer.effectAllowed='move'; e.dataTransfer.setData('text/plain','block'); }catch(_){ }
-  });
-  b.addEventListener('dragend',()=>{ b.classList.remove('dragging'); blockDragging=null; saveLayout(); });
-});
-function blockAfter(col,y){
-  const els=[...col.querySelectorAll('.block:not(.dragging)')];
-  let closest=null, cd=-Infinity;
-  for(const el of els){ const r=el.getBoundingClientRect(), off=y-(r.top+r.height/2);
-    if(off<0 && off>cd){ cd=off; closest=el; } }
-  return closest;
-}
-['colL','colR'].forEach(id=>{
-  const col=document.getElementById(id);
-  col.addEventListener('dragover',e=>{ if(!blockDragging) return; e.preventDefault();
-    const after=blockAfter(col,e.clientY);
-    if(after==null) col.appendChild(blockDragging); else col.insertBefore(blockDragging,after);
-  });
-});
-function saveLayout(){
-  try{ localStorage.setItem(LAYOUT_KEY, JSON.stringify({
-    colL:[...document.getElementById('colL').querySelectorAll('.block')].map(b=>b.id),
-    colR:[...document.getElementById('colR').querySelectorAll('.block')].map(b=>b.id)
-  })); }catch(_){ }
-}
-function restoreLayout(){
-  let saved; try{ saved=JSON.parse(localStorage.getItem(LAYOUT_KEY)||'null'); }catch(_){ saved=null; }
-  if(!saved) return;
-  const colL=document.getElementById('colL'), colR=document.getElementById('colR');
-  (saved.colL||[]).forEach(bid=>{ const b=document.getElementById(bid); if(b) colL.appendChild(b); });
-  (saved.colR||[]).forEach(bid=>{ const b=document.getElementById(bid); if(b) colR.appendChild(b); });
-}
-restoreLayout();
-DC.ping().then(async()=>{
-  // Daemon present → opening the page must NOT steal the device: the daemon keeps driving (reactive-anywhere
-  // intact) and layer edits apply live through it. An explicit Connect click is what takes over now.
-  // No daemon → silent re-bind as before (and onConnected auto-starts the layers, so page-open = lighting on).
-  if(DC.present) return;
-  await HID.autoReconnect();
-  if(!HID.device && DC.beating){ DC.heartbeatStop(); DC.resume(); } });   // failed re-bind → hand back
+DC.ping().then(async()=>{ await HID.autoReconnect();
+  if(!HID.device && DC.beating){ DC.heartbeatStop(); DC.resume(); } });   // learn if the daemon holds the device, THEN silently reconnect (yield first); failed re-bind → hand back
 // (sleep/wake + unplug/replug re-bind lives in th108-hid.js; this page's side is the onDisconnected/onReconnected callbacks up top)
 
 // ===== Onboard (firmware) effects — extracted to th108-onboard.js (single 0x23 16-byte allledPack, persists on the keyboard) =====
@@ -522,14 +714,8 @@ const OB=TH108Onboard.create({
   setObActive: ()=>{ obActive=true; }                         // a pattern click can now auto-resume layers over this
 });
 
-// ===== LCD screen uploader overlay (th108-lcd.js) =====
+// ===== LCD screen uploader — th108-lcd.js, mounted in the LCD Screen tab's card =====
 TH108LCD.mount(document.getElementById('lcdBody'));
-const lcdOverlay = document.getElementById('lcdOverlay');
-function lcdShow(){ lcdOverlay.style.display='block'; TH108LCD.onShow(); }
-function lcdHide(){ lcdOverlay.style.display='none'; TH108LCD.onHide(); }
-document.getElementById('lcdBtn').addEventListener('click', lcdShow);
-document.getElementById('lcdClose').addEventListener('click', lcdHide);
-document.addEventListener('keydown', e=>{ if(e.key==='Escape' && lcdOverlay.style.display==='block') lcdHide(); });
 // let the LCD module pause key-lighting during a flash upload, so the board is free for the 0x50 write (avoids ACK timeouts)
 window.__lcdHost = {
   _was:false,
