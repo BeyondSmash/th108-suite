@@ -111,6 +111,7 @@ async function tick() {
         lastOkAt = Date.now();
       } else {                  // stall → drop device, retry after a pause (a wedged board stays mute until replug)
         closeDevice(); nextOpenAt = Date.now() + 5000;
+        if (paused) return;                                // the "stall" was our own yield closing the device mid-frame — not a board event, don't log MUTE
         if (!muteLogged) {                                 // one transition line per mute episode (the 5s retries stay silent)
           muteLogged = true; muteAt = Date.now();
           log('⚠ board went MUTE — no ACKs (' + (lastOkAt
