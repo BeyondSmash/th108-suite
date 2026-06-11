@@ -244,7 +244,7 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
   .kbkey.mod{ color:var(--warn); font-weight:700; }
   .kbkey.mod:hover,.kbkey.mod.sel{ color:#0d1117; }
   .kbkey .knew{ max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; padding:0 3px; font-size:.85em; }
-  .kbkey .kold{ position:absolute; right:3px; bottom:0; font-size:8px; text-decoration:line-through; opacity:.75; }
+  .kbkey .kold{ position:absolute; right:4px; bottom:1px; font-size:14px; text-decoration:line-through; opacity:.8; }   /* user: 8px was unreadably small — "close to 15px" */
   /* right-click on a key: a one-button "Reset" tooltip instead of the browser context menu.
      Centered via computed left, NOT transform — the global button:hover sets transform:translateY(-1px),
      which would REPLACE a translateX(-50%) here and lurch the button half its width on every hover. */
@@ -369,7 +369,7 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
 
   <!-- ========== HOTKEYS ========== -->
   <div class="card s6" id="kbBoardCard" data-pages="hotkeys">
-    <div class="cardbar"><span class="grip">⠿</span><h2>Pick a Key</h2><span class="aux" id="kbSelInfo">no key selected</span></div>
+    <div class="cardbar"><span class="grip">⠿</span><h2>Pick a Key</h2><span class="aux" style="display:flex;flex-direction:column;align-items:flex-end;gap:1px"><span id="kbSelInfo">no key selected</span><span id="kbSelSub" style="color:var(--warn)" hidden></span></span></div>
     <div id="kbBoard"></div>
   </div>
 
@@ -521,7 +521,7 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
   <!-- ========== LIGHTING ========== -->
   <div class="card s6" id="layersPanel" data-pages="lighting">
     <div class="cardbar"><span class="grip">⠿</span><h2>Layer Compositor</h2>
-      <span class="aux">card order = layer stack · first card = top layer</span></div>
+      <span class="aux">card order = layer stack · last card = top layer</span></div>
     <div id="layerCards"></div>
   </div>
 
@@ -1181,38 +1181,57 @@ const KBOARD=(function(){
     if(code.startsWith('Digit')) return code.slice(5);
     if(code.startsWith('Numpad')) return code.slice(6);
     return code; };
+  // full names for tooltips/readouts — the compact key face stays terse, but hover/status text must
+  // never make the user decode a glyph or abbreviation (⌫, ⏎, ScrLk, …; user request 2026-06-11)
+  const FULL={Backspace:'Backspace',NumpadEnter:'Numpad-Enter',ScrollLock:'Scroll Lock',PrintScreen:'Print Screen',
+    CapsLock:'Caps Lock',Insert:'Insert',Delete:'Delete',PageUp:'Page Up',PageDown:'Page Down',Escape:'Escape',
+    NumLock:'Num Lock',ContextMenu:'Menu',ArrowUp:'Up Arrow',ArrowDown:'Down Arrow',ArrowLeft:'Left Arrow',ArrowRight:'Right Arrow',
+    ShiftLeft:'Left Shift',ShiftRight:'Right Shift',ControlLeft:'Left Ctrl',ControlRight:'Right Ctrl',
+    AltLeft:'Left Alt',AltRight:'Right Alt',MetaLeft:'Windows',Backquote:'Backtick (`)',IntlBackslash:'Intl Backslash',
+    NumpadDivide:'Numpad ÷',NumpadMultiply:'Numpad ×',NumpadSubtract:'Numpad −',NumpadAdd:'Numpad +',NumpadDecimal:'Numpad .'};
+  const fullName=code=>{ if(!code) return 'Fn';
+    if(FULL[code]!==undefined) return FULL[code];
+    if(code.startsWith('Numpad')&&/^\d$/.test(code.slice(6))) return 'Numpad '+code.slice(6);
+    return label(code)||'Space'; };
   const PAL=['#98d0ff','#6ed2b7','#f9c5d8','#ffd98c','#fa8072','#c9b8ff'];   // per-key hover/select color, cycled
-  let selEl=null, sel=null; const subs=[], byIdx={};                          // sel={idx,code,label} — the binder subscribes via onChange
+  let selEl=null, sel=null; const subs=[], byIdx={}, markBy={};               // sel={idx,code,label} — the binder subscribes via onChange
   const notify=()=>subs.forEach(cb=>{ try{ cb(sel); }catch(_){ } });
-  const friendly=(base,idx)=>(base||'Space')+' Key · LED '+idx;               // tooltip/readout wording — no raw KeyboardEvent codes
+  const friendly=(full,idx)=>full+' Key · LED '+idx;                          // tooltip/readout wording — full names, no glyphs
+  // selection sub-status: when the selected key is remapped, say what it does now (under the Selected line)
+  function subSync(){
+    const s=document.getElementById('kbSelSub'); if(!s) return;
+    const m=sel&&markBy[sel.idx];
+    s.hidden=!m;
+    s.textContent=m?('Reassigned to '+m+(/^[A-Za-z0-9]$/.test(m)?' Key':'')):'';
+  }
   INDICES.forEach((idx,k)=>{
     const cell=TH108Engine.keyCell(idx); if(!cell) return;
-    const [cx,cy,w,h]=cell, code=CODE_BY_IDX[idx], base=label(code);
+    const [cx,cy,w,h]=cell, code=CODE_BY_IDX[idx], base=label(code), full=fullName(code);
     const d=document.createElement('div'); d.className='kbkey';
     d.style.left='calc('+((cx-w/2)*100)+'% + 1.5px)'; d.style.top='calc('+((cy-h/2)*100)+'% + 1.5px)';
     d.style.width='calc('+(w*100)+'% - 3px)'; d.style.height='calc('+(h*100)+'% - 3px)';
-    d.textContent=base; d.title=friendly(base,idx);
+    d.textContent=base; d.title=friendly(full,idx);
     d.style.setProperty('--kc', PAL[k%PAL.length]);
-    byIdx[idx]={el:d, base};
+    byIdx[idx]={el:d, base, full};
     d.addEventListener('click',()=>{
       if(selEl) selEl.classList.remove('sel');
-      if(selEl===d){ selEl=null; sel=null; document.getElementById('kbSelInfo').textContent='no key selected'; notify(); return; }   // click again = deselect
-      selEl=d; sel={idx, code, label:base||'Space'}; d.classList.add('sel');
+      if(selEl===d){ selEl=null; sel=null; document.getElementById('kbSelInfo').textContent='no key selected'; subSync(); notify(); return; }   // click again = deselect
+      selEl=d; sel={idx, code, label:full}; d.classList.add('sel');
       d.classList.remove('pop'); void d.offsetWidth; d.classList.add('pop');   // restart the pop animation
-      document.getElementById('kbSelInfo').textContent='Selected: '+friendly(base,idx);
-      notify();
+      document.getElementById('kbSelInfo').textContent='Selected: '+friendly(full,idx);
+      subSync(); notify();
     });
-    d.addEventListener('contextmenu',e=>{ e.preventDefault(); if(code) showTip(d, idx, base); });   // Fn (no code) is firmware-handled — no reset for it
+    d.addEventListener('contextmenu',e=>{ e.preventDefault(); if(code) showTip(d, idx, full); });   // Fn (no code) is firmware-handled — no reset for it
     host.appendChild(d);
   });
   // right-click reset tooltip: one floating button, dismissed by clicking elsewhere / Esc / another right-click
   let tipEl=null; const resetCbs=[];
   function hideTip(){ if(tipEl){ tipEl.remove(); tipEl=null; } }
-  function showTip(cell, idx, base){
+  function showTip(cell, idx, full){
     hideTip();
     const b=document.createElement('button');
-    b.className='kbreset'; b.textContent='Reset '+(base||'Space');
-    b.title='restore this key to its default ("'+(base||'Space')+'") — rewrites the keymap, needs Connect';
+    b.className='kbreset'; b.textContent='Reset '+full;
+    b.title='restore this key to its default ("'+full+'") — rewrites the keymap, needs Connect';
     b.addEventListener('click',()=>{ hideTip(); resetCbs.forEach(cb=>{ try{ cb(idx); }catch(_){ } }); });
     document.body.appendChild(b); tipEl=b;
     const r=cell.getBoundingClientRect();                       // anchor to the KEY, not the cursor — re-right-clicks within the key must not move it
@@ -1225,20 +1244,24 @@ const KBOARD=(function(){
     onChange(cb){ subs.push(cb); },
     onReset(cb){ resetCbs.push(cb); },   // right-click "Reset" tooltip → restore that key to default
     clear(){ if(selEl){ selEl.classList.remove('sel'); selEl=null; } sel=null;
-             document.getElementById('kbSelInfo').textContent='no key selected'; notify(); },
+             document.getElementById('kbSelInfo').textContent='no key selected'; subSync(); notify(); },
     // modified-key look: the new assignment takes the key's face; the old label moves to the
     // bottom-right corner, struck through; amber text flags "this key is remapped"
     mark(idx,bindLabel){
       const k=byIdx[idx]; if(!k) return;
+      markBy[idx]=bindLabel;
       k.el.classList.add('mod'); k.el.textContent='';
       const n=document.createElement('span'); n.className='knew'; n.textContent=bindLabel;
       const o=document.createElement('span'); o.className='kold'; o.textContent=k.base||'⎵';
       k.el.appendChild(n); k.el.appendChild(o);
-      k.el.title=(k.base||'Space')+' Key → '+bindLabel+' · LED '+idx;
+      k.el.title=k.full+' Key → '+bindLabel+' · LED '+idx;
+      subSync();
     },
     unmark(idx){
       const k=byIdx[idx]; if(!k) return;
-      k.el.classList.remove('mod'); k.el.textContent=k.base; k.el.title=friendly(k.base,idx);
+      delete markBy[idx];
+      k.el.classList.remove('mod'); k.el.textContent=k.base; k.el.title=friendly(k.full,idx);
+      subSync();
     }
   };
 })();

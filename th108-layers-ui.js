@@ -42,11 +42,11 @@
     function restoreLayers(){ try{ overlayLayers(state.layers, JSON.parse(localStorage.getItem('th108_layers')||'null')); }catch(_){ } }
     function saveLayerOrder(){ try{ localStorage.setItem('th108_layerOrder', JSON.stringify(serializeOrder(state.layers))); }catch(_){ } }
 
-    // ===== layer cards UI (built from the layers array; bottom layer listed last) =====
+    // ===== layer cards UI (built from the layers array; Layer 1 listed first) =====
     function buildLayerCards(){
       const host=cards; host.innerHTML='';
-      // list top→bottom so the top layer is at the top of the stack visually
-      for(let n=state.layers.length-1;n>=0;n--){
+      // ascending — Layer 1 (bottom of the stack) reads first, Layer 4 (top) last (user request 2026-06-11)
+      for(let n=0;n<state.layers.length;n++){
         const L=state.layers[n], card=document.createElement('div');
         card.className='lcard'+(L.enabled?'':' off'); card.dataset.n=n;
         card.draggable=true;
@@ -100,9 +100,9 @@
     cards.addEventListener('drop',e=>{
       if(!lcardDragging) return;
       e.preventDefault();
-      // cards are listed top→bottom = highest index first; rebuild layers from DOM order (reversed)
+      // cards are listed ascending (Layer 1 first); rebuild the layers array straight from DOM order
       const order=[...cards.querySelectorAll('.lcard')].map(c=>state.layers[+c.dataset.n]);
-      state.layers.length=0; for(let i=order.length-1;i>=0;i--) state.layers.push(order[i]);   // DOM top→bottom reversed = bottom→top array
+      state.layers.length=0; for(let i=0;i<order.length;i++) state.layers.push(order[i]);   // ascending display: DOM order = array order (first card = Layer 1 = bottom of the stack)
       buildLayerCards();                                  // re-render so labels + dataset.n update
       saveLayerOrder(); saveLayers();
       if(isRunning()){ const now=performance.now(); for(const L of state.layers){ E.renderLayer(L,now,state); L.lastTick=now; } }
