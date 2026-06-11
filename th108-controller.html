@@ -241,6 +241,9 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
   .kbkey.mod:hover,.kbkey.mod.sel{ color:#0d1117; }
   .kbkey .knew{ max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; padding:0 3px; font-size:.85em; }
   .kbkey .kold{ position:absolute; right:3px; bottom:0; font-size:8px; text-decoration:line-through; opacity:.75; }
+  /* right-click on a key: a one-button "Reset" tooltip instead of the browser context menu */
+  .kbreset{ position:fixed; z-index:300; transform:translateX(-50%); padding:5px 12px; font-size:12px;
+            box-shadow:0 6px 18px rgba(13,17,23,.25); }
 
   /* hotkeys: binder palette (tabs + assignment grid) */
   .bdtabs{ display:flex; gap:4px; flex-wrap:wrap; margin-bottom:10px; }
@@ -1170,11 +1173,27 @@ const KBOARD=(function(){
       document.getElementById('kbSelInfo').textContent='Selected: '+friendly(base,idx);
       notify();
     });
+    d.addEventListener('contextmenu',e=>{ e.preventDefault(); if(code) showTip(e, idx, base); });   // Fn (no code) is firmware-handled — no reset for it
     host.appendChild(d);
   });
+  // right-click reset tooltip: one floating button, dismissed by clicking elsewhere / Esc / another right-click
+  let tipEl=null; const resetCbs=[];
+  function hideTip(){ if(tipEl){ tipEl.remove(); tipEl=null; } }
+  function showTip(e, idx, base){
+    hideTip();
+    const b=document.createElement('button');
+    b.className='kbreset'; b.textContent='Reset '+(base||'Space');
+    b.title='restore this key to its default ("'+(base||'Space')+'") — rewrites the keymap, needs Connect';
+    b.style.left=e.clientX+'px'; b.style.top=(e.clientY+10)+'px';
+    b.addEventListener('click',()=>{ hideTip(); resetCbs.forEach(cb=>{ try{ cb(idx); }catch(_){ } }); });
+    document.body.appendChild(b); tipEl=b;
+  }
+  window.addEventListener('pointerdown',e=>{ if(tipEl && !tipEl.contains(e.target)) hideTip(); });
+  window.addEventListener('keydown',e=>{ if(e.key==='Escape') hideTip(); });
   return {
     get sel(){ return sel; },
     onChange(cb){ subs.push(cb); },
+    onReset(cb){ resetCbs.push(cb); },   // right-click "Reset" tooltip → restore that key to default
     clear(){ if(selEl){ selEl.classList.remove('sel'); selEl=null; } sel=null;
              document.getElementById('kbSelInfo').textContent='no key selected'; notify(); },
     // modified-key look: the new assignment takes the key's face; the old label moves to the
@@ -1204,6 +1223,7 @@ const BINDER=TH108Binder.create({
   pauseLighting: ()=>window.__lcdHost.pauseLighting(),
   resumeLighting: ()=>window.__lcdHost.resumeLighting()
 });
+KBOARD.onReset(idx=>BINDER.revertKey(idx));   // right-click Reset on a board key (SOCD pairs restore together)
 
 // ===== profiles — th108-profiles.js (named snapshots of the whole lighting setup, up to 10) =====
 const PROFILES=TH108Profiles.create({

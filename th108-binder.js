@@ -429,15 +429,23 @@
       setMod(sel.idx, isDefault ? null : item.label, four);
       log('✓ ' + (sel.label || 'Space') + ' now does "' + item.label + '" — Restore Default to undo', 'ok');
     }
+    // restore one key (and its SOCD partner — half a pair is undefined firmware behavior) to the
+    // factory character. Shared by the Restore Default button and the board's right-click Reset.
+    async function revertKey(idx, name) {
+      if (idx === FN_VAL || DEFAULT_HID[idx] == null) return false;
+      name = name || keyShort(DEFAULT_HID[idx]);
+      const targets = restoreTargets(loadMods(), idx);
+      const ok = await keymapRMW(km => targets.forEach(v => setEntry(km, v, defaultEntry(v))),
+                                 'Restoring ' + name + (targets.length > 1 ? ' + its SOCD partner' : '') + '…');
+      if (!ok) return false;
+      setMods(Object.fromEntries(targets.map(v => [v, null])));
+      log('✓ ' + name + (targets.length > 1 ? ' and its SOCD partner' : '') + ' restored to default', 'ok');
+      return true;
+    }
     async function revert() {
       const sel = selKey(); if (!bindable(sel)) return;
-      const targets = restoreTargets(loadMods(), sel.idx);   // an SOCD pair restores together — half a pair is undefined firmware behavior
-      const ok = await keymapRMW(km => targets.forEach(v => setEntry(km, v, defaultEntry(v))),
-                                 'Restoring ' + (sel.label || 'Space') + (targets.length > 1 ? ' + its SOCD partner' : '') + '…');
-      if (!ok) return;
-      setMods(Object.fromEntries(targets.map(v => [v, null])));
-      log('✓ ' + (sel.label || 'Space') + (targets.length > 1 ? ' and its SOCD partner' : '') + ' restored to default', 'ok');
-      if (board && board.clear) board.clear();   // restored = done with this key — drop the selection
+      const ok = await revertKey(sel.idx, sel.label || 'Space');
+      if (ok && board && board.clear) board.clear();   // restored = done with this key — drop the selection
     }
     $('bdRevert').addEventListener('click', revert);
 
@@ -557,7 +565,7 @@
       if (akType === 'cb') {
         f.appendChild(akLab('presses')); f.appendChild(akSelEl('akMod1', modOpts(), 0xE0));
         f.appendChild(akLab('+')); f.appendChild(akSelEl('akMod2', modOpts(), 0xE1));
-        f.appendChild(akLab('+')); f.appendChild(akSelEl('akKey', keyOpts(), 6));
+        f.appendChild(akLab('+')); f.appendChild(akSelEl('akKey', keyOpts(), 41));   // Esc: the default chord Ctrl+Shift+Esc pops Task Manager — instantly verifiable
       } else if (akType === 'mt') {
         f.appendChild(akLab('tap =')); f.appendChild(akSelEl('akClick', keyOpts(), ownHid != null ? ownHid : 4));
         f.appendChild(akLab('hold =')); f.appendChild(akSelEl('akHold', keyOpts(), 43));
@@ -699,7 +707,7 @@
     renderTabs();
     refresh();
 
-    return { setConnected, exitSpace, get busy() { return busy; } };
+    return { setConnected, exitSpace, revertKey, get busy() { return busy; } };
   }
 
   return { create, PALETTE, SPACE_FUNCS, DEFAULT_HID, SPACE_VAL, SPACE_HID, FN_VAL,
