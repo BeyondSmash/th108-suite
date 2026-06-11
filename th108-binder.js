@@ -142,19 +142,22 @@
   // decorative toggles — one click binds the SPACEBAR to the function + opens the focus overlay.
   // `note` renders as a caveat inside the overlay; `swapTo` adds an inline button that rebinds
   // the Spacebar to the sibling function and swaps the overlay over to it.
+  // names use the user's physical-location vocabulary (2026-06-11): "front strip" = the top-left
+  // LED line, "ambient" = the top-right circle light. The Function Keys palette keeps the official
+  // driver's terms (it deliberately mirrors that layout); the firmware codes are unchanged.
   const SPACE_FUNCS = [
     { code: 24,  name: 'Side Light Color',   desc: "cycle the side strips' color",
       note: "If your side lights are currently on a rainbow or animated effect, cycling the color won't visibly change anything — the side lights need to be cycled to the static-color effect first. To cycle the effect instead:",
       swapTo: 23 },
-    { code: 23,  name: 'Side Light Effect',  desc: "cycle the side strips' effect" },
-    { code: 29,  name: 'Front Strip Color',  desc: "cycle the front strip's color",
-      note: "If your front strip is currently on a rainbow or animated effect, cycling the color won't visibly change anything — the front strip needs to be cycled to the static-color effect first. To cycle the effect instead:",
+    { code: 23,  name: 'Side Light Cycle',   desc: "cycle the side strips' effect" },
+    { code: 29,  name: 'Top-Left Line Color', desc: "cycle the top-left LED line's color",
+      note: "If the top-left line is currently on a rainbow or animated effect, cycling the color won't visibly change anything — it needs to be cycled to the static-color effect first. To cycle the effect instead:",
       swapTo: 27 },
-    { code: 27,  name: 'Front Strip Effect', desc: "cycle the front strip's effect" },
+    { code: 27,  name: 'Top-Left Line Cycle', desc: "cycle the top-left LED line's effect" },
     // Ambient Color (164) was dropped from this card 2026-06-11 (user call): the ambient effect
     // cycle already includes color cycling, so a separate color toggle reads as a no-op in
     // practice. The code stays available in the Function Keys palette.
-    { code: 165, name: 'Ambient Effect',     desc: "cycle the circle light's effect (its effects include the color cycling)" }
+    { code: 165, name: 'Top-Right Circle Cycle', desc: "cycle the top-right circle light's effect (its effects include the color cycling)" }
   ];
 
   // default HID usage (normal character) for every key value — used by Restore Default.
