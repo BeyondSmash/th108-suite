@@ -17,7 +17,7 @@ window.TH108DaemonClient = (function () {
     opts = opts || {};
     const log = opts.log || function () {};
     const getConfig = opts.getConfig || function () { return '[]'; };
-    const D = { present: false, hb: null };
+    const D = { present: false, hb: null, yielded: false };
 
     const hbW = (() => { try { return new Worker(URL.createObjectURL(new Blob(['let t=null;onmessage=e=>{clearInterval(t);t=null;if(e.data&&e.data.ms)t=setInterval(()=>postMessage(1),e.data.ms);};'], { type: 'text/javascript' }))); } catch (_) { return null; } })();
     const beat = () => { if (navigator.sendBeacon) navigator.sendBeacon('/heartbeat'); else fetch('/heartbeat', { method: 'POST' }); };
@@ -27,7 +27,7 @@ window.TH108DaemonClient = (function () {
       if (!/^https?:$/.test(location.protocol)) { D.present = false; return; }   // file:// page → no daemon server to talk to; skip (avoids a console CORS error)
       try { const r = await fetch('/status', { cache: 'no-store' }); D.present = r.ok; } catch (_) { D.present = false; }
     }
-    async function yieldDevice() { if (D.present) { try { await fetch('/yield', { method: 'POST' }); } catch (_) {} } }
+    async function yieldDevice() { if (D.present) { try { await fetch('/yield', { method: 'POST' }); D.yielded = true; } catch (_) {} } }
     function heartbeatStart() {
       if (!D.present || D.hb) return;
       beat();                                                       // first beat NOW — the yield→bind gap (device picker open) must be covered too
@@ -35,7 +35,15 @@ window.TH108DaemonClient = (function () {
     }
     function heartbeatStop() { if (hbW) hbW.postMessage({}); if (D.hb && D.hb !== true) clearInterval(D.hb); D.hb = null; }
     function pushConfig() { if (D.present) { try { fetch('/config', { method: 'POST', headers: { 'content-type': 'application/json' }, body: getConfig() }); } catch (_) {} } }
-    function resume() { if (D.present) { if (navigator.sendBeacon) navigator.sendBeacon('/resume'); else fetch('/resume', { method: 'POST', keepalive: true }); } }
+    // resume is a no-op unless THIS page yielded: /resume is unattributed on the wire, so a page
+    // that never took the device (a second tab, an automated test browser) telling the daemon
+    // "the page released the device" made it reclaim WHILE the real owner tab was still streaming —
+    // two writers → board mute → USB-restart escalation → onboard-rainbow fallback (2026-06-11 logs).
+    function resume() {
+      if (!D.yielded) return;
+      D.yielded = false;
+      if (D.present) { if (navigator.sendBeacon) navigator.sendBeacon('/resume'); else fetch('/resume', { method: 'POST', keepalive: true }); }
+    }
 
     // Background-daemon panel: status readout, auto-start toggle (HKCU Run key via the daemon),
     // auto-USB-restart wedge-fix toggle (daemon settings.json via /usbreset), quit.
