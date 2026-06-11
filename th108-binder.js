@@ -338,7 +338,7 @@
     async function assign(item) {
       const sel = selKey(); if (!bindable(sel)) return;
       const four = entryBytes(item); if (!four) return;
-      const ok = await keymapRMW(km => setEntry(km, sel.idx, four), 'Assigning ' + item.label + ' → ' + (sel.label || 'Space') + '…');
+      const ok = await keymapRMW(km => setEntry(km, sel.idx, four), 'Assigning ' + (sel.label || 'Space') + ' → ' + item.label + '…');   // key → action, like every other arrow in the suite
       if (!ok) return;
       const isDefault = four[0] === 0x02 && four[2] === DEFAULT_HID[sel.idx];   // re-assigning the key's own character = back to stock, no mark
       setMod(sel.idx, isDefault ? null : item.label);
