@@ -8,14 +8,20 @@ const B = require('./th108-binder.js');
 
 test('entry encoders match the hardware-confirmed 4-byte layouts', () => {
   assert.deepEqual(B.encodeNormal(0x2c), [0x02, 0x00, 0x2c, 0x00]);   // normal char (Space)
-  assert.deepEqual(B.encodeMedia(0xE9), [0x03, 0xE9, 0x00, 0x00]);    // consumer usage (Volume +)
+  assert.deepEqual(B.encodeMedia(0xE9), [0x03, 0xE9, 0x00, 0x00]);    // single-byte consumer usage (Volume +)
+  assert.deepEqual(B.encodeMedia(0x192), [0x03, 0x92, 0x01, 0x00]);   // 16-bit LE — the wire-captured Calculator entry
   assert.deepEqual(B.encodeFunc(164), [0x0d, 0x00, 0x00, 164]);       // light function (Ambient Color)
+  assert.deepEqual(B.encodeFunc(22), [0x0d, 0x00, 0x00, 22]);         // Lock Win (wire-captured)
 });
 
 test('entryBytes dispatches on the item shape', () => {
   assert.deepEqual(B.entryBytes({ label: 'A', hid: 4 }), [0x02, 0, 4, 0]);
   assert.deepEqual(B.entryBytes({ label: 'Mute', usage: 0xE2 }), [0x03, 0xE2, 0, 0]);
   assert.deepEqual(B.entryBytes({ label: 'Side', code: 23 }), [0x0d, 0, 0, 23]);
+  assert.deepEqual(B.entryBytes({ label: 'LMB', bytes: [1, 1, 1, 0] }), [1, 1, 1, 0]);   // raw captured entry
+  assert.notEqual(B.entryBytes({ label: 'LMB', bytes: [1, 1, 1, 0] }), undefined);
+  const item = { label: 'LMB', bytes: [1, 1, 1, 0] };
+  assert.notStrictEqual(B.entryBytes(item), item.bytes);              // defensive copy — callers must not mutate the palette
   assert.equal(B.entryBytes({ label: 'nothing' }), null);
 });
 
@@ -60,9 +66,20 @@ test('palette holds only hardware-confirmed encodings and the knob-mute option',
   const f = B.PALETTE.find(t => t.key === 'function').items;
   assert.ok(f.some(i => i.code === 46), 'knob-mute (46) stays available');
   assert.ok(f.some(i => i.code === 164), 'ambient color (164) present');
+  assert.ok(f.some(i => i.code === 22), 'Lock Win (22, wire-captured) present');
+  assert.ok(f.some(i => i.code === 2), 'Bluetooth Channel 1 (2, wire-captured) present');
+  const sp = B.PALETTE.find(t => t.key === 'special').items;
+  assert.deepEqual(B.entryBytes(sp.find(i => i.label === 'Calculator')), [0x03, 0x92, 0x01, 0x00]);   // exact captured bytes
+  assert.deepEqual(B.entryBytes(sp.find(i => i.label === 'Left Mouse Button')), [0x01, 0x01, 0x01, 0x00]);
+  assert.ok(!sp.some(i => /right|middle|scroll/i.test(i.label)), 'ambiguous mouse entries must NOT ship until captured');
   const basic = B.PALETTE.find(t => t.key === 'basic').items;
   assert.equal(basic[0].hid, 4);                                      // A
   assert.equal(basic.length, 26 + 10 + 11);                           // letters + digits + punctuation
+});
+
+test('Fn: factory entry is HID 175 (wire-captured) but Fn stays non-bindable', () => {
+  assert.equal(B.DEFAULT_HID[B.FN_VAL], 175);                         // 02 00 af 00 seen in every capture
+  assert.equal(B.defaultEntry(B.FN_VAL), null);                       // still excluded — overwriting Fn loses the FN layer
 });
 
 test('SPACE_FUNCS are all light functions a Spacebar tap can cycle', () => {

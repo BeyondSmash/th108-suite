@@ -12,14 +12,19 @@
    hence the progress overlay. Safety added in the port: the read is validated (no missed chunks,
    plausibly populated) before anything is written — a zeroed write would dead-key the board.
 
-   Keymap encoding (4 bytes per key, indexed by key value = the engine's LED index):
+   Keymap encoding (4 bytes per key, indexed by key value = the engine's LED index; the
+   single-key-binding wire captures of 2026-06-11 confirmed the full entry-type family):
      normal char     [0x02, 0x00, <HID usage>, 0x00]
-     media/consumer  [0x03, <usage>, 0x00, 0x00]      (single-byte consumer usages only)
-     light function  [0x0d, 0x00, 0x00, <function code>]
-   NOT in the palette (encodings not reverse-engineered yet — need one sniff session with the
-   official driver): mouse buttons, 16-bit consumer usages (Calculator/Email/browser keys),
-   the non-light function keys (BT channels, Check Battery, Wireless Reconnect, Restore Factory,
-   Lock Win, main-zone light switches), and Advanced Keys (SOCD/MT/TGL/CB, ~cmd 0x28).
+     media/consumer  [0x03, <usageLo>, <usageHi>, 0x00]   (16-bit LE — Calculator=0x0192 captured)
+     light/function  [0x0d, 0x00, 0x00, <function code>]  (Lock Win=22, BT Channel 1=2 captured)
+     mouse           [0x01, …] — left button = [0x01,0x01,0x01,0x00]; the other buttons stay
+                     un-shipped until one more capture disambiguates the byte order (left is
+                     0x01 under every hypothesis)
+     advanced keys   live in the SAME keymap, no separate command: CB=[0x07,mod,mod,key],
+                     MT=0x09, TGL=[0x0a,hid,0,0], SOCD=[0x0b,mode,hidA,hidB] on both keys —
+                     UI pending confirmed byte semantics (which byte is hold vs click, mode enum)
+   Knob bonus: key values 13/14/15 = knob rotate+/rotate-/press (factory Vol+/Vol-/mute 46) —
+   rebindable like any key.
 
    Usage: const BINDER = TH108Binder.create({hid, log, board, gifPlaying, stopGif,
             pauseLighting, resumeLighting});
@@ -35,13 +40,14 @@
 
   const CMD_READ = 0x12, CMD_WRITE = 0x22, KEYMAP_BYTES = 512, CHUNK = 56;
   const SPACE_VAL = 83, SPACE_HID = 0x2c;
-  const FN_VAL = 85;   // the Fn key has no HID default and is firmware-special — never bindable
+  const FN_VAL = 85;   // Fn stays non-bindable: overwriting it loses the whole FN layer (its factory entry is 02 00 af 00 — restorable, but the lockout isn't worth it)
 
   // ---- pure keymap-entry encoders ----
   function encodeNormal(hid)  { return [0x02, 0x00, hid & 0xFF, 0x00]; }
-  function encodeMedia(usage) { return [0x03, usage & 0xFF, 0x00, 0x00]; }
+  function encodeMedia(usage) { return [0x03, usage & 0xFF, (usage >> 8) & 0xFF, 0x00]; }   // 16-bit LE (Calculator capture: 03 92 01 00)
   function encodeFunc(code)   { return [0x0d, 0x00, 0x00, code & 0xFF]; }
   function entryBytes(item) {
+    if (item.bytes) return item.bytes.slice();          // raw wire-captured entry (e.g. left mouse button)
     if (item.hid != null) return encodeNormal(item.hid);
     if (item.usage != null) return encodeMedia(item.usage);
     if (item.code != null) return encodeFunc(item.code);
@@ -69,12 +75,18 @@
     ['Num /', 84], ['Num *', 85], ['Num -', 86], ['Num +', 87], ['Num Enter', 88], ['Num .', 99], ['Intl \\', 100]
   ].map(([label, hid]) => ({ label, hid }));
 
-  // single-byte consumer usages only — the 16-bit ones (Calculator, Email, browser keys, My Computer)
-  // and mouse buttons use encodings we haven't captured yet
+  // consumer usages (16-bit LE encoding wire-confirmed via the Calculator capture) + the one
+  // mouse entry whose bytes are unambiguous; remaining mouse buttons/scroll need one more capture
   const special = [
     { label: 'Play / Pause', usage: 0xCD }, { label: 'Stop Playback', usage: 0xB7 },
     { label: 'Previous Track', usage: 0xB6 }, { label: 'Next Track', usage: 0xB5 },
-    { label: 'Volume +', usage: 0xE9 }, { label: 'Volume -', usage: 0xEA }, { label: 'Mute', usage: 0xE2 }
+    { label: 'Volume +', usage: 0xE9 }, { label: 'Volume -', usage: 0xEA }, { label: 'Mute', usage: 0xE2 },
+    { label: 'Multi Media', usage: 0x183 }, { label: 'My Computer', usage: 0x194 },
+    { label: 'Calculator', usage: 0x192 }, { label: 'Email', usage: 0x18A },
+    { label: 'Browser Home', usage: 0x223 }, { label: 'Refresh', usage: 0x227 },
+    { label: 'Forward', usage: 0x225 }, { label: 'Backward', usage: 0x224 },
+    { label: 'Favorites', usage: 0x22A }, { label: 'Search', usage: 0x221 },
+    { label: 'Left Mouse Button', bytes: [0x01, 0x01, 0x01, 0x00] }
   ];
 
   // decorative-light cycle functions (codes hardware-confirmed on the TH108 V2 PRO).
@@ -86,7 +98,8 @@
     { label: 'Front Strip Speed', code: 28 },
     { label: 'Ambient Effect Switch', code: 165 }, { label: 'Ambient Color Switch', code: 164 },
     { label: 'Ambient Brightness', code: 162 }, { label: 'Ambient Speed', code: 163 },
-    { label: 'Turn Off Side Lights', code: 83 }, { label: 'Knob — Mute Toggle', code: 46 }
+    { label: 'Turn Off Side Lights', code: 83 }, { label: 'Knob — Mute Toggle', code: 46 },
+    { label: 'Lock Win', code: 22 }, { label: 'Bluetooth Channel 1', code: 2 }   // wire-captured 2026-06-11; BT2/3 etc. pending the official tool's function list
   ];
 
   const PALETTE = [
@@ -108,7 +121,7 @@
 
   // default HID usage (normal character) for every key value — used by Restore Default.
   // Captured from the live board's factory keymap; key value = the engine's LED index.
-  const DEFAULT_HID = { 0: 41, 1: 58, 2: 59, 3: 60, 4: 61, 5: 62, 6: 63, 7: 64, 8: 65, 9: 66, 10: 67, 11: 68, 12: 69, 99: 70, 100: 71, 102: 72, 16: 53, 17: 30, 18: 31, 19: 32, 20: 33, 21: 34, 22: 35, 23: 36, 24: 37, 25: 38, 26: 39, 27: 45, 28: 46, 92: 42, 103: 73, 104: 74, 105: 75, 29: 83, 30: 84, 31: 85, 109: 86, 32: 43, 33: 20, 34: 26, 35: 8, 36: 21, 37: 23, 38: 28, 39: 24, 40: 12, 41: 18, 42: 19, 43: 47, 44: 48, 60: 49, 106: 76, 107: 77, 108: 78, 45: 95, 46: 96, 47: 97, 110: 87, 48: 57, 49: 4, 50: 22, 51: 7, 52: 9, 53: 10, 54: 11, 55: 13, 56: 14, 57: 15, 58: 51, 59: 52, 76: 40, 61: 92, 62: 93, 63: 94, 64: 225, 65: 29, 66: 27, 67: 6, 68: 25, 69: 5, 70: 17, 71: 16, 72: 54, 73: 55, 74: 56, 75: 229, 90: 82, 77: 89, 78: 90, 79: 91, 95: 88, 80: 224, 81: 227, 82: 226, 83: 44, 84: 230, 85: 0, 86: 101, 87: 228, 88: 80, 89: 81, 91: 79, 93: 98, 94: 99 };
+  const DEFAULT_HID = { 0: 41, 1: 58, 2: 59, 3: 60, 4: 61, 5: 62, 6: 63, 7: 64, 8: 65, 9: 66, 10: 67, 11: 68, 12: 69, 99: 70, 100: 71, 102: 72, 16: 53, 17: 30, 18: 31, 19: 32, 20: 33, 21: 34, 22: 35, 23: 36, 24: 37, 25: 38, 26: 39, 27: 45, 28: 46, 92: 42, 103: 73, 104: 74, 105: 75, 29: 83, 30: 84, 31: 85, 109: 86, 32: 43, 33: 20, 34: 26, 35: 8, 36: 21, 37: 23, 38: 28, 39: 24, 40: 12, 41: 18, 42: 19, 43: 47, 44: 48, 60: 49, 106: 76, 107: 77, 108: 78, 45: 95, 46: 96, 47: 97, 110: 87, 48: 57, 49: 4, 50: 22, 51: 7, 52: 9, 53: 10, 54: 11, 55: 13, 56: 14, 57: 15, 58: 51, 59: 52, 76: 40, 61: 92, 62: 93, 63: 94, 64: 225, 65: 29, 66: 27, 67: 6, 68: 25, 69: 5, 70: 17, 71: 16, 72: 54, 73: 55, 74: 56, 75: 229, 90: 82, 77: 89, 78: 90, 79: 91, 95: 88, 80: 224, 81: 227, 82: 226, 83: 44, 84: 230, 85: 175, 86: 101, 87: 228, 88: 80, 89: 81, 91: 79, 93: 98, 94: 99 };
 
   // ---- pure keymap helpers (unit-tested) ----
   function defaultEntry(keyValue) {
