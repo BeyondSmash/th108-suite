@@ -78,7 +78,7 @@ function closeDevice() {
 // so nothing at the OS level stops daemon + page from both holding the device. Listen ~1.5s on the
 // fresh handle first — unsolicited 0x55 ACK traffic means a live page is streaming (its yield expired
 // but it's still there); writing too would wedge the board. Back off and re-probe on a later tick.
-let probing = false, nextOpenAt = 0;
+let probing = false, nextOpenAt = Date.now() + 5000;   // startup grace: a live page's heartbeat needs a beat (≤3s) to park us before we first touch the device
 let lastOkAt = 0, streakStart = 0, muteLogged = false, muteAt = 0;   // mute-episode tracking (transition logging)
 let usbFiredAt = 0, lastTickAt = 0;   // USB-restart escalation state + sleep-gap detection
 async function openIfPossible() {

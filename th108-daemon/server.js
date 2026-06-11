@@ -82,7 +82,14 @@ function createServer({ control, root, port = 8123, watchdogMs = 12000 }) {
         setTimeout(() => control.quit(), 150);   // respond first, then exit
         return;
       }
-      if (req.method === 'POST' && u === '/heartbeat') { lastBeat = Date.now(); return sendJson(res, 200, { ok: true }); }
+      if (req.method === 'POST' && u === '/heartbeat') {
+        lastBeat = Date.now();
+        if (!yielded) {   // a beating page believes it holds the device (e.g. WE restarted under it and it won't re-/yield) — honor that instead of opening against it (live repro 2026-06-11 12:52)
+          console.log(ts() + ' [api] heartbeat while not yielded — a page holds the device; yielding to it');
+          control.yield(); yielded = true; armWatchdog();
+        }
+        return sendJson(res, 200, { ok: true });
+      }
       if (req.method === 'POST' && u === '/config') {
         const b = await readBody(req); let cfg;
         try { cfg = JSON.parse(b); } catch { return sendJson(res, 400, { error: 'bad json' }); }
