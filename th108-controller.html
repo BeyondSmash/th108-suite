@@ -119,6 +119,11 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
                         animation:ants .9s linear infinite; }
   @keyframes ants{ to{ stroke-dashoffset:-14; } }
   body.cardDragging{ user-select:none; cursor:grabbing; }
+  /* drag breach line: the swap threshold made visible — orange midline on the card being clipped,
+     pale-yellow glow on the approach side that grows as the cursor nears (crossing it = commit) */
+  #dragLine{ position:fixed; display:none; z-index:125; pointer-events:none; background:#ff8c00;
+             border-radius:2px; box-shadow:0 0 8px rgba(255,140,0,.6); }
+  #dragLine .dlglow{ position:absolute; pointer-events:none; border-radius:6px; }
   /* lucide inline icons */
   .ic{ width:15px; height:15px; vertical-align:-2px; fill:none; stroke:currentColor; stroke-width:2;
        stroke-linecap:round; stroke-linejoin:round; flex:none; }
@@ -851,19 +856,56 @@ function flipReorder(mutate){
     el.style.transform='';
   }
 }
-// insertion point in a row-major grid. Row membership is decided by the card's full vertical extent, and
-// before/after within a row splits at the card's horizontal CENTER — NOT its top half. (The old top-half test
-// broke left→right drags: grabbing by the title bar keeps the pointer near the row's top, which always landed
-// in the neighbor's top half → "insert before" forever, so dragging rightward never swapped.)
-function insertionTarget(x,y){
-  for(const c of visibleCards()){ if(c===drag.card || c===drag.ph) continue;   // the clone is never a target — it IS the insertion marker
-    const r=c.getBoundingClientRect();
-    if(y < r.top) return c;                                   // pointer is above this card's row → insert before it
-    if(y < r.bottom && x < r.left + r.width/2) return c;      // same row, pointer left of its center → before it; right of center → keep walking (= after)
-  }
-  return null;   // past everything → append
-}
 function nextVisible(el){ let n=el.nextElementSibling; while(n && n.hidden) n=n.nextElementSibling; return n; }
+// ===== drag breach line — the swap threshold made visible (replaces the old invisible midpoint probe) =====
+// When the DRAGGED CARD's rect clips a neighbor, an orange line appears at that neighbor's midpoint:
+// vertical line for a side-by-side breach, horizontal for an above/below breach. Nothing moves until the
+// CURSOR crosses the line — crossing left→right or top→bottom places the card AFTER the neighbor, the
+// reverse places it BEFORE. A pale-yellow glow on the cursor's side of the line grows as it approaches.
+let dlState=null;   // {target, vertLine, side} — side = which side of the line the cursor armed from
+const dlEl=(()=>{ const d=document.createElement('div'); d.id='dragLine';
+  d.appendChild(Object.assign(document.createElement('div'),{className:'dlglow'}));
+  document.body.appendChild(d); return d; })();
+const dlGlow=dlEl.firstChild;
+function dlHide(){ dlEl.style.display='none'; dlState=null; }
+function breachTarget(){   // the visible card the dragged card overlaps most (≥30×30px before a line appears)
+  const a=drag.card.getBoundingClientRect();
+  let best=null, bestArea=900;
+  for(const c of visibleCards()){
+    if(c===drag.card || c===drag.ph) continue;
+    const r=c.getBoundingClientRect();
+    const ox=Math.min(a.right,r.right)-Math.max(a.left,r.left);
+    const oy=Math.min(a.bottom,r.bottom)-Math.max(a.top,r.top);
+    if(ox<=0 || oy<=0) continue;
+    if(ox*oy>bestArea){ bestArea=ox*oy;
+      // breach axis = where the dragged card sits relative to the neighbor, normalized by their sizes
+      const nx=((a.left+a.right)-(r.left+r.right))/(a.width+r.width);
+      const ny=((a.top+a.bottom)-(r.top+r.bottom))/(a.height+r.height);
+      best={card:c, vertLine:Math.abs(nx)>=Math.abs(ny)};
+    }
+  }
+  return best;
+}
+function dlShow(r, vertLine, coord){
+  dlEl.style.display='block';
+  if(vertLine){ dlEl.style.left=(coord-1.5)+'px'; dlEl.style.top=(r.top+6)+'px'; dlEl.style.width='3px'; dlEl.style.height=(r.height-12)+'px'; }
+  else{ dlEl.style.top=(coord-1.5)+'px'; dlEl.style.left=(r.left+6)+'px'; dlEl.style.height='3px'; dlEl.style.width=(r.width-12)+'px'; }
+}
+function dlGlowUpdate(delta, r, vertLine){   // delta = cursor − line; glow hugs the cursor's side only
+  const half=(vertLine? r.width : r.height)/2;
+  const t=Math.max(0, 1-Math.abs(delta)/half);           // 0 at the card's edge → 1 at the line
+  const size=(6+44*t)+'px', tint='255,238,160';
+  dlGlow.style.cssText='position:absolute;pointer-events:none;border-radius:6px;opacity:'+(t*t).toFixed(3)+';';
+  if(vertLine){
+    dlGlow.style.top='0'; dlGlow.style.height='100%'; dlGlow.style.width=size;
+    if(delta<0){ dlGlow.style.right='100%'; dlGlow.style.background='linear-gradient(to left, rgba('+tint+',.9), rgba('+tint+',0))'; }
+    else{ dlGlow.style.left='100%'; dlGlow.style.background='linear-gradient(to right, rgba('+tint+',.9), rgba('+tint+',0))'; }
+  }else{
+    dlGlow.style.left='0'; dlGlow.style.width='100%'; dlGlow.style.height=size;
+    if(delta<0){ dlGlow.style.bottom='100%'; dlGlow.style.background='linear-gradient(to top, rgba('+tint+',.9), rgba('+tint+',0))'; }
+    else{ dlGlow.style.top='100%'; dlGlow.style.background='linear-gradient(to bottom, rgba('+tint+',.9), rgba('+tint+',0))'; }
+  }
+}
 function liftCard(e){
   const c=drag.card;
   const ph=c.cloneNode(true);                                  // the drop-shadow clone
@@ -884,10 +926,31 @@ function liftCard(e){
 }
 function positionCard(e){ drag.card.style.left=(e.clientX-drag.dx)+'px'; drag.card.style.top=(e.clientY-drag.dy)+'px'; }
 function updateTarget(x,y){
-  const ph=drag.ph, t=insertionTarget(x,y);
-  if(t===ph) return;
-  if(t){ if(nextVisible(ph)!==t) flipReorder(()=>gridEl.insertBefore(ph,t)); }
-  else if(nextVisible(ph)) flipReorder(()=>gridEl.appendChild(ph));
+  const ph=drag.ph, br=breachTarget();
+  if(!br){ dlHide(); return; }                            // no clip → no line; drop settles into the placeholder slot
+  const t=br.card, r=t.getBoundingClientRect();
+  if(!dlState || dlState.target!==t){
+    // arm on first contact — and LOCK the orientation while this card stays the target: once the
+    // overlap is deep the centers nearly align and the axis judgment turns to noise (a horizontal
+    // approach would flip to a horizontal line mid-gesture). The line you saw appear is the one you cross.
+    const vert=br.vertLine, coord=vert? r.left+r.width/2 : r.top+r.height/2;
+    dlState={target:t, vertLine:vert, side:((vert? x:y)-coord)<0?-1:1};
+    dlShow(r, vert, coord);
+  }
+  const vert=dlState.vertLine;
+  const coord=vert? r.left+r.width/2 : r.top+r.height/2;
+  const delta=(vert? x : y)-coord;
+  dlGlowUpdate(delta, r, vert);
+  const sideNow=delta<0?-1:1;
+  const within=vert? (y>=r.top&&y<=r.bottom) : (x>=r.left&&x<=r.right);
+  if(within && sideNow!==dlState.side){                   // cursor crossed the line → commit
+    if(sideNow>0){                                        // now right of / below the neighbor → card goes AFTER it
+      let p=t.nextElementSibling; while(p && p.hidden) p=p.nextElementSibling;
+      if(p!==ph){ let nx=p; while(nx && (nx===ph||nx.hidden)) nx=nx.nextElementSibling;
+        flipReorder(()=> nx? gridEl.insertBefore(ph,nx) : gridEl.appendChild(ph)); }
+    } else if(nextVisible(ph)!==t) flipReorder(()=>gridEl.insertBefore(ph,t));
+    dlHide();
+  }
 }
 cardsAll().forEach(c=>{
   const bar=c.querySelector('.cardbar'); if(!bar) return;
@@ -910,6 +973,7 @@ window.addEventListener('pointermove',e=>{
 });
 function endDrag(){
   if(!drag) return;
+  dlHide();                                                    // breach line never outlives the drag
   if(!drag.live){ drag=null; return; }                         // it was just a click on the bar
   if(drag.raf) cancelAnimationFrame(drag.raf);
   const {card,ph}=drag; drag=null;
