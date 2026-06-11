@@ -103,3 +103,14 @@ test('SPACE_FUNCS are all light functions a Spacebar tap can cycle', () => {
   assert.equal(B.SPACE_FUNCS.length, 6);
   for (const f of B.SPACE_FUNCS) assert.ok([23, 24, 27, 29, 164, 165].includes(f.code));
 });
+
+test('every color toggle carries the static-color caveat and swaps to its own zone\'s effect toggle', () => {
+  const pairs = { 24: 23, 29: 27, 164: 165 };   // color code → effect code, per zone
+  for (const [color, effect] of Object.entries(pairs)) {
+    const f = B.SPACE_FUNCS.find(x => x.code === +color);
+    assert.ok(f.note && /static-color/.test(f.note), f.name + ' has the caveat');
+    assert.equal(f.swapTo, +effect, f.name + ' swaps to its zone effect');
+    assert.ok(B.SPACE_FUNCS.some(x => x.code === f.swapTo), 'swap target exists in SPACE_FUNCS');
+  }
+  for (const f of B.SPACE_FUNCS) if (![24, 29, 164].includes(f.code)) assert.ok(!f.note, 'effect toggles carry no caveat');
+});

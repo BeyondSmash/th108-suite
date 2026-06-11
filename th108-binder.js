@@ -126,13 +126,21 @@
     { key: 'function', name: 'Function Keys', items: funcs }
   ];
 
-  // decorative toggles — one click binds the SPACEBAR to the function + opens the focus overlay
+  // decorative toggles — one click binds the SPACEBAR to the function + opens the focus overlay.
+  // `note` renders as a caveat inside the overlay; `swapTo` adds an inline button that rebinds
+  // the Spacebar to the sibling function and swaps the overlay over to it.
   const SPACE_FUNCS = [
-    { code: 24,  name: 'Side Light Color',   desc: "cycle the side strips' color" },
+    { code: 24,  name: 'Side Light Color',   desc: "cycle the side strips' color",
+      note: "If your side lights are currently on a rainbow or animated effect, cycling the color won't visibly change anything — the side lights need to be cycled to the static-color effect first. To cycle the effect instead:",
+      swapTo: 23 },
     { code: 23,  name: 'Side Light Effect',  desc: "cycle the side strips' effect" },
-    { code: 29,  name: 'Front Strip Color',  desc: "cycle the front strip's color" },
+    { code: 29,  name: 'Front Strip Color',  desc: "cycle the front strip's color",
+      note: "If your front strip is currently on a rainbow or animated effect, cycling the color won't visibly change anything — the front strip needs to be cycled to the static-color effect first. To cycle the effect instead:",
+      swapTo: 27 },
     { code: 27,  name: 'Front Strip Effect', desc: "cycle the front strip's effect" },
-    { code: 164, name: 'Ambient Color',      desc: "cycle the circle light's color" },
+    { code: 164, name: 'Ambient Color',      desc: "cycle the circle light's color",
+      note: "If the circle light is currently on a rainbow or animated effect, cycling the color won't visibly change anything — it needs to be cycled to the static-color effect first. To cycle the effect instead:",
+      swapTo: 165 },
     { code: 165, name: 'Ambient Effect',     desc: 'cycle the ambient lighting effect' }
   ];
 
@@ -405,15 +413,31 @@
       const k = document.createElement('kbd'); k.textContent = 'Space'; d.appendChild(k);
       d.appendChild(document.createTextNode(' to ' + f.desc + '.'));
     }
+    function setSpaceNote(f) {   // per-function caveat + optional swap-over button inside the overlay
+      const n = $('spaceNote'); if (!n) return;
+      n.textContent = '';
+      if (!f.note) { n.style.display = 'none'; return; }
+      n.style.display = 'block';
+      n.appendChild(document.createTextNode(f.note));
+      const tgt = f.swapTo != null && SPACE_FUNCS.find(x => x.code === f.swapTo);
+      if (tgt) {
+        n.appendChild(document.createElement('br'));
+        const b = document.createElement('button');
+        b.textContent = tgt.name; b.style.margin = '10px 0 0';
+        b.title = 'rebind the Spacebar to ' + tgt.name + ' — this overlay swaps over to it';
+        b.addEventListener('click', () => enterSpace(tgt));
+        n.appendChild(b);
+      }
+    }
     async function enterSpace(f) {
       if (!connected || busy) return;
       const ok = await keymapRMW(km => setEntry(km, SPACE_VAL, encodeFunc(f.code)), 'Binding Spacebar → ' + f.name + '…');
       if (!ok) return;
       setMod(SPACE_VAL, f.name);
       $('spaceTitle').textContent = f.name;
-      setSpaceDesc(f);
+      setSpaceDesc(f); setSpaceNote(f);
       $('spaceOverlay').classList.add('open');
-      spaceActive = true; window.addEventListener('keydown', spaceEsc);
+      spaceActive = true; window.addEventListener('keydown', spaceEsc);   // double-add on a swap-over is safe — same listener ref dedupes
       log('⎵ Spacebar → ' + f.name + ' (overlay open)', 'in');
     }
     async function exitSpace() {
