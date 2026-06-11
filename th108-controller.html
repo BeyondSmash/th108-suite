@@ -137,6 +137,10 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
   .dmnTag:hover i{ animation:dpulse 1.2s ease-in-out infinite; }
   .dmnTag.off:hover i{ animation:none; }
   @keyframes dpulse{ 50%{ box-shadow:0 0 0 5px color-mix(in srgb, var(--mint) 30%, transparent); } }
+  /* header Connect — on every tab while this page doesn't hold the keyboard; flashes yellow on connect, then leaves */
+  .hdrconnect{ margin:0; padding:7px 14px; font-size:12.5px; }
+  .hdrconnect[hidden]{ display:none !important; }
+  .hdrconnect.flash{ background:var(--yellow); color:#0d1117; box-shadow:0 0 0 2px var(--yellow); transition:none; }   /* instant — a .1s ease would eat most of the 250ms flash */
 
   /* ===== controls ===== */
   button{ font:600 13.5px/1.4 "Plus Jakarta Sans",system-ui,sans-serif; background:var(--card); color:var(--text);
@@ -241,8 +245,10 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
   .kbkey.mod:hover,.kbkey.mod.sel{ color:#0d1117; }
   .kbkey .knew{ max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; padding:0 3px; font-size:.85em; }
   .kbkey .kold{ position:absolute; right:3px; bottom:0; font-size:8px; text-decoration:line-through; opacity:.75; }
-  /* right-click on a key: a one-button "Reset" tooltip instead of the browser context menu */
-  .kbreset{ position:fixed; z-index:300; transform:translateX(-50%); padding:5px 12px; font-size:12px;
+  /* right-click on a key: a one-button "Reset" tooltip instead of the browser context menu.
+     Centered via computed left, NOT transform — the global button:hover sets transform:translateY(-1px),
+     which would REPLACE a translateX(-50%) here and lurch the button half its width on every hover. */
+  .kbreset{ position:fixed; z-index:300; margin:0; padding:5px 12px; font-size:12px;
             box-shadow:0 6px 18px rgba(13,17,23,.25); }
 
   /* hotkeys: binder palette (tabs + assignment grid) */
@@ -295,6 +301,7 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
     <div class="tab" data-page="profiles">Profiles</div>
     <div class="tab" data-page="faq">FAQ</div>
   </nav>
+  <button id="connectHdr" class="hdrconnect" hidden title="this page takes over the keyboard (WebHID) — needed for key binding and for editing while the daemon is off">⌨ Connect Keyboard</button>
   <span id="dmnOnline" class="dmnTag" hidden><i></i><span id="dmnTagTxt">Online</span></span>
   <button id="themeBtn" title="toggle light / dark (crossfades)" aria-label="Toggle light or dark theme">
     <span class="knob"><svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true">
@@ -685,6 +692,7 @@ const HID=TH108Hid.create({
     GIF.onDeviceBound();
     TH108LCD.setDevices(devs);
     BINDER.setConnected(true);    // key-binding actions need the page to hold the device
+    hdrConnSync();                // header Connect flashes yellow and leaves
   },
   onConnected:()=>{   // tell the daemon's watchdog we're alive & holding the device
     DC.heartbeatStart();
@@ -699,6 +707,7 @@ const HID=TH108Hid.create({
     try{ TH108LCD.setDevices({}); }catch(_){ }          // the screen handle is stale too
     try{ BINDER.setConnected(false); }catch(_){ }       // binding actions gate back to "needs Connect"
     document.getElementById('start').disabled=true; document.getElementById('stop').disabled=true;
+    hdrConnSync();                                      // header Connect returns
   },
   onReconnected:()=>{
     DC.heartbeatStart();
@@ -819,6 +828,22 @@ const GIF=TH108GifPanel.create({
 
 document.getElementById('connect').addEventListener('click',async()=>{ await HID.connect();
   if(!HID.device && DC.beating){ DC.heartbeatStop(); DC.resume(); } });   // cancelled/failed pick after yielding → hand the device back
+
+// header Connect: visible on every tab while this page doesn't hold the keyboard (the daemon may
+// still drive the lighting — this is the page-takeover needed for binding/editing); on connect it
+// flashes yellow for 250ms, then leaves until the device drops again (user-specified behavior).
+function hdrConnSync(){
+  const b=document.getElementById('connectHdr'); if(!b) return;
+  if(HID.device){
+    if(!b.hidden && !b.classList.contains('flash')){
+      b.classList.add('flash');
+      setTimeout(()=>{ b.classList.remove('flash'); if(HID.device) b.hidden=true; },250);   // if the device dropped during the flash, stay visible
+    }
+  } else { b.classList.remove('flash'); b.hidden=false; }
+}
+document.getElementById('connectHdr').addEventListener('click',async()=>{ await HID.connect();
+  if(!HID.device && DC.beating){ DC.heartbeatStop(); DC.resume(); } });   // same flow/handback as the Home Connect button
+hdrConnSync();   // boot: nothing bound yet → the button shows
 document.getElementById('start').addEventListener('click',start);
 document.getElementById('stop').addEventListener('click',()=>{ _wasRunning=false; stop(); });   // a deliberate Stop also cancels any pending resume-on-reconnect
 
@@ -1188,10 +1213,10 @@ const KBOARD=(function(){
     const b=document.createElement('button');
     b.className='kbreset'; b.textContent='Reset '+(base||'Space');
     b.title='restore this key to its default ("'+(base||'Space')+'") — rewrites the keymap, needs Connect';
-    const r=cell.getBoundingClientRect();                       // anchor to the KEY, not the cursor — re-right-clicks within the key must not move it
-    b.style.left=(r.x+r.width/2)+'px'; b.style.top=(r.bottom+6)+'px';
     b.addEventListener('click',()=>{ hideTip(); resetCbs.forEach(cb=>{ try{ cb(idx); }catch(_){ } }); });
     document.body.appendChild(b); tipEl=b;
+    const r=cell.getBoundingClientRect();                       // anchor to the KEY, not the cursor — re-right-clicks within the key must not move it
+    b.style.left=Math.round(r.x+r.width/2-b.offsetWidth/2)+'px'; b.style.top=Math.round(r.bottom+6)+'px';
   }
   window.addEventListener('pointerdown',e=>{ if(tipEl && !tipEl.contains(e.target)) hideTip(); });
   window.addEventListener('keydown',e=>{ if(e.key==='Escape') hideTip(); });
