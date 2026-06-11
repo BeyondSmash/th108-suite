@@ -10,7 +10,7 @@ const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.json': 'applica
 
 const ts = () => new Date().toTimeString().slice(0, 8);   // timestamped logs — needed to correlate board mute events with system events
 
-// control = { yield(), resume(), saveConfig(cfg), status(), getAutostart(), setAutostart(on), quit() }
+// control = { yield(), resume(), saveConfig(cfg), status(), getAutostart(), setAutostart(on), setUsbReset(on), quit() }
 // watchdogMs default: the page beats every 3s from a Web Worker timer (throttle-proof); 12s tolerates
 // 2-3 dropped beats before concluding the page is gone. The old 5s window was tighter than real page
 // behavior (heartbeats only started after device-bind, and main-thread timers throttle in hidden tabs)
@@ -19,8 +19,19 @@ function createServer({ control, root, port = 8123, watchdogMs = 12000 }) {
   let lastBeat = Date.now(), yielded = false, wd = null, boundPort = port;
   function armWatchdog() {
     clearInterval(wd);
+    let lastTick = Date.now();
     wd = setInterval(() => {
-      if (yielded && Date.now() - lastBeat > watchdogMs) {
+      const now = Date.now();
+      // A big gap between ticks means the OS slept — OUR timer was frozen, and so was the page's
+      // heartbeat worker, so a stale lastBeat proves nothing. Re-baseline and give the page a full
+      // window to start beating again; resuming blind here put daemon + waking page on the device
+      // at once (two writers → flicker/half-frames → mute → onboard fallback; 2026-06-11 wake).
+      if (now - lastTick > 30000) {
+        if (yielded) console.log(`${ts()} [watchdog] ${Math.round((now - lastTick) / 1000)}s tick gap (system sleep) — re-baselining the heartbeat window`);
+        lastBeat = now;
+      }
+      lastTick = now;
+      if (yielded && now - lastBeat > watchdogMs) {
         console.log(`${ts()} [watchdog] no page heartbeat for >${watchdogMs}ms — resuming daemon control`);
         control.resume(); yielded = false;
       }
@@ -58,13 +69,32 @@ function createServer({ control, root, port = 8123, watchdogMs = 12000 }) {
         console.log(ts() + ' [api] /autostart ' + (on ? 'on' : 'off'));
         return sendJson(res, 200, { ok: true, enabled: on });
       }
+      if (req.method === 'POST' && u === '/usbreset') {   // toggle the auto USB-restart wedge fix (state reads back via /status.usbReset)
+        const b = await readBody(req); let on;
+        try { on = !!JSON.parse(b || '{}').on; } catch { return sendJson(res, 400, { error: 'bad json' }); }
+        control.setUsbReset(on);
+        console.log(ts() + ' [api] /usbreset ' + (on ? 'on' : 'off'));
+        return sendJson(res, 200, { ok: true, enabled: on });
+      }
+      if (req.method === 'POST' && u === '/usbfix') {   // the page's last-resort wedge recovery (cooldown enforced by control.usbFix)
+        const r = control.usbFix();
+        console.log(ts() + ' [api] /usbfix → ' + JSON.stringify(r));
+        return sendJson(res, 200, r);
+      }
       if (req.method === 'POST' && u === '/quit') {
         console.log(ts() + ' [api] /quit — shutting down');
         sendJson(res, 200, { ok: true });
         setTimeout(() => control.quit(), 150);   // respond first, then exit
         return;
       }
-      if (req.method === 'POST' && u === '/heartbeat') { lastBeat = Date.now(); return sendJson(res, 200, { ok: true }); }
+      if (req.method === 'POST' && u === '/heartbeat') {
+        lastBeat = Date.now();
+        if (!yielded) {   // a beating page believes it holds the device (e.g. WE restarted under it and it won't re-/yield) — honor that instead of opening against it (live repro 2026-06-11 12:52)
+          console.log(ts() + ' [api] heartbeat while not yielded — a page holds the device; yielding to it');
+          control.yield(); yielded = true; armWatchdog();
+        }
+        return sendJson(res, 200, { ok: true });
+      }
       if (req.method === 'POST' && u === '/config') {
         const b = await readBody(req); let cfg;
         try { cfg = JSON.parse(b); } catch { return sendJson(res, 400, { error: 'bad json' }); }

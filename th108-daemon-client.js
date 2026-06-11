@@ -17,7 +17,7 @@ window.TH108DaemonClient = (function () {
     opts = opts || {};
     const log = opts.log || function () {};
     const getConfig = opts.getConfig || function () { return '[]'; };
-    const D = { present: false, hb: null };
+    const D = { present: false, hb: null, yielded: false };
 
     const hbW = (() => { try { return new Worker(URL.createObjectURL(new Blob(['let t=null;onmessage=e=>{clearInterval(t);t=null;if(e.data&&e.data.ms)t=setInterval(()=>postMessage(1),e.data.ms);};'], { type: 'text/javascript' }))); } catch (_) { return null; } })();
     const beat = () => { if (navigator.sendBeacon) navigator.sendBeacon('/heartbeat'); else fetch('/heartbeat', { method: 'POST' }); };
@@ -27,7 +27,7 @@ window.TH108DaemonClient = (function () {
       if (!/^https?:$/.test(location.protocol)) { D.present = false; return; }   // file:// page → no daemon server to talk to; skip (avoids a console CORS error)
       try { const r = await fetch('/status', { cache: 'no-store' }); D.present = r.ok; } catch (_) { D.present = false; }
     }
-    async function yieldDevice() { if (D.present) { try { await fetch('/yield', { method: 'POST' }); } catch (_) {} } }
+    async function yieldDevice() { if (D.present) { try { await fetch('/yield', { method: 'POST' }); D.yielded = true; } catch (_) {} } }
     function heartbeatStart() {
       if (!D.present || D.hb) return;
       beat();                                                       // first beat NOW — the yield→bind gap (device picker open) must be covered too
@@ -35,20 +35,45 @@ window.TH108DaemonClient = (function () {
     }
     function heartbeatStop() { if (hbW) hbW.postMessage({}); if (D.hb && D.hb !== true) clearInterval(D.hb); D.hb = null; }
     function pushConfig() { if (D.present) { try { fetch('/config', { method: 'POST', headers: { 'content-type': 'application/json' }, body: getConfig() }); } catch (_) {} } }
-    function resume() { if (D.present) { if (navigator.sendBeacon) navigator.sendBeacon('/resume'); else fetch('/resume', { method: 'POST', keepalive: true }); } }
+    // last-resort wedge recovery: ask the daemon to PnP-restart the keyboard's USB node (the page
+    // itself can't run schtasks). The daemon enforces a cooldown and the usbReset setting.
+    async function usbFix() {
+      if (!D.present) return { fired: false, reason: 'no daemon' };
+      try { const r = await fetch('/usbfix', { method: 'POST' }); return await r.json(); }
+      catch (_) { return { fired: false, reason: 'daemon unreachable' }; }
+    }
+    // resume is a no-op unless THIS page yielded: /resume is unattributed on the wire, so a page
+    // that never took the device (a second tab, an automated test browser) telling the daemon
+    // "the page released the device" made it reclaim WHILE the real owner tab was still streaming —
+    // two writers → board mute → USB-restart escalation → onboard-rainbow fallback (2026-06-11 logs).
+    function resume() {
+      if (!D.yielded) return;
+      D.yielded = false;
+      if (D.present) { if (navigator.sendBeacon) navigator.sendBeacon('/resume'); else fetch('/resume', { method: 'POST', keepalive: true }); }
+    }
 
-    // Background-daemon panel: status readout, auto-start toggle (HKCU Run key via the daemon), quit.
+    // Background-daemon panel: status readout, auto-start toggle (HKCU Run key via the daemon),
+    // auto-USB-restart wedge-fix toggle (daemon settings.json via /usbreset), quit.
     function mountPanel() {
       const st = document.getElementById('dmnStatus'), auto = document.getElementById('dmnAuto'), quit = document.getElementById('dmnQuit');
+      const usb = document.getElementById('dmnUsbFix');
       if (!st || !auto || !quit) return;
       let alive = false;
       async function refresh() {
         try {
           const r = await fetch('/status', { cache: 'no-store' }); if (!r.ok) throw 0;
           const s = await r.json(); alive = true;
-          st.textContent = 'daemon: running · ' + (s.paused ? 'yielded to this page' : (s.deviceConnected ? 'driving the keyboard' : 'waiting for the keyboard'));
+          st.textContent = 'daemon: running · ' + (s.paused ? 'yielded to this page' : (s.deviceConnected ? 'driving the keyboard — layer edits here apply LIVE, no Connect needed' : 'waiting for the keyboard'));
           auto.disabled = false; quit.disabled = false;
-        } catch (_) { alive = false; st.textContent = 'daemon: not running — start it with setup.cmd (lighting then survives closing this tab)'; auto.disabled = true; quit.disabled = true; }
+          // state rides /status; don't fight a click in progress. A daemon built before this setting
+          // doesn't report the field — show the toggle disabled (it would 404) instead of a false "off".
+          if (usb) {
+            const knows = 'usbReset' in s;
+            usb.disabled = !knows;
+            usb.title = knows ? '' : 'the running daemon predates this setting — restart it (Quit, then setup.cmd or next login) to enable';
+            if (knows && document.activeElement !== usb) usb.checked = !!s.usbReset;
+          }
+        } catch (_) { alive = false; st.textContent = 'daemon: not running — start it with setup.cmd (lighting then survives closing this tab)'; auto.disabled = true; quit.disabled = true; if (usb) usb.disabled = true; }
       }
       async function refreshAuto() { if (!alive) return; try { const r = await fetch('/autostart', { cache: 'no-store' }); auto.checked = !!(await r.json()).enabled; } catch (_) {} }
       auto.addEventListener('change', async () => {
@@ -56,6 +81,12 @@ window.TH108DaemonClient = (function () {
           await fetch('/autostart', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ on: auto.checked }) });
           log('daemon auto-start on login ' + (auto.checked ? 'enabled' : 'disabled'), 'ok');
         } catch (_) { log('auto-start toggle failed', 'err'); refreshAuto(); }
+      });
+      if (usb) usb.addEventListener('change', async () => {
+        try {
+          await fetch('/usbreset', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ on: usb.checked }) });
+          log('auto USB-restart wedge fix ' + (usb.checked ? 'enabled' : 'disabled'), 'ok');
+        } catch (_) { log('USB-restart toggle failed', 'err'); refresh(); }
       });
       quit.addEventListener('click', async () => {
         if (!confirm('Quit the background daemon?\n\nAlways-on lighting and reactive-anywhere stop until setup.cmd or your next login starts it again. This page keeps working as-is.')) return;
@@ -67,7 +98,7 @@ window.TH108DaemonClient = (function () {
     }
 
     return {
-      ping, yieldDevice, heartbeatStart, heartbeatStop, pushConfig, resume, mountPanel,
+      ping, yieldDevice, heartbeatStart, heartbeatStop, pushConfig, resume, mountPanel, usbFix,
       get present() { return D.present; },
       get beating() { return !!D.hb; }
     };

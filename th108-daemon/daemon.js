@@ -11,6 +11,7 @@ const { execFile } = require('child_process');
 const { uIOhook, UiohookKey } = require('uiohook-napi');
 const E = require('../th108-engine.js');
 const T = require('./hid-transport.js');
+const U = require('./usb-reset.js');
 const { KEYMAP, INDICES, UIOHOOK_TO_CODE } = require('./th108-map.js');
 
 const CONFIG_PATH = path.join(__dirname, 'config.json');
@@ -38,6 +39,15 @@ function loadConfig() {
 }
 
 let state = null, device = null, send = null, paused = false, timer = null;
+
+// ----- daemon settings (separate from config.json, which is the page's layer array verbatim) -----
+const SETTINGS_PATH = path.join(__dirname, 'settings.json');
+function loadSettings() {
+  try { return Object.assign({ usbReset: true }, JSON.parse(fs.readFileSync(SETTINGS_PATH, 'utf8'))); }
+  catch { return { usbReset: true }; }   // default ON — the escalation fails gracefully (one log line) if the task isn't registered
+}
+let settings = loadSettings();
+function saveSettings() { try { fs.writeFileSync(SETTINGS_PATH, JSON.stringify(settings)); } catch {} }
 
 // Reload config.json → rebuild engine state. Absent/invalid config → idle (state = null).
 function rebuildState() {
@@ -68,8 +78,9 @@ function closeDevice() {
 // so nothing at the OS level stops daemon + page from both holding the device. Listen ~1.5s on the
 // fresh handle first — unsolicited 0x55 ACK traffic means a live page is streaming (its yield expired
 // but it's still there); writing too would wedge the board. Back off and re-probe on a later tick.
-let probing = false, nextOpenAt = 0;
+let probing = false, nextOpenAt = Date.now() + 5000;   // startup grace: a live page's heartbeat needs a beat (≤3s) to park us before we first touch the device
 let lastOkAt = 0, streakStart = 0, muteLogged = false, muteAt = 0;   // mute-episode tracking (transition logging)
+let usbFiredAt = 0, lastTickAt = 0;   // USB-restart escalation state + sleep-gap detection
 async function openIfPossible() {
   if (device || paused || probing) return;
   if (Date.now() < nextOpenAt) return;   // backoff after a mute/failed device — no 2s open/close churn against a wedged board
@@ -83,6 +94,7 @@ async function openIfPossible() {
     if (paused) { try { d.close(); } catch {} return; }   // yielded mid-probe — hand it straight back
     if (traffic > 0) {
       try { d.close(); } catch {}
+      nextOpenAt = Date.now() + 5000;   // cool down — re-probing every tick churns handles against a live streamer, and once raced into a double-open ("backing off" → "device open" 2s later → mute, 2026-06-11 log)
       log(`… another writer on the device (${traffic} reports during probe) — backing off`);
       return;
     }
@@ -96,6 +108,11 @@ async function openIfPossible() {
 // ----- render loop ~30fps -----
 async function tick() {
   if (paused) return;
+  // Sleep-gap re-baseline: after a suspend, the pre-sleep muteAt is hours stale — without this the USB
+  // restart would insta-fire on the first failed send at wake, even though wake mutes recover on their own.
+  const nowWall = Date.now();
+  if (lastTickAt && nowWall - lastTickAt > 30_000 && muteLogged) muteAt = nowWall;
+  lastTickAt = nowWall;
   await openIfPossible();
   if (device && send && state) {
     const now = performance.now();
@@ -116,7 +133,14 @@ async function tick() {
           muteLogged = true; muteAt = Date.now();
           log('⚠ board went MUTE — no ACKs (' + (lastOkAt
             ? 'was streaming ' + Math.round((muteAt - streakStart) / 60000) + ' min, last ACK ' + Math.round((muteAt - lastOkAt) / 1000) + 's ago'
-            : 'never ACKed since open') + ') — retrying every 5s; replug clears a true wedge');
+            : 'never ACKed since open') + ') — retrying every 5s; USB restart fires at ' + Math.round(U.THRESHOLD_MS / 1000) + 's');
+        }
+        // Escalation: a PnP restart of the keyboard's USB node = software replug (proven to clear a true
+        // wedge). Loud by design — it drops typing ~1-2s, so the log must say exactly when and why.
+        if (settings.usbReset && U.shouldFire({ muteAt, now: Date.now(), lastFireAt: usbFiredAt })) {
+          usbFiredAt = Date.now();
+          log('⚡ ESCALATING: mute has lasted ' + Math.round((usbFiredAt - muteAt) / 1000) + 's — PnP-restarting the keyboard USB device (task "' + U.TASK_NAME + '"); typing drops ~1-2s');
+          U.fire(log);
         }
       }
     }
@@ -148,8 +172,20 @@ const control = {
   resume() { rebuildState(); paused = false; },
   // Persist the page's config; refresh live state immediately unless yielded to the page.
   saveConfig(cfg) { fs.writeFileSync(CONFIG_PATH, JSON.stringify(cfg)); if (!paused) rebuildState(); },
-  status() { return { running: true, paused, deviceConnected: !!device, fps: FPS }; },
+  status() { return { running: true, paused, deviceConnected: !!device, fps: FPS, usbReset: settings.usbReset }; },
+  // page-initiated escalation: the PAGE drives the device and detected a persistent wedge its own
+  // handle-rebinds couldn't clear — fire the same PnP restart the daemon uses, with a cooldown so
+  // a stuck page can't replug-loop the keyboard.
+  usbFix() {
+    if (!settings.usbReset) return { fired: false, reason: 'disabled' };
+    if (Date.now() - usbFiredAt < 60_000) return { fired: false, reason: 'cooldown' };
+    usbFiredAt = Date.now();
+    log('⚡ page requested a USB restart (board wedged while the page was driving) — PnP-restarting the keyboard; typing drops ~1-2s');
+    U.fire(log);
+    return { fired: true };
+  },
   getAutostart, setAutostart,
+  setUsbReset(on) { settings.usbReset = !!on; saveSettings(); },
   quit() { shutdown(); },
 };
 module.exports = { control };

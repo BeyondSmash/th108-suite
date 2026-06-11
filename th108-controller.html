@@ -1,186 +1,602 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="light">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>TH108 — pulsing cyan + keypress-reactive controller</title>
+<title>th108 — Epomaker TH108 V2 PRO lighting suite</title>
+<script>/* before first paint: apply the saved theme so a dark-mode reload never flashes light */
+try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme')||'light'; }catch(_){ }</script>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect x='4' y='12' width='56' height='40' rx='10' fill='%23fa8072'/%3E%3Crect x='14' y='22' width='10' height='8' rx='2' fill='%23fff'/%3E%3Crect x='28' y='22' width='10' height='8' rx='2' fill='%23ffd98c'/%3E%3Crect x='42' y='22' width='10' height='8' rx='2' fill='%2398d0ff'/%3E%3Crect x='14' y='36' width='38' height='8' rx='2' fill='%236ed2b7'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500..900&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
-  :root { color-scheme: dark; }
-  body { font:14px/1.5 system-ui,sans-serif; background:#0d1117; color:#e6edf3; margin:0; padding:24px; }
-  h1 { font-size:18px; margin:0 0 4px; }
-  .sub { color:#8b949e; margin:0 0 18px; }
-  button { font:inherit; background:#21262d; color:#e6edf3; border:1px solid #30363d;
-           border-radius:8px; padding:9px 14px; cursor:pointer; margin:0 8px 8px 0; }
-  button:hover:not(:disabled){ border-color:#58a6ff; }
+  /* ===== design tokens — bento light/dark (reference: nevflynn.com) ===== */
+  :root{
+    --bg:#f7f2f2; --card:#ffffff; --inset:#f4f1ee; --elev:#ffffff;
+    --text:#0d1117; --muted:#8a8f98; --border:#e8e4df; --ring:#eef0f6;
+    --accent:#fa8072; --blue:#98d0ff; --mint:#6ed2b7; --pink:#f9c5d8; --yellow:#ffd98c; --lav:#c9b8ff;
+    --num:#c2553e; --ok:#1a7f4b; --err:#c93c32; --warn:#a87617;
+    --tabbg:rgba(13,17,23,.05); --tabhl:#ffffff; --shadow:0 1px 2px rgba(13,17,23,.04);
+    --logoink:#1e3a5f;
+    color-scheme:light;
+  }
+  [data-theme="dark"]{
+    --bg:#090c10; --card:#0d1117; --inset:#161b22; --elev:#21262d;
+    --text:#f0f2f8; --muted:#8b949e; --border:#21262d; --ring:#21262d;
+    --num:#ffa294; --ok:#3fb950; --err:#f85149; --warn:#d29922;
+    --tabbg:rgba(240,242,248,.06); --tabhl:#21262d; --shadow:none;
+    --logoink:#8aa6d4;   /* navy reads as black on the night bg — same hue family, lifted for contrast */
+    color-scheme:dark;
+  }
+  ::view-transition-old(root),::view-transition-new(root){ animation-duration:.45s; }
+
+  *{ box-sizing:border-box; }
+  body{ font:14px/1.55 "Plus Jakarta Sans",system-ui,sans-serif; background:var(--bg); color:var(--text);
+        margin:0; padding:0 24px 20px; }
+  /* theme-change easing: ONLY as a fallback when the View Transitions API is missing (html.no-vt set at boot).
+     With VT active these must stay off — a live background-color transition lags the header's instant
+     color-mix(--bg) band, and the mismatch gets baked into the VT's "new" snapshot (visible seam mid-crossfade). */
+  html.no-vt body,html.no-vt .card,html.no-vt .lcard{ transition:background-color .45s,color .45s; }
+
+  /* ===== header ===== */
+  header{ position:sticky; top:0; z-index:40; display:flex; align-items:center; gap:18px;
+          max-width:1240px; margin:0 auto; padding:10px 0;
+          background:color-mix(in srgb, var(--bg) 82%, transparent); backdrop-filter:blur(10px); }
+  /* logo: navy ink dissolving into stipple — solid at the head, then the ink fades while a dot pattern
+     (with its own opacity ramp) takes over, so the erasure itself gradates as halftone toward the tail.
+     Flat CSS mask layers can't express (dots ∩ dot-fade) ∪ ink-fade, hence the inline-SVG mask. */
+  /* diagonal: ink solid at the top-left, stipple takes over toward the bottom-right; the ink floor (.45)
+     keeps every character readable — the dots only ever bite a glyph down to ~half alpha, never erase it */
+  :root{ --logomask:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 90 34' preserveAspectRatio='none'><defs><pattern id='p' width='3' height='3' patternUnits='userSpaceOnUse'><circle cx='1.5' cy='1.5' r='.9' fill='white'/></pattern><linearGradient id='b' x1='0' y1='0' x2='1' y2='1'><stop offset='0.15' stop-color='white' stop-opacity='1'/><stop offset='0.9' stop-color='white' stop-opacity='0.45'/></linearGradient><linearGradient id='g' x1='0' y1='0' x2='1' y2='1'><stop offset='0.18' stop-color='black'/><stop offset='0.95' stop-color='white'/></linearGradient><mask id='m'><rect width='90' height='34' fill='url(%23g)'/></mask></defs><rect width='90' height='34' fill='url(%23b)'/><rect width='90' height='34' fill='url(%23p)' mask='url(%23m)'/></svg>"); }
+  .logo{ font-family:"Fraunces",Georgia,serif; font-weight:800; font-size:27px; letter-spacing:-.5px; user-select:none;
+         color:var(--logoink);
+         mask-image:var(--logomask); mask-size:100% 100%;
+         -webkit-mask-image:var(--logomask); -webkit-mask-size:100% 100%; }
+  /* the tab bar is lifted out of the root view transition (same recipe as the theme toggle) so the
+     pill highlight visibly SLIDES between tabs — inside the snapshot crossfade it would just fade */
+  nav.tabs{ position:relative; display:flex; gap:2px; margin:0 auto; padding:5px; border-radius:999px; background:var(--tabbg);
+            view-transition-name:tabbar; }
+  ::view-transition-image-pair(tabbar){ animation:none; }
+  ::view-transition-old(tabbar){ display:none; }
+  ::view-transition-new(tabbar){ animation:none; }
+  nav.tabs .hl{ position:absolute; top:5px; bottom:5px; left:0; width:0; border-radius:999px; background:var(--tabhl);
+                box-shadow:var(--shadow); transition:left .3s cubic-bezier(.22,1,.36,1), width .3s cubic-bezier(.22,1,.36,1); }
+  nav.tabs .tab{ position:relative; z-index:1; padding:7px 15px; border-radius:999px; cursor:pointer;
+                 font-size:13.5px; font-weight:600; color:var(--muted); user-select:none; white-space:nowrap; transition:color .25s; }
+  nav.tabs .tab.on{ color:var(--text); }
+  /* theme pill (sun/moon slider). The knob must visibly SLIDE during the page crossfade, so the whole
+     button is lifted out of the root view transition and shown live (no snapshot fade) — standard
+     exclude-an-element recipe: own name + all its VT animations off, old image hidden. */
+  #themeBtn{ all:unset; cursor:pointer; width:58px; height:31px; border-radius:999px; background:var(--tabbg);
+             position:relative; flex:none; view-transition-name:theme-toggle; }
+  ::view-transition-image-pair(theme-toggle){ animation:none; }
+  ::view-transition-old(theme-toggle){ display:none; }
+  ::view-transition-new(theme-toggle){ animation:none; }
+  #themeBtn .knob{ position:absolute; top:4px; left:4px; width:23px; height:23px; border-radius:50%;
+                   background:var(--tabhl); box-shadow:var(--shadow); display:flex; align-items:center; justify-content:center;
+                   transition:transform .45s cubic-bezier(.22,1,.36,1), background-color .45s; }
+  [data-theme="dark"] #themeBtn .knob{ transform:translateX(27px); }
+  /* sun ⇄ moon SVG morph: the disc grows while a mask circle slides in to bite the crescent; rays fold away */
+  #themeBtn .kcore{ fill:#f2a23b; transition:r .45s, fill .45s; r:5; }
+  #themeBtn .kcut{ transition:cx .45s, cy .45s; cx:32px; cy:2px; }
+  #themeBtn .krays{ stroke:#f2a23b; opacity:1; transition:opacity .3s, transform .45s; transform-origin:12px 12px; }
+  [data-theme="dark"] #themeBtn .kcore{ r:8.5; fill:#ffd98c; }
+  [data-theme="dark"] #themeBtn .kcut{ cx:17px; cy:8px; }
+  [data-theme="dark"] #themeBtn .krays{ opacity:0; transform:rotate(45deg) scale(.55); }
+
+  /* ===== bento grid ===== */
+  #grid{ display:grid; grid-template-columns:repeat(6,1fr); gap:16px; max-width:1240px; margin:8px auto 0;
+         grid-auto-flow:dense; align-items:start; }
+  .card{ background:var(--card); border-radius:28px; padding:20px; box-shadow:var(--shadow); }
+  .card[hidden]{ display:none !important; }   /* recurring gotcha: any later display: rule on a class beats [hidden] — keep the !important */
+  .s2{ grid-column:span 2 } .s3{ grid-column:span 3 } .s4{ grid-column:span 4 } .s6{ grid-column:span 6 }
+  @media (max-width:1040px){
+    #grid{ grid-template-columns:repeat(2,1fr); }
+    .s2{ grid-column:span 1 } .s3,.s4,.s6{ grid-column:span 2 }
+  }
+  @media (max-width:660px){
+    #grid{ grid-template-columns:1fr; }
+    .s2,.s3,.s4,.s6{ grid-column:span 1 }
+    body{ padding:0 12px 32px; }
+    nav.tabs .tab{ padding:7px 10px; font-size:12.5px; }
+  }
+  .cardbar{ display:flex; align-items:center; gap:9px; margin:-6px -6px 10px; padding:6px; border-radius:14px; cursor:grab; touch-action:none; }
+  .cardbar:active{ cursor:grabbing; }
+  .cardbar .grip{ color:var(--muted); opacity:0; font-size:14px; transition:opacity .2s; }
+  .card:hover .cardbar .grip{ opacity:.8; }
+  .cardbar h2{ font-family:"Fraunces",Georgia,serif; font-weight:700; font-size:19.5px; margin:0; letter-spacing:-.2px; }
+  .cardbar .aux{ margin-left:auto; font-size:12.5px; color:var(--muted); }
+  /* pointer-drag mechanics (react-grid-layout feel): the grabbed card floats with the cursor at FULL
+     opacity with a lift shadow; a faded clone holds its grid slot as the drop shadow and lags behind
+     the neighbors' rearrangement (FLIP transitions set inline by the drag code) */
+  .card.lifted{ position:fixed; z-index:120; margin:0; cursor:grabbing; transition:none;
+                transform:scale(1.02); box-shadow:0 18px 48px rgba(13,17,23,.25); }
+  .card.ph-clone{ opacity:.35; pointer-events:none; box-shadow:none; overflow:hidden; position:relative; }
+  .ph-clone .ants{ position:absolute; inset:0; width:100%; height:100%; pointer-events:none; }
+  .ph-clone .ants rect{ x:1px; y:1px; width:calc(100% - 2px); height:calc(100% - 2px); rx:27px;
+                        fill:none; stroke:var(--muted); stroke-width:1.5; stroke-dasharray:7 7;
+                        animation:ants .9s linear infinite; }
+  @keyframes ants{ to{ stroke-dashoffset:-14; } }
+  body.cardDragging{ user-select:none; cursor:grabbing; }
+  /* drag breach line: the swap threshold made visible — orange midline on the card being clipped,
+     pale-yellow glow on the approach side that grows as the cursor nears (crossing it = commit) */
+  #dragLine{ position:fixed; display:none; z-index:125; pointer-events:none; background:#ff8c00;
+             border-radius:2px; box-shadow:0 0 8px rgba(255,140,0,.6); }
+  #dragLine .dlglow{ position:absolute; pointer-events:none; }   /* no radius — the glow must sit flush against the line */
+  /* lucide inline icons */
+  .ic{ width:15px; height:15px; vertical-align:-2px; fill:none; stroke:currentColor; stroke-width:2;
+       stroke-linecap:round; stroke-linejoin:round; flex:none; }
+  /* daemon online tag (header) — dim at rest, ripple only on hover so it never distracts passively */
+  .dmnTag{ display:inline-flex; align-items:center; gap:6px; font-size:12px; font-weight:600;
+           color:var(--muted); opacity:.65; cursor:default; }
+  .dmnTag[hidden]{ display:none !important; }   /* display:inline-flex would otherwise beat the UA's [hidden] rule */
+  .dmnTag i{ width:8px; height:8px; border-radius:50%; background:var(--mint); }
+  .dmnTag.off i{ background:var(--err); }
+  .dmnTag:hover{ opacity:1; }
+  .dmnTag:hover i{ animation:dpulse 1.2s ease-in-out infinite; }
+  .dmnTag.off:hover i{ animation:none; }
+  @keyframes dpulse{ 50%{ box-shadow:0 0 0 5px color-mix(in srgb, var(--mint) 30%, transparent); } }
+  /* header Connect — on every tab while this page doesn't hold the keyboard; flashes yellow on connect, then leaves */
+  .hdrconnect{ margin:0; padding:7px 14px; font-size:12.5px; }
+  .hdrconnect[hidden]{ display:none !important; }
+  .hdrconnect.flash{ background:var(--yellow); color:#0d1117; box-shadow:0 0 0 2px var(--yellow); transition:none; }   /* instant — a .1s ease would eat most of the 250ms flash */
+
+  /* ===== controls ===== */
+  button{ font:600 13.5px/1.4 "Plus Jakarta Sans",system-ui,sans-serif; background:var(--card); color:var(--text);
+          border:0; box-shadow:0 0 0 2px var(--ring); border-radius:999px; padding:9px 16px; cursor:pointer;
+          margin:0 8px 8px 0; transition:box-shadow .2s, transform .15s; }
+  button:hover:not(:disabled){ box-shadow:0 0 0 2px var(--accent); transform:translateY(-1px); }
   button:disabled{ opacity:.4; cursor:not-allowed; }
-  button.primary{ background:#1f6feb; border-color:#1f6feb; }
-  button.go{ background:#238636; border-color:#238636; }
-  button.stop{ background:#da3633; border-color:#da3633; }
-  .panel{ background:#161b22; border:1px solid #30363d; border-radius:10px; padding:16px; margin:12px 0; max-width:680px; }
+  button.primary{ background:var(--blue); color:#0d1117; box-shadow:none; }
+  button.go{ background:var(--mint); color:#0d1117; box-shadow:none; }
+  button.stop{ background:var(--accent); color:#0d1117; box-shadow:none; }
+  a.btnlink{ display:inline-block; text-decoration:none; font:600 13.5px/1.4 "Plus Jakarta Sans",system-ui,sans-serif;
+             background:var(--card); color:var(--text); box-shadow:0 0 0 2px var(--ring); border-radius:999px; padding:9px 16px; }
+  a.btnlink:hover{ box-shadow:0 0 0 2px var(--accent); }
+  select{ font:inherit; background:var(--inset); color:var(--text); border:1px solid var(--border); border-radius:10px; padding:4px 8px; }
+  input[type=text],input[type=number]{ font:inherit; background:var(--inset); color:var(--text); border:1px solid var(--border); border-radius:10px; }
+  input[type=checkbox],input[type=radio]{ accent-color:var(--accent); }
+  input[type=range]{ accent-color:var(--accent); }
+  input[type=color]{ width:48px; height:28px; background:none; border:1px solid var(--border); border-radius:8px; }
+  .tin{ padding:6px 10px; }
+  .hint{ color:var(--muted); font-size:13px; }
+  .sub{ color:var(--muted); margin:0 0 14px; }
+  kbd{ background:var(--inset); border:1px solid var(--border); border-radius:5px; padding:1px 6px; font-family:ui-monospace,monospace; }
+  .val{ font-family:ui-monospace,monospace; color:var(--num); text-align:right; }
+  .ok{color:var(--ok)}.err{color:var(--err)}.dim{color:var(--muted)}.in{color:var(--warn)}
+  #status{ font-weight:600; }
+
+  /* log — always a dark terminal tile, both themes */
+  #log{ background:#010409; border-radius:18px; padding:12px 14px; height:118px; overflow:auto;
+        white-space:pre-wrap; font-family:ui-monospace,monospace; font-size:12px; color:#8b949e; }
+  #log .ok{color:#3fb950}#log .err{color:#f85149}#log .dim{color:#8b949e}#log .in{color:#d29922}
+
   .ctl{ display:grid; grid-template-columns:160px 1fr 56px; gap:10px 14px; align-items:center; }
-  .ctl label{ color:#8b949e; }
-  input[type=range]{ width:100%; }
-  input[type=color]{ width:48px; height:28px; background:none; border:1px solid #30363d; border-radius:6px; }
-  .val{ font-family:ui-monospace,monospace; color:#58a6ff; text-align:right; }
-  #status{ margin-left:8px; }
-  #log{ margin-top:14px; background:#010409; border:1px solid #30363d; border-radius:8px; padding:10px;
-        height:150px; overflow:auto; white-space:pre-wrap; font-family:ui-monospace,monospace; font-size:12px; }
-  .ok{color:#3fb950}.err{color:#f85149}.dim{color:#8b949e}.in{color:#d29922}
-  .hint{ color:#8b949e; font-size:13px; }
-  kbd{ background:#21262d; border:1px solid #30363d; border-radius:4px; padding:1px 6px; font-family:ui-monospace,monospace; }
-  .sl{ color:#8b949e; display:inline-flex; align-items:center; gap:6px; justify-self:start; width:fit-content; }   /* shrink + don't stretch in grid → clicking empty row space won't toggle the checkbox */
+  .ctl label{ color:var(--muted); }
+  .ctl input[type=range]{ width:100%; }
+  .ctl select{ justify-self:start; width:auto; min-width:110px; }   /* size to content — "Color 1" doesn't need the whole 1fr column */
+  .sl{ color:var(--muted); display:inline-flex; align-items:center; gap:6px; justify-self:start; width:fit-content; }   /* shrink + don't stretch in grid → clicking empty row space won't toggle the checkbox */
   .srange{ position:relative; display:inline-block; width:110px; height:20px; }
   .srange input[type=range]{ -webkit-appearance:none; appearance:none; position:absolute; left:0; top:50%; transform:translateY(-50%); width:100%; height:14px; margin:0; background:transparent; }
-  .srange input[type=range]::-webkit-slider-runnable-track{ height:4px; background:#30363d; border-radius:2px; }
-  .srange input[type=range]::-moz-range-track{ height:4px; background:#30363d; border-radius:2px; }
-  .srange input[type=range]::-webkit-slider-thumb{ -webkit-appearance:none; appearance:none; width:14px; height:14px; border-radius:50%; background:#c9d1d9; margin-top:-5px; cursor:pointer; }
-  .srange input[type=range]::-moz-range-thumb{ width:14px; height:14px; border:none; border-radius:50%; background:#c9d1d9; cursor:pointer; }
-  .srange input[type=range].snapped::-webkit-slider-thumb{ background:#ff8c00; }
-  .srange input[type=range].snapped::-moz-range-thumb{ background:#ff8c00; }
-  .srange .tick{ position:absolute; top:1px; bottom:1px; width:2px; background:#58a6ff; transform:translateX(-50%); pointer-events:none; border-radius:1px; }   /* marks the snap/default value */
-  .lcard{ background:#0d1117; border:1px solid #30363d; border-radius:8px; padding:10px; margin:8px 0; }
+  .srange input[type=range]::-webkit-slider-runnable-track{ height:4px; background:var(--border); border-radius:2px; }
+  .srange input[type=range]::-moz-range-track{ height:4px; background:var(--border); border-radius:2px; }
+  .srange input[type=range]::-webkit-slider-thumb{ -webkit-appearance:none; appearance:none; width:14px; height:14px; border-radius:50%; background:var(--text); margin-top:-5px; cursor:pointer; }
+  .srange input[type=range]::-moz-range-thumb{ width:14px; height:14px; border:none; border-radius:50%; background:var(--text); cursor:pointer; }
+  .srange input[type=range].snapped::-webkit-slider-thumb{ background:var(--accent); }
+  .srange input[type=range].snapped::-moz-range-thumb{ background:var(--accent); }
+  .srange .tick{ position:absolute; top:1px; bottom:1px; width:2px; background:var(--blue); transform:translateX(-50%); pointer-events:none; border-radius:1px; }   /* marks the snap/default value */
+
+  /* layer cards — bento sub-grid inside the compositor card (order still = stacking order, row-major) */
+  #layerCards{ display:grid; grid-template-columns:repeat(auto-fill,minmax(440px,1fr)); gap:12px; align-items:start; }
+  .lcard{ background:var(--inset); border-radius:18px; padding:12px; margin:0; position:relative; }
+  .lcard.coll .lbody{ display:none; }                      /* manual collapse — header row only (the toggle in the top-right corner) */
+  .lcoll{ position:absolute; top:10px; right:10px; margin:0; padding:5px 7px; line-height:0; }
   .lcard.off{ opacity:.55; }
-  .lhead{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
-  .lhead .ln{ font:inherit; background:#161b22; color:#e6edf3; border:1px solid #30363d; border-radius:6px; padding:4px 8px; width:120px; }
-  .lhead select{ font:inherit; background:#161b22; color:#e6edf3; border:1px solid #30363d; border-radius:6px; padding:3px 6px; }
-  .lhead .lfield{ display:flex; align-items:center; gap:6px; color:#8b949e; font-size:12px; }
+  .lcard.off .lbody{ display:none; }   /* disabled layers collapse to just their header row */
+  .lhead{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; padding-right:30px; }   /* keep clear of the corner collapse toggle */
+  .lhead .ln{ font:inherit; background:var(--card); color:var(--text); border:1px solid var(--border); border-radius:9px; padding:4px 8px; width:120px; }
+  .lhead select{ padding:3px 6px; }
+  .lhead .lfield{ display:flex; align-items:center; gap:6px; color:var(--muted); font-size:12px; }
   .lhead .lfield input[type=range]{ width:90px; }
-  .lhead .lfield .lv{ font-family:ui-monospace,monospace; color:#58a6ff; min-width:34px; text-align:right; }
-  .lbody{ margin-top:10px; padding-top:8px; border-top:1px solid #21262d; }
+  .lhead .lfield .lv{ font-family:ui-monospace,monospace; color:var(--num); min-width:34px; text-align:right; }
+  .lbody{ margin-top:10px; padding-top:8px; border-top:1px solid var(--border); }
   .lbody .ctl{ grid-template-columns:84px minmax(30px,1fr) auto; gap:7px 8px; }
-  .lbody .ph{ color:#8b949e; font-size:13px; }
-  #workspace{ display:flex; gap:16px; align-items:flex-start; flex-wrap:wrap; }
-  .col{ flex:1 1 0; min-width:430px; }
-  #colR{ min-width:540px; }
-  .col .panel{ max-width:none; }
-  body.editmode .block{ outline:2px dashed #58a6ff; outline-offset:3px; cursor:grab; }
-  body.editmode .block *{ pointer-events:none; }
-  .block.dragging{ opacity:.5; }
-  .lhead .lgrip{ cursor:grab; color:#8b949e; font-size:15px; user-select:none; padding:0 2px; }
+  .lbody .ph{ color:var(--muted); font-size:13px; }
+  .lhead .lgrip{ cursor:grab; color:var(--muted); font-size:15px; user-select:none; padding:0 2px; }
   .lhead .lgrip:active{ cursor:grabbing; }
   .lcard.ldragging{ opacity:.5; }
-  .lhead .llvl{ font-weight:600; color:#58a6ff; font-size:12px; min-width:50px; }
-  .numin{ font:inherit; width:48px; background:#161b22; color:#e6edf3; border:1px solid #30363d; border-radius:6px; padding:2px 4px; }
-  .lhead .numin{ width:42px; }
-  .hexin{ background:#161b22; color:#e6edf3; border:1px solid #30363d; border-radius:6px; padding:2px 6px; font:inherit; width:74px; }
+  .lhead .llvl{ font-weight:700; color:var(--num); font-size:12px; min-width:50px; }
+  .numin{ font:inherit; width:62px; background:var(--card); color:var(--text); border:1px solid var(--border); border-radius:8px; padding:2px 4px; }   /* triple-digit values (220, 900, 1.00) must not clip */
+  .lhead .numin{ width:52px; }   /* "100" must not clip against the padding */
+  .hexin{ background:var(--inset); color:var(--text); border:1px solid var(--border); border-radius:8px; padding:2px 6px; font:inherit; width:92px; }   /* fits all 7 chars of #RRGGBB without clipping */
   .cwrap{ display:inline-flex; align-items:center; gap:6px; flex-wrap:wrap; }
   .patgrid{ display:flex; flex-wrap:wrap; gap:4px; margin-bottom:8px; }
-  .patbtn{ font:12px/1 inherit; background:#21262d; color:#c9d1d9; border:1px solid #30363d; border-radius:6px; padding:5px 8px; cursor:pointer; }
-  .patbtn:hover{ border-color:#58a6ff; }
-  .patbtn.sel{ background:#1f6feb; border-color:#1f6feb; color:#fff; }
-  .lcdOverlay{position:fixed;inset:0;background:#0d1117;z-index:50;overflow:auto;padding:14px}
-  .lcdOverlayBar{display:flex;align-items:center;gap:10px;margin-bottom:10px}
-  .lcdOverlayBar button{margin-right:8px}
+  .patbtn{ font:600 12px/1 "Plus Jakarta Sans",system-ui,sans-serif; background:var(--card); color:var(--text);
+           border:0; box-shadow:0 0 0 1.5px var(--ring); border-radius:999px; padding:6px 10px; cursor:pointer; margin:0; }
+  .patbtn:hover{ box-shadow:0 0 0 1.5px var(--accent); }
+  .patbtn.sel{ background:var(--accent); box-shadow:none; color:#0d1117; }
+  canvas.cv{ border:1px solid var(--border); border-radius:12px; background:#000; }
+
+  /* bio tile */
+  .avatar{ width:60px; height:60px; border-radius:50%; background:var(--blue); display:flex; align-items:center;
+           justify-content:center; font-size:30px; margin-bottom:10px; }
+  .bigtype{ font-family:"Fraunces",Georgia,serif; font-weight:800; font-size:25px; letter-spacing:-.4px; }
+  .faqcard h3{ font-family:"Fraunces",Georgia,serif; font-weight:700; font-size:17.5px; margin:0 0 8px; letter-spacing:-.2px; }
+  .faqcard p{ margin:0; color:var(--muted); font-size:13.5px; }
+  .faqcard p+p{ margin-top:8px; }
+  /* troubleshooting cards live on the FAQ tab but read as their own group (chip survives drag-reorder) */
+  .tbtag{ background:var(--yellow); color:#0d1117; font-size:10.5px; font-weight:700; letter-spacing:.4px;
+          padding:2px 9px; border-radius:999px; }
+  .faqcard code{ background:var(--inset); border:1px solid var(--border); border-radius:5px; padding:1px 5px;
+                 font-family:ui-monospace,Consolas,monospace; font-size:12px; }
+
+  /* hotkeys: clickable physical keyboard (positions from the engine's board map) */
+  #kbBoard{ position:relative; aspect-ratio:22.5/6.5; }
+  .kbkey{ position:absolute; background:var(--inset); border-radius:9px; display:flex; align-items:center;
+          justify-content:center; font-size:15px; font-weight:600; color:var(--muted); cursor:pointer;   /* user-tuned via the (removed) debug slider */
+          user-select:none; overflow:hidden; white-space:nowrap;
+          transition:transform .12s, background-color .15s, color .15s, box-shadow .15s; }
+  .kbkey:hover{ background:var(--kc,var(--blue)); color:#0d1117; transform:translateY(-2px) scale(1.07); z-index:2;
+                box-shadow:0 5px 12px rgba(13,17,23,.2); }
+  .kbkey:active{ transform:translateY(0) scale(.93); }
+  .kbkey.sel{ background:var(--kc,var(--blue)); color:#0d1117; box-shadow:0 0 0 2px var(--text); z-index:1; }
+  .kbkey.pop{ animation:kpop .25s ease; }
+  @keyframes kpop{ 40%{ transform:scale(1.18); } }
+  /* remapped key: amber face, new assignment front and center, old label struck out in the corner */
+  .kbkey.mod{ color:var(--warn); font-weight:700; }
+  .kbkey.mod:hover,.kbkey.mod.sel{ color:#0d1117; }
+  .kbkey .knew{ max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; padding:0 3px; font-size:.85em; }
+  .kbkey .kold{ position:absolute; right:4px; bottom:1px; font-size:14px; text-decoration:line-through; opacity:.8; }   /* user: 8px was unreadably small — "close to 15px" */
+  /* right-click on a key: a one-button "Reset" tooltip instead of the browser context menu.
+     Centered via computed left, NOT transform — the global button:hover sets transform:translateY(-1px),
+     which would REPLACE a translateX(-50%) here and lurch the button half its width on every hover. */
+  .kbreset{ position:fixed; z-index:300; margin:0; padding:5px 12px; font-size:12px;
+            box-shadow:0 6px 18px rgba(13,17,23,.25); }
+
+  /* hotkeys: binder palette (tabs + assignment grid) */
+  .bdtabs{ display:flex; gap:4px; flex-wrap:wrap; margin-bottom:10px; }
+  #bdGrid{ display:flex; flex-wrap:wrap; gap:6px; }
+  #bdGrid .patbtn{ padding:7px 12px; }
+
+  /* modals (spacebar focus overlay + keymap progress) — bento-styled */
+  .modal{ position:fixed; inset:0; z-index:200; display:none; align-items:center; justify-content:center;
+          background:color-mix(in srgb, var(--bg) 60%, transparent); backdrop-filter:blur(8px); }
+  .modal.open{ display:flex; }
+  .mbox{ background:var(--card); border-radius:28px; padding:32px 44px; text-align:center; min-width:380px;
+         position:relative; box-shadow:0 18px 48px rgba(13,17,23,.25); }
+  .mbox .mtag{ font-size:12.5px; font-weight:600; color:var(--muted); letter-spacing:.5px; }
+  #spaceTitle{ font-family:"Fraunces",Georgia,serif; font-weight:800; font-size:27px; margin:10px 0 6px; letter-spacing:-.3px; }
+  #spaceExit{ position:absolute; top:12px; right:14px; margin:0; padding:4px 11px; }
+  #kmProgBar{ height:10px; background:var(--inset); border-radius:6px; overflow:hidden; margin-top:14px; }
+  #kmProgFill{ height:100%; width:0%; background:linear-gradient(90deg, var(--mint), var(--blue)); transition:width .12s; }
+  #kmProgPct{ font-size:12px; color:var(--muted); margin-top:8px; }
+
+  /* profiles */
+  .profrow{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; background:var(--inset); border-radius:14px; padding:8px 10px; margin-bottom:8px; }
+  .profrow input[type=text]{ flex:1; min-width:140px; padding:5px 9px; background:var(--card); font-weight:600; }
+  .profrow button{ margin:0; padding:6px 12px; }
+
+  /* ===== theme the LCD module's injected dark styles (body-prefixed = higher specificity) ===== */
+  body .lcd-tool button{ background:var(--card); color:var(--text); border:0; box-shadow:0 0 0 2px var(--ring); border-radius:999px; padding:9px 16px; }
+  body .lcd-tool button:hover:not(:disabled){ border:0; box-shadow:0 0 0 2px var(--accent); }
+  body .lcd-tool button.go{ background:var(--mint); color:#0d1117; box-shadow:none; }
+  body .lcd-tool button.rst{ box-shadow:none; color:var(--muted); padding:1px 5px; }
+  body .lcd-tool button.rst:hover{ color:var(--text); }
+  body .lcd-tool label,body .lcd-tool .sub,body .lcd-tool .hint{ color:var(--muted); }
+  body .lcd-tool .num{ background:var(--inset); color:var(--num); border:1px solid var(--border); }
+  body .lcd-tool #lcdUrl{ background:var(--inset); color:var(--text); border:1px solid var(--border); }
+  body .lcd-tool #lcdPreview,body .lcd-tool #lcdPreviewActual{ border:1px solid var(--border); border-radius:8px; }
+  body .lcd-tool .lcd-log{ background:#010409; border:1px solid transparent; border-radius:12px; }
+  body .lcd-tool select{ background:var(--inset) !important; color:var(--text) !important; border:1px solid var(--border) !important; }   /* the module sets dark colors inline — !important is the only override */
 </style>
 </head>
 <body>
-  <h1>Epomaker TH108 V2 PRO — live lighting controller</h1>
-  <p class="sub">Pulsing-cyan background + keypress-reactive yellow-orange, composited host-side and pushed
-     every frame over WebHID. Two layers at once — what the stock firmware won't do.</p>
 
-  <div class="row">
-    <button id="connect" class="primary">1 · Connect keyboard</button>
-    <button id="start" class="go" disabled>2 · Start layers ▶</button>
-    <button id="stop" class="stop" disabled>Stop ⏹</button>
-    <span id="status" class="dim">not connected</span>
+<header>
+  <div class="logo">th108</div>
+  <nav class="tabs" id="tabs">
+    <div class="hl" id="tabHl"></div>
+    <div class="tab" data-page="home">Home</div>
+    <div class="tab" data-page="hotkeys">Hotkeys</div>
+    <div class="tab" data-page="lighting">Lighting</div>
+    <div class="tab" data-page="lcd">LCD Screen</div>
+    <div class="tab" data-page="profiles">Profiles</div>
+    <div class="tab" data-page="faq">FAQ</div>
+  </nav>
+  <button id="connectHdr" class="hdrconnect" hidden title="this page takes over the keyboard (WebHID) — needed for key binding and for editing while the daemon is off">⌨ Connect Keyboard</button>
+  <span id="dmnOnline" class="dmnTag" hidden><i></i><span id="dmnTagTxt">Online</span></span>
+  <button id="themeBtn" title="toggle light / dark (crossfades)" aria-label="Toggle light or dark theme">
+    <span class="knob"><svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true">
+      <mask id="kmask"><rect width="24" height="24" fill="#fff"/><circle class="kcut" cx="32" cy="2" r="7" fill="#000"/></mask>
+      <circle class="kcore" cx="12" cy="12" r="5" mask="url(#kmask)"/>
+      <g class="krays" stroke-linecap="round" stroke-width="2">
+        <line x1="12" y1="1.5" x2="12" y2="4"/><line x1="12" y1="20" x2="12" y2="22.5"/>
+        <line x1="1.5" y1="12" x2="4" y2="12"/><line x1="20" y1="12" x2="22.5" y2="12"/>
+        <line x1="4.6" y1="4.6" x2="6.3" y2="6.3"/><line x1="17.7" y1="17.7" x2="19.4" y2="19.4"/>
+        <line x1="4.6" y1="19.4" x2="6.3" y2="17.7"/><line x1="17.7" y1="6.3" x2="19.4" y2="4.6"/>
+      </g>
+    </svg></span>
+  </button>
+</header>
+
+<div id="grid">
+
+  <!-- ========== HOME ========== -->
+  <div class="card s3" id="bioCard" data-pages="home">
+    <div class="cardbar"><span class="grip">⠿</span></div>
+    <div class="avatar">⌨️</div>
+    <p style="margin:0;font-size:15px">I'm <span class="bigtype">th108</span>, the host-side lighting &amp; LCD suite
+       for the <b>Epomaker TH108 V2 PRO</b>. Four composited lighting layers, keypress-reactive in every app,
+       GIF&nbsp;→&nbsp;keys, onboard effects and LCD uploads — the things the stock firmware can't do.</p>
   </div>
-  <p class="hint">After Start, click this page once so it has keyboard focus, then type — pressed keys flash orange.
-     <br>⚠ <b>Browser keydown only fires while this tab is focused.</b> For type-anywhere/always-on we'd port this to a native host later.</p>
 
-  <div class="row" style="margin-top:4px">
-    <button id="editBtn">✎ Edit layout</button>
-    <button id="exportCfg" title="Download your layer setup as JSON (same format as the daemon's config.json)">⬇ Export</button>
-    <button id="importCfg" title="Load a layer setup from a JSON file (e.g. moved from the file:// page)">⬆ Import</button>
-    <input type="file" id="importFile" accept="application/json,.json" style="display:none">
-    <button id="lcdBtn" title="Open the LCD screen uploader">🖵 LCD screen</button>
-    <button id="resetKbBtn" title="Factory-reset the keyboard HARDWARE (recovers a wedged board; clears the keyboard's onboard config/keymap — NOT this page's settings)">⟳ Factory reset keyboard</button>
-    <button id="resetSiteBtn" title="Reset THIS page's settings (layers, per-pattern values, LCD calibration, layout) to defaults — keeps your media Library; does NOT touch the keyboard">↺ Reset all settings</button>
-    <span id="editHint" class="hint" style="display:none">drag a panel by its dashed outline to move it between columns / reorder</span>
-  </div>
-
-  <div id="workspace">
-   <div class="col" id="colL">
-  <div class="panel block" id="layersPanel">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
-      <b>Layer compositor</b>
-      <span class="hint" style="margin:0">top of list = top layer · bottom of list = bottom layer</span>
+  <div class="card s3" id="connectCard" data-pages="home">
+    <div class="cardbar"><span class="grip">⠿</span><h2>Keyboard</h2><span class="aux dim" id="status">not connected</span></div>
+    <div class="row">
+      <button id="connect" class="primary" title="hands the keyboard from the daemon to this page and starts your layers automatically">Connect Keyboard</button>
+      <button id="start" class="go" disabled title="resume the layers after a Stop">Start Layers ▶</button>
+      <button id="stop" class="stop" disabled>Stop ⏹</button>
     </div>
-    <div id="layerCards"></div>
+    <p class="hint">While connected, click this page once so it has keyboard focus, then type — pressed keys flash orange.
+       <br>⚠ <b>Browser keydown only fires while this tab is focused.</b> Reactive-in-any-app comes from the background daemon instead.
+       <br>💡 <b>Daemon running? Skip Connect for layer editing</b> — edits push to it live and reactive keeps working in every app. Connect is only for the GIF→keys, onboard-effect, and LCD tools (it takes the keyboard from the daemon until you close this tab).</p>
   </div>
-  <div class="panel block" id="daemonPanel">
-    <b>Background daemon</b>
+
+  <div class="card s3" id="daemonPanel" data-pages="home">
+    <div class="cardbar"><span class="grip">⠿</span><h2>Background Daemon</h2></div>
     <p class="hint" style="margin:4px 0 8px">Runs your layers always-on — reactive typing in any app — and takes over whenever this page is closed.</p>
     <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
       <span id="dmnStatus" class="hint" style="margin:0">checking…</span>
-      <label class="sl" title="start the daemon hidden at every login (per-user registry entry, no admin)"><input type="checkbox" id="dmnAuto"> auto-start on login</label>
-      <button id="dmnQuit" title="stop the background daemon until setup.cmd or your next login starts it again — this page keeps working">✖ Quit daemon</button>
+      <label class="sl" title="start the daemon hidden at every login (per-user registry entry, no admin)"><input type="checkbox" id="dmnAuto"> Auto-Start on Login</label>
+      <label class="sl" title="when the board stops ACKing for 30s, restart its USB device (a software replug — clears the wedge; typing drops ~1-2s). Needs the one-time elevated task: install-usb-restart-task.ps1"><input type="checkbox" id="dmnUsbFix"> Auto-Fix Lighting Wedge (USB Restart)</label>
+      <button id="dmnQuit" title="stop the background daemon until setup.cmd or your next login starts it again — this page keeps working">✖ Quit Daemon</button>
+      <button id="dmnStart" hidden title="a web page can't launch programs itself — this shows how to start the daemon">▶ Start Daemon…</button>
     </div>
   </div>
-   </div>
-   <div class="col" id="colR">
-  <div class="panel block" id="gifPanel">
+
+  <div class="card s3" id="toolboxCard" data-pages="home">
+    <div class="cardbar"><span class="grip">⠿</span><h2>Toolbox</h2></div>
+    <button id="exportCfg" title="Download your layer setup as JSON (same format as the daemon's config.json)"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M12 12v6"/><path d="m15 15-3-3-3 3"/></svg> Export</button>
+    <button id="importCfg" title="Load a layer setup from a JSON file (e.g. moved from the file:// page)"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12"/><path d="m8 11 4 4 4-4"/><path d="M8 5H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-4"/></svg> Import</button>
+    <input type="file" id="importFile" accept="application/json,.json" style="display:none">
+    <button id="resetKbBtn" title="Factory-reset the keyboard HARDWARE (recovers a wedged board; clears the keyboard's onboard config/keymap — NOT this page's settings)">⟳ Factory Reset Keyboard</button>
+    <button id="resetSiteBtn" title="Reset THIS page's settings (layers, per-pattern values, LCD calibration, layout) to defaults — keeps your media Library; does NOT touch the keyboard">↺ Reset All Settings</button>
+    <p class="hint" style="margin:6px 0 0">Drag any card by its title bar to rearrange the grid — the layout is saved.</p>
+  </div>
+
+  <div class="card s6" id="logCard" data-pages="home">
+    <div class="cardbar"><span class="grip">⠿</span><h2>Log</h2></div>
+    <div id="log"></div>
+  </div>
+
+  <!-- ========== HOTKEYS ========== -->
+  <div class="card s6" id="kbBoardCard" data-pages="hotkeys">
+    <div class="cardbar"><span class="grip">⠿</span><h2>Pick a Key</h2><span class="aux" style="display:flex;flex-direction:column;align-items:flex-end;gap:1px"><span id="kbSelInfo">no key selected</span><span id="kbSelSub" style="color:var(--warn)" hidden></span></span></div>
+    <div id="kbBoard"></div>
+  </div>
+
+  <div class="card s4" id="bindCard" data-pages="hotkeys">
+    <div class="cardbar"><span class="grip">⠿</span><h2>Assign to Key</h2><span class="aux" id="bdState">needs Connect</span></div>
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:0 0 10px">
+      <span class="hint" id="bdKey" style="font-weight:600">no key selected</span>
+      <button id="bdRevert" disabled title="put the selected key back to its factory character"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg> Restore Default</button>
+    </div>
+    <div class="bdtabs" id="bdTabs"></div>
+    <div id="bdGrid"></div>
+    <p class="hint" id="bdHint" style="margin:10px 0 0"></p>
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:12px;padding-top:10px;border-top:1px solid var(--border)">
+      <button id="bdBackup" disabled title="read the keyboard's current 512-byte keymap and save it (stored on this page + downloaded as JSON)"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/><path d="M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7"/><path d="M7 3v4a1 1 0 0 0 1 1h7"/></svg> Backup Keymap</button>
+      <button id="bdRestore" disabled title="write the backed-up keymap to the keyboard — the recovery for a scrambled keymap (gentler than a factory reset: keeps your onboard effect config)"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/></svg> Restore Keymap</button>
+      <span class="hint" id="bdBackupInfo" style="margin:0"></span>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:8px">
+      <button id="bdToggleAll" disabled title="one keymap pass flips every remapped key back to its normal typing character; a second pass re-applies your custom assignments — for when the letters need to just type"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="m8 3-4 4 4 4"/><path d="M4 7h16"/><path d="m16 21 4-4-4-4"/><path d="M20 17H4"/></svg> <span id="bdToggleLbl">All Remapped Keys → Typing</span></button>
+      <span class="hint" id="bdToggleInfo" style="margin:0"></span>
+    </div>
+  </div>
+
+  <div class="card s2" id="decoTogglesCard" data-pages="hotkeys">
+    <div class="cardbar"><span class="grip">⠿</span><h2>Decorative Light Toggles</h2></div>
+    <p class="hint" style="margin:4px 0 10px">Click a light — your <b>Spacebar</b> becomes its cycle key and a
+       focus overlay opens; <kbd>Esc</kbd> or ✕ restores the Spacebar.</p>
+    <div id="spaceBtns" style="display:flex;flex-wrap:wrap;gap:6px"></div>
+  </div>
+
+  <div class="card s4" id="advKeysCard" data-pages="hotkeys">
+    <div class="cardbar"><span class="grip">⠿</span><h2>Advanced Keys</h2></div>
+    <p class="hint" style="margin:4px 0 10px">Give one key a smarter behavior. Like everything on this tab it lives
+       in the keyboard's keymap — works in every app, no software needed. Pick a key on the board, choose a behavior,
+       Apply. Restore Default undoes it. (The official tool allows up to 40 advanced keys.)<br>
+       <b>⚠ Heads-up:</b> in hardware tests so far these entries write fine but don't take effect (Combination and
+       Toggle both verified inert via Chord check, 2026-06-11) — likely the firmware needs something the official
+       driver sets up that we haven't captured yet. Parked until a comparison session against the official driver.</p>
+    <div class="bdtabs" id="akTabs"></div>
+    <p class="hint" id="akDesc" style="margin:8px 0"></p>
+    <div id="akForm" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"></div>
+    <div style="display:flex;align-items:center;gap:10px;margin-top:10px">
+      <button id="akApply" disabled>Apply</button>
+      <span class="hint" id="akState" style="margin:0"></span>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;margin-top:8px">
+      <button id="akVerify" title="show exactly what Windows receives when you press a key — the way to verify a Combination or Mod-Tap without hunting for an app that reacts to it">⌨ Chord check</button>
+      <span class="hint" id="akVerifyOut" style="margin:0"></span>
+    </div>
+  </div>
+
+  <!-- ========== PROFILES ========== -->
+  <div class="card s4" id="profilesCard" data-pages="profiles">
+    <div class="cardbar"><span class="grip">⠿</span><h2>Profiles</h2><span class="aux" id="profCount"></span></div>
+    <p class="hint" style="margin:4px 0 10px">Snapshot your whole lighting setup — layers, pattern settings, stacking
+       order — as a named profile. Apply, rename, export, or import them; up to 10. Click a name to rename it.</p>
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+      <button id="profSave" class="go"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/><path d="M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7"/><path d="M7 3v4a1 1 0 0 0 1 1h7"/></svg> Save Current as Profile</button>
+      <button id="profImport"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12"/><path d="m8 11 4 4 4-4"/><path d="M8 5H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-4"/></svg> Import</button>
+      <input type="file" id="profFile" accept="application/json,.json" style="display:none">
+    </div>
+    <div id="profList"></div>
+  </div>
+
+  <div class="card s2 faqcard" id="profHelpCard" data-pages="profiles">
+    <div class="cardbar"><span class="grip">⠿</span></div>
+    <h3>What's in a profile?</h3>
+    <p>The full Lighting-tab setup: all four layers with their pattern settings, plus the stacking order — the same
+       data the background daemon runs. Key bindings live in the keyboard's own flash, so they stay put across
+       profile switches. Exported files are daemon-compatible JSON.</p>
+  </div>
+
+  <!-- ========== FAQ ========== -->
+  <div class="card s2 faqcard" id="faq1" data-pages="faq">
+    <div class="cardbar"><span class="grip">⠿</span></div>
+    <h3>What does Connect actually do?</h3>
+    <p>It hands the keyboard from the background daemon to this page and starts your layers automatically — one
+       click, no second step. You only need it for the GIF→keys player and the LCD uploader; plain layer editing
+       pushes to the daemon live without ever connecting.</p>
+  </div>
+  <div class="card s2 faqcard" id="faq2" data-pages="faq">
+    <div class="cardbar"><span class="grip">⠿</span></div>
+    <h3>Reactive layers only respond while this tab is focused?</h3>
+    <p>This only concerns layers whose type is <b>Reactive</b> (whichever level they sit at — other layer types
+       aren't affected). Once this page owns the keyboard (after Connect), it can only see keystrokes typed into
+       this tab — a browser limit. Reactive-in-every-app comes from the background daemon: close this tab (or never
+       Connect) and it takes over within a second.</p>
+  </div>
+  <div class="card s2 faqcard" id="faq3" data-pages="faq">
+    <div class="cardbar"><span class="grip">⠿</span></div>
+    <h3>You don't need Connect to edit layers.</h3>
+    <p>With the daemon running, every layer edit pushes to it live (~½&nbsp;s) and reactive keeps working everywhere.
+       Connect is only for the GIF→keys player, onboard effects, and the LCD uploader.</p>
+  </div>
+  <div class="card s2 faqcard" id="faq4" data-pages="faq">
+    <div class="cardbar"><span class="grip">⠿</span><span class="tbtag">Troubleshooting</span></div>
+    <h3>Lighting froze or went static by itself?</h3>
+    <p>The board sometimes goes <b>mute</b> — it silently stops accepting host lighting (typing still works) and
+       falls back to its saved firmware effect, which usually looks static. USB power events are the main trigger:
+       sleep, or other devices power-cycling on the same bus.</p>
+    <p>Cure ladder: wait ~30&nbsp;s (the daemon fires an automatic USB restart, and some mutes self-recover) →
+       unplug/replug the keyboard (the reliable fix — the daemon reconnects within seconds). To make mutes rarer
+       in the first place, see the "Stop Windows from suspending the keyboard" card.</p>
+  </div>
+  <div class="card s2 faqcard" id="faq7" data-pages="faq">
+    <div class="cardbar"><span class="grip">⠿</span><span class="tbtag">Troubleshooting</span></div>
+    <h3>Stop Windows from suspending the keyboard</h3>
+    <p>Out of the box, Windows is allowed to power-manage the keyboard's USB interfaces — and a USB suspend is
+       exactly what puts the board into its mute state. A one-time fix removes that permission.</p>
+    <p>Right-click <code>th108-daemon\disable-usb-powersave.ps1</code> → <b>Run with PowerShell</b> (it asks for
+       admin), then replug the keyboard once. It clears the per-interface "allow the computer to turn off this
+       device" flags and turns off USB selective suspend in your power plan. Run it again with <code>-Enable</code>
+       to undo both.</p>
+  </div>
+  <div class="card s2 faqcard" id="faq8" data-pages="faq">
+    <div class="cardbar"><span class="grip">⠿</span><span class="tbtag">Troubleshooting</span></div>
+    <h3>"Online" but the keyboard isn't connected?</h3>
+    <p>Three indicators, three different things. The header <b>Online</b> tag = the background daemon
+       <i>process</i> is running. The Background Daemon card says whether <i>it</i> currently holds the keyboard.
+       The Keyboard card's status is whether <i>this page</i> holds it (Connect). They can legitimately disagree —
+       e.g. daemon Online and driving the keyboard while the page shows "not connected" is the normal resting
+       state.</p>
+  </div>
+  <div class="card s2 faqcard" id="faq6" data-pages="faq">
+    <div class="cardbar"><span class="grip">⠿</span></div>
+    <h3>Where's the official driver?</h3>
+    <p>Epomaker's official web driver lives at
+       <a href="https://epomaker.driveall.cn/" target="_blank" rel="noopener">epomaker.driveall.cn</a> —
+       useful for the firmware features this suite doesn't cover yet. Two warnings: quit the background daemon
+       first (Home tab) — only one controller can hold the keyboard, otherwise the official site errors out on
+       connect — and it has been seen scrambling keymaps when changing bindings, so take a Backup Keymap on the
+       Hotkeys tab before using it.</p>
+  </div>
+  <div class="card s2 faqcard" id="faq9" data-pages="faq">
+    <div class="cardbar"><span class="grip">⠿</span></div>
+    <h3>What do the two reset buttons clear?</h3>
+    <p><b>↺ Reset All Settings</b> resets this page: layers, per-pattern values, LCD calibration, and panel
+       layout. Kept: your media Library, saved Profiles (delete those individually on the Profiles tab), and the
+       keymap backup + remapped-key marks — those mirror the keyboard itself, which this reset never touches.</p>
+    <p><b>⟳ Factory Reset Keyboard</b> is the opposite: it resets the keyboard's hardware — onboard config and
+       keymap, including your key bindings — and changes nothing on this page.</p>
+  </div>
+  <div class="card s2 faqcard" id="faq5" data-pages="faq">
+    <div class="cardbar"><span class="grip">⠿</span></div>
+    <h3>Why does the "Media" layer type do nothing?</h3>
+    <p>In the Layer Compositor, one of the choices in a layer's type dropdown is <b>Media</b>. It's reserved for
+       playing a GIF or video <i>inside</i> the layer stack (so it could blend with the other layers), but that part
+       of the engine isn't built yet — a Media layer currently renders nothing. To put a GIF on your keys today, use
+       the GIF → Keyboard Lighting card on the Lighting tab; it plays in place of the layers.</p>
+  </div>
+
+  <!-- ========== LIGHTING ========== -->
+  <div class="card s6" id="layersPanel" data-pages="lighting">
+    <div class="cardbar"><span class="grip">⠿</span><h2>Layer Compositor</h2>
+      <span class="aux">card order = layer stack · last card = top layer</span></div>
+    <div id="layerCards"></div>
+  </div>
+
+  <div class="card s6" id="gifPanel" data-pages="lighting">
+    <div class="cardbar"><span class="grip">⠿</span><h2 style="display:flex;align-items:center;gap:8px">GIF <svg width="22" height="14" viewBox="0 0 22 14" fill="currentColor" aria-hidden="true" style="flex:none"><path d="M1 5.5h12V1l8 6-8 6V8.5H1z"/></svg> Keyboard Lighting</h2></div>
     <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-      <b>GIF → keyboard lighting</b>
+      <svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M10.3 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v10l-3.1-3.1a2 2 0 0 0-2.814.014L6 21"/><path d="m14 19.5 3-3 3 3"/><path d="M17 22v-5.5"/><circle cx="9" cy="9" r="2"/></svg>
       <input type="file" id="gifFile" accept="image/*,video/*" />
       <button id="gifPlay" class="go" disabled>Play GIF ▶</button>
       <button id="gifStop" class="stop" disabled>Stop GIF ⏹</button>
-      <button id="gifReset">reset position</button>
+      <button id="gifReset">Reset Position</button>
     </div>
     <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:8px">
-      <input id="gifUrl" type="text" placeholder="paste an image / GIF URL…" style="flex:1;min-width:180px;font:inherit;background:#0d1117;color:#e6edf3;border:1px solid #30363d;border-radius:6px;padding:5px 8px">
+      <input id="gifUrl" type="text" class="tin" placeholder="paste an image / GIF URL…" style="flex:1;min-width:180px">
       <button id="gifUrlLoad">Load URL</button>
-      <button id="gifPaste">Paste image (Ctrl+V)</button>
-      <button id="gifSeqBtn" title="pick multiple image files = one frame each">+ PNG frames</button>
+      <button id="gifPaste">Paste Image (Ctrl+V)</button>
+      <button id="gifSeqBtn" title="pick multiple image files = one frame each">+ PNG Frames</button>
       <input type="file" id="gifSeq" accept="image/*" multiple style="display:none">
-      <button id="gifFolderBtn" title="pick a folder of images = one frame each">+ folder</button>
+      <button id="gifFolderBtn" title="pick a folder of images = one frame each">+ Folder</button>
       <input type="file" id="gifFolder" webkitdirectory style="display:none">
       <button id="gifSave" title="save the currently loaded media to the library">★ Add to Library</button>
       <button id="gifLibBtn">📚 Library</button>
     </div>
-    <div id="gifLib" style="display:none;margin-top:8px;padding:8px;background:#0d1117;border:1px solid #30363d;border-radius:8px"></div>
+    <div id="gifLib" style="display:none;margin-top:8px;padding:10px;background:var(--inset);border-radius:14px"></div>
     <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-top:8px">
-      <label class="sl">zoom <span class="srange"><input type="range" id="gifZoom" min="20" max="500" value="100"><i class="tick" style="left:calc(7px + (100% - 14px)*.167)"></i></span></label>
-      <label class="sl">rotate <span class="srange" id="gifRotRange"><input type="range" id="gifRot" min="0" max="360" value="0"></span></label>
-      <label class="sl">saturation <span class="srange"><input type="range" id="gifSat" min="100" max="300" value="170"><i class="tick" style="left:calc(7px + (100% - 14px)*.35)"></i></span></label>
-      <label class="sl">contrast <span class="srange"><input type="range" id="gifContrast" min="50" max="250" value="100"><i class="tick" style="left:calc(7px + (100% - 14px)*.25)"></i></span></label>
-      <label class="sl">gamma <span class="srange"><input type="range" id="gifGamma" min="100" max="300" value="180"><i class="tick" style="left:calc(7px + (100% - 14px)*.40)"></i></span></label>
-      <label class="sl">speed <span class="srange"><input type="range" id="gifSpeed" min="25" max="400" value="100"><i class="tick" style="left:calc(7px + (100% - 14px)*.20)"></i></span></label>
-      <label class="sl">fps <span class="srange"><input type="range" id="gifFps" min="5" max="60" value="60"><i class="tick" style="left:calc(7px + (100% - 14px)*0.4545)"></i></span><input type="number" id="gifFpsNum" class="numin" min="5" max="60" value="60"></label>
-      <label class="sl" title="freeze on the current frame (no animation)"><input type="checkbox" id="gifStatic"> static</label>
-      <label class="sl">brightness <span class="srange"><input type="range" id="gifBri" min="10" max="100" value="100"></span></label>
-      <label class="sl">map
-        <select id="gifMap" style="font:inherit;background:#0d1117;color:#e6edf3;border:1px solid #30363d;border-radius:6px;padding:2px 4px">
+      <label class="sl">Zoom <span class="srange"><input type="range" id="gifZoom" min="20" max="500" value="100"><i class="tick" style="left:calc(7px + (100% - 14px)*.167)"></i></span></label>
+      <label class="sl">Rotate <span class="srange" id="gifRotRange"><input type="range" id="gifRot" min="0" max="360" value="0"></span></label>
+      <label class="sl">Saturation <span class="srange"><input type="range" id="gifSat" min="100" max="300" value="170"><i class="tick" style="left:calc(7px + (100% - 14px)*.35)"></i></span></label>
+      <label class="sl">Contrast <span class="srange"><input type="range" id="gifContrast" min="50" max="250" value="100"><i class="tick" style="left:calc(7px + (100% - 14px)*.25)"></i></span></label>
+      <label class="sl">Gamma <span class="srange"><input type="range" id="gifGamma" min="100" max="300" value="180"><i class="tick" style="left:calc(7px + (100% - 14px)*.40)"></i></span></label>
+      <label class="sl">Speed <span class="srange"><input type="range" id="gifSpeed" min="25" max="400" value="100"><i class="tick" style="left:calc(7px + (100% - 14px)*.20)"></i></span></label>
+      <label class="sl">FPS <span class="srange"><input type="range" id="gifFps" min="5" max="30" value="30"></span><input type="number" id="gifFpsNum" class="numin" min="5" max="30" value="30"></label>
+      <label class="sl" title="freeze on the current frame (no animation)"><input type="checkbox" id="gifStatic"> Static</label>
+      <label class="sl">Brightness <span class="srange"><input type="range" id="gifBri" min="10" max="100" value="100"></span></label>
+      <label class="sl">Map
+        <select id="gifMap">
           <option value="physical">Physical</option><option value="grid">Grid (uniform)</option>
         </select></label>
-      <label class="sl">sample
-        <select id="gifSample" style="font:inherit;background:#0d1117;color:#e6edf3;border:1px solid #30363d;border-radius:6px;padding:2px 4px">
+      <label class="sl">Sample
+        <select id="gifSample">
           <option value="average">Average (area)</option><option value="center">Center pixel</option><option value="gaussian">Gaussian (center-weighted)</option><option value="vivid">Most vivid pixel</option><option value="bright">Brightest pixel (text/logos)</option><option value="dominant">Dominant color</option><option value="standout">Standout (max contrast)</option>
         </select></label>
-      <label class="sl">bars
-        <select id="gifBars" style="font:inherit;background:#0d1117;color:#e6edf3;border:1px solid #30363d;border-radius:6px;padding:2px 4px">
-          <option value="black">Black</option><option value="sampled">Sampled</option><option value="custom">Custom →</option>
+      <label class="sl">Bars
+        <select id="gifBars">
+          <option value="black">Black</option><option value="sampled">Sampled</option><option value="custom">Custom…</option>
         </select></label>
-      <input type="color" id="gifBarColor" value="#000000" style="width:38px;height:26px;background:none;border:1px solid #30363d;border-radius:6px">
+      <input type="color" id="gifBarColor" value="#000000" style="width:38px;height:26px">
     </div>
     <div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:10px">
       <div>
         <div class="hint" style="margin:0 0 4px">position — drag to pan, zoom to scale (blue box = the keyboard area)</div>
-        <canvas id="gifSrc" width="360" height="190" style="border:1px solid #30363d;border-radius:4px;background:#000;cursor:move;touch-action:none"></canvas>
+        <canvas id="gifSrc" class="cv" width="360" height="190" style="cursor:move;touch-action:none"></canvas>
       </div>
       <div>
         <div class="hint" style="margin:0 0 4px">keyboard preview — what each key will show</div>
-        <canvas id="gifKb" width="468" height="135" style="border:1px solid #30363d;border-radius:4px;background:#0d1117"></canvas>
+        <canvas id="gifKb" class="cv" width="468" height="135" style="background:#0d1117"></canvas>
       </div>
     </div>
     <div class="hint" id="gifInfo" style="margin-top:6px">load an image/GIF — sampled onto the 104 keys (physical layout, ~3.46:1). Raw RGB, area-averaged. Plays instead of the pulse effect; bold shapes read best.</div>
   </div>
 
-  <div class="panel block" id="onboardPanel">
-    <b>Onboard effects</b>
+  <!-- PARKED (user request): hidden until onboard-vs-custom pattern-accuracy comparison is needed.
+       Kept in the DOM with data-pages="" so TH108Onboard's bindings stay intact — just never shown. -->
+  <div class="card s3" id="onboardPanel" data-pages="">
+    <div class="cardbar"><span class="grip">⠿</span><h2>Onboard Effects</h2></div>
     <p class="hint" style="margin:4px 0 10px">Firmware effects — run on the keyboard itself, persist without a PC. Setting one stops the live layers/GIF.</p>
     <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
       <label class="sl">effect
-        <select id="obEffect" style="font:inherit;background:#0d1117;color:#e6edf3;border:1px solid #30363d;border-radius:6px;padding:3px 6px">
+        <select id="obEffect">
           <option value="1">1 · Static Bright</option>
           <option value="2">2 · Single Point On</option>
           <option value="3">3 · Single Point Off</option>
@@ -215,13 +631,31 @@
     </div>
   </div>
 
-  <div id="log" class="block"></div>
-   </div>
+  <!-- ========== LCD SCREEN ========== -->
+  <div class="card s6" id="lcdCard" data-pages="lcd">
+    <div class="cardbar"><span class="grip">⠿</span><h2>LCD Screen</h2></div>
+    <div id="lcdBody"></div>
   </div>
 
-<div id="lcdOverlay" class="lcdOverlay" style="display:none">
-  <div class="lcdOverlayBar"><button id="lcdClose" title="Back (Esc)">← Back</button><b>LCD screen</b><span id="lcdDevNote" class="hint"></span></div>
-  <div id="lcdBody"></div>
+</div>
+
+<!-- spacebar focus overlay + keymap progress (key binder) -->
+<div id="spaceOverlay" class="modal">
+  <div class="mbox">
+    <button id="spaceExit" title="exit and restore the Spacebar">✕</button>
+    <div class="mtag">YOUR SPACEBAR NOW CONTROLS</div>
+    <div id="spaceTitle">—</div>
+    <div id="spaceDesc">Tap <kbd>Space</kbd> to cycle.</div>
+    <div id="spaceNote" class="hint" style="display:none;margin:14px auto 0;max-width:430px"></div>
+    <div class="hint" style="margin-top:18px">Click ✕ or press <kbd>Esc</kbd> to exit and restore your Spacebar.</div>
+  </div>
+</div>
+<div id="kmProg" class="modal">
+  <div class="mbox" style="min-width:360px">
+    <div id="kmProgLbl" style="font-weight:600">Updating keyboard…</div>
+    <div id="kmProgBar"><div id="kmProgFill"></div></div>
+    <div id="kmProgPct">0%</div>
+  </div>
 </div>
 
 <script src="th108-media-lib.js"></script>
@@ -229,24 +663,22 @@
 <script src="th108-lcd.js"></script>
 <script src="th108-hid.js"></script>
 <script src="th108-daemon-client.js"></script>
+<script src="th108-layers-ui.js"></script>
+<script src="th108-gif-panel.js"></script>
+<script src="th108-onboard.js"></script>
+<script src="th108-binder.js"></script>
+<script src="th108-profiles.js"></script>
 <script>
 // shared engine (board map, renderers, compositor, state) — pull the bits we reference by short name
 const {KEYMAP, INDICES, NLED, BOARDW, BOARDH, hexToRgb} = TH108Engine;
-// uniform-grid positions (LED index -> [col,row]); the "Grid" mapping gives every key an equal cell — best for legible text/pixel art.
-// (Physical LAYOUT/BOARDW/BOARDH + KEYMAP/INDICES now live in th108-engine.js; GRID stays here because it's host-only — the engine's keyCell is physical-only.)
-const GW=21, GH=6, GRID={"0":[0,0],"1":[2,0],"2":[3,0],"3":[4,0],"4":[5,0],"5":[6,0],"6":[7,0],"7":[8,0],"8":[9,0],"9":[10,0],"10":[11,0],"11":[12,0],"12":[13,0],"16":[0,1],"17":[1,1],"18":[2,1],"19":[3,1],"20":[4,1],"21":[5,1],"22":[6,1],"23":[7,1],"24":[8,1],"25":[9,1],"26":[10,1],"27":[11,1],"28":[12,1],"29":[17,1],"30":[18,1],"31":[19,1],"32":[0,2],"33":[1,2],"34":[2,2],"35":[3,2],"36":[4,2],"37":[5,2],"38":[6,2],"39":[7,2],"40":[8,2],"41":[9,2],"42":[10,2],"43":[11,2],"44":[12,2],"45":[17,2],"46":[18,2],"47":[19,2],"48":[0,3],"49":[1,3],"50":[2,3],"51":[3,3],"52":[4,3],"53":[5,3],"54":[6,3],"55":[7,3],"56":[8,3],"57":[9,3],"58":[10,3],"59":[11,3],"60":[13,2],"61":[17,3],"62":[18,3],"63":[19,3],"64":[0,4],"65":[2,4],"66":[3,4],"67":[4,4],"68":[5,4],"69":[6,4],"70":[7,4],"71":[8,4],"72":[9,4],"73":[10,4],"74":[11,4],"75":[12,4],"76":[13,3],"77":[17,4],"78":[18,4],"79":[19,4],"80":[0,5],"81":[1,5],"82":[2,5],"83":[6,5],"84":[10,5],"85":[11,5],"86":[12,5],"87":[13,5],"88":[14,5],"89":[15,5],"90":[15,4],"91":[16,5],"92":[13,1],"93":[18,5],"94":[19,5],"95":[20,4],"99":[14,0],"100":[15,0],"102":[16,0],"103":[14,1],"104":[15,1],"105":[16,1],"106":[14,2],"107":[15,2],"108":[16,2],"109":[20,1],"110":[20,2]};
-// host keyCell: honors the #gifMap select (grid vs physical) for the GIF tool; physical case delegates to the engine.
-function keyCell(idx){                                // -> [nx,ny,nw,nh] normalized center+size, per the active mapping
-  if(document.getElementById('gifMap').value==='grid'){ const G=GRID[idx]; if(G) return [(G[0]+0.5)/GW,(G[1]+0.5)/GH,1/GW,1/GH]; }
-  return TH108Engine.keyCell(idx);   // physical layout (unknown index → null, no phantom key)
-}
+// (GRID + the grid-aware keyCell moved into th108-gif-panel.js — they are GIF-tool-only)
 
 // ===== WebHID transport — extracted to th108-hid.js (binds 0xFF68/0x61 + ACK-gated 0x32 streaming) =====
 const out=document.getElementById('log');
 function log(m,c=''){ const d=document.createElement('div'); if(c)d.className=c;
   d.textContent='['+new Date().toISOString().substr(11,12)+'] '+m; out.appendChild(d);
   while(out.childNodes.length>200) out.removeChild(out.firstChild); out.scrollTop=out.scrollHeight; }
-function setStatus(s,c=''){ const e=document.getElementById('status'); e.textContent=s; e.className=c; }
+function setStatus(s,c='',tip=''){ const e=document.getElementById('status'); e.textContent=s; e.className='aux '+(c||'dim'); e.title=tip; }   // tip = hover tooltip for the jargon behind a friendly status
 
 let _wasRunning=false;   // layers were running when the keyboard went away (sleep/unplug/wedge) → resume on re-bind; cleared only by a deliberate Stop
 const HID=TH108Hid.create({
@@ -260,23 +692,36 @@ const HID=TH108Hid.create({
   // the daemon re-grabbed mid-pick and fought the page. (If the connect ends with no device, the click
   // handler / boot path stops the beats and POSTs /resume so the daemon isn't left orphaned.)
   beforeConnect:async()=>{ await DC.ping(); if(DC.present){ await DC.yieldDevice(); DC.heartbeatStart(); } },
-  beforeAutoReconnect:async()=>{ if(DC.present){ await DC.yieldDevice(); DC.heartbeatStart(); } },   // page-load path: DC.ping() already ran
+  beforeAutoReconnect:async()=>{ await DC.ping(); if(DC.present){ await DC.yieldDevice(); DC.heartbeatStart(); } },   // also the WAKE rebind path now — presence may have changed since boot, so ping first
+  onGrantLost:()=>{   // true replug: Chrome revoked the grant, only a click recovers — hand lighting back so the daemon drives instead of nobody
+    if(DC.beating){ DC.heartbeatStop(); DC.resume(); log('keyboard was replugged — lighting handed back to the daemon; click Connect Keyboard to take over again','dim'); }
+  },
+  onWedged:async()=>{   // mute survived fresh handles — same software replug the daemon uses on itself, requested via its API (a page can't run schtasks)
+    const r=await DC.usbFix();
+    if(r.fired) log('⚡ board wedged — asked the daemon to USB-restart the keyboard (typing drops ~1-2s); everything reconnects by itself','err');
+    else log('board wedged and auto-recovery unavailable ('+(r.reason||'unknown')+') — unplug/replug the keyboard, then click Connect Keyboard','err');
+  },
   onBound:devs=>{
     document.getElementById('start').disabled=false;
-    if(gifFrames.length) document.getElementById('gifPlay').disabled=false;
+    GIF.onDeviceBound();
     TH108LCD.setDevices(devs);
+    BINDER.setConnected(true);    // key-binding actions need the page to hold the device
+    hdrConnSync();                // header Connect flashes yellow and leaves
   },
   onConnected:()=>{   // tell the daemon's watchdog we're alive & holding the device
     DC.heartbeatStart();
     // a replug revokes the WebHID grant (no serial number on the TH108), so recovery is a manual Connect click —
     // honor the pending resume intent here too, making replug recovery ONE click instead of Connect+Start
     if(_wasRunning){ _wasRunning=false; start(); log('layers resumed','ok'); }
+    else if(!running && !GIF.playing){ start(); }   // an explicit Connect click auto-starts the layers — there is no two-step procedure
   },
   onDisconnected:()=>{
     _wasRunning=_wasRunning||running;   // don't overwrite an intent already captured by stopHost (the write fails before the disconnect event on unplug)
     if(running){ running=false; if(layerW) layerW.postMessage({stop:true}); }
     try{ TH108LCD.setDevices({}); }catch(_){ }          // the screen handle is stale too
+    try{ BINDER.setConnected(false); }catch(_){ }       // binding actions gate back to "needs Connect"
     document.getElementById('start').disabled=true; document.getElementById('stop').disabled=true;
+    hdrConnSync();                                      // header Connect returns
   },
   onReconnected:()=>{
     DC.heartbeatStart();
@@ -294,6 +739,10 @@ DC.mountPanel();   // Background-daemon panel: status readout, auto-start toggle
 
 // ===== layer compositor engine =====
 function fpsCap(){ return +document.getElementById('gifFps').value || 60; }   // global output FPS cap (shared with GIF) — lower = less compute
+// slider detent helpers — shared by the GIF panel module and the layer-cards module (injected into both)
+const flashSnap=el=>{ el.classList.add('snapped'); clearTimeout(el._st); el._st=setTimeout(()=>el.classList.remove('snapped'),250); };   // thumb flashes on snap
+const snap=(el,target,thr)=>{ if(Math.abs((+el.value)-target)<=thr){ if(+el.value!==target) el.value=target; if(!el._sn){ el._sn=true; flashSnap(el); } } else el._sn=false; };
+const snapMul=(el,step,thr)=>{ const v=+el.value, nr=Math.round(v/step)*step; if(Math.abs(v-nr)<=thr){ if(v!==nr) el.value=nr; if(el._sn!==nr){ el._sn=nr; flashSnap(el); } } else el._sn=null; };
 // add a typeable hex text box next to every <input type=color> within `scope` (idempotent)
 function attachHex(scope){
   if(!scope) return;
@@ -318,7 +767,7 @@ function attachHex(scope){
 
 // ===== engine-backed layer + reactive state =====
 // state.layers (4 fixed layers, 0=bottom…3=top), state.react (per-LED-index reactive buffers), state.lastFlat/lastSent.
-// restoreLayers() later overlays saved settings onto these defaults in place (same as the old in-place restore).
+// LUI.init() later overlays saved settings onto these defaults in place (same as the old in-place restore).
 const state=TH108Engine.createState(TH108Engine.defaultLayers());
 window.addEventListener('keydown',(e)=>{
   if(!running || e.repeat) return;                       // ignore OS auto-repeat so a held key holds (doesn't re-trigger/loop)
@@ -358,7 +807,7 @@ if(layerW) layerW.onmessage=layerTick;
 
 function start(){
   if(running||!HID.device) return;
-  if(gifPlaying){ gifStopFn(); }                            // layers + GIF are mutually exclusive
+  if(GIF.playing){ GIF.stop(); }                            // layers + GIF are mutually exclusive
   running=true; obActive=false; state.lastFlat=null; state.lastSent=0; HID.resetStalls();
   state.react.fg.fill(0); state.react.t.fill(-1e12); state.react.down.fill(0); state.react.up.fill(-1e12);
   for(const L of state.layers) L.lastTick=0;
@@ -379,583 +828,284 @@ async function stop(){
   // writers → wedge). The daemon re-grabs only when the page releases the device (beforeunload).
 }
 
-// ===== GIF -> per-key lighting: physical-layout sampling + drag/zoom positioning, stream via 0x32, loop =====
-const MAXDIM=340;                                    // cap decoded frame size (we only need ~104 samples) — keeps memory/CPU low
-let gifFrames=[], gifPlaying=false, gifIdx=0, currentSource=null, inFlight=false;   // currentSource = what to save to the library ({kind:'single',blob,name} | {kind:'seq',blobs,name})
-let gifPrevLayers=false;   // layers were running when Play GIF was clicked → Stop GIF hands back to them instead of leaving the board to the firmware
-// background tabs throttle main-thread setTimeout to ~1fps; a Web Worker timer keeps playback at full rate when unfocused
-const tickW=(()=>{ try{ return new Worker(URL.createObjectURL(new Blob(['let t;onmessage=e=>{if(e.data.stop){clearTimeout(t);return;}clearTimeout(t);t=setTimeout(()=>postMessage(1),e.data.delay);};'],{type:'text/javascript'}))); }catch(_){ return null; } })();
-let czoom=1, cpanX=0, cpanY=0, srcTmp=null;          // GIF position transform (source-pixel pan + zoom)
-function gifBri(){ return (+document.getElementById('gifBri').value)/100; }
-function gifSpeed(){ return (+document.getElementById('gifSpeed').value)/100; }      // playback speed multiplier
-function gifRotRad(){ return (+document.getElementById('gifRot').value)*Math.PI/180; }  // GIF rotation
-// the board-aspect source rect that maps onto the keyboard, given zoom/pan — clamped to the source
-function gifCrop(SW,SH){
-  const tr=BOARDW/BOARDH, ir=SW/SH; let cw0,ch0;
-  if(ir>tr){ ch0=SH; cw0=SH*tr; } else { cw0=SW; ch0=SW/tr; }
-  const cw=cw0/czoom, ch=ch0/czoom, mX=(SW-cw)/2, mY=(SH-ch)/2;
-  cpanX = mX>0 ? Math.max(-mX,Math.min(mX,cpanX)) : 0;   // czoom<1 (zoomed out past cover) → crop exceeds source → center it
-  cpanY = mY>0 ? Math.max(-mY,Math.min(mY,cpanY)) : 0;
-  return {cx:(SW-cw)/2+cpanX, cy:(SH-ch)/2+cpanY, cw, ch};
-}
-// bar-fill color for keys whose sample falls outside the source (zoomed out / fit)
-function barColor(fr){
-  const m=document.getElementById('gifBars').value;
-  if(m==='custom'){ const h=document.getElementById('gifBarColor').value; return [parseInt(h.substr(1,2),16),parseInt(h.substr(3,2),16),parseInt(h.substr(5,2),16)]; }
-  if(m==='sampled') return fr.edge||[0,0,0];
-  return [0,0,0];
-}
-// map each key's source patch -> one raw rgb, via the chosen strategy (saturation/etc. applied later at output)
-function sampleKeyColors(fr){
-  const data=fr.img.data, SW=fr.w, SH=fr.h, cr=gifCrop(SW,SH), bc=barColor(fr), rgb=new Uint8Array(INDICES.length*3);
-  const mode=document.getElementById('gifSample').value, N = mode==='center' ? 0 : 4;   // 0 = single center sample, else 5×5 grid (denser → catches thin strokes)
-  const rot=gifRotRad(), cs=Math.cos(rot), sn=Math.sin(rot), ccx=cr.cx+cr.cw/2, ccy=cr.cy+cr.ch/2;   // rotate sampling around crop center
-  for(let k=0;k<INDICES.length;k++){
-    const c=keyCell(INDICES[k]); if(!c){ rgb[k*3]=rgb[k*3+1]=rgb[k*3+2]=0; continue; } const nx=c[0],ny=c[1],nw=c[2],nh=c[3];
-    const sx=cr.cx+(nx-nw/2)*cr.cw, sy=cr.cy+(ny-nh/2)*cr.ch, sw=nw*cr.cw, sh=nh*cr.ch;
-    const SR=[],SG=[],SB=[],SU=[],SV=[];                       // in-bounds samples of the patch
-    for(let iy=0;iy<=N;iy++)for(let ix=0;ix<=N;ix++){
-      const u=N?ix/N:0.5, v=N?iy/N:0.5; let fx=sx+sw*u, fy=sy+sh*v;
-      if(rot){ const dx=fx-ccx, dy=fy-ccy; fx=ccx+dx*cs+dy*sn; fy=ccy-dx*sn+dy*cs; }   // rotate sampling grid → image appears rotated
-      if(fx<0||fy<0||fx>=SW||fy>=SH) continue;
-      const o=((fy|0)*SW+(fx|0))*4; SR.push(data[o]); SG.push(data[o+1]); SB.push(data[o+2]); SU.push(u); SV.push(v);
-    }
-    const t=k*3, n=SR.length; let R,G,B;
-    if(!n){ rgb[t]=bc[0]; rgb[t+1]=bc[1]; rgb[t+2]=bc[2]; continue; }   // fully outside → bar color
-    if(mode==='vivid'){                                        // most saturated pixel
-      let bi=0,bs=-1; for(let i=0;i<n;i++){ const s=Math.max(SR[i],SG[i],SB[i])-Math.min(SR[i],SG[i],SB[i]); if(s>bs){bs=s;bi=i;} } R=SR[bi];G=SG[bi];B=SB[bi];
-    } else if(mode==='bright'){                                 // brightest pixel — any bright stroke in the patch lights the key (legible text/logos)
-      let bi=0,bl=-1; for(let i=0;i<n;i++){ const L=0.299*SR[i]+0.587*SG[i]+0.114*SB[i]; if(L>bl){bl=L;bi=i;} } R=SR[bi];G=SG[bi];B=SB[bi];
-    } else if(mode==='standout'){                              // pixel furthest from the patch average (max local contrast)
-      let mr=0,mg=0,mb=0; for(let i=0;i<n;i++){mr+=SR[i];mg+=SG[i];mb+=SB[i];} mr/=n;mg/=n;mb/=n;
-      let bi=0,bd=-1; for(let i=0;i<n;i++){ const dr=SR[i]-mr,dg=SG[i]-mg,db=SB[i]-mb,d=dr*dr+dg*dg+db*db; if(d>bd){bd=d;bi=i;} } R=SR[bi];G=SG[bi];B=SB[bi];
-    } else if(mode==='dominant'){                              // most common color (quantised to 4 levels/channel), members averaged
-      const cnt={}; for(let i=0;i<n;i++){ const q=((SR[i]>>6)<<4)|((SG[i]>>6)<<2)|(SB[i]>>6); (cnt[q]||(cnt[q]=[])).push(i); }
-      let best=null,bn=0; for(const q in cnt){ if(cnt[q].length>bn){bn=cnt[q].length;best=cnt[q];} }
-      let r=0,g=0,b=0; for(const i of best){r+=SR[i];g+=SG[i];b+=SB[i];} R=r/best.length;G=g/best.length;B=b/best.length;
-    } else if(mode==='gaussian'){                              // center-weighted average
-      let r=0,g=0,b=0,w=0; for(let i=0;i<n;i++){ const du=SU[i]-0.5,dv=SV[i]-0.5,wt=Math.exp(-(du*du+dv*dv)*8); r+=SR[i]*wt;g+=SG[i]*wt;b+=SB[i]*wt;w+=wt; } R=r/w;G=g/w;B=b/w;
-    } else {                                                   // average (area) + center
-      let r=0,g=0,b=0; for(let i=0;i<n;i++){r+=SR[i];g+=SG[i];b+=SB[i];} R=r/n;G=g/n;B=b/n;
-    }
-    rgb[t]=R|0; rgb[t+1]=G|0; rgb[t+2]=B|0;
-  }
-  return rgb;
-}
-function resampleAll(){ for(const fr of gifFrames) fr.rgb=sampleKeyColors(fr); }
-function adjustRGB(r,g,b){                            // saturation + contrast + gamma + brightness (help the LEDs vs the monitor)
-  const s=(+document.getElementById('gifSat').value)/100, c=(+document.getElementById('gifContrast').value)/100,
-        gm=(+document.getElementById('gifGamma').value)/100, br=gifBri();
-  if(s!==1){ const y=0.299*r+0.587*g+0.114*b; r=y+(r-y)*s; g=y+(g-y)*s; b=y+(b-y)*s; }
-  if(c!==1){ r=(r-128)*c+128; g=(g-128)*c+128; b=(b-128)*c+128; }                                // contrast — push colors apart so they pop
-  r=Math.max(0,Math.min(255,r)); g=Math.max(0,Math.min(255,g)); b=Math.max(0,Math.min(255,b));
-  if(gm!==1){ r=255*Math.pow(r/255,gm); g=255*Math.pow(g/255,gm); b=255*Math.pow(b/255,gm); }   // crush faint bleed → truer color on the LEDs
-  return [Math.max(0,Math.min(255,r*br))|0, Math.max(0,Math.min(255,g*br))|0, Math.max(0,Math.min(255,b*br))|0];
-}
-function gifFlat(rgb){                                // -> flat [idx,r,g,b,...] for sendFrame
-  const flat=new Array(INDICES.length*4);
-  for(let k=0;k<INDICES.length;k++){ const t=k*3,o=k*4, c=adjustRGB(rgb[t],rgb[t+1],rgb[t+2]);
-    flat[o]=INDICES[k]; flat[o+1]=c[0]; flat[o+2]=c[1]; flat[o+3]=c[2]; }
-  return flat;
-}
-// keyboard-shaped preview: each key drawn at its physical rect, in its sampled color
-function drawKb(rgb){
-  const cv=document.getElementById('gifKb'), ctx=cv.getContext('2d'), pad=4, W=cv.width-2*pad, H=cv.height-2*pad;
-  ctx.fillStyle='#0d1117'; ctx.fillRect(0,0,cv.width,cv.height);
-  for(let k=0;k<INDICES.length;k++){ const q=keyCell(INDICES[k]); if(!q) continue; const t=k*3, c=adjustRGB(rgb[t],rgb[t+1],rgb[t+2]);
-    ctx.fillStyle='rgb('+c[0]+','+c[1]+','+c[2]+')';
-    ctx.fillRect(pad+(q[0]-q[2]/2)*W+0.75, pad+(q[1]-q[3]/2)*H+0.75, Math.max(1,q[2]*W-1.5), Math.max(1,q[3]*H-1.5)); }
-}
-// positioning canvas: the source frame (fit) with the keyboard crop-box overlaid; dims the cropped-out area
-function drawSrc(){
-  const cv=document.getElementById('gifSrc'), ctx=cv.getContext('2d');
-  ctx.fillStyle='#000'; ctx.fillRect(0,0,cv.width,cv.height);
-  const fr=gifFrames[gifIdx]; if(!fr){ cv._map=null; return; }
-  if(!srcTmp) srcTmp=document.createElement('canvas');
-  srcTmp.width=fr.w; srcTmp.height=fr.h; srcTmp.getContext('2d').putImageData(fr.img,0,0);
-  const sc=Math.min(cv.width/fr.w, cv.height/fr.h), dw=fr.w*sc, dh=fr.h*sc, ox=(cv.width-dw)/2, oy=(cv.height-dh)/2;
-  ctx.drawImage(srcTmp, ox,oy,dw,dh);
-  const cr=gifCrop(fr.w,fr.h), rx=ox+cr.cx*sc, ry=oy+cr.cy*sc, rw=cr.cw*sc, rh=cr.ch*sc, rot=gifRotRad();
-  if(rot){                                                    // rotated: just outline the (rotated) sampled region
-    ctx.save(); ctx.translate(rx+rw/2, ry+rh/2); ctx.rotate(-rot);
-    ctx.strokeStyle='#58a6ff'; ctx.lineWidth=2; ctx.strokeRect(-rw/2,-rh/2,rw,rh); ctx.restore();
-  } else {                                                    // axis-aligned: dim the cropped-out area + outline
-    ctx.fillStyle='rgba(1,4,9,.6)';
-    ctx.fillRect(ox,oy,dw,ry-oy); ctx.fillRect(ox,ry+rh,dw,oy+dh-(ry+rh));
-    ctx.fillRect(ox,ry,rx-ox,rh); ctx.fillRect(rx+rw,ry,ox+dw-(rx+rw),rh);
-    ctx.strokeStyle='#58a6ff'; ctx.lineWidth=2; ctx.strokeRect(rx,ry,rw,rh);
-  }
-  // subtle orientation arrow at the crop center (up = 0°, rotates with the angle)
-  const acx=rx+rw/2, acy=ry+rh/2, al=Math.max(12,Math.min(rw,rh)*0.28);
-  ctx.save(); ctx.translate(acx,acy); ctx.rotate(-rot);
-  ctx.strokeStyle='rgba(88,166,255,.7)'; ctx.fillStyle='rgba(88,166,255,.7)'; ctx.lineWidth=2;
-  ctx.beginPath(); ctx.moveTo(0,al/2); ctx.lineTo(0,-al/2); ctx.stroke();
-  ctx.beginPath(); ctx.moveTo(0,-al/2); ctx.lineTo(-al*0.24,-al*0.22); ctx.lineTo(al*0.24,-al*0.22); ctx.closePath(); ctx.fill();
-  ctx.restore();
-  cv._map={sc};
-}
-function refresh(){ if(!gifFrames.length) return; resampleAll(); drawSrc(); drawKb(gifFrames[gifIdx].rgb); }
-function pushFrame(frames, id, dw, dh, delayMs){      // border color (the "sampled" bar fill) + push in our frame format
-  const D=id.data; let er=0,eg=0,eb=0,en=0;
-  const accRow=y=>{ for(let x=0;x<dw;x++){ const o=(y*dw+x)*4; er+=D[o];eg+=D[o+1];eb+=D[o+2];en++; } };
-  const accCol=x=>{ for(let y=0;y<dh;y++){ const o=(y*dw+x)*4; er+=D[o];eg+=D[o+1];eb+=D[o+2];en++; } };
-  accRow(0); accRow(dh-1); accCol(0); accCol(dw-1);
-  frames.push({img:id, w:dw, h:dh, delayMs, edge:[er/en|0,eg/en|0,eb/en|0], rgb:new Uint8Array(INDICES.length*3)});
-}
-async function decodeImage(blob){                      // GIF / WebP / APNG / static via ImageDecoder
-  if(!window.ImageDecoder) throw new Error('ImageDecoder unsupported — use Chrome/Edge');
-  const dec=new ImageDecoder({data:await blob.arrayBuffer(), type:blob.type||'image/gif'});
-  await dec.tracks.ready;
-  const track=dec.tracks.selectedTrack, tmp=document.createElement('canvas'), tctx=tmp.getContext('2d',{willReadFrequently:true}), frames=[];
-  for(let i=0;;i++){
-    let res; try{ res=await dec.decode({frameIndex:i}); }catch(err){ break; }
-    const vf=res.image, vw=vf.displayWidth||vf.codedWidth, vh=vf.displayHeight||vf.codedHeight;
-    const s=Math.min(1, MAXDIM/Math.max(vw,vh)), dw=Math.max(1,Math.round(vw*s)), dh=Math.max(1,Math.round(vh*s));
-    tmp.width=dw; tmp.height=dh; tctx.clearRect(0,0,dw,dh); tctx.drawImage(vf,0,0,dw,dh);
-    const dur=vf.duration; if(vf.close) vf.close();
-    pushFrame(frames, tctx.getImageData(0,0,dw,dh), dw, dh, dur?Math.max(20,dur/1000):100);
-    if(track.frameCount && i>=track.frameCount-1) break;
-    if(i>=300){ log('frame cap reached (300) — truncating','dim'); break; }
-  }
-  return frames;
-}
-function decodeVideo(blob){                            // MP4 / WebM via <video> frame-seek (~12fps, capped)
-  return new Promise((resolve,reject)=>{
-    const v=document.createElement('video'); v.muted=true; v.playsInline=true; v.preload='auto'; v.src=URL.createObjectURL(blob);
-    const FPS=12, CAP=300, frames=[];
-    v.onloadedmetadata=()=>{
-      const dur=v.duration; if(!isFinite(dur)||dur<=0){ URL.revokeObjectURL(v.src); reject(new Error('video has no seekable duration')); return; }
-      const vw=v.videoWidth, vh=v.videoHeight, s=Math.min(1,MAXDIM/Math.max(vw,vh)), dw=Math.max(1,vw*s|0), dh=Math.max(1,vh*s|0);
-      const c=document.createElement('canvas'); c.width=dw; c.height=dh; const cx=c.getContext('2d',{willReadFrequently:true});
-      const n=Math.min(CAP, Math.max(1, Math.round(dur*FPS))), step=dur/n; let i=0;
-      const next=()=>{ if(i>=n){ URL.revokeObjectURL(v.src); resolve(frames); return; } v.currentTime=Math.min(dur-1e-3, i*step); };
-      v.onseeked=()=>{ try{ cx.drawImage(v,0,0,dw,dh); pushFrame(frames, cx.getImageData(0,0,dw,dh), dw, dh, Math.round(1000/FPS)); }catch(_){ } i++; next(); };
-      v.onerror=()=>{ URL.revokeObjectURL(v.src); reject(new Error('video decode error')); };
-      next();
-    };
-    v.onerror=()=>reject(new Error('cannot load video'));
-  });
-}
-function installFrames(frames, label){
-  gifFrames=frames; gifIdx=0; czoom=1; cpanX=cpanY=0; document.getElementById('gifZoom').value=100;
-  refresh();
-  document.getElementById('gifInfo').textContent=label+': '+frames.length+' frame(s), source '+frames[0].w+'×'+frames[0].h+' → 104 keys';
-  document.getElementById('gifPlay').disabled=!HID.device;
-  log('loaded '+frames.length+' frame(s): '+label,'ok');
-}
-async function loadMedia(blob, name, save){           // save (default true) → persist to the library
-  if(save===undefined) save=true;
-  document.getElementById('gifPlay').disabled=true; log('decoding '+name+'…','dim');
-  try{
-    const frames = /^video\//.test(blob.type) ? await decodeVideo(blob) : await decodeImage(blob);
-    if(!frames.length) throw new Error('no frames decoded');
-    installFrames(frames, name);
-    currentSource={kind:'single', blob, name};               // ★ Add to Library saves this
-  }catch(e){ log('media load failed: '+e.message,'err'); }
-}
-async function loadSequence(files){                    // a folder/selection of images → one frame each, in filename order
-  const arr=[...files].filter(f=>/^image\//.test(f.type)).sort((a,b)=>a.name.localeCompare(b.name,undefined,{numeric:true}));
-  if(!arr.length){ log('no image files selected','err'); return; }
-  log('decoding '+arr.length+' frame files…','dim');
-  const tmp=document.createElement('canvas'), tctx=tmp.getContext('2d',{willReadFrequently:true}), frames=[];
-  for(const f of arr){ const bmp=await createImageBitmap(f).catch(()=>null); if(!bmp) continue;
-    const s=Math.min(1,MAXDIM/Math.max(bmp.width,bmp.height)), dw=Math.max(1,bmp.width*s|0), dh=Math.max(1,bmp.height*s|0);
-    tmp.width=dw; tmp.height=dh; tctx.clearRect(0,0,dw,dh); tctx.drawImage(bmp,0,0,dw,dh); if(bmp.close) bmp.close();
-    pushFrame(frames, tctx.getImageData(0,0,dw,dh), dw, dh, 100); }
-  if(!frames.length){ log('no frames decoded','err'); return; }
-  const label=arr.length+'-image sequence';
-  installFrames(frames, label);
-  currentSource={kind:'seq', blobs:arr, name:label};
-}
-async function gifTick(){
-  if(!gifPlaying||!gifFrames.length) return;
-  const fr=gifFrames[gifIdx]; let delay=Math.max(1000/fpsCap(), (fr.delayMs|0)/gifSpeed());
-  if(!inFlight){ inFlight=true; const ok=await HID.sendFrame(gifFlat(fr.rgb)); inFlight=false;
-    if(ok){ if(!document.hidden && !gifDrag){ drawKb(fr.rgb); drawSrc(); }                       // while dragging the crop, let the drag handler own the canvas
-      if(!gifDrag && !document.getElementById('gifStatic').checked) gifIdx=(gifIdx+1)%gifFrames.length; } }   // freeze frame during drag / when static
-  else delay=20;                                            // device busy — retry soon without advancing
-  if(gifPlaying){ if(tickW) tickW.postMessage({delay}); else setTimeout(gifTick, delay); }   // worker timer survives background-tab throttling
-}
-if(tickW) tickW.onmessage=gifTick;
-function gifPlay(){
-  if(!HID.device||!gifFrames.length||gifPlaying) return;
-  gifPrevLayers=running; obActive=false;                    // remember what GIF playback replaced (and it overrides any firmware effect)
-  if(running) stop();                                       // GIF mode replaces the reactive pulse
-  gifPlaying=true; gifIdx=0;
-  document.getElementById('gifPlay').disabled=true; document.getElementById('gifStop').disabled=false;
-  document.getElementById('start').disabled=true;
-  log('GIF playback started ('+gifFrames.length+' frames)','ok'); gifTick();
-}
-async function gifStopFn(){
-  if(!gifPlaying) return;
-  gifPlaying=false;
-  if(tickW) tickW.postMessage({stop:true});
-  document.getElementById('gifPlay').disabled=!HID.device; document.getElementById('gifStop').disabled=true;
-  document.getElementById('start').disabled=!HID.device;
-  const off=[]; INDICES.forEach(i=>off.push(i,0,0,0)); await HID.sendFrame(off);
-  log('GIF playback stopped (board cleared)','dim');
-}
-// drag-to-pan on the positioning canvas (image follows the cursor; full resample on release)
-let gifDrag=false, gifLast=null;
-(function(){
-  const cv=document.getElementById('gifSrc');
-  cv.addEventListener('pointerdown',e=>{ if(!gifFrames.length)return; gifDrag=true; gifLast={x:e.clientX,y:e.clientY}; cv.setPointerCapture(e.pointerId); });
-  cv.addEventListener('pointermove',e=>{ if(!gifDrag||!cv._map)return;
-    cpanX+=(e.clientX-gifLast.x)/cv._map.sc; cpanY+=(e.clientY-gifLast.y)/cv._map.sc; gifLast={x:e.clientX,y:e.clientY};
-    drawSrc(); const fr=gifFrames[gifIdx]; if(fr){ fr.rgb=sampleKeyColors(fr); drawKb(fr.rgb); } });
-  cv.addEventListener('pointerup',()=>{ if(gifDrag){ gifDrag=false; resampleAll(); } });
-})();
-document.getElementById('gifFile').addEventListener('change',e=>{ if(e.target.files[0]) loadMedia(e.target.files[0], e.target.files[0].name); });
-function refreshLib(){ const el=document.getElementById('gifLib'); if(el && el.style.display!=='none' && window.TH108Media && TH108Media.available) TH108Media.mountPicker(el, it=>{ if(it.kind==='seq'&&it.blobs) loadSequence(it.blobs); else loadMedia(it.blob, it.name, false); }); }
-document.getElementById('gifLibBtn').addEventListener('click',()=>{ const el=document.getElementById('gifLib'); el.style.display = el.style.display==='none'?'block':'none'; refreshLib(); });
-document.getElementById('gifSeqBtn').addEventListener('click',()=>document.getElementById('gifSeq').click());
-document.getElementById('gifSeq').addEventListener('change',e=>{ if(e.target.files.length) loadSequence(e.target.files); });
-document.getElementById('gifFolderBtn').addEventListener('click',()=>document.getElementById('gifFolder').click());
-document.getElementById('gifFolder').addEventListener('change',e=>{ if(e.target.files.length) loadSequence(e.target.files); });
-document.getElementById('gifSave').addEventListener('click',async()=>{
-  if(!currentSource){ log('nothing loaded to save','dim'); return; }
-  if(!(window.TH108Media&&TH108Media.available)){ log('library unavailable — open via http://localhost:8123','err'); return; }
-  try{ if(currentSource.kind==='seq') await TH108Media.addSequence(currentSource.blobs,currentSource.name); else await TH108Media.add(currentSource.blob,currentSource.name); refreshLib(); log('★ added “'+currentSource.name+'” to library','ok'); }
-  catch(e){ log('add to library failed: '+e.message,'err'); }
-});
-document.getElementById('gifPlay').addEventListener('click',gifPlay);
-document.getElementById('gifStop').addEventListener('click',async()=>{   // Stop GIF returns to whatever it replaced: layers if they were running, else dark
-  const back=gifPrevLayers; gifPrevLayers=false;
-  await gifStopFn();
-  if(back && HID.device && !running){ start(); log('layers resumed (GIF replaced them)','ok'); }
-});
-const flashSnap=el=>{ el.classList.add('snapped'); clearTimeout(el._st); el._st=setTimeout(()=>el.classList.remove('snapped'),250); };   // thumb flashes orange 250ms on snap
-const snap=(el,target,thr)=>{ if(Math.abs((+el.value)-target)<=thr){ if(+el.value!==target) el.value=target; if(!el._sn){ el._sn=true; flashSnap(el); } } else el._sn=false; };
-const snapMul=(el,step,thr)=>{ const v=+el.value, nr=Math.round(v/step)*step; if(Math.abs(v-nr)<=thr){ if(v!==nr) el.value=nr; if(el._sn!==nr){ el._sn=nr; flashSnap(el); } } else el._sn=null; };
-document.getElementById('gifZoom').addEventListener('input',e=>{ snap(e.target,100,10); czoom=(+e.target.value)/100; refresh(); });
-document.getElementById('gifReset').addEventListener('click',()=>{ czoom=1; cpanX=cpanY=0; document.getElementById('gifZoom').value=100; refresh(); });
-document.getElementById('gifBri').addEventListener('input',()=>{ if(gifFrames[gifIdx]) drawKb(gifFrames[gifIdx].rgb); });
-// add a live value readout + reset-to-default button to each GIF slider
-function enhanceSlider(id,def,fmt){
-  const el=document.getElementById(id); if(!el) return; const host=el.closest('.sl')||el.parentElement;
-  const val=document.createElement('span'); val.id=id+'V'; val.style.cssText='font-size:11px;color:#58a6ff;min-width:30px;text-align:right';
-  const upd=()=>{ val.textContent=fmt(+el.value); }; el.addEventListener('input',upd); upd();
-  const rb=document.createElement('button'); rb.type='button'; rb.textContent='↺'; rb.title='reset to default'; rb.style.cssText='padding:0 5px;font-size:12px;margin-left:2px';
-  rb.addEventListener('click',e=>{ e.preventDefault(); el.value=def; flashSnap(el); el.dispatchEvent(new Event('input',{bubbles:true})); });
-  host.appendChild(val); host.appendChild(rb);
-}
-[['gifZoom',100,v=>v+'%'],['gifRot',0,v=>v+'°'],['gifSat',170,v=>v+'%'],['gifContrast',100,v=>v+'%'],['gifGamma',180,v=>(v/100).toFixed(2)],['gifSpeed',100,v=>(v/100).toFixed(1)+'×'],['gifFps',60,v=>v+'fps'],['gifBri',100,v=>v+'%']].forEach(a=>enhanceSlider(a[0],a[1],a[2]));
-document.getElementById('gifFps').addEventListener('input',e=>{ snap(e.target,30,3); const n=document.getElementById('gifFpsNum'); if(n) n.value=e.target.value; });   // snap detent at 30fps
-// gifFps range <-> number input, synced (min 5 max 60); both drive fpsCap()
-(function(){ const fps=document.getElementById('gifFps'), fn=document.getElementById('gifFpsNum');
-  const set=v=>{ v=Math.max(5,Math.min(60,Math.round(v||5))); fps.value=v; fn.value=v; };
-  fps.addEventListener('input',e=>{ set(+e.target.value); });
-  fn.addEventListener('input',e=>{ set(+e.target.value); fps.dispatchEvent(new Event('input',{bubbles:true})); });
-})();
-document.getElementById('gifSat').addEventListener('input',e=>{ snap(e.target,170,8); if(gifFrames[gifIdx]) drawKb(gifFrames[gifIdx].rgb); });   // saturation/brightness apply at output → preview only
-document.getElementById('gifBars').addEventListener('change',refresh);                                                      // bar fill affects out-of-bounds keys → resample
-document.getElementById('gifSample').addEventListener('change',refresh);                                                    // sampling strategy → resample
-document.getElementById('gifMap').addEventListener('change',refresh);                                                       // physical vs uniform-grid mapping → resample
-document.getElementById('gifBarColor').addEventListener('input',refresh);
-document.getElementById('gifContrast').addEventListener('input',e=>{ snap(e.target,100,8); if(gifFrames[gifIdx]) drawKb(gifFrames[gifIdx].rgb); });
-document.getElementById('gifGamma').addEventListener('input',e=>{ snap(e.target,180,8); if(gifFrames[gifIdx]) drawKb(gifFrames[gifIdx].rgb); });
-document.getElementById('gifRot').addEventListener('input',e=>{ snapMul(e.target,45,6); refresh(); });   // rotate → resample + redraw, snaps every 45°
-(function(){ const sr=document.getElementById('gifRotRange'); for(let d=0;d<=360;d+=45){ const i=document.createElement('i'); i.className='tick'; i.style.left='calc(7px + (100% - 14px)*'+(d/360)+')'; sr.appendChild(i); } })();
-// load by URL (CORS-permitting) and from the clipboard (paste button + Ctrl+V anywhere on the page)
-async function loadFromUrl(url){
-  if(!url) return;
-  log('fetching '+url+'…','dim');
-  try{ const r=await fetch(url,{mode:'cors'}); if(!r.ok) throw new Error('HTTP '+r.status);
-    const blob=await r.blob(); if(!/^image\//.test(blob.type)) throw new Error('not an image ('+(blob.type||'unknown type')+')');
-    await loadMedia(blob,(url.split('/').pop()||'url-image').split('?')[0]);
-  }catch(e){ log('URL load failed: '+e.message+' — the host may block cross-origin fetch (CORS)','err'); }
-}
-document.getElementById('gifUrlLoad').addEventListener('click',()=>loadFromUrl(document.getElementById('gifUrl').value.trim()));
-document.getElementById('gifUrl').addEventListener('keydown',e=>{ if(e.key==='Enter') loadFromUrl(e.target.value.trim()); });
-document.getElementById('gifPaste').addEventListener('click',async()=>{
-  try{ const items=await navigator.clipboard.read();
-    for(const it of items){ const ty=it.types.find(t=>t.startsWith('image/')); if(ty) return loadMedia(await it.getType(ty),'pasted-image'); }
-    log('no image on the clipboard','dim');
-  }catch(e){ log('clipboard read failed: '+e.message+' — copy the image again, or just press Ctrl+V on the page','err'); }
-});
-window.addEventListener('paste',e=>{
-  const items=e.clipboardData&&e.clipboardData.items; if(!items) return;
-  for(const it of items){ if(it.type&&it.type.startsWith('image/')){ const b=it.getAsFile(); if(b){ e.preventDefault(); loadMedia(b,'pasted-image'); return; } } }
+// ===== GIF → per-key lighting — extracted to th108-gif-panel.js (decode/sample/position/playback/library) =====
+const GIF=TH108GifPanel.create({
+  engine: TH108Engine, log, fpsCap,
+  snap, snapMul, flashSnap,                                   // shared slider detent/flash helpers
+  hasDevice: ()=>!!HID.device,
+  sendFrame: f=>HID.sendFrame(f),
+  isRunning: ()=>running,
+  stopLayers: ()=>{ stop(); },                                // GIF replaces the layer stream (fire-and-forget, same as before)
+  startLayers: ()=>{ start(); },
+  clearObActive: ()=>{ obActive=false; }                      // GIF playback overrides any firmware effect
 });
 
 document.getElementById('connect').addEventListener('click',async()=>{ await HID.connect();
   if(!HID.device && DC.beating){ DC.heartbeatStop(); DC.resume(); } });   // cancelled/failed pick after yielding → hand the device back
+
+// header Connect: visible on every tab while this page doesn't hold the keyboard (the daemon may
+// still drive the lighting — this is the page-takeover needed for binding/editing); on connect it
+// flashes yellow for 250ms, then leaves until the device drops again (user-specified behavior).
+function hdrConnSync(){
+  const b=document.getElementById('connectHdr'); if(!b) return;
+  if(HID.device){
+    if(!b.hidden && !b.classList.contains('flash')){
+      b.classList.add('flash');
+      setTimeout(()=>{ b.classList.remove('flash'); if(HID.device) b.hidden=true; },250);   // if the device dropped during the flash, stay visible
+    }
+  } else { b.classList.remove('flash'); b.hidden=false; }
+}
+document.getElementById('connectHdr').addEventListener('click',async()=>{ await HID.connect();
+  if(!HID.device && DC.beating){ DC.heartbeatStop(); DC.resume(); } });   // same flow/handback as the Home Connect button
+hdrConnSync();   // boot: nothing bound yet → the button shows
 document.getElementById('start').addEventListener('click',start);
 document.getElementById('stop').addEventListener('click',()=>{ _wasRunning=false; stop(); });   // a deliberate Stop also cancels any pending resume-on-reconnect
 
-// ===== layer cards UI (built from the layers array; bottom layer listed last) =====
-const TYPES=['background','reactive','gradient','pattern','media'], BLENDS=['normal','add','screen','multiply','max'];
-function buildLayerCards(){
-  const host=document.getElementById('layerCards'); host.innerHTML='';
-  // list top→bottom so the top layer is at the top of the stack visually
-  for(let n=state.layers.length-1;n>=0;n--){
-    const L=state.layers[n], card=document.createElement('div');
-    card.className='lcard'+(L.enabled?'':' off'); card.dataset.n=n;
-    card.draggable=true;
-    const opt=(arr,sel)=>arr.map(v=>'<option'+(v===sel?' selected':'')+'>'+v+'</option>').join('');
-    card.innerHTML=
-      '<div class="lhead">'+
-        '<span class="lgrip" title="drag to change layer level">⠿</span>'+
-        '<span class="llvl">Layer '+(n+1)+'</span>'+
-        '<input type="checkbox" class="le"'+(L.enabled?' checked':'')+' title="enable layer">'+
-        '<input type="text" class="ln" value="'+L.name.replace(/"/g,'&quot;')+'">'+
-        '<select class="lt">'+opt(TYPES,L.type)+'</select>'+
-        '<span class="lfield">opacity <input type="range" class="lo" min="0" max="100" value="'+Math.round(L.opacity*100)+'"><input type="number" class="numin lon" min="0" max="100" value="'+Math.round(L.opacity*100)+'"></span>'+
-        '<select class="lbl">'+opt(BLENDS,L.blend)+'</select>'+
-        '<span class="lfield">fps <input type="range" class="lf" min="1" max="30" value="'+L.fps+'"><input type="number" class="numin lfn" min="1" max="30" value="'+L.fps+'"></span>'+
-      '</div>'+
-      '<div class="lbody"></div>';
-    host.appendChild(card);
-    // header wiring
-    card.querySelector('.le').addEventListener('change',e=>{ L.enabled=e.target.checked; card.classList.toggle('off',!L.enabled); });
-    card.querySelector('.ln').addEventListener('input',e=>{ L.name=e.target.value; });
-    card.querySelector('.lt').addEventListener('change',e=>{ L.type=e.target.value; TH108Engine.ensureSettings(L); buildLayerBody(card,L); });
-    const lo=card.querySelector('.lo'), lon=card.querySelector('.lon');
-    const setOpa=v=>{ v=Math.max(0,Math.min(100,Math.round(v||0))); L.opacity=v/100; lo.value=v; lon.value=v; };
-    lo.addEventListener('input',e=>setOpa(+e.target.value));
-    lon.addEventListener('input',e=>setOpa(+e.target.value));
-    card.querySelector('.lbl').addEventListener('change',e=>{ L.blend=e.target.value; });
-    // fps: range <-> number input, synced bidirectionally (min 1 max 60)
-    const lf=card.querySelector('.lf'), lfn=card.querySelector('.lfn');
-    const setFps=v=>{ v=Math.max(1,Math.min(30,Math.round(v||1))); L.fps=v; lf.value=v; lfn.value=v; };   // 30fps cap — board can't sustain faster full-frame streaming
-    lf.addEventListener('input',e=>setFps(+e.target.value));
-    lfn.addEventListener('input',e=>setFps(+e.target.value));
-    // layer card drag-to-reorder (grip only)
-    card.addEventListener('dragstart',e=>{
-      if(!e.target.closest('.lgrip')){ e.preventDefault(); return; }   // only the grip starts a card drag
-      lcardDragging=card; card.classList.add('ldragging');
-      try{ e.dataTransfer.effectAllowed='move'; e.dataTransfer.setData('text/plain','lcard'); }catch(_){ }
-    });
-    card.addEventListener('dragend',()=>{ card.classList.remove('ldragging'); lcardDragging=null; });
-    buildLayerBody(card,L);
-  }
-}
-// ===== layer-card reorder: dragging the grip rearranges the layers array =====
-let lcardDragging=null;
-(function(){
-  const host=document.getElementById('layerCards');
-  host.addEventListener('dragover',e=>{
-    if(!lcardDragging) return;   // don't interfere with block-layout drags
-    e.preventDefault();
-    const after=lcardAfter(host,e.clientY);
-    if(after==null) host.appendChild(lcardDragging);
-    else if(after!==lcardDragging) host.insertBefore(lcardDragging,after);
-  });
-  host.addEventListener('drop',e=>{
-    if(!lcardDragging) return;
-    e.preventDefault();
-    // cards are listed top→bottom = highest index first; rebuild layers from DOM order (reversed)
-    const order=[...host.querySelectorAll('.lcard')].map(c=>state.layers[+c.dataset.n]);
-    state.layers.length=0; for(let i=order.length-1;i>=0;i--) state.layers.push(order[i]);   // DOM top→bottom reversed = bottom→top array
-    buildLayerCards();                                  // re-render so labels + dataset.n update
-    saveLayerOrder(); saveLayers();
-    if(running){ const now=performance.now(); for(const L of state.layers){ TH108Engine.renderLayer(L,now,state); L.lastTick=now; } }
-  });
-})();
-function lcardAfter(host,y){
-  const cards=[...host.querySelectorAll('.lcard:not(.ldragging)')];
-  let closest=null, cd=-Infinity;
-  for(const c of cards){ const r=c.getBoundingClientRect(), off=y-(r.top+r.height/2);
-    if(off<0 && off>cd){ cd=off; closest=c; } }
-  return closest;
-}
-function saveLayerOrder(){ try{ localStorage.setItem('th108_layerOrder', JSON.stringify(state.layers.map(L=>L.type+':'+L.name))); }catch(_){ } }
-// ----- persist full layer state (settings survive page refresh) -----
-let _slsT=0;
-function saveLayers(){ try{ localStorage.setItem('th108_layers', JSON.stringify(state.layers.map(L=>({name:L.name,enabled:L.enabled,type:L.type,opacity:L.opacity,blend:L.blend,fps:L.fps,settings:L.settings})))); }catch(_){ } }
-function scheduleSaveLayers(){ clearTimeout(_slsT); _slsT=setTimeout(()=>{ saveLayers(); DC.pushConfig(); },400); }   // mirror the edit to the daemon's config.json (no-op if no daemon)
-function restoreLayers(){ try{ const a=JSON.parse(localStorage.getItem('th108_layers')||'null'); if(!Array.isArray(a)) return;
-  for(let i=0;i<state.layers.length&&i<a.length;i++){ const o=a[i]; if(!o) continue; const L=state.layers[i];
-    if(o.name!=null)L.name=o.name; L.enabled=!!o.enabled; if(o.type)L.type=o.type; if(o.opacity!=null)L.opacity=o.opacity; if(o.blend)L.blend=o.blend; if(o.fps)L.fps=Math.min(30,o.fps);   // clamp any pre-cap saved fps
-    if(o.settings&&typeof o.settings==='object')L.settings=o.settings; }
-}catch(_){ } }
-function buildLayerBody(card,L){
-  const body=card.querySelector('.lbody'), s=L.settings;
-  const row=(label,html)=>'<label>'+label+'</label>'+html;
-  if(L.type==='background'){
-    body.innerHTML='<div class="ctl">'+
-      row('Color','<input type="color" class="s-color" value="'+s.color+'"><span></span>')+
-      row('Pulse period','<input type="range" class="s-period" min="400" max="6000" step="100" value="'+s.period+'"><span class="val s-periodV"></span>')+
-      row('Min brightness','<input type="range" class="s-bgMin" min="0" max="100" value="'+s.bgMin+'"><span class="val s-bgMinV"></span>')+
-      row('Max brightness','<input type="range" class="s-bgMax" min="0" max="100" value="'+s.bgMax+'"><span class="val s-bgMaxV"></span>')+
-    '</div>';
-    const c=q=>body.querySelector(q);
-    c('.s-color').addEventListener('input',e=>s.color=e.target.value);
-    const pv=c('.s-periodV'), upP=()=>pv.textContent=(s.period/1000).toFixed(1)+'s';
-    c('.s-period').addEventListener('input',e=>{ s.period=+e.target.value; upP(); }); upP();
-    const mnv=c('.s-bgMinV'), upMn=()=>mnv.textContent=s.bgMin+'%';
-    c('.s-bgMin').addEventListener('input',e=>{ s.bgMin=+e.target.value; upMn(); }); upMn();
-    const mxv=c('.s-bgMaxV'), upMx=()=>mxv.textContent=s.bgMax+'%';
-    c('.s-bgMax').addEventListener('input',e=>{ s.bgMax=+e.target.value; upMx(); }); upMx();
-  } else if(L.type==='reactive'){
-    const mode=s.mode||'single', seqSrc=s.seqSrc||'abc';
-    const modes=[['single','Single color'],['ab','A–B shimmer'],['rgb','RGB shimmer'],['random','Random'],['sequential','Sequential']];
-    const mopt=modes.map(m=>'<option value="'+m[0]+'"'+(m[0]===mode?' selected':'')+'>'+m[1]+'</option>').join('');
-    const styles=[['fade','Fade'],['double-blink','Double-blink'],['blink','Blink'],['pulse','Pulse'],['ramp','Ramp (in→out)'],['strobe','Strobe'],['heartbeat','Heartbeat']];
-    const sopt=styles.map(m=>'<option value="'+m[0]+'"'+(m[0]===(s.style||'fade')?' selected':'')+'>'+m[1]+'</option>').join('');
-    const palDefs=['#ff0000','#00ff00','#0000ff','#ffff00','#ff00ff'];
-    const palHtml=[0,1,2,3,4].map(i=>'<input type="color" class="s-pal" data-i="'+i+'" value="'+((s.pal&&s.pal[i])||palDefs[i])+'">').join(' ');
-    // decide which color controls this mode needs
-    const showA = mode==='single' || mode==='ab' || mode==='rgb' || (mode==='sequential' && seqSrc==='abc');
-    const showB = mode==='ab' || mode==='rgb' || (mode==='sequential' && seqSrc==='abc');
-    const showC = mode==='rgb' || (mode==='sequential' && seqSrc==='abc');
-    const showPal = mode==='random' || (mode==='sequential' && seqSrc==='palette');
-    const showAny = mode==='random';
-    const aLabel = mode==='single' ? 'Color' : 'Color A';
-    let html='<div class="ctl">'+
-      row('Mode','<select class="s-mode">'+mopt+'</select><span></span>')+
-      row('Style','<select class="s-style">'+sopt+'</select><span></span>');
-    if(mode==='sequential'){
-      const srcOpt=[['abc','A/B/C'],['palette','Palette']].map(o=>'<option value="'+o[0]+'"'+(o[0]===seqSrc?' selected':'')+'>'+o[1]+'</option>').join('');
-      html+=row('Source','<select class="s-seqSrc">'+srcOpt+'</select><span></span>');
-    }
-    if(showA) html+=row(aLabel,'<input type="color" class="s-color" value="'+s.color+'"><span></span>');
-    if(showB) html+=row('Color B','<input type="color" class="s-colorB" value="'+s.colorB+'"><span></span>');
-    if(showC) html+=row('Color C','<input type="color" class="s-colorC" value="'+s.colorC+'"><span></span>');
-    if(showPal) html+=row('Palette','<span style="display:flex;gap:4px;align-items:center;flex-wrap:wrap">'+palHtml+'</span><span></span>');
-    if(showAny) html+=row('Any color','<label class="sl" style="margin:0"><input type="checkbox" class="s-anyColor"'+(s.anyColor?' checked':'')+'> full spectrum (random hues)</label><span></span>');
-    html+=
-      row('Hold','<input type="range" class="s-hold" min="0" max="1000" step="10" value="'+s.hold+'"><span style="display:flex;gap:6px;align-items:center"><input type="number" class="numin s-holdN" min="0" max="1000" value="'+s.hold+'"><span class="val s-holdV"></span></span>')+
-      row('Fade','<input type="range" class="s-fade" min="80" max="1500" step="20" value="'+s.fade+'"><span style="display:flex;gap:6px;align-items:center"><input type="number" class="numin s-fadeN" min="80" max="1500" value="'+s.fade+'"><span class="val s-fadeV"></span></span>')+
-      row('Isolate','<label class="sl" style="margin:0"><input type="checkbox" class="s-isolate"'+(s.isolate?' checked':'')+'> punch through layers below</label><span></span>')+
-    '</div>';
-    body.innerHTML=html;
-    // Mode change → store + rebuild body so contextual controls refresh (rebuild re-runs attachHex)
-    body.querySelector('.s-mode').addEventListener('change',e=>{ s.mode=e.target.value; buildLayerBody(card,L); });
-    body.querySelector('.s-style').addEventListener('change',e=>s.style=e.target.value);
-    const seqSel=body.querySelector('.s-seqSrc');
-    if(seqSel) seqSel.addEventListener('change',e=>{ s.seqSrc=e.target.value; buildLayerBody(card,L); });
-    if(!Array.isArray(s.pal)) s.pal=palDefs.slice();
-    body.querySelectorAll('.s-pal').forEach(inp=>inp.addEventListener('input',e=>{ s.pal[+e.target.dataset.i]=e.target.value; }));
-    const anyEl=body.querySelector('.s-anyColor'); if(anyEl) anyEl.addEventListener('change',e=>s.anyColor=e.target.checked);
-    const colA=body.querySelector('.s-color'); if(colA) colA.addEventListener('input',e=>s.color=e.target.value);
-    const colB=body.querySelector('.s-colorB'); if(colB) colB.addEventListener('input',e=>s.colorB=e.target.value);
-    const colC=body.querySelector('.s-colorC'); if(colC) colC.addEventListener('input',e=>s.colorC=e.target.value);
-    body.querySelector('.s-isolate').addEventListener('change',e=>s.isolate=e.target.checked);
-    const hd=body.querySelector('.s-hold'), hdn=body.querySelector('.s-holdN'), hv=body.querySelector('.s-holdV');
-    const setHold=v=>{ v=Math.max(0,Math.min(1000,Math.round(v||0))); s.hold=v; hd.value=v; hdn.value=v; hv.textContent='ms'; };
-    hd.addEventListener('input',e=>setHold(+e.target.value));
-    hdn.addEventListener('input',e=>setHold(+e.target.value));
-    hv.textContent='ms';
-    const fd=body.querySelector('.s-fade'), fdn=body.querySelector('.s-fadeN'), fv=body.querySelector('.s-fadeV');
-    const setFade=v=>{ v=Math.max(80,Math.min(1500,Math.round(v||80))); s.fade=v; fd.value=v; fdn.value=v; fv.textContent='ms'; };
-    fd.addEventListener('input',e=>setFade(+e.target.value));
-    fdn.addEventListener('input',e=>setFade(+e.target.value));
-    fv.textContent='ms';
-  } else if(L.type==='gradient'){
-    body.innerHTML='<div class="ctl">'+
-      row('Color A','<input type="color" class="s-a" value="'+s.colorA+'"><span></span>')+
-      row('Color B','<input type="color" class="s-b" value="'+s.colorB+'"><span></span>')+
-      row('Angle','<input type="range" class="s-angle" min="0" max="360" value="'+s.angle+'"><span class="val s-angleV"></span>')+
-      row('Scroll','<input type="range" class="s-scroll" min="0" max="100" value="'+Math.round(s.scroll*100)+'"><span class="val s-scrollV"></span>')+
-    '</div>';
-    const c=q=>body.querySelector(q);
-    c('.s-a').addEventListener('input',e=>s.colorA=e.target.value);
-    c('.s-b').addEventListener('input',e=>s.colorB=e.target.value);
-    const av=c('.s-angleV'), upA=()=>av.textContent=s.angle+'°';
-    c('.s-angle').addEventListener('input',e=>{ s.angle=+e.target.value; upA(); }); upA();
-    const sv=c('.s-scrollV'), upS=()=>sv.textContent=(s.scroll).toFixed(2);
-    c('.s-scroll').addEventListener('input',e=>{ s.scroll=(+e.target.value)/100; upS(); }); upS();
-  } else if(L.type==='pattern'){
-    const pp=TH108Engine.patParams(s);                     // per-pattern params — each pattern remembers its own colours/speed/scale/etc.
-    const pats=['rainbow','spectrum','radial-rainbow','wave','breathing','ripple','scan','twinkle','rain','fire','comet','gradient-flow','static','snowfall','color-fountain','colorful-interchange','turning-peaks','two-birds','layered-mountains','gentle-rain','back-forth','bloom','plasma','aurora'];
-    const pbtns=pats.map(p=>'<button type="button" class="patbtn'+(p===s.pattern?' sel':'')+'" data-p="'+p+'">'+p+'</button>').join('');
-    const colModes=[['rainbow','Rainbow'],['c1','Color 1'],['c12','Color 1→2'],['palette','Palette']];
-    const cm=pp.colMode||'rainbow';
-    const cmOpt=colModes.map(m=>'<option value="'+m[0]+'"'+(m[0]===cm?' selected':'')+'>'+m[1]+'</option>').join('');
-    const fountain=(s.pattern==='color-fountain');
-    body.innerHTML='<div class="ph" style="margin:0 0 4px">Pattern</div><div class="patgrid">'+pbtns+'</div>'+
-      '<div class="ctl">'+
-      row('Colors','<select class="s-colMode">'+cmOpt+'</select><span></span>')+
-      row('Color 1','<input type="color" class="s-color" value="'+(pp.color||'#00ffff')+'"><span></span>')+
-      row('Color 2','<input type="color" class="s-color2" value="'+(pp.color2||'#ff00ff')+'"><span></span>')+
-      row('Color 3','<input type="color" class="s-color3" value="'+(pp.color3||'#00ff00')+'"><span></span>')+
-      row('Speed','<span class="srange" style="width:100%"><input type="range" class="s-speed" min="0" max="100" value="'+(pp.speed!=null?pp.speed:50)+'"><i class="tick" style="left:calc(7px + (100% - 14px)*0.5)"></i></span><span class="val s-speedV"></span>')+
-      row('Scale','<span class="srange" style="width:100%"><input type="range" class="s-scale" min="0" max="'+(fountain?50:100)+'" value="'+(pp.scale!=null?pp.scale:10)+'"><i class="tick" style="left:calc(7px + (100% - 14px)*'+(fountain?0.2:0.10)+')"></i></span><span style="display:flex;gap:4px;align-items:center"><input type="number" class="numin s-scaleN" min="0" max="'+(fountain?50:100)+'" value="'+(pp.scale!=null?pp.scale:10)+'"><span class="val">%</span></span>')+
-      (fountain ? (
-        row('Ring gap','<span class="srange" style="width:100%"><input type="range" class="s-gap" min="0" max="300" value="'+(pp.gap!=null?pp.gap:150)+'"><i class="tick" style="left:calc(7px + (100% - 14px)*0.5)"></i></span><span class="val s-gapV"></span>')+
-        row('Center X','<span class="srange" style="width:100%"><input type="range" class="s-cx" min="-50" max="50" value="'+(pp.cox!=null?pp.cox:-8)+'"><i class="tick" style="left:calc(7px + (100% - 14px)*0.5)"></i></span><span class="val s-cxV"></span>')+
-        row('Center Y','<span class="srange" style="width:100%"><input type="range" class="s-cy" min="-50" max="50" value="'+(pp.coy!=null?pp.coy:-10)+'"><i class="tick" style="left:calc(7px + (100% - 14px)*0.5)"></i></span><span class="val s-cyV"></span>')
-      ) : '')+
-    '</div>';
-    const c=q=>body.querySelector(q);
-    body.querySelectorAll('.patbtn').forEach(btn=>btn.addEventListener('click',()=>{ s.pattern=btn.dataset.p; buildLayerBody(card,L); scheduleSaveLayers();   // rebuild → restores that pattern's own saved params + its pattern-specific controls
-    if(obActive && HID.device && !running && !gifPlaying) start();   // picking a pattern while a firmware effect is showing = "back to layers", no extra click
-  }));
-    c('.s-colMode').addEventListener('change',e=>{ pp.colMode=e.target.value; scheduleSaveLayers(); });
-    c('.s-color').addEventListener('input',e=>pp.color=e.target.value);
-    c('.s-color2').addEventListener('input',e=>pp.color2=e.target.value);
-    c('.s-color3').addEventListener('input',e=>pp.color3=e.target.value);
-    const spv=c('.s-speedV'), upSp=()=>spv.textContent=(pp.speed!=null?pp.speed:50)+'%';
-    c('.s-speed').addEventListener('input',e=>{ snap(e.target,50,4); pp.speed=+e.target.value; upSp(); }); upSp();
-    const scMax=(fountain?50:100), scsl=c('.s-scale'), scn=c('.s-scaleN');
-    scsl.addEventListener('input',e=>{ snap(e.target,10,4); const v=Math.max(0,Math.min(scMax,Math.round(+e.target.value||0))); pp.scale=v; scn.value=v; });
-    scn.addEventListener('input',e=>{ const v=Math.max(0,Math.min(scMax,Math.round(+e.target.value||0))); pp.scale=v; scsl.value=v; });   // type-in; don't reformat while typing
-    const gp=c('.s-gap'); if(gp){ const gpv=c('.s-gapV'), upGp=()=>{ gpv.textContent=(pp.gap!=null?pp.gap:150)+'%'; }; gp.addEventListener('input',e=>{ snap(e.target,150,8); pp.gap=+e.target.value; upGp(); }); upGp();
-      const sgn=v=>(v>0?'+':'')+v;
-      const cxi=c('.s-cx'), cxv=c('.s-cxV'), upCx=()=>{ cxv.textContent=sgn(pp.cox!=null?pp.cox:-8); }; cxi.addEventListener('input',e=>{ snap(e.target,0,3); pp.cox=+e.target.value; upCx(); }); upCx();
-      const cyi=c('.s-cy'), cyv=c('.s-cyV'), upCy=()=>{ cyv.textContent=sgn(pp.coy!=null?pp.coy:-10); }; cyi.addEventListener('input',e=>{ snap(e.target,0,3); pp.coy=+e.target.value; upCy(); }); upCy(); }
-  } else {   // media — Stage 1 placeholder
-    body.innerHTML='<div class="ph">Media layer — port of the GIF engine lands in Stage 2. (Use the GIF → keyboard panel below for now.)</div>';
-  }
-  buildAdjustBlock(body,L);   // shared per-layer adjust controls appended to every type
-  attachHex(body);            // typeable hex box on every color picker (incl. reactive palette)
-}
-// shared "Adjust" block (brightness / saturation / contrast / gamma / rotate / speed + Static) on every card
-function buildAdjustBlock(body,L){
-  const s=L.settings;
-  // [label, rawMin, rawMax, decimals, unit, default] — decimals>0 → number shows raw/100 (gamma 1.00, speed 1.0×); slider stays raw
-  const CFG={ bri:['Brightness',0,200,0,'%',100], sat:['Saturation',0,300,0,'%',100], con:['Contrast',50,250,0,'%',100],
-              gam:['Gamma',50,300,2,'',100], rot:['Rotate',0,360,0,'°',0] };   // (per-layer "Speed" removed — each layer type has its own speed/period/scroll)
-  const disp=(key,raw)=>{ const d=CFG[key][3]; return d?(raw/100).toFixed(d):String(raw); };
-  const ctl=key=>{ const c=CFG[key], dec=c[3], frac=(c[5]-c[1])/(c[2]-c[1]);   // tick at the default value
-    const nMin=dec?c[1]/100:c[1], nMax=dec?c[2]/100:c[2], nStep=dec?1/Math.pow(10,dec):1;
-    return '<label>'+c[0]+'</label>'+
-      '<span class="srange" style="width:100%;min-width:30px"><input type="range" class="a-'+key+'" min="'+c[1]+'" max="'+c[2]+'" value="'+s[key]+'"><i class="tick" style="left:calc(7px + (100% - 14px)*'+frac+')"></i></span>'+
-      '<span style="display:flex;gap:4px;align-items:center"><input type="number" class="numin a-'+key+'N" min="'+nMin+'" max="'+nMax+'" step="'+nStep+'" value="'+disp(key,s[key])+'"><span class="val" style="min-width:10px">'+c[4]+'</span></span>'; };
-  const adj=document.createElement('div');
-  adj.innerHTML=
-    '<div class="lbody" style="margin-top:8px"><div class="ph" style="margin-bottom:6px">Adjust</div><div class="ctl">'+
-      ctl('bri')+ctl('sat')+ctl('con')+ctl('gam')+ctl('rot')+
-      '<label>Static</label><label class="sl" style="margin:0"><input type="checkbox" class="a-frozen"'+(s.frozen?' checked':'')+'> freeze animation</label><span></span>'+
-    '</div></div>';
-  body.appendChild(adj.firstChild);
-  Object.keys(CFG).forEach(key=>{ const c=CFG[key], min=c[1], max=c[2], dec=c[3], def=c[5], thr=Math.max(1,Math.round((max-min)*0.03));
-    const rng=body.querySelector('.a-'+key), num=body.querySelector('.a-'+key+'N');
-    const apply=raw=>{ raw=Math.max(min,Math.min(max,Math.round(raw||0))); s[key]=raw; rng.value=raw; return raw; };
-    rng.addEventListener('input',e=>{ snap(e.target, def, thr); num.value=disp(key,apply(+e.target.value)); });   // snap+flash at default
-    num.addEventListener('input',e=>{ const v=parseFloat(e.target.value); if(!isNaN(v)) apply(dec?v*100:v); });   // don't reformat while typing
-    rng.value=s[key]; num.value=disp(key,s[key]);
-  });
-  body.querySelector('.a-frozen').addEventListener('change',e=>{ s.frozen=e.target.checked; });
-}
-restoreLayers();                            // bring back saved layer settings from a previous session (overlays onto the engine state in place)
-state.layers.forEach(TH108Engine.ensureSettings);   // backfill any missing fields
-buildLayerCards();
+// ===== layer cards UI — extracted to th108-layers-ui.js (cards + bodies + Adjust block + grip reorder + persist) =====
+const LUI=TH108LayersUI.create({
+  state, engine: TH108Engine,
+  cards: document.getElementById('layerCards'),
+  panel: document.getElementById('layersPanel'),
+  attachHex, snap,                                           // page UI helpers (hex box per color picker, slider detent)
+  pushConfig: ()=>DC.pushConfig(),                           // mirror debounced saves to the daemon's config.json
+  isRunning: ()=>running,                                    // reorder warm-renders the new stack only while the loop is live
+  onPatternPick: ()=>{ if(obActive && HID.device && !running && !GIF.playing) start(); }   // picking a pattern while a firmware effect is showing = "back to layers", no extra click
+});
+LUI.init();   // restore saved layers → ensureSettings backfill → build cards → persist-on-edit listeners on #layersPanel
 attachHex(document.getElementById('gifPanel'));   // typeable hex box on the GIF bar-color picker
-document.getElementById('layersPanel').addEventListener('input', scheduleSaveLayers);    // persist edits (debounced)
-document.getElementById('layersPanel').addEventListener('change', scheduleSaveLayers);
 // while testing keys, don't let a focused <select> hijack letter presses (type-ahead); keep arrow/enter nav
 document.addEventListener('keydown',e=>{ if(e.target && e.target.tagName==='SELECT' && e.key && e.key.length===1) e.preventDefault(); }, true);
 document.addEventListener('change',e=>{ if(e.target && e.target.tagName==='SELECT') e.target.blur(); }, true);   // drop focus after picking so testing keys won't change it
 
-// ===== Edit-layout mode: drag .block panels between columns (persisted) =====
-const LAYOUT_KEY='th108_layout';
-let editMode=false;
-function blocks(){ return [...document.querySelectorAll('.block')]; }
-function setEdit(on){
-  editMode=on;
-  document.body.classList.toggle('editmode',on);
-  blocks().forEach(b=>b.draggable=on);
-  const btn=document.getElementById('editBtn'); btn.textContent = on?'✓ Done':'✎ Edit layout';
-  document.getElementById('editHint').style.display = on?'inline':'none';
+// ===== theme (light/dark) — crossfaded via the View Transitions API (Chromium has it; WebHID already requires Chromium) =====
+if(!document.startViewTransition) document.documentElement.classList.add('no-vt');   // arms the CSS-transition fallback for the theme switch
+const THEME_KEY='th108_theme';
+function applyTheme(t){
+  document.documentElement.dataset.theme=t;   // knob slide + sun↔moon morph are pure CSS off this attribute
+  try{ localStorage.setItem(THEME_KEY,t); }catch(_){ }
 }
-document.getElementById('editBtn').addEventListener('click',()=>setEdit(!editMode));
+function setTheme(t){
+  if(document.startViewTransition) document.startViewTransition(()=>applyTheme(t));   // true crossfade of the whole page
+  else applyTheme(t);                                                                 // fallback: the CSS color transitions still ease it
+}
+applyTheme(localStorage.getItem(THEME_KEY)||'light');
+document.getElementById('themeBtn').addEventListener('click',()=>setTheme(document.documentElement.dataset.theme==='dark'?'light':'dark'));
+
+// ===== header tabs — pages filter the bento cards (sliding pill highlight) =====
+const PAGE_KEY='th108_page';
+const tabsEl=document.getElementById('tabs'), tabHl=document.getElementById('tabHl');
+function cardsAll(){ return [...document.querySelectorAll('#grid .card')]; }
+function moveHl(){
+  const on=tabsEl.querySelector('.tab.on'); if(!on) return;
+  tabHl.style.left=on.offsetLeft+'px'; tabHl.style.width=on.offsetWidth+'px';
+}
+let curPage=null;
+function applyPage(p){
+  curPage=p;
+  tabsEl.querySelectorAll('.tab').forEach(t=>t.classList.toggle('on',t.dataset.page===p));
+  cardsAll().forEach(c=>{ c.hidden = !(c.dataset.pages||'').split(/\s+/).includes(p); });
+  moveHl();
+  try{ localStorage.setItem(PAGE_KEY,p); }catch(_){ }
+}
+function setPage(p){
+  if(p===curPage) return;
+  const wasLcd=curPage==='lcd';
+  if(document.startViewTransition) document.startViewTransition(()=>applyPage(p)); else applyPage(p);
+  // the LCD module re-reads the device on show and pauses its preview loop while hidden
+  if(p==='lcd'){ try{ TH108LCD.onShow(); }catch(_){ } }
+  else if(wasLcd){ try{ TH108LCD.onHide(); }catch(_){ } }
+}
+tabsEl.querySelectorAll('.tab').forEach(t=>t.addEventListener('click',()=>setPage(t.dataset.page)));
+applyPage(localStorage.getItem(PAGE_KEY)||'home');
+if(curPage==='lcd'){ try{ TH108LCD.onShow(); }catch(_){ } }   // restored straight onto the LCD tab
+window.addEventListener('resize',moveHl);
+if(document.fonts && document.fonts.ready) document.fonts.ready.then(moveHl);   // tab widths shift once the webfonts land
+
+// ===== card dragging — pointer-based, react-grid-layout mechanics (reference site's feel) =====
+// Grab a card by its title bar: the card floats with the cursor (full opacity, lift shadow); a faded
+// clone of it holds a grid slot as the drop shadow; the surrounding cards FLIP-animate around it live,
+// and the clone trails them slightly (delayed). Drop settles the card into the clone's slot. Persisted.
+const LAYOUT_KEY='th108_layout2';   // ordered card ids (the old colL/colR format is obsolete)
+const gridEl=document.getElementById('grid');
+let drag=null;   // {card, ph, dx, dy, w, h, sx, sy, live, raf}
+function visibleCards(){ return cardsAll().filter(c=>!c.hidden); }
+// FLIP: capture → mutate → invert with no transition → one reflow → ease back (the clone gets a small delay)
+function flipReorder(mutate){
+  const els=visibleCards().filter(c=>c!==drag.card);
+  const before=new Map(els.map(el=>[el,el.getBoundingClientRect()]));
+  mutate();
+  const moved=[];
+  for(const el of els){ const b=before.get(el), a=el.getBoundingClientRect();
+    const dx=b.left-a.left, dy=b.top-a.top;
+    if(dx||dy){ el.style.transition='none'; el.style.transform='translate('+dx+'px,'+dy+'px)'; moved.push(el); } }
+  if(!moved.length) return;
+  void gridEl.offsetHeight;   // commit the inverted positions in one reflow
+  for(const el of moved){
+    el.style.transition='transform .28s cubic-bezier(.22,1,.36,1)'+(el===drag.ph?' .06s':'');
+    el.style.transform='';
+  }
+}
+function nextVisible(el){ let n=el.nextElementSibling; while(n && n.hidden) n=n.nextElementSibling; return n; }
+// ===== drag breach line — the swap threshold made visible (replaces the old invisible midpoint probe) =====
+// When the DRAGGED CARD's rect clips a neighbor, an orange line appears at that neighbor's midpoint:
+// vertical line for a side-by-side breach, horizontal for an above/below breach. Nothing moves until the
+// CURSOR crosses the line — crossing left→right or top→bottom places the card AFTER the neighbor, the
+// reverse places it BEFORE. A pale-yellow glow on the cursor's side of the line grows as it approaches.
+let dlState=null;   // {target, vertLine, side} — side = which side of the line the cursor armed from
+const dlEl=(()=>{ const d=document.createElement('div'); d.id='dragLine';
+  d.appendChild(Object.assign(document.createElement('div'),{className:'dlglow'}));
+  document.body.appendChild(d); return d; })();
+const dlGlow=dlEl.firstChild;
+function dlHide(){ dlEl.style.display='none'; dlState=null; }
+// rect with any in-flight FLIP transform stripped — right after a swap commits, neighbors animate via
+// transform:translate(), and getBoundingClientRect() INCLUDES that, so arming a line against a card
+// mid-animation put it at a transient spot (the "misaligned line on multi-swap drags" bug). The
+// settled rect is where the card will land, which is also what keeps re-arms from oscillating.
+function settledRect(el){
+  const r=el.getBoundingClientRect();
+  const tr=getComputedStyle(el).transform;
+  if(tr && tr!=='none'){
+    const m=new DOMMatrixReadOnly(tr);
+    if(m.m41||m.m42) return {left:r.left-m.m41, right:r.right-m.m41, top:r.top-m.m42, bottom:r.bottom-m.m42, width:r.width, height:r.height};
+  }
+  return r;
+}
+function breachTarget(){   // the visible card the dragged card overlaps most (≥30×30px before a line appears)
+  const a=drag.card.getBoundingClientRect();
+  let best=null, bestArea=900;
+  for(const c of visibleCards()){
+    if(c===drag.card || c===drag.ph) continue;
+    const r=settledRect(c);
+    const ox=Math.min(a.right,r.right)-Math.max(a.left,r.left);
+    const oy=Math.min(a.bottom,r.bottom)-Math.max(a.top,r.top);
+    if(ox<=0 || oy<=0) continue;
+    if(ox*oy>bestArea){ bestArea=ox*oy;
+      // breach axis = where the dragged card sits relative to the neighbor, normalized by their sizes
+      const nx=((a.left+a.right)-(r.left+r.right))/(a.width+r.width);
+      const ny=((a.top+a.bottom)-(r.top+r.bottom))/(a.height+r.height);
+      best={card:c, vertLine:Math.abs(nx)>=Math.abs(ny)};
+    }
+  }
+  return best;
+}
+function dlShow(r, vertLine, coord){
+  dlEl.style.display='block';
+  if(vertLine){ dlEl.style.left=(coord-1.5)+'px'; dlEl.style.top=(r.top+6)+'px'; dlEl.style.width='3px'; dlEl.style.height=(r.height-12)+'px'; }
+  else{ dlEl.style.top=(coord-1.5)+'px'; dlEl.style.left=(r.left+6)+'px'; dlEl.style.height='3px'; dlEl.style.width=(r.width-12)+'px'; }
+}
+function dlGlowUpdate(delta, r, vertLine){   // delta = cursor − line; glow hugs the cursor's side only
+  const half=(vertLine? r.width : r.height)/2;
+  const t=Math.max(0, 1-Math.abs(delta)/half);           // 0 at the card's edge → 1 at the line
+  const size=(6+44*t)+'px', tint='255,238,160';
+  dlGlow.style.cssText='position:absolute;pointer-events:none;opacity:'+(t*t).toFixed(3)+';';
+  if(vertLine){
+    dlGlow.style.top='0'; dlGlow.style.height='100%'; dlGlow.style.width=size;
+    if(delta<0){ dlGlow.style.right='100%'; dlGlow.style.background='linear-gradient(to left, rgba('+tint+',.9), rgba('+tint+',0))'; }
+    else{ dlGlow.style.left='100%'; dlGlow.style.background='linear-gradient(to right, rgba('+tint+',.9), rgba('+tint+',0))'; }
+  }else{
+    dlGlow.style.left='0'; dlGlow.style.width='100%'; dlGlow.style.height=size;
+    if(delta<0){ dlGlow.style.bottom='100%'; dlGlow.style.background='linear-gradient(to top, rgba('+tint+',.9), rgba('+tint+',0))'; }
+    else{ dlGlow.style.top='100%'; dlGlow.style.background='linear-gradient(to bottom, rgba('+tint+',.9), rgba('+tint+',0))'; }
+  }
+}
+function liftCard(e){
+  const c=drag.card;
+  const ph=c.cloneNode(true);                                  // the drop-shadow clone
+  ph.removeAttribute('id'); ph.querySelectorAll('[id]').forEach(n=>n.removeAttribute('id'));   // clones must never win getElementById
+  ph.classList.add('ph-clone'); ph.classList.remove('lifted');
+  ph.style.height=drag.h+'px';
+  const ants=document.createElementNS('http://www.w3.org/2000/svg','svg');   // subtle marching-ants outline on the drop shadow
+  ants.setAttribute('class','ants');
+  ants.appendChild(document.createElementNS('http://www.w3.org/2000/svg','rect'));
+  ph.appendChild(ants);
+  c.parentNode.insertBefore(ph,c);
+  drag.ph=ph;
+  c.classList.add('lifted');
+  c.style.width=drag.w+'px'; c.style.height=drag.h+'px';
+  document.body.classList.add('cardDragging');
+  drag.live=true;
+  positionCard(e);
+}
+function positionCard(e){ drag.card.style.left=(e.clientX-drag.dx)+'px'; drag.card.style.top=(e.clientY-drag.dy)+'px'; }
+function updateTarget(x,y){
+  const ph=drag.ph, br=breachTarget();
+  if(!br){ dlHide(); return; }                            // no clip → no line; drop settles into the placeholder slot
+  const t=br.card, r=settledRect(t);
+  if(!dlState || dlState.target!==t){
+    // arm on first contact — and LOCK the orientation while this card stays the target: once the
+    // overlap is deep the centers nearly align and the axis judgment turns to noise (a horizontal
+    // approach would flip to a horizontal line mid-gesture). The line you saw appear is the one you cross.
+    const vert=br.vertLine, coord=vert? r.left+r.width/2 : r.top+r.height/2;
+    dlState={target:t, vertLine:vert, side:((vert? x:y)-coord)<0?-1:1};
+  }
+  const vert=dlState.vertLine;
+  const coord=vert? r.left+r.width/2 : r.top+r.height/2;
+  dlShow(r, vert, coord);                                 // re-track every probe — the settled rect can shift under a live FLIP
+  const delta=(vert? x : y)-coord;
+  dlGlowUpdate(delta, r, vert);
+  const sideNow=delta<0?-1:1;
+  const within=vert? (y>=r.top&&y<=r.bottom) : (x>=r.left&&x<=r.right);
+  if(within && sideNow!==dlState.side){                   // cursor crossed the line → commit
+    if(sideNow>0){                                        // now right of / below the neighbor → card goes AFTER it
+      let p=t.nextElementSibling; while(p && p.hidden) p=p.nextElementSibling;
+      if(p!==ph){ let nx=p; while(nx && (nx===ph||nx.hidden)) nx=nx.nextElementSibling;
+        flipReorder(()=> nx? gridEl.insertBefore(ph,nx) : gridEl.appendChild(ph)); }
+    } else if(nextVisible(ph)!==t) flipReorder(()=>gridEl.insertBefore(ph,t));
+    dlHide();
+  }
+}
+cardsAll().forEach(c=>{
+  const bar=c.querySelector('.cardbar'); if(!bar) return;
+  bar.addEventListener('pointerdown',e=>{
+    if(e.button!==0 || drag) return;
+    if(e.target.closest('input,button,select,a,label')) return;   // controls living IN a title bar (e.g. the debug sliders) must stay usable
+    e.preventDefault();                                        // no text selection / native drag — sliders etc. outside the bar are untouched
+    const r=c.getBoundingClientRect();
+    drag={card:c, ph:null, dx:e.clientX-r.left, dy:e.clientY-r.top, w:r.width, h:r.height,
+          sx:e.clientX, sy:e.clientY, live:false, raf:0};
+  });
+});
+window.addEventListener('pointermove',e=>{
+  if(!drag) return;
+  if(!drag.live){ if(Math.hypot(e.clientX-drag.sx, e.clientY-drag.sy)<5) return; liftCard(e); }
+  positionCard(e);
+  drag.x=e.clientX; drag.y=e.clientY;                          // rAF-throttle the relayout probe, but ALWAYS
+  if(!drag.raf) drag.raf=requestAnimationFrame(()=>{           // probe the freshest coords (a queued probe must
+    if(drag){ drag.raf=0; updateTarget(drag.x,drag.y); } });   // not pin a fast flick to its stale position)
+});
+function endDrag(){
+  if(!drag) return;
+  dlHide();                                                    // breach line never outlives the drag
+  if(!drag.live){ drag=null; return; }                         // it was just a click on the bar
+  if(drag.raf) cancelAnimationFrame(drag.raf);
+  const {card,ph}=drag; drag=null;
+  const r=ph.getBoundingClientRect();                          // settle the floating card into the clone's slot
+  card.style.transition='left .25s cubic-bezier(.22,1,.36,1), top .25s cubic-bezier(.22,1,.36,1), transform .25s, box-shadow .25s';
+  card.style.left=r.left+'px'; card.style.top=r.top+'px'; card.style.transform='none';
+  setTimeout(()=>{
+    gridEl.insertBefore(card,ph); ph.remove();
+    card.classList.remove('lifted'); card.style.cssText='';
+    visibleCards().forEach(c2=>{ c2.style.transition=''; c2.style.transform=''; });   // drop any leftover FLIP inline styles
+    document.body.classList.remove('cardDragging');
+    saveLayout();
+  },260);
+}
+window.addEventListener('pointerup',endDrag);
+window.addEventListener('pointercancel',endDrag);
+function saveLayout(){
+  try{ localStorage.setItem(LAYOUT_KEY, JSON.stringify(cardsAll().map(c=>c.id))); }catch(_){ }
+}
+function restoreLayout(){
+  let saved; try{ saved=JSON.parse(localStorage.getItem(LAYOUT_KEY)||'null'); }catch(_){ saved=null; }
+  if(!Array.isArray(saved)) return;
+  saved.forEach(id=>{ const c=document.getElementById(id); if(c && c.parentElement===gridEl) gridEl.appendChild(c); });
+}
+restoreLayout();
 
 // Export / Import the layer setup. Export's JSON IS the daemon's config.json format. Import also lets you
 // move settings across origins (e.g. file:// → http://localhost:8123, which don't share localStorage).
 document.getElementById('exportCfg').addEventListener('click',()=>{
-  saveLayers();                                              // flush current state to localStorage first
+  LUI.save();                                                // flush current state to localStorage first
   const data=localStorage.getItem('th108_layers')||'[]';
   const a=document.createElement('a');
   a.href=URL.createObjectURL(new Blob([data],{type:'application/json'}));
@@ -977,105 +1127,194 @@ document.getElementById('importFile').addEventListener('change',async e=>{
   e.target.value='';
 });
 
-let blockDragging=null;
-blocks().forEach(b=>{
-  b.addEventListener('dragstart',e=>{ if(!editMode){ e.preventDefault(); return; }
-    blockDragging=b; b.classList.add('dragging');
-    try{ e.dataTransfer.effectAllowed='move'; e.dataTransfer.setData('text/plain','block'); }catch(_){ }
-  });
-  b.addEventListener('dragend',()=>{ b.classList.remove('dragging'); blockDragging=null; saveLayout(); });
+// header daemon tag: green "Online" while /status answers, red "Offline" once it stops (never hides —
+// an absent tag read as ambiguous; user request 2026-06-11). Re-checked every 30s + right after Quit.
+function dmnTagSync(){
+  const el=document.getElementById('dmnOnline'); if(!el) return;
+  el.hidden=false;
+  el.classList.toggle('off', !DC.present);
+  document.getElementById('dmnTagTxt').textContent=DC.present?'Online':'Offline';
+  el.title=DC.present
+    ?'Background daemon is running — layer edits apply live, reactive typing works in every app, no Connect needed'
+    :'Background daemon is not running — lighting stops when this tab closes. Start it with setup.cmd (or log in again).';
+  const sb=document.getElementById('dmnStart'); if(sb) sb.hidden=DC.present;
+}
+setInterval(()=>{ DC.ping().then(dmnTagSync,dmnTagSync); }, 30000);
+// Quit/Start need a quick tag refresh — the 30s poll made a successful Quit look ignored for ~15s
+document.getElementById('dmnQuit').addEventListener('click',()=>{
+  [800,2000,4000].forEach(ms=>setTimeout(()=>DC.ping().then(dmnTagSync,dmnTagSync),ms)); });
+// a web page can't spawn a process — the most a Start button can do is hand over the exact command
+document.getElementById('dmnStart').addEventListener('click',async()=>{
+  const cmd='wscript "th108-daemon\\start-hidden.vbs"';
+  try{ await navigator.clipboard.writeText(cmd); }catch(_){ }
+  alert('Browsers can\'t launch programs, so this can\'t be one click.\n\nTo start the daemon:\n• run setup.cmd in the project folder (installs auto-start too), or\n• run th108-daemon\\start-hidden.vbs (command copied to your clipboard), or\n• just log in again — it auto-starts.\n\nThe Online tag updates within ~30 s once it\'s up.');
 });
-function blockAfter(col,y){
-  const els=[...col.querySelectorAll('.block:not(.dragging)')];
-  let closest=null, cd=-Infinity;
-  for(const el of els){ const r=el.getBoundingClientRect(), off=y-(r.top+r.height/2);
-    if(off<0 && off>cd){ cd=off; closest=el; } }
-  return closest;
-}
-['colL','colR'].forEach(id=>{
-  const col=document.getElementById(id);
-  col.addEventListener('dragover',e=>{ if(!blockDragging) return; e.preventDefault();
-    const after=blockAfter(col,e.clientY);
-    if(after==null) col.appendChild(blockDragging); else col.insertBefore(blockDragging,after);
-  });
-});
-function saveLayout(){
-  try{ localStorage.setItem(LAYOUT_KEY, JSON.stringify({
-    colL:[...document.getElementById('colL').querySelectorAll('.block')].map(b=>b.id),
-    colR:[...document.getElementById('colR').querySelectorAll('.block')].map(b=>b.id)
-  })); }catch(_){ }
-}
-function restoreLayout(){
-  let saved; try{ saved=JSON.parse(localStorage.getItem(LAYOUT_KEY)||'null'); }catch(_){ saved=null; }
-  if(!saved) return;
-  const colL=document.getElementById('colL'), colR=document.getElementById('colR');
-  (saved.colL||[]).forEach(bid=>{ const b=document.getElementById(bid); if(b) colL.appendChild(b); });
-  (saved.colR||[]).forEach(bid=>{ const b=document.getElementById(bid); if(b) colR.appendChild(b); });
-}
-restoreLayout();
-DC.ping().then(async()=>{ await HID.autoReconnect();
-  if(!HID.device && DC.beating){ DC.heartbeatStop(); DC.resume(); } });   // learn if the daemon holds the device, THEN silently reconnect (yield first); failed re-bind → hand back
+DC.ping().then(async()=>{
+  dmnTagSync();
+  if(DC.present) return;   // daemon is driving — merely OPENING this page must never steal the device from it (Connect is the explicit handover)
+  await HID.autoReconnect();
+  if(!HID.device && DC.beating){ DC.heartbeatStop(); DC.resume(); } });   // no daemon: silently re-bind a previously-granted device; failed re-bind → hand back
 // (sleep/wake + unplug/replug re-bind lives in th108-hid.js; this page's side is the onDisconnected/onReconnected callbacks up top)
 
-// ===== Onboard (firmware) effects: single 0x23 16-byte allledPack, persists on the keyboard =====
-attachHex(document.getElementById('onboardPanel'));   // typeable hex box on the primary/secondary pickers
-(function(){
-  const bri=document.getElementById('obBri'), briV=document.getElementById('obBriV');
-  const spd=document.getElementById('obSpeed'), spdV=document.getElementById('obSpeedV');
-  bri.addEventListener('input',()=>briV.textContent=bri.value);
-  spd.addEventListener('input',()=>spdV.textContent=spd.value);
-})();
-function obSetStatus(s,c=''){ const e=document.getElementById('obStatus'); e.textContent=s; e.className='hint '+c; e.style.margin='0'; }
-async function applyOnboard(){
-  if(!HID.device){ log('connect first','err'); obSetStatus('connect first','err'); return; }
-  if(running) await stop();                 // firmware effect replaces the live host stream
-  if(gifPlaying) await gifStopFn();
-  const clamp=v=>Math.max(1,Math.min(6,Math.round(v||1)));
-  const eff=+document.getElementById('obEffect').value;
-  const colorful=document.getElementById('obColorful').checked;
-  const [pr,pg,pb]=hexToRgb(document.getElementById('obPrimary').value);
-  const [sr,sg,sb]=hexToRgb(document.getElementById('obSecondary').value);
-  const bright=clamp(+document.getElementById('obBri').value);
-  const speed=clamp(+document.getElementById('obSpeed').value);
-  const allled=new Uint8Array(16);
-  allled[0]=eff;
-  allled[1]=pr; allled[2]=pg; allled[3]=pb;
-  allled[4]=255;
-  allled[5]=sr; allled[6]=sg; allled[7]=sb;
-  allled[8]=colorful?1:0;
-  allled[9]=bright;
-  allled[10]=speed;
-  // bytes 11..15 stay 0
-  try{
-    await HID.device.sendReport(HID.reportId, HID.buildPkt(0x23, 16, 0, allled, 0, true));
-    const lbl=document.getElementById('obEffect').selectedOptions[0].textContent;
-    log('onboard effect applied: '+lbl+(colorful?' (colorful)':' (solid)')+' · bri '+bright+' · spd '+speed,'ok');
-    obSetStatus('effect set — runs on the keyboard','ok');
-    obActive=true;   // a pattern click can now auto-resume layers over this
-    // Re-arm: a live 0x23 write can leave the board ACKing-but-IGNORING 0x32 paint, and only a handle
-    // close+reopen clears it (stream restarts don't). Re-bind quietly so "back to layers" paints first try.
-    await new Promise(r=>setTimeout(r,350));   // let the 0x23 ACK land before cycling the handle
-    if(await HID.rebind()) log('control interface re-bound (post-effect re-arm)','dim');
-    else log('post-effect re-bind failed — if layers don\'t paint, refresh the page','err');
-  }catch(e){ log('onboard apply failed: '+e.message,'err'); obSetStatus('apply failed','err'); }
-}
-document.getElementById('obApply').addEventListener('click',applyOnboard);
-document.getElementById('obBack').addEventListener('click',()=>{ if(!HID.device){ log('connect first','err'); return; } if(!running) start(); else log('layers already running — they override the firmware effect','dim'); });   // resume host layers over the firmware effect
+// ===== Onboard (firmware) effects — extracted to th108-onboard.js (single 0x23 16-byte allledPack, persists on the keyboard) =====
+const OB=TH108Onboard.create({
+  hid: HID, log, attachHex, hexToRgb,
+  panel: document.getElementById('onboardPanel'),
+  isRunning: ()=>running,
+  stopLayers: ()=>stop(),                                     // awaited — the firmware effect replaces the live host stream
+  startLayers: ()=>start(),
+  gifPlaying: ()=>GIF.playing,
+  stopGif: ()=>GIF.stop(),
+  setObActive: ()=>{ obActive=true; }                         // a pattern click can now auto-resume layers over this
+});
 
-// ===== LCD screen uploader overlay (th108-lcd.js) =====
+// ===== LCD screen uploader — th108-lcd.js, mounted in the LCD Screen tab's card =====
 TH108LCD.mount(document.getElementById('lcdBody'));
-const lcdOverlay = document.getElementById('lcdOverlay');
-function lcdShow(){ lcdOverlay.style.display='block'; TH108LCD.onShow(); }
-function lcdHide(){ lcdOverlay.style.display='none'; TH108LCD.onHide(); }
-document.getElementById('lcdBtn').addEventListener('click', lcdShow);
-document.getElementById('lcdClose').addEventListener('click', lcdHide);
-document.addEventListener('keydown', e=>{ if(e.key==='Escape' && lcdOverlay.style.display==='block') lcdHide(); });
 // let the LCD module pause key-lighting during a flash upload, so the board is free for the 0x50 write (avoids ACK timeouts)
 window.__lcdHost = {
   _was:false,
   pauseLighting(){ this._was = running; if(running){ running=false; if(layerW) layerW.postMessage({stop:true}); } },
   resumeLighting(){ if(this._was && HID.device && !running) start(); this._was=false; }
 };
+
+// ===== Hotkeys tab: clickable physical keyboard, positioned from the engine's board map =====
+// Selecting a key is step 1 of "assign <key> → <action>"; KBOARD exposes the selection to the binder.
+const KBOARD=(function(){
+  const host=document.getElementById('kbBoard'); if(!host) return {sel:null,onChange(){},clear(){}};
+  const CODE_BY_IDX={}; for(const [code,idx] of Object.entries(KEYMAP)) CODE_BY_IDX[idx]=code;
+  const NICE={Escape:'Esc',Backquote:'`',Minus:'-',Equal:'=',Backspace:'⌫',Tab:'Tab',BracketLeft:'[',BracketRight:']',
+    Backslash:'\\',CapsLock:'Caps',Semicolon:';',Quote:"'",Enter:'Enter',ShiftLeft:'Shift',ShiftRight:'Shift',
+    Comma:',',Period:'.',Slash:'/',ControlLeft:'Ctrl',ControlRight:'Ctrl',MetaLeft:'Win',AltLeft:'Alt',AltRight:'Alt',
+    ContextMenu:'☰',Space:'',PrintScreen:'PrtSc',ScrollLock:'ScrLk',Pause:'Pause',Insert:'Ins',Home:'Home',
+    PageUp:'PgUp',Delete:'Del',End:'End',PageDown:'PgDn',ArrowUp:'↑',ArrowLeft:'←',ArrowDown:'↓',ArrowRight:'→',
+    NumLock:'Num',NumpadDivide:'/',NumpadMultiply:'*',NumpadSubtract:'-',NumpadAdd:'+',NumpadEnter:'⏎',
+    NumpadDecimal:'.',IntlBackslash:'\\'};
+  const label=code=>{ if(!code) return 'Fn';                       // the one unmapped index on this board is the Fn key
+    if(NICE[code]!==undefined) return NICE[code];
+    if(code.startsWith('Key')) return code.slice(3);
+    if(code.startsWith('Digit')) return code.slice(5);
+    if(code.startsWith('Numpad')) return code.slice(6);
+    return code; };
+  // full names for tooltips/readouts — the compact key face stays terse, but hover/status text must
+  // never make the user decode a glyph or abbreviation (⌫, ⏎, ScrLk, …; user request 2026-06-11)
+  const FULL={Backspace:'Backspace',NumpadEnter:'Numpad-Enter',ScrollLock:'Scroll Lock',PrintScreen:'Print Screen',
+    CapsLock:'Caps Lock',Insert:'Insert',Delete:'Delete',PageUp:'Page Up',PageDown:'Page Down',Escape:'Escape',
+    NumLock:'Num Lock',ContextMenu:'Menu',ArrowUp:'Up Arrow',ArrowDown:'Down Arrow',ArrowLeft:'Left Arrow',ArrowRight:'Right Arrow',
+    ShiftLeft:'Left Shift',ShiftRight:'Right Shift',ControlLeft:'Left Ctrl',ControlRight:'Right Ctrl',
+    AltLeft:'Left Alt',AltRight:'Right Alt',MetaLeft:'Windows',Backquote:'Backtick (`)',IntlBackslash:'Intl Backslash',
+    NumpadDivide:'Numpad ÷',NumpadMultiply:'Numpad ×',NumpadSubtract:'Numpad −',NumpadAdd:'Numpad +',NumpadDecimal:'Numpad .'};
+  const fullName=code=>{ if(!code) return 'Fn';
+    if(FULL[code]!==undefined) return FULL[code];
+    if(code.startsWith('Numpad')&&/^\d$/.test(code.slice(6))) return 'Numpad '+code.slice(6);
+    return label(code)||'Space'; };
+  const PAL=['#98d0ff','#6ed2b7','#f9c5d8','#ffd98c','#fa8072','#c9b8ff'];   // per-key hover/select color, cycled
+  let selEl=null, sel=null; const subs=[], byIdx={}, markBy={};               // sel={idx,code,label} — the binder subscribes via onChange
+  const notify=()=>subs.forEach(cb=>{ try{ cb(sel); }catch(_){ } });
+  const friendly=(full,idx)=>full+' Key · LED '+idx;                          // tooltip/readout wording — full names, no glyphs
+  // selection sub-status: when the selected key is remapped, say what it does now (under the Selected line)
+  function subSync(){
+    const s=document.getElementById('kbSelSub'); if(!s) return;
+    const m=sel&&markBy[sel.idx];
+    s.hidden=!m;
+    s.textContent=m?('Reassigned to '+m+(/^[A-Za-z0-9]$/.test(m)?' Key':'')):'';
+  }
+  INDICES.forEach((idx,k)=>{
+    const cell=TH108Engine.keyCell(idx); if(!cell) return;
+    const [cx,cy,w,h]=cell, code=CODE_BY_IDX[idx], base=label(code), full=fullName(code);
+    const d=document.createElement('div'); d.className='kbkey';
+    d.style.left='calc('+((cx-w/2)*100)+'% + 1.5px)'; d.style.top='calc('+((cy-h/2)*100)+'% + 1.5px)';
+    d.style.width='calc('+(w*100)+'% - 3px)'; d.style.height='calc('+(h*100)+'% - 3px)';
+    d.textContent=base; d.title=friendly(full,idx);
+    d.style.setProperty('--kc', PAL[k%PAL.length]);
+    byIdx[idx]={el:d, base, full};
+    d.addEventListener('click',()=>{
+      if(selEl) selEl.classList.remove('sel');
+      if(selEl===d){ selEl=null; sel=null; document.getElementById('kbSelInfo').textContent='no key selected'; subSync(); notify(); return; }   // click again = deselect
+      selEl=d; sel={idx, code, label:full}; d.classList.add('sel');
+      d.classList.remove('pop'); void d.offsetWidth; d.classList.add('pop');   // restart the pop animation
+      document.getElementById('kbSelInfo').textContent='Selected: '+friendly(full,idx);
+      subSync(); notify();
+    });
+    d.addEventListener('contextmenu',e=>{ e.preventDefault(); if(code) showTip(d, idx, full); });   // Fn (no code) is firmware-handled — no reset for it
+    host.appendChild(d);
+  });
+  // right-click reset tooltip: one floating button, dismissed by clicking elsewhere / Esc / another right-click
+  let tipEl=null; const resetCbs=[];
+  function hideTip(){ if(tipEl){ tipEl.remove(); tipEl=null; } }
+  function showTip(cell, idx, full){
+    hideTip();
+    const b=document.createElement('button');
+    b.className='kbreset'; b.textContent='Reset '+full;
+    b.title='restore this key to its default ("'+full+'") — rewrites the keymap, needs Connect';
+    b.addEventListener('click',()=>{ hideTip(); resetCbs.forEach(cb=>{ try{ cb(idx); }catch(_){ } }); });
+    document.body.appendChild(b); tipEl=b;
+    const r=cell.getBoundingClientRect();                       // anchor to the KEY, not the cursor — re-right-clicks within the key must not move it
+    b.style.left=Math.round(r.x+r.width/2-b.offsetWidth/2)+'px'; b.style.top=Math.round(r.bottom+6)+'px';
+  }
+  window.addEventListener('pointerdown',e=>{ if(tipEl && !tipEl.contains(e.target)) hideTip(); });
+  window.addEventListener('keydown',e=>{ if(e.key==='Escape') hideTip(); });
+  // clicking empty space (board background or card padding) drops the selection (user request 2026-06-11)
+  function clearSel(){ if(selEl){ selEl.classList.remove('sel'); selEl=null; } sel=null;
+    document.getElementById('kbSelInfo').textContent='no key selected'; subSync(); notify(); }
+  host.addEventListener('click',e=>{ if(e.target===host && sel) clearSel(); });
+  const kbCard=document.getElementById('kbBoardCard');
+  if(kbCard) kbCard.addEventListener('click',e=>{ if(e.target===kbCard && sel) clearSel(); });
+  return {
+    get sel(){ return sel; },
+    onChange(cb){ subs.push(cb); },
+    onReset(cb){ resetCbs.push(cb); },   // right-click "Reset" tooltip → restore that key to default
+    clear: clearSel,
+    // modified-key look: the new assignment takes the key's face; the old label moves to the
+    // bottom-right corner, struck through; amber text flags "this key is remapped"
+    mark(idx,bindLabel){
+      const k=byIdx[idx]; if(!k) return;
+      markBy[idx]=bindLabel;
+      k.el.classList.add('mod'); k.el.textContent='';
+      const n=document.createElement('span'); n.className='knew'; n.textContent=bindLabel;
+      const o=document.createElement('span'); o.className='kold'; o.textContent=k.base||'⎵';
+      k.el.appendChild(n); k.el.appendChild(o);
+      k.el.title=k.full+' Key → '+bindLabel+' · LED '+idx;
+      subSync();
+    },
+    unmark(idx){
+      const k=byIdx[idx]; if(!k) return;
+      delete markBy[idx];
+      k.el.classList.remove('mod'); k.el.textContent=k.base; k.el.title=friendly(k.full,idx);
+      subSync();
+    }
+  };
+})();
+
+// ===== key binder — extracted from webhid-test.html into th108-binder.js (palette mirrors the official driver) =====
+// Keymap writes need this page to hold the device (Connect), so the binder is gated on the HID bind state.
+// Lighting/GIF are paused around every keymap pass — 0x12/0x22 traffic must not interleave with 0x32 paint.
+const BINDER=TH108Binder.create({
+  hid: HID, log, board: KBOARD,
+  gifPlaying: ()=>GIF.playing,
+  stopGif: ()=>GIF.stop(),
+  pauseLighting: ()=>window.__lcdHost.pauseLighting(),
+  resumeLighting: ()=>window.__lcdHost.resumeLighting()
+});
+KBOARD.onReset(async idx=>{   // right-click Reset on a board key (SOCD pairs restore together); a reset key is done with — drop its selection
+  const ok=await BINDER.revertKey(idx);
+  if(ok && KBOARD.sel && KBOARD.sel.idx===idx) KBOARD.clear();
+});
+
+// ===== profiles — th108-profiles.js (named snapshots of the whole lighting setup, up to 10) =====
+const PROFILES=TH108Profiles.create({
+  log,
+  flushSave: ()=>LUI.save(),
+  getCurrent: ()=>({ layers: JSON.parse(localStorage.getItem('th108_layers')||'[]'),
+                     order: JSON.parse(localStorage.getItem('th108_layerOrder')||'null') }),
+  applyData: d=>{
+    localStorage.setItem('th108_layers', JSON.stringify(d.layers||[]));
+    if(d.order) localStorage.setItem('th108_layerOrder', JSON.stringify(d.order));
+    else localStorage.removeItem('th108_layerOrder');
+    DC.pushConfig();                                       // hand it straight to the daemon if one is serving this page
+    log('profile applied — reloading…','ok');
+    location.reload();                                     // layer cards rebuild from storage on boot (same flow as Toolbox Import)
+  }
+});
 
 // Factory-reset the keyboard (cmd 0x0F 0xFF, captured from the official driver's "Reset all settings").
 // Recovery hatch if an upload ever wedges the board — works even when typing is dead (vendor iface still enumerates).
@@ -1089,9 +1328,17 @@ document.getElementById('resetKbBtn').addEventListener('click', async ()=>{
   }catch(e){ log('keyboard reset failed: '+e.message,'err'); }
 });
 // Reset all of THIS page's settings (host-side localStorage), keeping the media Library (IndexedDB) + the keyboard untouched.
+// Survivors: saved Profiles (deletable individually on their tab), and the keymap backup / remapped-key
+// marks / pending Spacebar restore — those MIRROR the keyboard's flash, which this reset deliberately
+// does not touch; wiping them wouldn't reset anything, it would just desync the page from the board.
 document.getElementById('resetSiteBtn').addEventListener('click', ()=>{
-  if(!confirm('Reset all of THIS page\'s settings to defaults?\n\nClears your layers, per-pattern values, LCD calibration, and panel layout. Your saved media Library is kept, and the keyboard is NOT touched. The page will reload.')) return;
-  try{ localStorage.clear(); }catch(_){}
+  if(!confirm('Reset all of THIS page\'s settings to defaults?\n\nClears your layers, per-pattern values, LCD calibration, and panel layout. KEPT: your media Library, saved Profiles, and the keymap backup/marks (those mirror the keyboard, which is NOT touched). The page will reload.')) return;
+  const KEEP=['th108_profiles','th108_keymap_backup','th108_key_mods','th108_space_restore_pending'];
+  try{
+    const saved=KEEP.map(k=>[k,localStorage.getItem(k)]).filter(kv=>kv[1]!=null);
+    localStorage.clear();
+    saved.forEach(kv=>localStorage.setItem(kv[0],kv[1]));
+  }catch(_){}
   location.reload();
 });
 </script>

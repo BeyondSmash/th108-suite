@@ -36,3 +36,4 @@ dumped_*.txt
 
 # daemon runtime log (debug instrumentation for board mute events)
 th108-daemon/daemon.log*
+th108-daemon/settings.json

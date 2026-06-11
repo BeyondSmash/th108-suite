@@ -40,7 +40,9 @@
           stopHost = opts.stopHost || noop,
           beforeConnect = opts.beforeConnect || noop, beforeAutoReconnect = opts.beforeAutoReconnect || noop,
           onBound = opts.onBound || noop, onConnected = opts.onConnected || noop,
-          onDisconnected = opts.onDisconnected || noop, onReconnected = opts.onReconnected || noop;
+          onDisconnected = opts.onDisconnected || noop, onReconnected = opts.onReconnected || noop,
+          onGrantLost = opts.onGrantLost || noop,   // replug revoked the WebHID grant — only a user click can get it back
+          onWedged = opts.onWedged || noop;         // handle-rebind retries exhausted on a mute board — last-resort recovery hook (daemon USB restart)
     let device = null, reportId = 0, packLen = 64;
     let _sendStalls = 0, _ackWaiter = null, _inRpts = 0;
 
@@ -70,7 +72,12 @@
       try { device.close(); } catch (_) { }
       device = null; reportId = 0;
       if (++_stallRetries <= 2) { setStatus('board stopped responding — re-binding…', 'dim'); startRebindPoll(); }
-      else setStatus('board unresponsive after retries — unplug/replug it, then click Connect', 'err');
+      else {   // fresh handles didn't help = true wedge; hand it to the recovery hook (daemon USB restart) and keep polling for the re-enumeration it causes
+        setStatus('board unresponsive after retries — attempting recovery…', 'err');
+        _stallRetries = 0;          // the restart (or a manual replug) starts a fresh episode
+        onWedged();
+        startRebindPoll();
+      }
     }
     async function sendFrame(flat, aux = 0) {
       if (!device) return false;
@@ -102,7 +109,9 @@
       stopRebindPoll();                                  // any successful bind path (event, poll, manual Connect) ends the recovery poll
       if (!device.opened) await device.open();
       if (!device._inHooked) { device._inHooked = true; device.addEventListener('inputreport', onInputReport); }   // read the board's ACK/status reports + gate sends on them
-      setStatus('connected: ' + device.productName + ' · reportId=' + reportId + ' · packLen=' + packLen, 'ok');
+      // user-facing status; the wire jargon rides the hover tooltip (3rd arg) and the log keeps the full line
+      setStatus('Keyboard connected: ' + String(device.productName || 'unknown').replace(/_/g, ' '), 'ok',
+        'iface 0x' + (w.usagePage || 0).toString(16) + '/0x' + (w.usage || 0).toString(16) + ' · reportId=' + reportId + ' · packLen=' + packLen + ' · ' + opts.ledCount + ' LEDs');
       log('connected: ' + device.productName + ' · iface 0x' + (w.usagePage || 0).toString(16) + '/0x' + (w.usage || 0).toString(16) + ' · reportId=' + reportId + ' · packLen=' + packLen + ' · ' + opts.ledCount + ' LEDs', 'ok');
       let screenDev = null, screenRid = 0;
       const sc = findScreen(devs);
@@ -143,10 +152,12 @@
         const w = findWritable(known);
         if (w && w.usagePage === 0xFF68 && w.usage === 0x61) {
           stopRebindPoll();
+          try { await beforeAutoReconnect(); } catch (_) { }   // re-yield the daemon FIRST — at wake its watchdog may have resumed it, and silently rebinding over it = two writers (the 2026-06-11 wake fight)
           try { const ok = await bindDevice(known, true); if (ok) onReconnected(); }
           catch (_) { device = null; reportId = 0; startRebindPoll(); }   // not ready yet — keep polling
         } else if (++_pollN === 4) {   // ~6s with no grant in sight → it was a replug (grant revoked) — needs the user
-          setStatus('keyboard disconnected — if you replugged it, click "1 · Connect keyboard" to re-grant (Chrome forgets the permission on unplug)', 'dim');
+          setStatus('keyboard disconnected — if you replugged it, click Connect Keyboard to re-grant (Chrome forgets the permission on unplug)', 'dim');
+          onGrantLost();               // hand lighting back to the daemon — the page can't recover without a click anyway
         }
       }, 1500);
     }

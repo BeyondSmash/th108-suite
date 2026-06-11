@@ -16,14 +16,16 @@ function raw(server, method, p, headers) {
 
 function fakeControl() {
   return {
-    calls: [], _paused: false, saved: null, _autostart: false,
+    calls: [], _paused: false, saved: null, _autostart: false, _usbReset: true,
     yield() { this.calls.push('yield'); this._paused = true; },
     resume() { this.calls.push('resume'); this._paused = false; },
     saveConfig(c) { this.calls.push('save'); this.saved = c; },
-    status() { return { running: true, paused: this._paused, deviceConnected: true, fps: 30 }; },
+    status() { return { running: true, paused: this._paused, deviceConnected: true, fps: 30, usbReset: this._usbReset }; },
+    setUsbReset(on) { this.calls.push('setUsbReset:' + on); this._usbReset = !!on; },
     getAutostart() { this.calls.push('getAutostart'); return Promise.resolve(this._autostart); },
     setAutostart(on) { this.calls.push('setAutostart:' + on); this._autostart = !!on; return Promise.resolve(); },
     quit() { this.calls.push('quit'); },
+    usbFix() { this.calls.push('usbFix'); return { fired: this._usbReset }; },
   };
 }
 
@@ -111,6 +113,29 @@ test('autostart endpoints read and write through control; /quit responds then qu
     assert.ok(!ctl.calls.includes('quit'), 'quit is deferred past the response');
     await new Promise(r => setTimeout(r, 250));
     assert.ok(ctl.calls.includes('quit'), 'quit fires shortly after responding');
+  } finally { server.close(); }
+});
+
+test('/usbreset writes through control; state reads back via /status', async () => {
+  const ctl = fakeControl();
+  const server = createServer({ control: ctl, root: path.join(__dirname, '..'), port: 0 });
+  await server.listening;
+  try {
+    assert.equal((await call(server, 'GET', '/status')).json.usbReset, true);   // default on
+    assert.equal((await call(server, 'POST', '/usbreset', { on: false })).json.enabled, false);
+    assert.ok(ctl.calls.includes('setUsbReset:false'));
+    assert.equal((await call(server, 'GET', '/status')).json.usbReset, false);
+    assert.equal((await call(server, 'POST', '/usbreset', { on: true })).json.enabled, true);
+  } finally { server.close(); }
+});
+
+test('/usbfix relays through control and returns its verdict (page-side wedge recovery)', async () => {
+  const ctl = fakeControl();
+  const server = createServer({ control: ctl, root: path.join(__dirname, '..'), port: 0 });
+  await server.listening;
+  try {
+    assert.equal((await call(server, 'POST', '/usbfix')).json.fired, true);
+    assert.ok(ctl.calls.includes('usbFix'));
   } finally { server.close(); }
 });
 
