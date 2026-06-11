@@ -151,10 +151,10 @@
       note: "If your front strip is currently on a rainbow or animated effect, cycling the color won't visibly change anything — the front strip needs to be cycled to the static-color effect first. To cycle the effect instead:",
       swapTo: 27 },
     { code: 27,  name: 'Front Strip Effect', desc: "cycle the front strip's effect" },
-    { code: 164, name: 'Ambient Color',      desc: "cycle the circle light's color",
-      note: "If the circle light is currently on a rainbow or animated effect, cycling the color won't visibly change anything — it needs to be cycled to the static-color effect first. To cycle the effect instead:",
-      swapTo: 165 },
-    { code: 165, name: 'Ambient Effect',     desc: 'cycle the ambient lighting effect' }
+    // Ambient Color (164) was dropped from this card 2026-06-11 (user call): the ambient effect
+    // cycle already includes color cycling, so a separate color toggle reads as a no-op in
+    // practice. The code stays available in the Function Keys palette.
+    { code: 165, name: 'Ambient Effect',     desc: "cycle the circle light's effect (its effects include the color cycling)" }
   ];
 
   // default HID usage (normal character) for every key value — used by Restore Default.
@@ -649,6 +649,16 @@
         b.dataset.space = '1'; b.addEventListener('click', () => enterSpace(f));
         c.appendChild(b);
       });
+      // the manual way out: if the keyboard disconnected mid-overlay (mute/replug) the ✕ restore
+      // can fail — this restores the Spacebar directly on the next successful connection
+      const ub = document.createElement('button'); ub.textContent = '⎵ Unbind Spacebar'; ub.disabled = true; ub.style.margin = '0';
+      ub.dataset.space = '1';
+      ub.title = 'restore the Spacebar to normal typing — use this if the keyboard lost connection while a toggle overlay was open and the Spacebar stayed bound';
+      ub.addEventListener('click', async () => {
+        if (busy || !connected) return;
+        if (await restoreSpace()) log('✓ Spacebar restored to normal', 'ok');
+      });
+      c.appendChild(ub);
     })();
     function spaceEsc(e) { if (e.key === 'Escape') { e.preventDefault(); exitSpace(); } }
     function setSpaceDesc(f) {   // "Tap <kbd>Space</kbd> to <desc>." without innerHTML
