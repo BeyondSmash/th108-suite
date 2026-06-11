@@ -156,7 +156,8 @@
           <span style="flex:1"></span>
           <button id="lcdUndo" class="mini" title="undo (Ctrl+Z)">↶</button>
           <button id="lcdRedo" class="mini" title="redo (Ctrl+Y)">↷</button>
-          <button id="lcdResetColor" class="mini">Reset all</button>
+          <button id="lcdDefaultCal" class="mini" title="restore the baked-in calibration — the known-good profile for this keyboard's LCD">Default</button>
+          <button id="lcdResetColor" class="mini" title="neutral settings — no correction at all">Reset all</button>
         </div>
         <label style="color:#ff7b72">R gain</label><input type="range" id="lcdrGain" min="20" max="220" value="100"><input type="number" class="num" id="lcdrGainN"><button class="rst" data-id="lcdrGain" title="reset">↺</button>
         <label style="color:#ff7b72">R γ</label><input type="range" id="lcdrGamma" min="40" max="260" value="100"><input type="number" class="num" id="lcdrGammaN"><button class="rst" data-id="lcdrGamma" title="reset">↺</button>
@@ -722,6 +723,11 @@
     }));
     $('#lcdResetColor').addEventListener('click', () => {
       CAL_KEYS.forEach(key => setParam(key, defaultOf(key), false)); applyColor(); saveCal(); pushHistory();
+    });
+    // Default = the baked-in DEFAULT_CAL (the hardware-matched profile); Reset all = neutral. Two
+    // different "starting points": one for this LCD's known distortion, one for no correction at all.
+    $('#lcdDefaultCal').addEventListener('click', () => {
+      CAL_KEYS.forEach(key => setParam(key, DEFAULT_CAL[key], false)); applyColor(); saveCal(); pushHistory();
     });
     $('#lcdUndo').addEventListener('click', () => { if (hi > 0) { hi--; applySnap(hist[hi]); updateHistButtons(); } });
     $('#lcdRedo').addEventListener('click', () => { if (hi < hist.length - 1) { hi++; applySnap(hist[hi]); updateHistButtons(); } });
