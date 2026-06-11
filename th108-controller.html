@@ -390,6 +390,20 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
     <div id="spaceBtns" style="display:flex;flex-wrap:wrap;gap:6px"></div>
   </div>
 
+  <div class="card s4" id="advKeysCard" data-pages="hotkeys">
+    <div class="cardbar"><span class="grip">⠿</span><h2>Advanced Keys</h2></div>
+    <p class="hint" style="margin:4px 0 10px">Give one key a smarter behavior. Like everything on this tab it lives
+       in the keyboard's keymap — works in every app, no software needed. Pick a key on the board, choose a behavior,
+       Apply. Restore Default undoes it. (The official tool allows up to 40 advanced keys.)</p>
+    <div class="bdtabs" id="akTabs"></div>
+    <p class="hint" id="akDesc" style="margin:8px 0"></p>
+    <div id="akForm" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"></div>
+    <div style="display:flex;align-items:center;gap:10px;margin-top:10px">
+      <button id="akApply" disabled>Apply</button>
+      <span class="hint" id="akState" style="margin:0"></span>
+    </div>
+  </div>
+
   <!-- ========== PROFILES ========== -->
   <div class="card s4" id="profilesCard" data-pages="profiles">
     <div class="cardbar"><span class="grip">⠿</span><h2>Profiles</h2><span class="aux" id="profCount"></span></div>

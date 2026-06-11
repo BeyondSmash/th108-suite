@@ -416,6 +416,7 @@
         !ok        ? 'The Fn key is handled by the firmware and can\'t be reassigned — pick another key.' :
                      'Click an assignment — the full 512-byte keymap is rewritten (single-key writes don\'t commit), takes about 2 seconds. Restore Default brings the key back.';
       renderGrid();
+      akRefresh();   // hoisted — the Advanced Keys card gates exactly like the palette
     }
     if (board) board.onChange(refresh);
 
@@ -509,6 +510,111 @@
                    : '✓ custom assignments re-applied', 'ok');
     }
     $('bdToggleAll').addEventListener('click', toggleAll);
+
+    // ---- Advanced Keys card: CB / MT / TGL / SOCD (entry types 0x07/0x09/0x0a/0x0b) ----
+    const AK_TYPES = [
+      { key: 'cb',   name: 'Combination', desc: 'One key presses a whole shortcut — e.g. M acts as L-Alt + R-Ctrl + C.' },
+      { key: 'mt',   name: 'Mod-Tap',     desc: 'Tap = one key, hold = another — e.g. tap Y types Y, hold Y acts as Tab.' },
+      { key: 'tgl',  name: 'Toggle',      desc: 'Tap toggles another key held down — e.g. K toggles R held (autorun in games). Tap again to release.' },
+      { key: 'socd', name: 'SOCD',        desc: 'Pairs two opposing keys (like A and D): when both are physically down, the last one pressed wins.' }
+    ];
+    const KEY_ITEMS = [];   // palette basic+extended, deduped by HID — labels for every assignable key
+    PALETTE.find(t => t.key === 'basic').items.concat(PALETTE.find(t => t.key === 'extended').items)
+      .forEach(it => { if (!KEY_ITEMS.some(x => x.hid === it.hid)) KEY_ITEMS.push(it); });
+    const HID_LABEL = {}; KEY_ITEMS.forEach(it => { HID_LABEL[it.hid] = it.label; });
+    MODIFIERS.forEach(m => { if (!HID_LABEL[m.hid]) HID_LABEL[m.hid] = m.label; });
+    const keyShort = hid => (HID_LABEL[hid] || ('HID ' + hid)).split(' ')[0];   // board marks are tiny — first word only
+    let akType = 'cb';
+
+    function akSelEl(id, items, selVal) {
+      const s = document.createElement('select'); s.id = id;
+      items.forEach(it => { const o = document.createElement('option'); o.value = it.value; o.textContent = it.label; if (it.value === selVal) o.selected = true; s.appendChild(o); });
+      return s;
+    }
+    const keyOpts = () => KEY_ITEMS.map(it => ({ value: it.hid, label: it.label }));
+    const modOpts = () => MODIFIERS.map(m => ({ value: m.hid, label: m.label }));
+    function akPartnerOpts(selIdx) {   // every board key except Fn and the selected key, labeled via its factory HID
+      return Object.keys(DEFAULT_HID).map(Number)
+        .filter(v => v !== selIdx && v !== FN_VAL)
+        .map(v => ({ value: v, label: HID_LABEL[DEFAULT_HID[v]] || ('key ' + v) }))
+        .sort((a, b) => String(a.label).localeCompare(String(b.label)));
+    }
+    function akLab(text) { const s = document.createElement('span'); s.className = 'hint'; s.style.margin = '0'; s.textContent = text; return s; }
+
+    function akRenderTabs() {
+      const host = $('akTabs');
+      AK_TYPES.forEach(t => {
+        const b = document.createElement('button');
+        b.className = 'patbtn' + (t.key === akType ? ' sel' : ''); b.textContent = t.name; b.dataset.ak = t.key;
+        b.addEventListener('click', () => { akType = t.key; host.querySelectorAll('.patbtn').forEach(x => x.classList.toggle('sel', x.dataset.ak === akType)); akRenderForm(); });
+        host.appendChild(b);
+      });
+    }
+    function akRenderForm() {   // re-rendered on type switch AND board-selection change (fresh defaults)
+      const f = $('akForm'); f.textContent = '';
+      $('akDesc').textContent = AK_TYPES.find(t => t.key === akType).desc;
+      const sel = selKey(), ownHid = sel ? DEFAULT_HID[sel.idx] : null;
+      if (akType === 'cb') {
+        f.appendChild(akLab('presses')); f.appendChild(akSelEl('akMod1', modOpts(), 0xE0));
+        f.appendChild(akLab('+')); f.appendChild(akSelEl('akMod2', modOpts(), 0xE1));
+        f.appendChild(akLab('+')); f.appendChild(akSelEl('akKey', keyOpts(), 6));
+      } else if (akType === 'mt') {
+        f.appendChild(akLab('tap =')); f.appendChild(akSelEl('akClick', keyOpts(), ownHid != null ? ownHid : 4));
+        f.appendChild(akLab('hold =')); f.appendChild(akSelEl('akHold', keyOpts(), 43));
+        f.appendChild(akLab('threshold'));
+        const n = document.createElement('input'); n.type = 'number'; n.id = 'akTime'; n.min = 1; n.max = 255; n.value = 40;
+        n.style.width = '64px'; n.title = 'hold-time threshold — 40 is the official default (units unknown)';
+        f.appendChild(n);
+      } else if (akType === 'tgl') {
+        f.appendChild(akLab('toggles')); f.appendChild(akSelEl('akKey', keyOpts(), 0x15)); f.appendChild(akLab('held on/off'));
+      } else {
+        f.appendChild(akLab('pairs with'));
+        f.appendChild(akSelEl('akPartner', akPartnerOpts(sel ? sel.idx : -1)));
+        f.appendChild(akLab('· Last Pressed Wins (mode 3 — the only wire-captured mode)'));
+      }
+      akRefresh();
+    }
+    function akRefresh() {   // called from refresh() so connect/busy changes flow through
+      const sel = selKey(), ok = bindable(sel), en = connected && !busy && ok;
+      $('akApply').disabled = !en;
+      $('akApply').textContent = 'Apply to ' + (ok ? (sel.label || 'Space') : 'selected key');
+      $('akState').textContent = !connected ? 'needs Connect' : (ok ? '' : 'pick a key on the board above');
+    }
+    async function akApply() {
+      const sel = selKey(); if (!bindable(sel) || busy) return;
+      const own = sel.label || 'Space';
+      if (akType === 'socd') {
+        const pv = +$('akPartner').value, a = DEFAULT_HID[sel.idx], b = DEFAULT_HID[pv];
+        if (b == null || pv === sel.idx || pv === FN_VAL) return;
+        const four = encodeSOCD(a, b);
+        const ok = await keymapRMW(km => { setEntry(km, sel.idx, four); setEntry(km, pv, four); },
+                                   'Pairing ' + own + ' + ' + keyShort(b) + ' (SOCD)…');
+        if (!ok) return;
+        setMods({ [sel.idx]: { label: 'SOCD ' + keyShort(a), bytes: four.slice(), pair: pv },
+                  [pv]:      { label: 'SOCD ' + keyShort(b), bytes: four.slice(), pair: sel.idx } });
+        log('✓ SOCD pair: ' + keyShort(a) + ' ⟷ ' + keyShort(b) + ' — last pressed wins. Restore Default on either key removes both.', 'ok');
+        return;
+      }
+      let four, label;
+      if (akType === 'cb') {
+        const m1 = +$('akMod1').value, m2 = +$('akMod2').value, k = +$('akKey').value;
+        four = encodeCB(m1, m2, k); label = keyShort(m1) + '+' + keyShort(m2) + '+' + keyShort(k);
+      } else if (akType === 'mt') {
+        const c = +$('akClick').value, h = +$('akHold').value;
+        const t = Math.max(1, Math.min(255, parseInt($('akTime').value, 10) || 40));
+        four = encodeMT(c, h, t); label = keyShort(c) + '⇄' + keyShort(h);
+      } else {
+        const k = +$('akKey').value;
+        four = encodeTGL(k); label = 'TGL ' + keyShort(k);
+      }
+      const ok = await keymapRMW(km => setEntry(km, sel.idx, four), 'Assigning ' + own + ' → ' + label + '…');
+      if (!ok) return;
+      setMod(sel.idx, label, four);
+      log('✓ ' + own + ' is now an advanced key: ' + label + ' — Restore Default to undo', 'ok');
+    }
+    $('akApply').addEventListener('click', akApply);
+    if (board) board.onChange(akRenderForm);   // selection change re-renders (MT tap default, SOCD partner list)
+    akRenderTabs(); akRenderForm();
 
     // ---- decorative light toggles: bind Space to a light, hold the overlay open, Esc/✕ restores ----
     (function () {
