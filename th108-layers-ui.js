@@ -14,14 +14,19 @@
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
   const TYPES=['background','reactive','gradient','pattern','media'], BLENDS=['normal','add','screen','multiply','max'];
+  // lucide chevrons-down-up (= "collapse") / chevrons-up-down (= "expand") for the card corner toggle
+  const SVGA='<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">';
+  const CHEV_COLLAPSE=SVGA+'<path d="m7 20 5-5 5 5"/><path d="m7 4 5 5 5-5"/></svg>';
+  const CHEV_EXPAND=SVGA+'<path d="m7 15 5 5 5-5"/><path d="m7 9 5-5 5 5"/></svg>';
 
   // ----- pure persist helpers (node-testable) -----
-  function serializeLayers(layers){ return layers.map(L=>({name:L.name,enabled:L.enabled,type:L.type,opacity:L.opacity,blend:L.blend,fps:L.fps,settings:L.settings})); }
+  function serializeLayers(layers){ return layers.map(L=>({name:L.name,enabled:L.enabled,type:L.type,opacity:L.opacity,blend:L.blend,fps:L.fps,settings:L.settings,collapsed:!!L.collapsed})); }
   function serializeOrder(layers){ return layers.map(L=>L.type+':'+L.name); }
   function overlayLayers(layers, a){
     if(!Array.isArray(a)) return;
     for(let i=0;i<layers.length&&i<a.length;i++){ const o=a[i]; if(!o) continue; const L=layers[i];
       if(o.name!=null)L.name=o.name; L.enabled=!!o.enabled; if(o.type)L.type=o.type; if(o.opacity!=null)L.opacity=o.opacity; if(o.blend)L.blend=o.blend; if(o.fps)L.fps=Math.min(30,o.fps);   // clamp any pre-cap saved fps
+      L.collapsed=!!o.collapsed;   // card collapse is a UI pref but rides the same persisted object (survives reorders)
       if(o.settings&&typeof o.settings==='object')L.settings=o.settings; }
   }
 
@@ -48,7 +53,7 @@
       // ascending — Layer 1 (bottom of the stack) reads first, Layer 4 (top) last (user request 2026-06-11)
       for(let n=0;n<state.layers.length;n++){
         const L=state.layers[n], card=document.createElement('div');
-        card.className='lcard'+(L.enabled?'':' off'); card.dataset.n=n;
+        card.className='lcard'+(L.enabled?'':' off')+(L.collapsed?' coll':''); card.dataset.n=n;
         card.draggable=true;
         const opt=(arr,sel)=>arr.map(v=>'<option'+(v===sel?' selected':'')+'>'+v+'</option>').join('');
         card.innerHTML=
@@ -62,9 +67,12 @@
             '<select class="lbl">'+opt(BLENDS,L.blend)+'</select>'+
             '<span class="lfield">FPS <input type="range" class="lf" min="1" max="30" value="'+L.fps+'"><input type="number" class="numin lfn" min="1" max="30" value="'+L.fps+'"></span>'+
           '</div>'+
+          '<button type="button" class="lcoll" title="collapse / expand this layer card">'+(L.collapsed?CHEV_EXPAND:CHEV_COLLAPSE)+'</button>'+
           '<div class="lbody"></div>';
         host.appendChild(card);
         // header wiring
+        const lc=card.querySelector('.lcoll');
+        lc.addEventListener('click',()=>{ L.collapsed=!L.collapsed; card.classList.toggle('coll',L.collapsed); lc.innerHTML=L.collapsed?CHEV_EXPAND:CHEV_COLLAPSE; saveLayers(); });
         card.querySelector('.le').addEventListener('change',e=>{ L.enabled=e.target.checked; card.classList.toggle('off',!L.enabled); });
         card.querySelector('.ln').addEventListener('input',e=>{ L.name=e.target.value; });
         card.querySelector('.lt').addEventListener('change',e=>{ L.type=e.target.value; E.ensureSettings(L); buildLayerBody(card,L); });

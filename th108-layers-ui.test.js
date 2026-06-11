@@ -11,12 +11,22 @@ const mkLayer = over => Object.assign({
   lastTick: 123, buf: new Uint8Array(3)            // runtime-only fields — must NOT persist
 }, over);
 
-// --- serializeLayers: exactly the 7 persisted fields, runtime state dropped ---
-test('serializeLayers keeps exactly name/enabled/type/opacity/blend/fps/settings', () => {
+// --- serializeLayers: exactly the 8 persisted fields, runtime state dropped ---
+test('serializeLayers keeps exactly name/enabled/type/opacity/blend/fps/settings/collapsed', () => {
   const out = LUI.serializeLayers([mkLayer({ name: 'top', opacity: 0.5, fps: 24 })]);
-  assert.deepEqual(out, [{ name: 'top', enabled: true, type: 'background', opacity: 0.5, blend: 'normal', fps: 24, settings: { color: '#ffffff' } }]);
+  assert.deepEqual(out, [{ name: 'top', enabled: true, type: 'background', opacity: 0.5, blend: 'normal', fps: 24, settings: { color: '#ffffff' }, collapsed: false }]);
   assert.equal('lastTick' in out[0], false);
   assert.equal('buf' in out[0], false);
+});
+
+test('card collapse persists: serialize round-trips through overlayLayers', () => {
+  const out = LUI.serializeLayers([mkLayer({ collapsed: true }), mkLayer()]);
+  assert.equal(out[0].collapsed, true);
+  assert.equal(out[1].collapsed, false);
+  const layers = [mkLayer(), mkLayer({ collapsed: true })];
+  LUI.overlayLayers(layers, out);
+  assert.equal(layers[0].collapsed, true);            // restored from save
+  assert.equal(layers[1].collapsed, false);           // saved false clears a stale flag
 });
 
 // --- serializeOrder: the th108_layerOrder "type:name" shape ---

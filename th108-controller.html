@@ -175,6 +175,7 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
   .ctl{ display:grid; grid-template-columns:160px 1fr 56px; gap:10px 14px; align-items:center; }
   .ctl label{ color:var(--muted); }
   .ctl input[type=range]{ width:100%; }
+  .ctl select{ justify-self:start; width:auto; min-width:110px; }   /* size to content — "Color 1" doesn't need the whole 1fr column */
   .sl{ color:var(--muted); display:inline-flex; align-items:center; gap:6px; justify-self:start; width:fit-content; }   /* shrink + don't stretch in grid → clicking empty row space won't toggle the checkbox */
   .srange{ position:relative; display:inline-block; width:110px; height:20px; }
   .srange input[type=range]{ -webkit-appearance:none; appearance:none; position:absolute; left:0; top:50%; transform:translateY(-50%); width:100%; height:14px; margin:0; background:transparent; }
@@ -188,10 +189,12 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
 
   /* layer cards — bento sub-grid inside the compositor card (order still = stacking order, row-major) */
   #layerCards{ display:grid; grid-template-columns:repeat(auto-fill,minmax(440px,1fr)); gap:12px; align-items:start; }
-  .lcard{ background:var(--inset); border-radius:18px; padding:12px; margin:0; }
+  .lcard{ background:var(--inset); border-radius:18px; padding:12px; margin:0; position:relative; }
+  .lcard.coll .lbody{ display:none; }                      /* manual collapse — header row only (the toggle in the top-right corner) */
+  .lcoll{ position:absolute; top:10px; right:10px; margin:0; padding:5px 7px; line-height:0; }
   .lcard.off{ opacity:.55; }
   .lcard.off .lbody{ display:none; }   /* disabled layers collapse to just their header row */
-  .lhead{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+  .lhead{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; padding-right:30px; }   /* keep clear of the corner collapse toggle */
   .lhead .ln{ font:inherit; background:var(--card); color:var(--text); border:1px solid var(--border); border-radius:9px; padding:4px 8px; width:120px; }
   .lhead select{ padding:3px 6px; }
   .lhead .lfield{ display:flex; align-items:center; gap:6px; color:var(--muted); font-size:12px; }
@@ -404,7 +407,10 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
     <div class="cardbar"><span class="grip">⠿</span><h2>Advanced Keys</h2></div>
     <p class="hint" style="margin:4px 0 10px">Give one key a smarter behavior. Like everything on this tab it lives
        in the keyboard's keymap — works in every app, no software needed. Pick a key on the board, choose a behavior,
-       Apply. Restore Default undoes it. (The official tool allows up to 40 advanced keys.)</p>
+       Apply. Restore Default undoes it. (The official tool allows up to 40 advanced keys.)<br>
+       <b>⚠ Heads-up:</b> in hardware tests so far these entries write fine but don't take effect (Combination and
+       Toggle both verified inert via Chord check, 2026-06-11) — likely the firmware needs something the official
+       driver sets up that we haven't captured yet. Parked until a comparison session against the official driver.</p>
     <div class="bdtabs" id="akTabs"></div>
     <p class="hint" id="akDesc" style="margin:8px 0"></p>
     <div id="akForm" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"></div>
