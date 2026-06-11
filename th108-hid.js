@@ -127,6 +127,16 @@
       if (!('hid' in navigator)) { setStatus('WebHID needs Chrome/Edge', 'err'); return; }
       try {
         await beforeConnect();   // daemon holds the device — make it release BEFORE we open, or the open fails
+        // a surviving grant binds silently — the picker is ONLY for re-granting after Chrome forgot
+        // the device (true replug). Pair with install-webhid-grant.ps1 (policy pre-grant) and the
+        // picker never appears at all.
+        const known = await navigator.hid.getDevices();
+        const kw = findWritable(known);
+        if (kw && kw.usagePage === 0xFF68 && kw.usage === 0x61) {
+          const ok = await bindDevice(known, true);
+          if (ok) { onConnected(); return; }
+          // silent bind failed (stale handle mid-enumeration etc.) — fall through to the picker
+        }
         const picked = await navigator.hid.requestDevice({ filters: [{ vendorId: VENDOR }] });   // grant the whole keyboard so BOTH the control (0xFF68/0x61) AND screen (large report) interfaces are available (LCD upload needs the screen iface)
         if (!picked || !picked.length) { setStatus('connection cancelled', 'dim'); return; }   // respect Cancel — don't silently fall back to a previously-granted device
         const ok = await bindDevice(picked, false);
