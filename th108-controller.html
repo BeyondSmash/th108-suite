@@ -89,7 +89,7 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
   #grid{ display:grid; grid-template-columns:repeat(6,1fr); gap:16px; max-width:1240px; margin:8px auto 0;
          grid-auto-flow:dense; align-items:start; }
   .card{ background:var(--card); border-radius:28px; padding:20px; box-shadow:var(--shadow); }
-  .card[hidden]{ display:none !important; }   /* must beat .card.deco's display:flex (equal specificity, later rule) */
+  .card[hidden]{ display:none !important; }   /* recurring gotcha: any later display: rule on a class beats [hidden] — keep the !important */
   .s2{ grid-column:span 2 } .s3{ grid-column:span 3 } .s4{ grid-column:span 4 } .s6{ grid-column:span 6 }
   @media (max-width:1040px){
     #grid{ grid-template-columns:repeat(2,1fr); }
@@ -137,7 +137,6 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
   .dmnTag:hover i{ animation:dpulse 1.2s ease-in-out infinite; }
   .dmnTag.off:hover i{ animation:none; }
   @keyframes dpulse{ 50%{ box-shadow:0 0 0 5px color-mix(in srgb, var(--mint) 30%, transparent); } }
-  .card.deco{ display:flex; flex-direction:column; align-items:center; justify-content:center; gap:10px; min-height:208px; }
 
   /* ===== controls ===== */
   button{ font:600 13.5px/1.4 "Plus Jakarta Sans",system-ui,sans-serif; background:var(--card); color:var(--text);
@@ -212,17 +211,10 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
   .patbtn.sel{ background:var(--accent); box-shadow:none; color:#0d1117; }
   canvas.cv{ border:1px solid var(--border); border-radius:12px; background:#000; }
 
-  /* bio + deco tiles */
+  /* bio tile */
   .avatar{ width:60px; height:60px; border-radius:50%; background:var(--blue); display:flex; align-items:center;
            justify-content:center; font-size:30px; margin-bottom:10px; }
   .bigtype{ font-family:"Fraunces",Georgia,serif; font-weight:800; font-size:25px; letter-spacing:-.4px; }
-  .deco.pink{ background:var(--pink); color:#0d1117; }
-  .deco.yellow{ background:var(--yellow); color:#0d1117; }
-  .keycaps{ display:flex; gap:8px; }
-  .keycap{ font-family:"Fraunces",Georgia,serif; font-weight:700; background:#fff; color:#0d1117; border-radius:12px;
-           min-width:52px; height:52px; display:flex; align-items:center; justify-content:center; font-size:21px;
-           box-shadow:0 3px 0 rgba(13,17,23,.18); padding:0 10px; }
-  .deco .cap{ font-size:13px; font-weight:600; opacity:.75; }
   .faqcard h3{ font-family:"Fraunces",Georgia,serif; font-weight:700; font-size:17.5px; margin:0 0 8px; letter-spacing:-.2px; }
   .faqcard p{ margin:0; color:var(--muted); font-size:13.5px; }
   .faqcard p+p{ margin-top:8px; }
@@ -392,12 +384,6 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
     <p class="hint" style="margin:4px 0 10px">Click a light — your <b>Spacebar</b> becomes its cycle key and a
        focus overlay opens; <kbd>Esc</kbd> or ✕ restores the Spacebar.</p>
     <div id="spaceBtns" style="display:flex;flex-wrap:wrap;gap:6px"></div>
-  </div>
-
-  <div class="card s2 deco yellow" id="decoCard2" data-pages="hotkeys">
-    <div class="keycaps"><span class="keycap">Y</span><span class="keycap">🔆</span></div>
-    <div class="cap" style="display:flex;align-items:center;gap:6px">Any Key <svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg> Any Action</div>
-    <div class="cap" style="opacity:.6">characters · media · mouse · light controls</div>
   </div>
 
   <!-- ========== PROFILES ========== -->
