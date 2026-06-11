@@ -377,6 +377,10 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
       <button id="bdRestore" disabled title="write the backed-up keymap to the keyboard — the recovery for a scrambled keymap (gentler than a factory reset: keeps your onboard effect config)"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/></svg> Restore Keymap</button>
       <span class="hint" id="bdBackupInfo" style="margin:0"></span>
     </div>
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:8px">
+      <button id="bdToggleAll" disabled title="one keymap pass flips every remapped key back to its normal typing character; a second pass re-applies your custom assignments — for when the letters need to just type"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="m8 3-4 4 4 4"/><path d="M4 7h16"/><path d="m16 21 4-4-4-4"/><path d="M20 17H4"/></svg> <span id="bdToggleLbl">All Remapped Keys → Typing</span></button>
+      <span class="hint" id="bdToggleInfo" style="margin:0"></span>
+    </div>
   </div>
 
   <div class="card s2" id="decoTogglesCard" data-pages="hotkeys">

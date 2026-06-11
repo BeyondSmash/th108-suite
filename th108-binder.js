@@ -4,6 +4,9 @@
    Special Characters (media) / Function Keys (the firmware's decorative-light cycle functions).
    Plus the Decorative Light Toggles: one click binds the SPACEBAR to a light function and opens a
    focus overlay; Esc/✕ exits and restores the Spacebar.
+   Plus the group toggle (generalized from webhid-test.html's "' ; H J K L → TYPING" button): the
+   th108_key_mods entries store the exact 4 bytes each bind wrote, so ONE button can park every
+   remapped key on its factory character in a single keymap pass and re-apply the lot afterwards.
 
    THE critical protocol fact (hardware-confirmed 2026-06-07): single-key keymap writes (cmd 0x22,
    4 bytes at offset 4·keyValue) are ACK'd by the board but DO NOT take effect. Every edit must
@@ -180,6 +183,45 @@
     return keymapLooksValid(km) ? km : null;
   }
 
+  // ---- group toggle (ONE button flips every remapped key ⇄ its typing default) ----
+  // mods = the persisted th108_key_mods map: keyValue → {label, bytes:[4], off?:true}.
+  // `bytes` is the exact entry we wrote (so the toggle can re-apply it later); `off` means the key
+  // is currently parked on its factory character. Sessions before 2026-06-11 stored a bare label
+  // string — normalize keeps the board mark but such keys can't round-trip (no bytes), so the
+  // toggle skips them until they're re-assigned once.
+  function normalizeMods(raw) {
+    const out = {};
+    if (!raw || typeof raw !== 'object') return out;
+    for (const [k, v] of Object.entries(raw)) {
+      if (typeof v === 'string') { out[k] = { label: v }; continue; }
+      if (!v || typeof v !== 'object' || typeof v.label !== 'string') continue;
+      const e = { label: v.label };
+      if (Array.isArray(v.bytes) && v.bytes.length === 4 && v.bytes.every(b => Number.isInteger(b) && b >= 0 && b <= 255)) e.bytes = v.bytes.slice();
+      if (v.off && e.bytes) e.off = true;   // `off` without bytes can't be brought back — treat as active so the mark stays honest
+      out[k] = e;
+    }
+    return out;
+  }
+  function modsOff(mods) { return Object.values(mods).some(e => e.off); }
+  // plan one toggle pass without mutating anything: toTyping=true parks every active remapped key
+  // on its factory character; false re-applies the stored custom bytes of every parked key.
+  // Returns {writes:[{idx,bytes}], next} — the keymap writes plus the mods map to persist after.
+  function groupPlan(mods, toTyping) {
+    const writes = [], next = {};
+    for (const [k, v] of Object.entries(mods)) {
+      const idx = +k, e = Object.assign({}, v);
+      if (toTyping && v.bytes && !v.off) {
+        const d = defaultEntry(idx);                       // no default known (Fn) → never park what we can't restore
+        if (d) { writes.push({ idx, bytes: d }); e.off = true; }
+      } else if (!toTyping && v.bytes && v.off) {
+        writes.push({ idx, bytes: v.bytes.slice() });
+        delete e.off;
+      }
+      next[k] = e;
+    }
+    return { writes, next };
+  }
+
   function create(opts) {
     opts = opts || {};
     const noop = function () {};
@@ -296,20 +338,24 @@
 
     // modified-key marks: what OUR binder wrote, persisted so the board shows it across reloads
     // (bindings live in the keyboard's flash, so they outlive the page; an out-of-band change —
-    // official tool, factory reset — can desync the marks until the next bind/restore here)
+    // official tool, factory reset — can desync the marks until the next bind/restore here).
+    // Each entry also stores the 4 written bytes, which is what makes the group toggle possible.
     const MODS_KEY = 'th108_key_mods';
-    function loadMods() { try { const o = JSON.parse(localStorage.getItem(MODS_KEY) || '{}'); return o && typeof o === 'object' ? o : {}; } catch (_) { return {}; } }
-    function setMod(idx, label) {
+    function loadMods() { try { return normalizeMods(JSON.parse(localStorage.getItem(MODS_KEY) || '{}')); } catch (_) { return {}; } }
+    function saveMods(m) { try { localStorage.setItem(MODS_KEY, JSON.stringify(m)); } catch (_) { } }
+    function setMod(idx, label, bytes) {
       const m = loadMods();
       if (label == null) { delete m[idx]; if (board && board.unmark) board.unmark(idx); }
-      else { m[idx] = label; if (board && board.mark) board.mark(idx, label); }
-      try { localStorage.setItem(MODS_KEY, JSON.stringify(m)); } catch (_) { }
+      else { m[idx] = bytes ? { label, bytes: bytes.slice() } : { label }; if (board && board.mark) board.mark(idx, label); }
+      saveMods(m);
+      refresh();   // the group-toggle button mirrors the mods map
     }
     function clearMods() {
       Object.keys(loadMods()).forEach(i => { if (board && board.unmark) board.unmark(+i); });
       try { localStorage.removeItem(MODS_KEY); } catch (_) { }
     }
-    if (board && board.mark) Object.entries(loadMods()).forEach(([i, l]) => board.mark(+i, l));
+    // parked keys (off) currently type their factory character — no mark, that's the truth
+    if (board && board.mark) Object.entries(loadMods()).forEach(([i, e]) => { if (!e.off) board.mark(+i, e.label); });
 
     function selKey() { return board && board.sel; }
     function bindable(sel) { return !!sel && sel.idx !== FN_VAL && DEFAULT_HID[sel.idx] != null; }
@@ -326,6 +372,17 @@
       $('bdBackup').disabled = !en;
       $('bdRestore').disabled = !(en && bkOk);
       $('bdBackupInfo').textContent = bkOk ? 'backup from ' + new Date(bk.savedAt).toLocaleString() : 'no backup yet — take one while your keymap is healthy';
+      // group toggle: label + enablement track the mods map (suspended = some keys are parked)
+      const mods = loadMods(), nMods = Object.keys(mods).length, suspended = modsOff(mods);
+      const plan = groupPlan(mods, !suspended);
+      const noBytes = Object.values(mods).filter(e => !e.bytes).length;
+      $('bdToggleLbl').textContent = suspended ? 'Remapped Keys → Back to Custom' : 'All Remapped Keys → Typing';
+      $('bdToggleAll').disabled = !(en && plan.writes.length);
+      $('bdToggleInfo').textContent =
+        !nMods    ? 'no keys remapped yet' :
+        suspended ? plan.writes.length + ' key' + (plan.writes.length === 1 ? '' : 's') + ' parked on typing defaults' :
+                    nMods + ' key' + (nMods === 1 ? '' : 's') + ' remapped' +
+                    (noBytes ? ' (' + noBytes + ' from an older session — re-assign once to include in the toggle)' : '');
       $('bdHint').textContent =
         !connected ? 'Assigning rewrites the keyboard\'s keymap over WebHID, so this page must hold the device — click Connect Keyboard on the Home tab first.' :
         !sel       ? 'Pick a key on the board above, then click what it should do. The change lives in the keyboard\'s flash — it works in every app, no software needed.' :
@@ -341,7 +398,7 @@
       const ok = await keymapRMW(km => setEntry(km, sel.idx, four), 'Assigning ' + (sel.label || 'Space') + ' → ' + item.label + '…');   // key → action, like every other arrow in the suite
       if (!ok) return;
       const isDefault = four[0] === 0x02 && four[2] === DEFAULT_HID[sel.idx];   // re-assigning the key's own character = back to stock, no mark
-      setMod(sel.idx, isDefault ? null : item.label);
+      setMod(sel.idx, isDefault ? null : item.label, four);
       log('✓ ' + (sel.label || 'Space') + ' now does "' + item.label + '" — Restore Default to undo', 'ok');
     }
     async function revert() {
@@ -402,6 +459,29 @@
     $('bdBackup').addEventListener('click', backup);
     $('bdRestore').addEventListener('click', restoreBackup);
 
+    // ---- group toggle: one keymap pass flips every remapped key ⇄ its typing default ----
+    // (generalizes webhid-test.html's fixed "' ; H J K L → TYPING" button to whatever is bound)
+    async function toggleAll() {
+      const mods = loadMods();
+      const toTyping = !modsOff(mods);
+      const plan = groupPlan(mods, toTyping);
+      if (!plan.writes.length) return;
+      const ok = await keymapRMW(km => plan.writes.forEach(w => setEntry(km, w.idx, w.bytes)),
+        toTyping ? 'Switching remapped keys to typing…' : 'Re-applying custom assignments…');
+      if (!ok) return;
+      // a parked Spacebar default IS the interrupted-overlay restore, completed — drop both
+      if (toTyping && pendingRestore() && plan.next[SPACE_VAL]) { delete plan.next[SPACE_VAL]; setPending(false); }
+      saveMods(plan.next);
+      plan.writes.forEach(w => {
+        const e = plan.next[w.idx];
+        if (board) { if (!e || e.off) { if (board.unmark) board.unmark(w.idx); } else if (board.mark) board.mark(w.idx, e.label); }
+      });
+      refresh();
+      log(toTyping ? '✓ remapped keys type normally now — the same button brings the custom assignments back'
+                   : '✓ custom assignments re-applied', 'ok');
+    }
+    $('bdToggleAll').addEventListener('click', toggleAll);
+
     // ---- decorative light toggles: bind Space to a light, hold the overlay open, Esc/✕ restores ----
     (function () {
       const c = $('spaceBtns');
@@ -455,7 +535,7 @@
       const ok = await keymapRMW(km => setEntry(km, SPACE_VAL, encodeFunc(f.code)), 'Binding Spacebar → ' + f.name + '…');
       if (!ok) return;
       setPending(false);   // a fresh deliberate binding supersedes any interrupted restore
-      setMod(SPACE_VAL, f.name);
+      setMod(SPACE_VAL, f.name, encodeFunc(f.code));
       $('spaceTitle').textContent = f.name;
       setSpaceDesc(f); setSpaceNote(f, backTo);
       $('spaceOverlay').classList.add('open');
@@ -490,5 +570,5 @@
 
   return { create, PALETTE, SPACE_FUNCS, DEFAULT_HID, SPACE_VAL, SPACE_HID, FN_VAL,
            encodeNormal, encodeMedia, encodeFunc, entryBytes, defaultEntry, setEntry,
-           keymapChunks, keymapLooksValid, validateBackup };
+           keymapChunks, keymapLooksValid, validateBackup, normalizeMods, modsOff, groupPlan };
 });

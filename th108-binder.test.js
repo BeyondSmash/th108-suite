@@ -104,6 +104,59 @@ test('SPACE_FUNCS are all light functions a Spacebar tap can cycle', () => {
   for (const f of B.SPACE_FUNCS) assert.ok([23, 24, 27, 29, 164, 165].includes(f.code));
 });
 
+test('normalizeMods migrates legacy label-only marks and validates stored bytes', () => {
+  const m = B.normalizeMods({
+    49: 'Calculator',                                       // pre-group-toggle format: bare label
+    50: { label: 'Mute', bytes: [0x03, 0xE2, 0, 0] },
+    51: { label: 'Bad', bytes: [1, 2, 3] },                 // wrong length — bytes dropped, mark kept
+    52: { label: 'Off', bytes: [0x02, 0, 4, 0], off: true },
+    53: { label: 'Lone off', off: true },                   // off without bytes can't round-trip → active
+    54: 7, 55: { nolabel: true }                            // junk values vanish
+  });
+  assert.deepEqual(m[49], { label: 'Calculator' });
+  assert.deepEqual(m[50], { label: 'Mute', bytes: [0x03, 0xE2, 0, 0] });
+  assert.deepEqual(m[51], { label: 'Bad' });
+  assert.equal(m[52].off, true);
+  assert.deepEqual(m[53], { label: 'Lone off' });
+  assert.equal(m[54], undefined);
+  assert.equal(m[55], undefined);
+  assert.deepEqual(B.normalizeMods(null), {});
+});
+
+test('groupPlan → typing parks every active remapped key on its factory character', () => {
+  const mods = {
+    49: { label: 'Calculator', bytes: [0x03, 0x92, 0x01, 0] },        // A
+    83: { label: 'Side Light Color', bytes: [0x0d, 0, 0, 24] },       // Space
+    50: { label: 'old mark' }                                         // legacy, no bytes — skipped
+  };
+  const p = B.groupPlan(mods, true);
+  assert.deepEqual(p.writes.sort((a, b) => a.idx - b.idx),
+    [{ idx: 49, bytes: [0x02, 0, 4, 0] }, { idx: 83, bytes: [0x02, 0, 0x2c, 0] }]);
+  assert.equal(p.next[49].off, true);
+  assert.equal(p.next[83].off, true);
+  assert.equal(p.next[50].off, undefined);                            // byte-less marks stay active
+  assert.deepEqual(mods[49], { label: 'Calculator', bytes: [0x03, 0x92, 0x01, 0] });   // input not mutated
+});
+
+test('groupPlan → custom re-applies the stored bytes; a full round-trip is lossless', () => {
+  const mods = { 49: { label: 'Calculator', bytes: [0x03, 0x92, 0x01, 0] } };
+  const there = B.groupPlan(mods, true);
+  const back = B.groupPlan(there.next, false);
+  assert.deepEqual(back.writes, [{ idx: 49, bytes: [0x03, 0x92, 0x01, 0] }]);
+  assert.deepEqual(back.next, mods);
+  assert.equal(B.modsOff(mods), false);
+  assert.equal(B.modsOff(there.next), true);
+  assert.equal(B.modsOff(back.next), false);
+});
+
+test('groupPlan never parks a key it could not default, nor re-parks an already-parked key', () => {
+  const p = B.groupPlan({ 85: { label: 'X', bytes: [0x02, 0, 4, 0] } }, true);   // Fn has no default entry
+  assert.deepEqual(p.writes, []);
+  assert.equal(p.next[85].off, undefined);
+  const p2 = B.groupPlan({ 49: { label: 'C', bytes: [0x03, 0x92, 0x01, 0], off: true } }, true);
+  assert.deepEqual(p2.writes, []);                                    // second → typing pass is a no-op
+});
+
 test('every color toggle carries the static-color caveat and swaps to its own zone\'s effect toggle', () => {
   const pairs = { 24: 23, 29: 27, 164: 165 };   // color code → effect code, per zone
   for (const [color, effect] of Object.entries(pairs)) {
