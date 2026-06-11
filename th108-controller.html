@@ -1253,12 +1253,19 @@ const KBOARD=(function(){
   }
   window.addEventListener('pointerdown',e=>{ if(tipEl && !tipEl.contains(e.target)) hideTip(); });
   window.addEventListener('keydown',e=>{ if(e.key==='Escape') hideTip(); });
-  // clicking empty space (board background or card padding) drops the selection (user request 2026-06-11)
+  // clicking empty space drops the selection (user request 2026-06-11): the board background,
+  // the card's padding, the card's grabbable title bar, and the page background between cards.
+  // Clicks on other cards/controls deliberately KEEP the selection — the palette acts on it.
   function clearSel(){ if(selEl){ selEl.classList.remove('sel'); selEl=null; } sel=null;
     document.getElementById('kbSelInfo').textContent='no key selected'; subSync(); notify(); }
-  host.addEventListener('click',e=>{ if(e.target===host && sel) clearSel(); });
   const kbCard=document.getElementById('kbBoardCard');
-  if(kbCard) kbCard.addEventListener('click',e=>{ if(e.target===kbCard && sel) clearSel(); });
+  const kbBar=kbCard&&kbCard.querySelector('.cardbar');
+  document.addEventListener('click',e=>{
+    if(!sel) return;
+    const t=e.target;
+    if(t===host || t===kbCard || (kbBar&&kbBar.contains(t)) ||
+       t===document.body || t===document.getElementById('grid')) clearSel();
+  });
   return {
     get sel(){ return sel; },
     onChange(cb){ subs.push(cb); },
