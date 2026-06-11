@@ -68,10 +68,16 @@ test('palette holds only hardware-confirmed encodings and the knob-mute option',
   assert.ok(f.some(i => i.code === 164), 'ambient color (164) present');
   assert.ok(f.some(i => i.code === 22), 'Lock Win (22, wire-captured) present');
   assert.ok(f.some(i => i.code === 2), 'Bluetooth Channel 1 (2, wire-captured) present');
+  // full code table from the official Fn-layer list (fnlistarray.txt), cross-validated by captures
+  [1, 3, 4, 5, 7, 11, 12, 13, 14, 15, 16, 17].forEach(c =>
+    assert.ok(f.some(i => i.code === c), 'function code ' + c + ' present'));
+  assert.equal(f.length, 27);
   const sp = B.PALETTE.find(t => t.key === 'special').items;
   assert.deepEqual(B.entryBytes(sp.find(i => i.label === 'Calculator')), [0x03, 0x92, 0x01, 0x00]);   // exact captured bytes
   assert.deepEqual(B.entryBytes(sp.find(i => i.label === 'Left Mouse Button')), [0x01, 0x01, 0x01, 0x00]);
-  assert.ok(!sp.some(i => /right|middle|scroll/i.test(i.label)), 'ambiguous mouse entries must NOT ship until captured');
+  assert.deepEqual(B.entryBytes(sp.find(i => i.label === 'Right Mouse Button')), [0x01, 0x01, 0x02, 0x00]);    // captured 2026-06-11
+  assert.deepEqual(B.entryBytes(sp.find(i => i.label === 'Middle Mouse Button')), [0x01, 0x01, 0x04, 0x00]);   // captured 2026-06-11
+  assert.ok(!sp.some(i => /scroll/i.test(i.label)), 'mouse scroll is not mask-based — must NOT ship until captured');
   const basic = B.PALETTE.find(t => t.key === 'basic').items;
   assert.equal(basic[0].hid, 4);                                      // A
   assert.equal(basic.length, 26 + 10 + 11);                           // letters + digits + punctuation

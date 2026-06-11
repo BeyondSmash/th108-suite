@@ -127,8 +127,10 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
            color:var(--muted); opacity:.65; cursor:default; }
   .dmnTag[hidden]{ display:none !important; }   /* display:inline-flex would otherwise beat the UA's [hidden] rule */
   .dmnTag i{ width:8px; height:8px; border-radius:50%; background:var(--mint); }
+  .dmnTag.off i{ background:var(--err); }
   .dmnTag:hover{ opacity:1; }
   .dmnTag:hover i{ animation:dpulse 1.2s ease-in-out infinite; }
+  .dmnTag.off:hover i{ animation:none; }
   @keyframes dpulse{ 50%{ box-shadow:0 0 0 5px color-mix(in srgb, var(--mint) 30%, transparent); } }
   .card.deco{ display:flex; flex-direction:column; align-items:center; justify-content:center; gap:10px; min-height:208px; }
 
@@ -231,6 +233,11 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
   .kbkey.sel{ background:var(--kc,var(--blue)); color:#0d1117; box-shadow:0 0 0 2px var(--text); z-index:1; }
   .kbkey.pop{ animation:kpop .25s ease; }
   @keyframes kpop{ 40%{ transform:scale(1.18); } }
+  /* remapped key: amber face, new assignment front and center, old label struck out in the corner */
+  .kbkey.mod{ color:var(--warn); font-weight:700; }
+  .kbkey.mod:hover,.kbkey.mod.sel{ color:#0d1117; }
+  .kbkey .knew{ max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; padding:0 3px; font-size:.85em; }
+  .kbkey .kold{ position:absolute; right:3px; bottom:0; font-size:8px; text-decoration:line-through; opacity:.75; }
 
   /* hotkeys: binder palette (tabs + assignment grid) */
   .bdtabs{ display:flex; gap:4px; flex-wrap:wrap; margin-bottom:10px; }
@@ -282,7 +289,7 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
     <div class="tab" data-page="lighting">Lighting</div>
     <div class="tab" data-page="lcd">LCD Screen</div>
   </nav>
-  <span id="dmnOnline" class="dmnTag" hidden title="Background daemon is running — layer edits apply live, reactive typing works in every app, no Connect needed"><i></i>Online</span>
+  <span id="dmnOnline" class="dmnTag" hidden><i></i><span id="dmnTagTxt">Online</span></span>
   <button id="themeBtn" title="toggle light / dark (crossfades)" aria-label="Toggle light or dark theme">
     <span class="knob"><svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true">
       <mask id="kmask"><rect width="24" height="24" fill="#fff"/><circle class="kcut" cx="32" cy="2" r="7" fill="#000"/></mask>
@@ -328,6 +335,7 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
       <label class="sl" title="start the daemon hidden at every login (per-user registry entry, no admin)"><input type="checkbox" id="dmnAuto"> Auto-Start on Login</label>
       <label class="sl" title="when the board stops ACKing for 30s, restart its USB device (a software replug — clears the wedge; typing drops ~1-2s). Needs the one-time elevated task: install-usb-restart-task.ps1"><input type="checkbox" id="dmnUsbFix"> Auto-Fix Lighting Wedge (USB Restart)</label>
       <button id="dmnQuit" title="stop the background daemon until setup.cmd or your next login starts it again — this page keeps working">✖ Quit Daemon</button>
+      <button id="dmnStart" hidden title="a web page can't launch programs itself — this shows how to start the daemon">▶ Start Daemon…</button>
     </div>
   </div>
 
@@ -429,6 +437,16 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
     <p>The board occasionally stops accepting host lighting (USB events — sleep, other devices power-cycling on the
        bus — can trigger it). The daemon auto-fixes this after ~30&nbsp;s with a USB restart (toggle in the
        Background-daemon card); the manual cure is unplug/replug.</p>
+  </div>
+  <div class="card s2 faqcard" id="faq6" data-pages="faq">
+    <div class="cardbar"><span class="grip">⠿</span></div>
+    <h3>Where's the official driver?</h3>
+    <p>Epomaker's official web driver lives at
+       <a href="https://epomaker.driveall.cn/" target="_blank" rel="noopener">epomaker.driveall.cn</a> —
+       useful for the firmware features this suite doesn't cover yet. Two warnings: quit the background daemon
+       first (Home tab) — only one controller can hold the keyboard, otherwise the official site errors out on
+       connect — and it has been seen scrambling keymaps when changing bindings, so take a Backup Keymap on the
+       Hotkeys tab before using it.</p>
   </div>
   <div class="card s2 faqcard" id="faq5" data-pages="faq">
     <div class="cardbar"><span class="grip">⠿</span></div>
@@ -943,9 +961,28 @@ document.getElementById('importFile').addEventListener('change',async e=>{
   e.target.value='';
 });
 
-// header "Online" tag: visible while the daemon answers /status (re-checked every 30s; pulse is hover-only CSS)
-function dmnTagSync(){ const el=document.getElementById('dmnOnline'); if(el) el.hidden=!DC.present; }
+// header daemon tag: green "Online" while /status answers, red "Offline" once it stops (never hides —
+// an absent tag read as ambiguous; user request 2026-06-11). Re-checked every 30s + right after Quit.
+function dmnTagSync(){
+  const el=document.getElementById('dmnOnline'); if(!el) return;
+  el.hidden=false;
+  el.classList.toggle('off', !DC.present);
+  document.getElementById('dmnTagTxt').textContent=DC.present?'Online':'Offline';
+  el.title=DC.present
+    ?'Background daemon is running — layer edits apply live, reactive typing works in every app, no Connect needed'
+    :'Background daemon is not running — lighting stops when this tab closes. Start it with setup.cmd (or log in again).';
+  const sb=document.getElementById('dmnStart'); if(sb) sb.hidden=DC.present;
+}
 setInterval(()=>{ DC.ping().then(dmnTagSync,dmnTagSync); }, 30000);
+// Quit/Start need a quick tag refresh — the 30s poll made a successful Quit look ignored for ~15s
+document.getElementById('dmnQuit').addEventListener('click',()=>{
+  [800,2000,4000].forEach(ms=>setTimeout(()=>DC.ping().then(dmnTagSync,dmnTagSync),ms)); });
+// a web page can't spawn a process — the most a Start button can do is hand over the exact command
+document.getElementById('dmnStart').addEventListener('click',async()=>{
+  const cmd='wscript "th108-daemon\\start-hidden.vbs"';
+  try{ await navigator.clipboard.writeText(cmd); }catch(_){ }
+  alert('Browsers can\'t launch programs, so this can\'t be one click.\n\nTo start the daemon:\n• run setup.cmd in the project folder (installs auto-start too), or\n• run th108-daemon\\start-hidden.vbs (command copied to your clipboard), or\n• just log in again — it auto-starts.\n\nThe Online tag updates within ~30 s once it\'s up.');
+});
 DC.ping().then(async()=>{
   dmnTagSync();
   if(DC.present) return;   // daemon is driving — merely OPENING this page must never steal the device from it (Connect is the explicit handover)
@@ -993,22 +1030,24 @@ const KBOARD=(function(){
     if(code.startsWith('Numpad')) return code.slice(6);
     return code; };
   const PAL=['#98d0ff','#6ed2b7','#f9c5d8','#ffd98c','#fa8072','#c9b8ff'];   // per-key hover/select color, cycled
-  let selEl=null, sel=null; const subs=[];                                   // sel={idx,code,label} — the binder subscribes via onChange
+  let selEl=null, sel=null; const subs=[], byIdx={};                          // sel={idx,code,label} — the binder subscribes via onChange
   const notify=()=>subs.forEach(cb=>{ try{ cb(sel); }catch(_){ } });
+  const friendly=(base,idx)=>(base||'Space')+' Key · LED '+idx;               // tooltip/readout wording — no raw KeyboardEvent codes
   INDICES.forEach((idx,k)=>{
     const cell=TH108Engine.keyCell(idx); if(!cell) return;
-    const [cx,cy,w,h]=cell, code=CODE_BY_IDX[idx];
+    const [cx,cy,w,h]=cell, code=CODE_BY_IDX[idx], base=label(code);
     const d=document.createElement('div'); d.className='kbkey';
     d.style.left='calc('+((cx-w/2)*100)+'% + 1.5px)'; d.style.top='calc('+((cy-h/2)*100)+'% + 1.5px)';
     d.style.width='calc('+(w*100)+'% - 3px)'; d.style.height='calc('+(h*100)+'% - 3px)';
-    d.textContent=label(code); d.title=(code||'Fn')+' · LED '+idx;
+    d.textContent=base; d.title=friendly(base,idx);
     d.style.setProperty('--kc', PAL[k%PAL.length]);
+    byIdx[idx]={el:d, base};
     d.addEventListener('click',()=>{
       if(selEl) selEl.classList.remove('sel');
       if(selEl===d){ selEl=null; sel=null; document.getElementById('kbSelInfo').textContent='no key selected'; notify(); return; }   // click again = deselect
-      selEl=d; sel={idx, code, label:d.textContent||'Space'}; d.classList.add('sel');
+      selEl=d; sel={idx, code, label:base||'Space'}; d.classList.add('sel');
       d.classList.remove('pop'); void d.offsetWidth; d.classList.add('pop');   // restart the pop animation
-      document.getElementById('kbSelInfo').textContent='Selected: '+(d.textContent||'Space')+' · '+(code||'Fn')+' · LED '+idx;
+      document.getElementById('kbSelInfo').textContent='Selected: '+friendly(base,idx);
       notify();
     });
     host.appendChild(d);
@@ -1017,7 +1056,21 @@ const KBOARD=(function(){
     get sel(){ return sel; },
     onChange(cb){ subs.push(cb); },
     clear(){ if(selEl){ selEl.classList.remove('sel'); selEl=null; } sel=null;
-             document.getElementById('kbSelInfo').textContent='no key selected'; notify(); }
+             document.getElementById('kbSelInfo').textContent='no key selected'; notify(); },
+    // modified-key look: the new assignment takes the key's face; the old label moves to the
+    // bottom-right corner, struck through; amber text flags "this key is remapped"
+    mark(idx,bindLabel){
+      const k=byIdx[idx]; if(!k) return;
+      k.el.classList.add('mod'); k.el.textContent='';
+      const n=document.createElement('span'); n.className='knew'; n.textContent=bindLabel;
+      const o=document.createElement('span'); o.className='kold'; o.textContent=k.base||'⎵';
+      k.el.appendChild(n); k.el.appendChild(o);
+      k.el.title=(k.base||'Space')+' Key → '+bindLabel+' · LED '+idx;
+    },
+    unmark(idx){
+      const k=byIdx[idx]; if(!k) return;
+      k.el.classList.remove('mod'); k.el.textContent=k.base; k.el.title=friendly(k.base,idx);
+    }
   };
 })();
 

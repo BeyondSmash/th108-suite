@@ -86,20 +86,37 @@
     { label: 'Browser Home', usage: 0x223 }, { label: 'Refresh', usage: 0x227 },
     { label: 'Forward', usage: 0x225 }, { label: 'Backward', usage: 0x224 },
     { label: 'Favorites', usage: 0x22A }, { label: 'Search', usage: 0x221 },
-    { label: 'Left Mouse Button', bytes: [0x01, 0x01, 0x01, 0x00] }
+    // mouse = [0x01, 0x01, buttonMask, 0] — masks 1/2/4 wire-captured (left/right/middle);
+    // back/forward use the next standard HID masks (8/16), same proven layout
+    { label: 'Left Mouse Button', bytes: [0x01, 0x01, 0x01, 0x00] },
+    { label: 'Right Mouse Button', bytes: [0x01, 0x01, 0x02, 0x00] },
+    { label: 'Middle Mouse Button', bytes: [0x01, 0x01, 0x04, 0x00] },
+    { label: 'Mouse Backward Button', bytes: [0x01, 0x01, 0x08, 0x00] },
+    { label: 'Mouse Forward Button', bytes: [0x01, 0x01, 0x10, 0x00] }
+    // mouse scroll up/down are NOT mask-based (wheel motion) — need a capture before shipping
   ];
 
-  // decorative-light cycle functions (codes hardware-confirmed on the TH108 V2 PRO).
-  // code 46 ("Knob Mode") just toggles MUTE on this board — labeled for what it really does.
+  // firmware function codes — the light-cycle codes are hardware-confirmed from the live keymap
+  // dump; the rest come from the official tool's Fn-layer table (fnlistarray.txt, 2026-06-11),
+  // cross-validated by three wire captures (Lock Win=22, BT Ch.1=2, Ambient=165 all matched).
+  // Code 46 ("Knob Mode") just toggles MUTE on this board — labeled for what it really does.
   const funcs = [
+    { label: 'Light Effect Switch', code: 11 }, { label: 'Light Color Switch', code: 12 },
+    { label: 'Light Brightness +', code: 13 }, { label: 'Light Brightness -', code: 14 },
+    { label: 'Light Speed +', code: 15 }, { label: 'Light Speed -', code: 16 },
+    { label: 'Turn Off Lights', code: 17 },
     { label: 'Side Light Effect Switch', code: 23 }, { label: 'Side Light Color Switch', code: 24 },
     { label: 'Side Light Brightness', code: 25 }, { label: 'Side Light Speed', code: 26 },
+    { label: 'Turn Off Side Lights', code: 83 },
     { label: 'Front Strip Effect Switch', code: 27 }, { label: 'Front Strip Color Switch', code: 29 },
     { label: 'Front Strip Speed', code: 28 },
     { label: 'Ambient Effect Switch', code: 165 }, { label: 'Ambient Color Switch', code: 164 },
     { label: 'Ambient Brightness', code: 162 }, { label: 'Ambient Speed', code: 163 },
-    { label: 'Turn Off Side Lights', code: 83 }, { label: 'Knob — Mute Toggle', code: 46 },
-    { label: 'Lock Win', code: 22 }, { label: 'Bluetooth Channel 1', code: 2 }   // wire-captured 2026-06-11; BT2/3 etc. pending the official tool's function list
+    { label: 'Knob — Mute Toggle', code: 46 }, { label: 'Lock Win', code: 22 },
+    { label: 'Bluetooth Channel 1', code: 2 }, { label: 'Bluetooth Channel 2', code: 3 },
+    { label: 'Bluetooth Channel 3', code: 4 }, { label: 'Wireless Reconnect', code: 5 },
+    { label: 'Check Battery', code: 7 },
+    { label: 'Restore Factory Settings', code: 1 }   // careful: a bare tap of the bound key factory-resets the board
   ];
 
   const PALETTE = [
@@ -266,6 +283,23 @@
       });
     }
 
+    // modified-key marks: what OUR binder wrote, persisted so the board shows it across reloads
+    // (bindings live in the keyboard's flash, so they outlive the page; an out-of-band change —
+    // official tool, factory reset — can desync the marks until the next bind/restore here)
+    const MODS_KEY = 'th108_key_mods';
+    function loadMods() { try { const o = JSON.parse(localStorage.getItem(MODS_KEY) || '{}'); return o && typeof o === 'object' ? o : {}; } catch (_) { return {}; } }
+    function setMod(idx, label) {
+      const m = loadMods();
+      if (label == null) { delete m[idx]; if (board && board.unmark) board.unmark(idx); }
+      else { m[idx] = label; if (board && board.mark) board.mark(idx, label); }
+      try { localStorage.setItem(MODS_KEY, JSON.stringify(m)); } catch (_) { }
+    }
+    function clearMods() {
+      Object.keys(loadMods()).forEach(i => { if (board && board.unmark) board.unmark(+i); });
+      try { localStorage.removeItem(MODS_KEY); } catch (_) { }
+    }
+    if (board && board.mark) Object.entries(loadMods()).forEach(([i, l]) => board.mark(+i, l));
+
     function selKey() { return board && board.sel; }
     function bindable(sel) { return !!sel && sel.idx !== FN_VAL && DEFAULT_HID[sel.idx] != null; }
     // enable/disable everything + keep the readout and the why-disabled hint honest
@@ -294,13 +328,19 @@
       const sel = selKey(); if (!bindable(sel)) return;
       const four = entryBytes(item); if (!four) return;
       const ok = await keymapRMW(km => setEntry(km, sel.idx, four), 'Assigning ' + item.label + ' → ' + (sel.label || 'Space') + '…');
-      if (ok) log('✓ ' + (sel.label || 'Space') + ' now does "' + item.label + '" — Restore Default to undo', 'ok');
+      if (!ok) return;
+      const isDefault = four[0] === 0x02 && four[2] === DEFAULT_HID[sel.idx];   // re-assigning the key's own character = back to stock, no mark
+      setMod(sel.idx, isDefault ? null : item.label);
+      log('✓ ' + (sel.label || 'Space') + ' now does "' + item.label + '" — Restore Default to undo', 'ok');
     }
     async function revert() {
       const sel = selKey(); if (!bindable(sel)) return;
       const d = defaultEntry(sel.idx);
       const ok = await keymapRMW(km => setEntry(km, sel.idx, d), 'Restoring ' + (sel.label || 'Space') + '…');
-      if (ok) log('✓ ' + (sel.label || 'Space') + ' restored to its default', 'ok');
+      if (!ok) return;
+      setMod(sel.idx, null);
+      log('✓ ' + (sel.label || 'Space') + ' restored to its default', 'ok');
+      if (board && board.clear) board.clear();   // restored = done with this key — drop the selection
     }
     $('bdRevert').addEventListener('click', revert);
 
@@ -342,6 +382,7 @@
       try {
         await writeFullKeymap(validateBackup(o), 0, 100);
         setKm(100); await sleep(140);
+        clearMods();   // the backup is the healthy baseline — board marks from later binds no longer apply
         log('✓ keymap restored from the ' + when + ' backup', 'ok');
       } catch (e) { log('keymap restore failed: ' + (e && e.message || e), 'err'); }
       finally { kmHide(); resumeLighting(); busy = false; refresh(); }
@@ -368,6 +409,7 @@
       if (!connected || busy) return;
       const ok = await keymapRMW(km => setEntry(km, SPACE_VAL, encodeFunc(f.code)), 'Binding Spacebar → ' + f.name + '…');
       if (!ok) return;
+      setMod(SPACE_VAL, f.name);
       $('spaceTitle').textContent = f.name;
       setSpaceDesc(f);
       $('spaceOverlay').classList.add('open');
@@ -379,7 +421,7 @@
       spaceActive = false; window.removeEventListener('keydown', spaceEsc);
       $('spaceOverlay').classList.remove('open');
       const ok = await keymapRMW(km => setEntry(km, SPACE_VAL, encodeNormal(SPACE_HID)), 'Restoring Spacebar…');
-      if (ok) log('✓ Spacebar restored to normal', 'ok');
+      if (ok) { setMod(SPACE_VAL, null); log('✓ Spacebar restored to normal', 'ok'); }
       else log('Spacebar is still bound to the light function — reconnect, select Space on the board and Restore Default', 'err');
     }
     $('spaceExit').addEventListener('click', exitSpace);
