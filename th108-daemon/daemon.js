@@ -94,6 +94,7 @@ async function openIfPossible() {
     if (paused) { try { d.close(); } catch {} return; }   // yielded mid-probe — hand it straight back
     if (traffic > 0) {
       try { d.close(); } catch {}
+      nextOpenAt = Date.now() + 5000;   // cool down — re-probing every tick churns handles against a live streamer, and once raced into a double-open ("backing off" → "device open" 2s later → mute, 2026-06-11 log)
       log(`… another writer on the device (${traffic} reports during probe) — backing off`);
       return;
     }

@@ -19,8 +19,19 @@ function createServer({ control, root, port = 8123, watchdogMs = 12000 }) {
   let lastBeat = Date.now(), yielded = false, wd = null, boundPort = port;
   function armWatchdog() {
     clearInterval(wd);
+    let lastTick = Date.now();
     wd = setInterval(() => {
-      if (yielded && Date.now() - lastBeat > watchdogMs) {
+      const now = Date.now();
+      // A big gap between ticks means the OS slept — OUR timer was frozen, and so was the page's
+      // heartbeat worker, so a stale lastBeat proves nothing. Re-baseline and give the page a full
+      // window to start beating again; resuming blind here put daemon + waking page on the device
+      // at once (two writers → flicker/half-frames → mute → onboard fallback; 2026-06-11 wake).
+      if (now - lastTick > 30000) {
+        if (yielded) console.log(`${ts()} [watchdog] ${Math.round((now - lastTick) / 1000)}s tick gap (system sleep) — re-baselining the heartbeat window`);
+        lastBeat = now;
+      }
+      lastTick = now;
+      if (yielded && now - lastBeat > watchdogMs) {
         console.log(`${ts()} [watchdog] no page heartbeat for >${watchdogMs}ms — resuming daemon control`);
         control.resume(); yielded = false;
       }

@@ -692,7 +692,10 @@ const HID=TH108Hid.create({
   // the daemon re-grabbed mid-pick and fought the page. (If the connect ends with no device, the click
   // handler / boot path stops the beats and POSTs /resume so the daemon isn't left orphaned.)
   beforeConnect:async()=>{ await DC.ping(); if(DC.present){ await DC.yieldDevice(); DC.heartbeatStart(); } },
-  beforeAutoReconnect:async()=>{ if(DC.present){ await DC.yieldDevice(); DC.heartbeatStart(); } },   // page-load path: DC.ping() already ran
+  beforeAutoReconnect:async()=>{ await DC.ping(); if(DC.present){ await DC.yieldDevice(); DC.heartbeatStart(); } },   // also the WAKE rebind path now — presence may have changed since boot, so ping first
+  onGrantLost:()=>{   // true replug: Chrome revoked the grant, only a click recovers — hand lighting back so the daemon drives instead of nobody
+    if(DC.beating){ DC.heartbeatStop(); DC.resume(); log('keyboard was replugged — lighting handed back to the daemon; click Connect Keyboard to take over again','dim'); }
+  },
   onBound:devs=>{
     document.getElementById('start').disabled=false;
     GIF.onDeviceBound();
@@ -1245,12 +1248,17 @@ const KBOARD=(function(){
   }
   window.addEventListener('pointerdown',e=>{ if(tipEl && !tipEl.contains(e.target)) hideTip(); });
   window.addEventListener('keydown',e=>{ if(e.key==='Escape') hideTip(); });
+  // clicking empty space (board background or card padding) drops the selection (user request 2026-06-11)
+  function clearSel(){ if(selEl){ selEl.classList.remove('sel'); selEl=null; } sel=null;
+    document.getElementById('kbSelInfo').textContent='no key selected'; subSync(); notify(); }
+  host.addEventListener('click',e=>{ if(e.target===host && sel) clearSel(); });
+  const kbCard=document.getElementById('kbBoardCard');
+  if(kbCard) kbCard.addEventListener('click',e=>{ if(e.target===kbCard && sel) clearSel(); });
   return {
     get sel(){ return sel; },
     onChange(cb){ subs.push(cb); },
     onReset(cb){ resetCbs.push(cb); },   // right-click "Reset" tooltip → restore that key to default
-    clear(){ if(selEl){ selEl.classList.remove('sel'); selEl=null; } sel=null;
-             document.getElementById('kbSelInfo').textContent='no key selected'; subSync(); notify(); },
+    clear: clearSel,
     // modified-key look: the new assignment takes the key's face; the old label moves to the
     // bottom-right corner, struck through; amber text flags "this key is remapped"
     mark(idx,bindLabel){

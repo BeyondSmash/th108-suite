@@ -40,7 +40,8 @@
           stopHost = opts.stopHost || noop,
           beforeConnect = opts.beforeConnect || noop, beforeAutoReconnect = opts.beforeAutoReconnect || noop,
           onBound = opts.onBound || noop, onConnected = opts.onConnected || noop,
-          onDisconnected = opts.onDisconnected || noop, onReconnected = opts.onReconnected || noop;
+          onDisconnected = opts.onDisconnected || noop, onReconnected = opts.onReconnected || noop,
+          onGrantLost = opts.onGrantLost || noop;   // replug revoked the WebHID grant — only a user click can get it back
     let device = null, reportId = 0, packLen = 64;
     let _sendStalls = 0, _ackWaiter = null, _inRpts = 0;
 
@@ -145,10 +146,12 @@
         const w = findWritable(known);
         if (w && w.usagePage === 0xFF68 && w.usage === 0x61) {
           stopRebindPoll();
+          try { await beforeAutoReconnect(); } catch (_) { }   // re-yield the daemon FIRST — at wake its watchdog may have resumed it, and silently rebinding over it = two writers (the 2026-06-11 wake fight)
           try { const ok = await bindDevice(known, true); if (ok) onReconnected(); }
           catch (_) { device = null; reportId = 0; startRebindPoll(); }   // not ready yet — keep polling
         } else if (++_pollN === 4) {   // ~6s with no grant in sight → it was a replug (grant revoked) — needs the user
-          setStatus('keyboard disconnected — if you replugged it, click "1 · Connect keyboard" to re-grant (Chrome forgets the permission on unplug)', 'dim');
+          setStatus('keyboard disconnected — if you replugged it, click Connect Keyboard to re-grant (Chrome forgets the permission on unplug)', 'dim');
+          onGrantLost();               // hand lighting back to the daemon — the page can't recover without a click anyway
         }
       }, 1500);
     }
