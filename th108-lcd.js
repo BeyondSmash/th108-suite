@@ -87,6 +87,11 @@
     <div class="row" style="display:flex;align-items:center;flex-wrap:wrap;gap:6px">
       <svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M10.3 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v10l-3.1-3.1a2 2 0 0 0-2.814.014L6 21"/><path d="m14 19.5 3-3 3 3"/><path d="M17 22v-5.5"/><circle cx="9" cy="9" r="2"/></svg>
       <input type="file" id="lcdFile" accept="image/*" />
+      <span class="sub" style="margin:0 6px">|</span>
+      <b>Clock:</b>
+      <button id="lcdSyncClock" disabled>Sync Clock to PC Time (0x34)</button>
+      <span id="lcdClockNow" class="sub" style="font-variant-numeric:tabular-nums"></span>
+      <span class="sub">— sets the keyboard's built-in clock; view it with FN+knob → scroll right → click.</span>
       <label style="display:none"><input type="checkbox" id="lcdSwap" checked /> little-endian byte order</label><!-- hidden: correct for the TH108, and byte-order is jargon nobody should need; the checkbox stays wired for debugging via devtools -->
     </div>
     <div class="row">
@@ -124,21 +129,19 @@
       <span style="flex:1"></span>
       <button id="lcdCcToggle" title="per-channel RGB calibration + global adjustments (shown beside the previews)">Color Correction ▸</button>
     </div>
-    <div class="row" style="display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap">
-      <div>
-        <div class="sub" id="lcdCropLbl" style="margin:0 0 4px">load a GIF to see the crop guide</div>
-        <canvas id="lcdCropGuide" style="border:1px solid #30363d;background:#000;border-radius:4px;cursor:move"></canvas>
-        <div id="lcdCropCtls" style="display:none;gap:10px;align-items:center;margin-top:7px;flex-wrap:wrap">
-          <label style="display:flex;align-items:center;gap:6px">Zoom <input type="range" id="lcdCropZoom" min="100" max="500" value="100" style="width:140px"></label>
-          <button id="lcdCropUndo" title="undo">↶</button>
-          <button id="lcdCropRedo" title="redo">↷</button>
-          <button id="lcdCropReset">Reset Crop</button>
-          <span class="sub" style="margin:0">drag the box above to reposition</span>
-        </div>
-      </div>
-    </div>
     <div class="row" style="display:flex;gap:24px;align-items:flex-start;flex-wrap:wrap">
-      <div style="display:flex;flex-direction:column;gap:8px">
+      <div style="display:flex;flex-direction:column;gap:8px"><!-- left column: crop guide → previews → log; Color Correction rides the right column, TOP-ALIGNED with the crop guide -->
+        <div>
+          <div class="sub" id="lcdCropLbl" style="margin:0 0 4px">load a GIF to see the crop guide</div>
+          <canvas id="lcdCropGuide" style="border:1px solid #30363d;background:#000;border-radius:4px;cursor:move"></canvas>
+          <div id="lcdCropCtls" style="display:none;gap:10px;align-items:center;margin-top:7px;flex-wrap:wrap">
+            <label style="display:flex;align-items:center;gap:6px">Zoom <input type="range" id="lcdCropZoom" min="100" max="500" value="100" style="width:140px"></label>
+            <button id="lcdCropUndo" title="undo">↶</button>
+            <button id="lcdCropRedo" title="redo">↷</button>
+            <button id="lcdCropReset">Reset Crop</button>
+            <span class="sub" style="margin:0">drag the box above to reposition</span>
+          </div>
+        </div>
         <div style="display:flex;gap:14px;flex-wrap:wrap">
           <div><div class="sub" style="margin:0 0 4px">LCD preview — calibrated (what the screen shows)</div><canvas id="lcdPreview" width="160" height="96"></canvas></div>
           <div><div class="sub" style="margin:0 0 4px">Actual — desktop colors (the true source)</div><canvas id="lcdPreviewActual" width="160" height="96"></canvas></div>
@@ -146,7 +149,7 @@
         <div class="sub" style="margin:0">Log</div>
         <div id="lcdLog" class="lcd-log"></div>
       </div>
-      <div id="lcdCc" style="display:none;max-width:480px"><!-- collapsible "Color Correction" — toggled from the Fit-mode line, lives beside the previews -->
+      <div id="lcdCc" style="display:none;max-width:480px"><!-- collapsible "Color Correction" — toggled from the Fit-mode line -->
       <div class="ctl" style="display:grid;grid-template-columns:auto 250px 60px 26px;gap:5px 8px;align-items:center">
         <div style="grid-column:1/5;display:flex;align-items:center;gap:8px;margin-bottom:2px">
           <b>Per-channel RGB calibration</b><span id="lcdCalStatus" class="dim" style="font-weight:normal;color:#8b949e"></span>
@@ -173,12 +176,6 @@
       <p class="sub" style="margin:6px 0 0">
         <b>Calibrate by matching:</b> adjust the sliders until the <b>preview looks like how your LCD shows the image at default</b> (its washed / blue-purple tint). The upload automatically sends the <b>inverse</b> of those settings, so the LCD reverses its own distortion and ends up showing corrected colors. (Each upload writes the keyboard's flash.)</p>
       </div>
-    </div>
-    <div class="row">
-      <b style="margin-right:8px">Clock:</b>
-      <button id="lcdSyncClock" disabled>Sync Clock to PC Time (0x34)</button>
-      <span id="lcdClockNow" class="sub" style="font-variant-numeric:tabular-nums"></span>
-      <span class="sub">— sets the keyboard's built-in clock; view it with FN+knob → scroll right → click.</span>
     </div>
     <div id="lcdStatus" class="sub"></div>
 
