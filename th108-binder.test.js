@@ -77,6 +77,17 @@ test('palette holds only hardware-confirmed encodings and the knob-mute option',
   assert.equal(basic.length, 26 + 10 + 11);                           // letters + digits + punctuation
 });
 
+test('validateBackup only passes a plausible 512-byte keymap (restore writes these bytes raw)', () => {
+  const good = new Array(512).fill(0);
+  Object.keys(B.DEFAULT_HID).forEach(v => { good[v * 4] = 0x02; good[v * 4 + 2] = B.DEFAULT_HID[v]; });
+  assert.ok(B.validateBackup({ bytes: good, savedAt: 1 }) instanceof Uint8Array);
+  assert.equal(B.validateBackup(null), null);
+  assert.equal(B.validateBackup({ bytes: good.slice(0, 511) }), null);          // wrong length
+  assert.equal(B.validateBackup({ bytes: new Array(512).fill(0) }), null);      // empty map = failed read
+  const junk = good.slice(); junk[3] = 999;
+  assert.equal(B.validateBackup({ bytes: junk }), null);                        // non-byte values
+});
+
 test('Fn: factory entry is HID 175 (wire-captured) but Fn stays non-bindable', () => {
   assert.equal(B.DEFAULT_HID[B.FN_VAL], 175);                         // 02 00 af 00 seen in every capture
   assert.equal(B.defaultEntry(B.FN_VAL), null);                       // still excluded — overwriting Fn loses the FN layer

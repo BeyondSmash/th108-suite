@@ -146,6 +146,14 @@
     for (let v = 0; v < 128; v++) if (km[v * 4] !== 0) n++;
     return n >= 80;
   }
+  // stored backup → Uint8Array(512) or null. Same plausibility gate as a live read: a restore
+  // writes these bytes straight to the board, so junk must never pass.
+  function validateBackup(obj) {
+    if (!obj || !Array.isArray(obj.bytes) || obj.bytes.length !== KEYMAP_BYTES) return null;
+    if (!obj.bytes.every(b => Number.isInteger(b) && b >= 0 && b <= 255)) return null;
+    const km = new Uint8Array(obj.bytes);
+    return keymapLooksValid(km) ? km : null;
+  }
 
   function create(opts) {
     opts = opts || {};
@@ -268,6 +276,11 @@
       const en = connected && !busy;
       $('bdRevert').disabled = !(en && ok);
       document.querySelectorAll('#spaceBtns [data-space]').forEach(b => { b.disabled = !en; });
+      let bk = null; try { bk = JSON.parse(localStorage.getItem('th108_keymap_backup') || 'null'); } catch (_) { }
+      const bkOk = validateBackup(bk);
+      $('bdBackup').disabled = !en;
+      $('bdRestore').disabled = !(en && bkOk);
+      $('bdBackupInfo').textContent = bkOk ? 'backup from ' + new Date(bk.savedAt).toLocaleString() : 'no backup yet — take one while your keymap is healthy';
       $('bdHint').textContent =
         !connected ? 'Assigning rewrites the keyboard\'s keymap over WebHID, so this page must hold the device — click Connect Keyboard on the Home tab first.' :
         !sel       ? 'Pick a key on the board above, then click what it should do. The change lives in the keyboard\'s flash — it works in every app, no software needed.' :
@@ -290,6 +303,51 @@
       if (ok) log('✓ ' + (sel.label || 'Space') + ' restored to its default', 'ok');
     }
     $('bdRevert').addEventListener('click', revert);
+
+    // ---- keymap backup / restore: recovery for a scrambled board (the official tool is known
+    // to jumble keymaps — see project memory). Backup = validated read → localStorage + a JSON
+    // download; Restore = write the known-good 512 bytes straight back (no read first — the
+    // board's current map is exactly what we don't trust). ----
+    const BK_KEY = 'th108_keymap_backup';
+    function loadBackup() {
+      try { const o = JSON.parse(localStorage.getItem(BK_KEY) || 'null'); return validateBackup(o) ? o : null; }
+      catch (_) { return null; }
+    }
+    async function backup() {
+      if (!hid.device || busy) return;
+      busy = true; kmShow('Reading keymap…');
+      if (gifPlaying()) stopGif();
+      pauseLighting(); refresh();
+      try {
+        const km = await readKeymapValidated(0, 100);
+        if (!km) { log('keymap read failed — no backup written', 'err'); return; }
+        setKm(100); await sleep(140);
+        const o = { bytes: Array.from(km), savedAt: Date.now() };
+        try { localStorage.setItem(BK_KEY, JSON.stringify(o)); } catch (_) { }
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(new Blob([JSON.stringify(o)], { type: 'application/json' }));
+        a.download = 'th108-keymap-backup.json'; a.click();
+        setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+        log('✓ keymap backed up (512 B) — stored on this page + downloaded. Restore Keymap writes it back any time.', 'ok');
+      } finally { kmHide(); resumeLighting(); busy = false; refresh(); }
+    }
+    async function restoreBackup() {
+      const o = loadBackup();
+      if (!o || !hid.device || busy) return;
+      const when = new Date(o.savedAt).toLocaleString();
+      if (!confirm('Write the backed-up keymap (saved ' + when + ') to the keyboard?\n\nThis replaces ALL current key bindings with the backup — the cure for a scrambled keymap.')) return;
+      busy = true; kmShow('Restoring keymap…');
+      if (gifPlaying()) stopGif();
+      pauseLighting(); refresh();
+      try {
+        await writeFullKeymap(validateBackup(o), 0, 100);
+        setKm(100); await sleep(140);
+        log('✓ keymap restored from the ' + when + ' backup', 'ok');
+      } catch (e) { log('keymap restore failed: ' + (e && e.message || e), 'err'); }
+      finally { kmHide(); resumeLighting(); busy = false; refresh(); }
+    }
+    $('bdBackup').addEventListener('click', backup);
+    $('bdRestore').addEventListener('click', restoreBackup);
 
     // ---- decorative light toggles: bind Space to a light, hold the overlay open, Esc/✕ restores ----
     (function () {
@@ -334,5 +392,6 @@
   }
 
   return { create, PALETTE, SPACE_FUNCS, DEFAULT_HID, SPACE_VAL, SPACE_HID, FN_VAL,
-           encodeNormal, encodeMedia, encodeFunc, entryBytes, defaultEntry, setEntry, keymapChunks, keymapLooksValid };
+           encodeNormal, encodeMedia, encodeFunc, entryBytes, defaultEntry, setEntry,
+           keymapChunks, keymapLooksValid, validateBackup };
 });
