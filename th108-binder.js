@@ -363,12 +363,19 @@
     const MODS_KEY = 'th108_key_mods';
     function loadMods() { try { return normalizeMods(JSON.parse(localStorage.getItem(MODS_KEY) || '{}')); } catch (_) { return {}; } }
     function saveMods(m) { try { localStorage.setItem(MODS_KEY, JSON.stringify(m)); } catch (_) { } }
-    function setMod(idx, label, bytes) {
+    // batched write: SOCD saves two linked entries at once — sequential single-entry saves would
+    // let normalizeMods drop the first pair link (its partner doesn't exist yet between saves)
+    function setMods(entries) {   // {idx: {label, bytes, pair?} | null}
       const m = loadMods();
-      if (label == null) { delete m[idx]; if (board && board.unmark) board.unmark(idx); }
-      else { m[idx] = bytes ? { label, bytes: bytes.slice() } : { label }; if (board && board.mark) board.mark(idx, label); }
+      for (const [i, e] of Object.entries(entries)) {
+        if (!e) { delete m[i]; if (board && board.unmark) board.unmark(+i); }
+        else { m[i] = e; if (board && board.mark) board.mark(+i, e.label); }
+      }
       saveMods(m);
       refresh();   // the group-toggle button mirrors the mods map
+    }
+    function setMod(idx, label, bytes) {
+      setMods({ [idx]: label == null ? null : (bytes ? { label, bytes: bytes.slice() } : { label }) });
     }
     function clearMods() {
       Object.keys(loadMods()).forEach(i => { if (board && board.unmark) board.unmark(+i); });
@@ -423,11 +430,12 @@
     }
     async function revert() {
       const sel = selKey(); if (!bindable(sel)) return;
-      const d = defaultEntry(sel.idx);
-      const ok = await keymapRMW(km => setEntry(km, sel.idx, d), 'Restoring ' + (sel.label || 'Space') + '…');
+      const targets = restoreTargets(loadMods(), sel.idx);   // an SOCD pair restores together — half a pair is undefined firmware behavior
+      const ok = await keymapRMW(km => targets.forEach(v => setEntry(km, v, defaultEntry(v))),
+                                 'Restoring ' + (sel.label || 'Space') + (targets.length > 1 ? ' + its SOCD partner' : '') + '…');
       if (!ok) return;
-      setMod(sel.idx, null);
-      log('✓ ' + (sel.label || 'Space') + ' restored to its default', 'ok');
+      setMods(Object.fromEntries(targets.map(v => [v, null])));
+      log('✓ ' + (sel.label || 'Space') + (targets.length > 1 ? ' and its SOCD partner' : '') + ' restored to default', 'ok');
       if (board && board.clear) board.clear();   // restored = done with this key — drop the selection
     }
     $('bdRevert').addEventListener('click', revert);
