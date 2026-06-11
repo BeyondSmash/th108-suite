@@ -76,6 +76,11 @@ function createServer({ control, root, port = 8123, watchdogMs = 12000 }) {
         console.log(ts() + ' [api] /usbreset ' + (on ? 'on' : 'off'));
         return sendJson(res, 200, { ok: true, enabled: on });
       }
+      if (req.method === 'POST' && u === '/usbfix') {   // the page's last-resort wedge recovery (cooldown enforced by control.usbFix)
+        const r = control.usbFix();
+        console.log(ts() + ' [api] /usbfix → ' + JSON.stringify(r));
+        return sendJson(res, 200, r);
+      }
       if (req.method === 'POST' && u === '/quit') {
         console.log(ts() + ' [api] /quit — shutting down');
         sendJson(res, 200, { ok: true });

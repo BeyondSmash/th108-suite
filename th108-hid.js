@@ -41,7 +41,8 @@
           beforeConnect = opts.beforeConnect || noop, beforeAutoReconnect = opts.beforeAutoReconnect || noop,
           onBound = opts.onBound || noop, onConnected = opts.onConnected || noop,
           onDisconnected = opts.onDisconnected || noop, onReconnected = opts.onReconnected || noop,
-          onGrantLost = opts.onGrantLost || noop;   // replug revoked the WebHID grant — only a user click can get it back
+          onGrantLost = opts.onGrantLost || noop,   // replug revoked the WebHID grant — only a user click can get it back
+          onWedged = opts.onWedged || noop;         // handle-rebind retries exhausted on a mute board — last-resort recovery hook (daemon USB restart)
     let device = null, reportId = 0, packLen = 64;
     let _sendStalls = 0, _ackWaiter = null, _inRpts = 0;
 
@@ -71,7 +72,12 @@
       try { device.close(); } catch (_) { }
       device = null; reportId = 0;
       if (++_stallRetries <= 2) { setStatus('board stopped responding — re-binding…', 'dim'); startRebindPoll(); }
-      else setStatus('board unresponsive after retries — unplug/replug it, then click Connect', 'err');
+      else {   // fresh handles didn't help = true wedge; hand it to the recovery hook (daemon USB restart) and keep polling for the re-enumeration it causes
+        setStatus('board unresponsive after retries — attempting recovery…', 'err');
+        _stallRetries = 0;          // the restart (or a manual replug) starts a fresh episode
+        onWedged();
+        startRebindPoll();
+      }
     }
     async function sendFrame(flat, aux = 0) {
       if (!device) return false;

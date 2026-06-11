@@ -35,6 +35,13 @@ window.TH108DaemonClient = (function () {
     }
     function heartbeatStop() { if (hbW) hbW.postMessage({}); if (D.hb && D.hb !== true) clearInterval(D.hb); D.hb = null; }
     function pushConfig() { if (D.present) { try { fetch('/config', { method: 'POST', headers: { 'content-type': 'application/json' }, body: getConfig() }); } catch (_) {} } }
+    // last-resort wedge recovery: ask the daemon to PnP-restart the keyboard's USB node (the page
+    // itself can't run schtasks). The daemon enforces a cooldown and the usbReset setting.
+    async function usbFix() {
+      if (!D.present) return { fired: false, reason: 'no daemon' };
+      try { const r = await fetch('/usbfix', { method: 'POST' }); return await r.json(); }
+      catch (_) { return { fired: false, reason: 'daemon unreachable' }; }
+    }
     // resume is a no-op unless THIS page yielded: /resume is unattributed on the wire, so a page
     // that never took the device (a second tab, an automated test browser) telling the daemon
     // "the page released the device" made it reclaim WHILE the real owner tab was still streaming —
@@ -91,7 +98,7 @@ window.TH108DaemonClient = (function () {
     }
 
     return {
-      ping, yieldDevice, heartbeatStart, heartbeatStop, pushConfig, resume, mountPanel,
+      ping, yieldDevice, heartbeatStart, heartbeatStop, pushConfig, resume, mountPanel, usbFix,
       get present() { return D.present; },
       get beating() { return !!D.hb; }
     };

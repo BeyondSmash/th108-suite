@@ -696,6 +696,11 @@ const HID=TH108Hid.create({
   onGrantLost:()=>{   // true replug: Chrome revoked the grant, only a click recovers — hand lighting back so the daemon drives instead of nobody
     if(DC.beating){ DC.heartbeatStop(); DC.resume(); log('keyboard was replugged — lighting handed back to the daemon; click Connect Keyboard to take over again','dim'); }
   },
+  onWedged:async()=>{   // mute survived fresh handles — same software replug the daemon uses on itself, requested via its API (a page can't run schtasks)
+    const r=await DC.usbFix();
+    if(r.fired) log('⚡ board wedged — asked the daemon to USB-restart the keyboard (typing drops ~1-2s); everything reconnects by itself','err');
+    else log('board wedged and auto-recovery unavailable ('+(r.reason||'unknown')+') — unplug/replug the keyboard, then click Connect Keyboard','err');
+  },
   onBound:devs=>{
     document.getElementById('start').disabled=false;
     GIF.onDeviceBound();

@@ -25,6 +25,7 @@ function fakeControl() {
     getAutostart() { this.calls.push('getAutostart'); return Promise.resolve(this._autostart); },
     setAutostart(on) { this.calls.push('setAutostart:' + on); this._autostart = !!on; return Promise.resolve(); },
     quit() { this.calls.push('quit'); },
+    usbFix() { this.calls.push('usbFix'); return { fired: this._usbReset }; },
   };
 }
 
@@ -125,6 +126,16 @@ test('/usbreset writes through control; state reads back via /status', async () 
     assert.ok(ctl.calls.includes('setUsbReset:false'));
     assert.equal((await call(server, 'GET', '/status')).json.usbReset, false);
     assert.equal((await call(server, 'POST', '/usbreset', { on: true })).json.enabled, true);
+  } finally { server.close(); }
+});
+
+test('/usbfix relays through control and returns its verdict (page-side wedge recovery)', async () => {
+  const ctl = fakeControl();
+  const server = createServer({ control: ctl, root: path.join(__dirname, '..'), port: 0 });
+  await server.listening;
+  try {
+    assert.equal((await call(server, 'POST', '/usbfix')).json.fired, true);
+    assert.ok(ctl.calls.includes('usbFix'));
   } finally { server.close(); }
 });
 

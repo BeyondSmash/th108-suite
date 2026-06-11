@@ -173,6 +173,17 @@ const control = {
   // Persist the page's config; refresh live state immediately unless yielded to the page.
   saveConfig(cfg) { fs.writeFileSync(CONFIG_PATH, JSON.stringify(cfg)); if (!paused) rebuildState(); },
   status() { return { running: true, paused, deviceConnected: !!device, fps: FPS, usbReset: settings.usbReset }; },
+  // page-initiated escalation: the PAGE drives the device and detected a persistent wedge its own
+  // handle-rebinds couldn't clear — fire the same PnP restart the daemon uses, with a cooldown so
+  // a stuck page can't replug-loop the keyboard.
+  usbFix() {
+    if (!settings.usbReset) return { fired: false, reason: 'disabled' };
+    if (Date.now() - usbFiredAt < 60_000) return { fired: false, reason: 'cooldown' };
+    usbFiredAt = Date.now();
+    log('⚡ page requested a USB restart (board wedged while the page was driving) — PnP-restarting the keyboard; typing drops ~1-2s');
+    U.fire(log);
+    return { fired: true };
+  },
   getAutostart, setAutostart,
   setUsbReset(on) { settings.usbReset = !!on; saveSettings(); },
   quit() { shutdown(); },
