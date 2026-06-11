@@ -191,8 +191,9 @@
     const sleep = ms => new Promise(r => setTimeout(r, ms));
 
     // ---- progress overlay (the full read+write takes ~2 s) ----
-    function kmShow(label) { $('kmProgLbl').textContent = label || 'Updating keyboard…'; setKm(0); $('kmProg').classList.add('open'); }
-    function setKm(pct) { $('kmProgFill').style.width = pct + '%'; $('kmProgPct').textContent = Math.round(pct) + '%'; }
+    let kmLast = 0;   // monotonic within one pass — a retried chunk must never walk the bar backward
+    function kmShow(label) { kmLast = -1; $('kmProgLbl').textContent = label || 'Updating keyboard…'; setKm(0); $('kmProg').classList.add('open'); }
+    function setKm(pct) { if (pct < kmLast) return; kmLast = pct; $('kmProgFill').style.width = pct + '%'; $('kmProgPct').textContent = Math.round(pct) + '%'; }
     function kmHide() { $('kmProg').classList.remove('open'); }
 
     // ---- wire ops ----
@@ -213,7 +214,8 @@
       const data = new Uint8Array(KEYMAP_BYTES);
       let misses = 0;
       for (let off = 0; off < KEYMAP_BYTES; off += CHUNK) {
-        const r = await readChunkAt(off);
+        let r = null;
+        for (let a = 0; a < 3 && !r; a++) r = await readChunkAt(off);   // a chunk's window can lose to straggler lighting ACKs — re-ask THAT chunk, don't fail the pass
         if (r) { for (let i = 0; i < CHUNK && off + i < KEYMAP_BYTES; i++) data[off + i] = r[8 + i] || 0; }
         else misses++;
         if (p1 != null) setKm(p0 + (p1 - p0) * Math.min(1, (off + CHUNK) / KEYMAP_BYTES));
@@ -255,6 +257,7 @@
       pauseLighting();
       refresh();
       try {
+        await sleep(250);            // let the in-flight lighting frame finish ACKing — its 0x32 traffic crowds the first 0x12 responses past their windows
         const km = await readKeymapValidated(0, 55);     // read = first 55% of the bar
         if (!km) { log('keymap read failed — nothing was written, the keyboard is unchanged', 'err'); return false; }
         modify(km);
@@ -367,6 +370,7 @@
       if (gifPlaying()) stopGif();
       pauseLighting(); refresh();
       try {
+        await sleep(250);            // same drain as keymapRMW — straggler 0x32 ACKs crowd the read windows
         const km = await readKeymapValidated(0, 100);
         if (!km) { log('keymap read failed — no backup written', 'err'); return; }
         setKm(100); await sleep(140);
