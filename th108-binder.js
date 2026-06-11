@@ -417,29 +417,47 @@
       const k = document.createElement('kbd'); k.textContent = 'Space'; d.appendChild(k);
       d.appendChild(document.createTextNode(' to ' + f.desc + '.'));
     }
-    function setSpaceNote(f) {   // per-function caveat + optional swap-over button inside the overlay
+    // note area: a function's own caveat (+ swap-over button), or — when we arrived here VIA a
+    // swap from a color toggle — the way back to it once the zone is on its static-color effect
+    function setSpaceNote(f, backTo) {
       const n = $('spaceNote'); if (!n) return;
       n.textContent = '';
-      if (!f.note) { n.style.display = 'none'; return; }
-      n.style.display = 'block';
-      n.appendChild(document.createTextNode(f.note));
-      const tgt = f.swapTo != null && SPACE_FUNCS.find(x => x.code === f.swapTo);
-      if (tgt) {
+      const addBtn = (tgt, title, onClick) => {
         n.appendChild(document.createElement('br'));
         const b = document.createElement('button');
-        b.textContent = tgt.name; b.style.margin = '10px 0 0';
-        b.title = 'rebind the Spacebar to ' + tgt.name + ' — this overlay swaps over to it';
-        b.addEventListener('click', () => enterSpace(tgt));
+        b.textContent = tgt.name; b.style.margin = '10px 0 0'; b.title = title;
+        b.addEventListener('click', onClick);
         n.appendChild(b);
-      }
+      };
+      if (f.note) {
+        n.appendChild(document.createTextNode(f.note));
+        const tgt = f.swapTo != null && SPACE_FUNCS.find(x => x.code === f.swapTo);
+        if (tgt) addBtn(tgt, 'rebind the Spacebar to ' + tgt.name + ' — this overlay swaps over to it',
+                        () => enterSpace(tgt, f));   // remember where we came from, for the way back
+      } else if (backTo) {
+        n.appendChild(document.createTextNode('Cycled to the static color you wanted? Switch back to:'));
+        addBtn(backTo, 'rebind the Spacebar back to ' + backTo.name, () => enterSpace(backTo));
+      } else { n.style.display = 'none'; return; }
+      n.style.display = 'block';
     }
-    async function enterSpace(f) {
+    // if a Spacebar restore fails mid-mute, remember it and finish automatically on the next connect —
+    // the alternative was the user's replug → refresh → reopen-overlay → ✕ dance (2026-06-11 incident)
+    const PENDING_KEY = 'th108_space_restore_pending';
+    function setPending(v) { try { if (v) localStorage.setItem(PENDING_KEY, '1'); else localStorage.removeItem(PENDING_KEY); } catch (_) { } }
+    function pendingRestore() { try { return localStorage.getItem(PENDING_KEY) === '1'; } catch (_) { return false; } }
+    async function restoreSpace() {
+      const ok = await keymapRMW(km => setEntry(km, SPACE_VAL, encodeNormal(SPACE_HID)), 'Restoring Spacebar…');
+      if (ok) { setMod(SPACE_VAL, null); setPending(false); }
+      return ok;
+    }
+    async function enterSpace(f, backTo) {
       if (!connected || busy) return;
       const ok = await keymapRMW(km => setEntry(km, SPACE_VAL, encodeFunc(f.code)), 'Binding Spacebar → ' + f.name + '…');
       if (!ok) return;
+      setPending(false);   // a fresh deliberate binding supersedes any interrupted restore
       setMod(SPACE_VAL, f.name);
       $('spaceTitle').textContent = f.name;
-      setSpaceDesc(f); setSpaceNote(f);
+      setSpaceDesc(f); setSpaceNote(f, backTo);
       $('spaceOverlay').classList.add('open');
       spaceActive = true; window.addEventListener('keydown', spaceEsc);   // double-add on a swap-over is safe — same listener ref dedupes
       log('⎵ Spacebar → ' + f.name + ' (overlay open)', 'in');
@@ -448,13 +466,22 @@
       if (!spaceActive) return;
       spaceActive = false; window.removeEventListener('keydown', spaceEsc);
       $('spaceOverlay').classList.remove('open');
-      const ok = await keymapRMW(km => setEntry(km, SPACE_VAL, encodeNormal(SPACE_HID)), 'Restoring Spacebar…');
-      if (ok) { setMod(SPACE_VAL, null); log('✓ Spacebar restored to normal', 'ok'); }
-      else log('Spacebar is still bound to the light function — reconnect, select Space on the board and Restore Default', 'err');
+      if (await restoreSpace()) log('✓ Spacebar restored to normal', 'ok');
+      else {
+        setPending(true);
+        log('Spacebar is still bound — the board didn\'t answer (mute?). The restore will finish by itself on the next successful Connect (replug if it stays mute).', 'err');
+      }
     }
     $('spaceExit').addEventListener('click', exitSpace);
 
-    function setConnected(v) { connected = !!v; refresh(); }
+    function setConnected(v) {
+      connected = !!v; refresh();
+      if (v && pendingRestore()) setTimeout(async () => {   // let the connect/auto-start settle first
+        if (!connected || busy || !pendingRestore()) return;
+        log('finishing the interrupted Spacebar restore…', 'in');
+        if (await restoreSpace()) log('✓ Spacebar restored to normal', 'ok');
+      }, 1500);
+    }
     renderTabs();
     refresh();
 
