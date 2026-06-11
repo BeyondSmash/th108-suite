@@ -123,7 +123,7 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
      pale-yellow glow on the approach side that grows as the cursor nears (crossing it = commit) */
   #dragLine{ position:fixed; display:none; z-index:125; pointer-events:none; background:#ff8c00;
              border-radius:2px; box-shadow:0 0 8px rgba(255,140,0,.6); }
-  #dragLine .dlglow{ position:absolute; pointer-events:none; border-radius:6px; }
+  #dragLine .dlglow{ position:absolute; pointer-events:none; }   /* no radius — the glow must sit flush against the line */
   /* lucide inline icons */
   .ic{ width:15px; height:15px; vertical-align:-2px; fill:none; stroke:currentColor; stroke-width:2;
        stroke-linecap:round; stroke-linejoin:round; flex:none; }
@@ -869,12 +869,25 @@ const dlEl=(()=>{ const d=document.createElement('div'); d.id='dragLine';
   document.body.appendChild(d); return d; })();
 const dlGlow=dlEl.firstChild;
 function dlHide(){ dlEl.style.display='none'; dlState=null; }
+// rect with any in-flight FLIP transform stripped — right after a swap commits, neighbors animate via
+// transform:translate(), and getBoundingClientRect() INCLUDES that, so arming a line against a card
+// mid-animation put it at a transient spot (the "misaligned line on multi-swap drags" bug). The
+// settled rect is where the card will land, which is also what keeps re-arms from oscillating.
+function settledRect(el){
+  const r=el.getBoundingClientRect();
+  const tr=getComputedStyle(el).transform;
+  if(tr && tr!=='none'){
+    const m=new DOMMatrixReadOnly(tr);
+    if(m.m41||m.m42) return {left:r.left-m.m41, right:r.right-m.m41, top:r.top-m.m42, bottom:r.bottom-m.m42, width:r.width, height:r.height};
+  }
+  return r;
+}
 function breachTarget(){   // the visible card the dragged card overlaps most (≥30×30px before a line appears)
   const a=drag.card.getBoundingClientRect();
   let best=null, bestArea=900;
   for(const c of visibleCards()){
     if(c===drag.card || c===drag.ph) continue;
-    const r=c.getBoundingClientRect();
+    const r=settledRect(c);
     const ox=Math.min(a.right,r.right)-Math.max(a.left,r.left);
     const oy=Math.min(a.bottom,r.bottom)-Math.max(a.top,r.top);
     if(ox<=0 || oy<=0) continue;
@@ -896,7 +909,7 @@ function dlGlowUpdate(delta, r, vertLine){   // delta = cursor − line; glow hu
   const half=(vertLine? r.width : r.height)/2;
   const t=Math.max(0, 1-Math.abs(delta)/half);           // 0 at the card's edge → 1 at the line
   const size=(6+44*t)+'px', tint='255,238,160';
-  dlGlow.style.cssText='position:absolute;pointer-events:none;border-radius:6px;opacity:'+(t*t).toFixed(3)+';';
+  dlGlow.style.cssText='position:absolute;pointer-events:none;opacity:'+(t*t).toFixed(3)+';';
   if(vertLine){
     dlGlow.style.top='0'; dlGlow.style.height='100%'; dlGlow.style.width=size;
     if(delta<0){ dlGlow.style.right='100%'; dlGlow.style.background='linear-gradient(to left, rgba('+tint+',.9), rgba('+tint+',0))'; }
@@ -929,17 +942,17 @@ function positionCard(e){ drag.card.style.left=(e.clientX-drag.dx)+'px'; drag.ca
 function updateTarget(x,y){
   const ph=drag.ph, br=breachTarget();
   if(!br){ dlHide(); return; }                            // no clip → no line; drop settles into the placeholder slot
-  const t=br.card, r=t.getBoundingClientRect();
+  const t=br.card, r=settledRect(t);
   if(!dlState || dlState.target!==t){
     // arm on first contact — and LOCK the orientation while this card stays the target: once the
     // overlap is deep the centers nearly align and the axis judgment turns to noise (a horizontal
     // approach would flip to a horizontal line mid-gesture). The line you saw appear is the one you cross.
     const vert=br.vertLine, coord=vert? r.left+r.width/2 : r.top+r.height/2;
     dlState={target:t, vertLine:vert, side:((vert? x:y)-coord)<0?-1:1};
-    dlShow(r, vert, coord);
   }
   const vert=dlState.vertLine;
   const coord=vert? r.left+r.width/2 : r.top+r.height/2;
+  dlShow(r, vert, coord);                                 // re-track every probe — the settled rect can shift under a live FLIP
   const delta=(vert? x : y)-coord;
   dlGlowUpdate(delta, r, vert);
   const sideNow=delta<0?-1:1;
