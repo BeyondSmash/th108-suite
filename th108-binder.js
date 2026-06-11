@@ -208,8 +208,10 @@
       const e = { label: v.label };
       if (Array.isArray(v.bytes) && v.bytes.length === 4 && v.bytes.every(b => Number.isInteger(b) && b >= 0 && b <= 255)) e.bytes = v.bytes.slice();
       if (v.off && e.bytes) e.off = true;   // `off` without bytes can't be brought back — treat as active so the mark stays honest
+      if (Number.isInteger(v.pair) && v.pair >= 0 && v.pair < 128 && v.pair !== +k) e.pair = v.pair;   // SOCD partner link
       out[k] = e;
     }
+    for (const e of Object.values(out)) if (e.pair != null && !out[e.pair]) delete e.pair;   // a pair link must point at a real entry
     return out;
   }
   function modsOff(mods) { return Object.values(mods).some(e => e.off); }
@@ -230,6 +232,14 @@
       next[k] = e;
     }
     return { writes, next };
+  }
+  // keys to restore when the user reverts `idx`: the key itself plus its SOCD partner — a
+  // half-removed SOCD pair is undefined firmware behavior, so the pair always goes together.
+  // Only keys with a known factory entry qualify (defaultEntry refuses Fn/unknown).
+  function restoreTargets(mods, idx) {
+    const e = mods[idx], t = [idx];
+    if (e && Number.isInteger(e.pair) && e.pair !== idx) t.push(e.pair);
+    return t.filter(v => defaultEntry(v));
   }
 
   function create(opts) {
@@ -581,5 +591,5 @@
   return { create, PALETTE, SPACE_FUNCS, DEFAULT_HID, SPACE_VAL, SPACE_HID, FN_VAL,
            encodeNormal, encodeMedia, encodeFunc, entryBytes, defaultEntry, setEntry,
            keymapChunks, keymapLooksValid, validateBackup, normalizeMods, modsOff, groupPlan,
-           MODIFIERS, encodeCB, encodeMT, encodeTGL, encodeSOCD };
+           restoreTargets, MODIFIERS, encodeCB, encodeMT, encodeTGL, encodeSOCD };
 });

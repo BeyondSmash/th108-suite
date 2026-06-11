@@ -170,6 +170,38 @@ test('groupPlan never parks a key it could not default, nor re-parks an already-
   assert.deepEqual(p2.writes, []);                                    // second → typing pass is a no-op
 });
 
+test('normalizeMods preserves a valid SOCD pair and drops a dangling one', () => {
+  const m = B.normalizeMods({
+    88: { label: 'SOCD ←', bytes: [0x0b, 3, 0x50, 0x51], pair: 89 },
+    89: { label: 'SOCD ↓', bytes: [0x0b, 3, 0x50, 0x51], pair: 88 },
+    56: { label: 'TGL R', bytes: [0x0a, 0x15, 0, 0], pair: 999 },    // out of range → dropped
+    50: { label: 'X', bytes: [0x02, 0, 4, 0], pair: 51 },            // partner has no entry → dropped
+    40: { label: 'Y', bytes: [0x02, 0, 4, 0], pair: 40 }             // self-pair → dropped
+  });
+  assert.equal(m[88].pair, 89);
+  assert.equal(m[89].pair, 88);
+  assert.equal(m[56].pair, undefined);
+  assert.equal(m[50].pair, undefined);
+  assert.equal(m[40].pair, undefined);
+});
+
+test('a SOCD pair survives the group-toggle round-trip', () => {
+  const mods = { 88: { label: 'SOCD ←', bytes: [0x0b, 3, 0x50, 0x51], pair: 89 },
+                 89: { label: 'SOCD ↓', bytes: [0x0b, 3, 0x50, 0x51], pair: 88 } };
+  const there = B.groupPlan(mods, true);
+  assert.deepEqual(there.writes.map(w => w.idx).sort((a, b) => a - b), [88, 89]);   // both keys park
+  assert.equal(there.next[88].pair, 89);                                            // pair survives
+  const back = B.groupPlan(there.next, false);
+  assert.deepEqual(back.next, mods);                                                // lossless round-trip
+});
+
+test('restoreTargets pulls in the SOCD partner, never Fn or unknown keys', () => {
+  const mods = { 88: { label: 'SOCD ←', bytes: [0x0b, 3, 0x50, 0x51], pair: 89 } };
+  assert.deepEqual(B.restoreTargets(mods, 88), [88, 89]);                 // pair → both restored
+  assert.deepEqual(B.restoreTargets(mods, 50), [50]);                     // unpaired key → itself
+  assert.deepEqual(B.restoreTargets({ 50: { label: 'x', bytes: [2, 0, 4, 0], pair: 85 } }, 50), [50]);   // Fn partner excluded
+});
+
 test('every color toggle carries the static-color caveat and swaps to its own zone\'s effect toggle', () => {
   const pairs = { 24: 23, 29: 27, 164: 165 };   // color code → effect code, per zone
   for (const [color, effect] of Object.entries(pairs)) {
