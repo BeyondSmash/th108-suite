@@ -481,6 +481,15 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
        connect — and it has been seen scrambling keymaps when changing bindings, so take a Backup Keymap on the
        Hotkeys tab before using it.</p>
   </div>
+  <div class="card s2 faqcard" id="faq9" data-pages="faq">
+    <div class="cardbar"><span class="grip">⠿</span></div>
+    <h3>What do the two reset buttons clear?</h3>
+    <p><b>↺ Reset All Settings</b> resets this page: layers, per-pattern values, LCD calibration, and panel
+       layout. Kept: your media Library, saved Profiles (delete those individually on the Profiles tab), and the
+       keymap backup + remapped-key marks — those mirror the keyboard itself, which this reset never touches.</p>
+    <p><b>⟳ Factory Reset Keyboard</b> is the opposite: it resets the keyboard's hardware — onboard config and
+       keymap, including your key bindings — and changes nothing on this page.</p>
+  </div>
   <div class="card s2 faqcard" id="faq5" data-pages="faq">
     <div class="cardbar"><span class="grip">⠿</span></div>
     <h3>Why does the "Media" layer type do nothing?</h3>
@@ -1219,9 +1228,17 @@ document.getElementById('resetKbBtn').addEventListener('click', async ()=>{
   }catch(e){ log('keyboard reset failed: '+e.message,'err'); }
 });
 // Reset all of THIS page's settings (host-side localStorage), keeping the media Library (IndexedDB) + the keyboard untouched.
+// Survivors: saved Profiles (deletable individually on their tab), and the keymap backup / remapped-key
+// marks / pending Spacebar restore — those MIRROR the keyboard's flash, which this reset deliberately
+// does not touch; wiping them wouldn't reset anything, it would just desync the page from the board.
 document.getElementById('resetSiteBtn').addEventListener('click', ()=>{
-  if(!confirm('Reset all of THIS page\'s settings to defaults?\n\nClears your layers, per-pattern values, LCD calibration, and panel layout. Your saved media Library is kept, and the keyboard is NOT touched. The page will reload.')) return;
-  try{ localStorage.clear(); }catch(_){}
+  if(!confirm('Reset all of THIS page\'s settings to defaults?\n\nClears your layers, per-pattern values, LCD calibration, and panel layout. KEPT: your media Library, saved Profiles, and the keymap backup/marks (those mirror the keyboard, which is NOT touched). The page will reload.')) return;
+  const KEEP=['th108_profiles','th108_keymap_backup','th108_key_mods','th108_space_restore_pending'];
+  try{
+    const saved=KEEP.map(k=>[k,localStorage.getItem(k)]).filter(kv=>kv[1]!=null);
+    localStorage.clear();
+    saved.forEach(kv=>localStorage.setItem(kv[0],kv[1]));
+  }catch(_){}
   location.reload();
 });
 </script>
