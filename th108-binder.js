@@ -564,14 +564,14 @@
       const sel = selKey(), ownHid = sel ? DEFAULT_HID[sel.idx] : null;
       if (akType === 'cb') {
         f.appendChild(akLab('presses')); f.appendChild(akSelEl('akMod1', modOpts(), 0xE0));
-        f.appendChild(akLab('+')); f.appendChild(akSelEl('akMod2', modOpts(), 0xE1));
+        f.appendChild(akLab('+')); f.appendChild(akSelEl('akMod2', [{ value: 0, label: '(none)' }].concat(modOpts()), 0xE1));   // middle slot is officially optional (the driver only validates slots 1+3)
         f.appendChild(akLab('+')); f.appendChild(akSelEl('akKey', keyOpts(), 41));   // Esc: the default chord Ctrl+Shift+Esc pops Task Manager — instantly verifiable
       } else if (akType === 'mt') {
         f.appendChild(akLab('tap =')); f.appendChild(akSelEl('akClick', keyOpts(), ownHid != null ? ownHid : 4));
         f.appendChild(akLab('hold =')); f.appendChild(akSelEl('akHold', keyOpts(), 43));
-        f.appendChild(akLab('threshold'));
-        const n = document.createElement('input'); n.type = 'number'; n.id = 'akTime'; n.min = 1; n.max = 255; n.value = 40;
-        n.style.width = '64px'; n.title = 'hold-time threshold — 40 is the official default (units unknown)';
+        f.appendChild(akLab('threshold (ms)'));
+        const n = document.createElement('input'); n.type = 'number'; n.id = 'akTime'; n.min = 10; n.max = 2550; n.step = 10; n.value = 400;
+        n.style.width = '70px'; n.title = 'tap-vs-hold threshold in milliseconds — 400 ms is the official default (the wire byte is ms/10)';
         f.appendChild(n);
       } else if (akType === 'tgl') {
         f.appendChild(akLab('toggles')); f.appendChild(akSelEl('akKey', keyOpts(), 0x15)); f.appendChild(akLab('held on/off'));
@@ -606,10 +606,12 @@
       let four, label;
       if (akType === 'cb') {
         const m1 = +$('akMod1').value, m2 = +$('akMod2').value, k = +$('akKey').value;
-        four = encodeCB(m1, m2, k); label = keyShort(m1) + '+' + keyShort(m2) + '+' + keyShort(k);
+        four = encodeCB(m1, m2, k);   // m2 may be 0 — the official driver allows an empty middle slot
+        label = [m1, m2, k].filter(Boolean).map(keyShort).join('+');
       } else if (akType === 'mt') {
         const c = +$('akClick').value, h = +$('akHold').value;
-        const t = Math.max(1, Math.min(255, parseInt($('akTime').value, 10) || 40));
+        const ms = parseInt($('akTime').value, 10) || 400;
+        const t = Math.max(1, Math.min(255, Math.round(ms / 10)));   // wire byte = ms/10 (vendor getSendMT: time/10; 400 ms default → 0x28)
         four = encodeMT(c, h, t); label = keyShort(c) + '⇄' + keyShort(h);
       } else {
         const k = +$('akKey').value;
