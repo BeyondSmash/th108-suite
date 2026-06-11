@@ -57,6 +57,16 @@
     return null;
   }
 
+  // ---- advanced-key entry encoders (types 0x07/0x09/0x0a/0x0b, wire-captured 2026-06-11) ----
+  const MODIFIERS = [
+    { label: 'L-Ctrl', hid: 0xE0 }, { label: 'L-Shift', hid: 0xE1 }, { label: 'L-Alt', hid: 0xE2 }, { label: 'L-Win', hid: 0xE3 },
+    { label: 'R-Ctrl', hid: 0xE4 }, { label: 'R-Shift', hid: 0xE5 }, { label: 'R-Alt', hid: 0xE6 }, { label: 'R-Win', hid: 0xE7 }
+  ];
+  function encodeCB(mod1, mod2, key)   { return [0x07, mod1 & 0xFF, mod2 & 0xFF, key & 0xFF]; }            // one key = a whole chord
+  function encodeMT(click, hold, time) { return [0x09, click & 0xFF, hold & 0xFF, (time == null ? 0x28 : time) & 0xFF]; }   // tap/hold; 0x28=40 = official default
+  function encodeTGL(key)              { return [0x0a, key & 0xFF, 0x00, 0x00]; }                          // tap toggles <key> held
+  function encodeSOCD(hidA, hidB)      { return [0x0b, 0x03, hidA & 0xFF, hidB & 0xFF]; }                  // mode 3 (last-pressed-wins) = the only captured mode; write to BOTH keys
+
   // ---- the assignment palette (official-driver tab layout; only hardware-confirmed encodings) ----
   const basics = [];
   for (let i = 0; i < 26; i++) basics.push({ label: String.fromCharCode(65 + i), hid: 4 + i });        // A..Z = 4..29
@@ -570,5 +580,6 @@
 
   return { create, PALETTE, SPACE_FUNCS, DEFAULT_HID, SPACE_VAL, SPACE_HID, FN_VAL,
            encodeNormal, encodeMedia, encodeFunc, entryBytes, defaultEntry, setEntry,
-           keymapChunks, keymapLooksValid, validateBackup, normalizeMods, modsOff, groupPlan };
+           keymapChunks, keymapLooksValid, validateBackup, normalizeMods, modsOff, groupPlan,
+           MODIFIERS, encodeCB, encodeMT, encodeTGL, encodeSOCD };
 });

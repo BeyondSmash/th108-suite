@@ -104,6 +104,19 @@ test('SPACE_FUNCS are all light functions a Spacebar tap can cycle', () => {
   for (const f of B.SPACE_FUNCS) assert.ok([23, 24, 27, 29, 164, 165].includes(f.code));
 });
 
+test('advanced-key encoders match the wire captures byte-for-byte', () => {
+  assert.deepEqual(B.encodeCB(0xE2, 0xE4, 0x06), [0x07, 0xE2, 0xE4, 0x06]);   // CB_ex1: M = L-Alt+R-Ctrl+C
+  assert.deepEqual(B.encodeMT(0x1c, 0x2b, 0x28), [0x09, 0x1c, 0x2b, 0x28]);   // MT_ex1: Y = tap Y / hold Tab / 40
+  assert.deepEqual(B.encodeMT(0x1c, 0x2b), [0x09, 0x1c, 0x2b, 0x28]);         // 40 = the captured default time
+  assert.deepEqual(B.encodeTGL(0x15), [0x0a, 0x15, 0x00, 0x00]);              // Tgl_ex1: K toggles R
+  assert.deepEqual(B.encodeSOCD(0x50, 0x51), [0x0b, 0x03, 0x50, 0x51]);       // SOCD_ex1: ←/↓, mode 3 only
+});
+
+test('MODIFIERS are exactly the 8 HID modifier usages', () => {
+  assert.deepEqual(B.MODIFIERS.map(m => m.hid), [0xE0, 0xE1, 0xE2, 0xE3, 0xE4, 0xE5, 0xE6, 0xE7]);
+  assert.ok(B.MODIFIERS.every(m => typeof m.label === 'string' && m.label));
+});
+
 test('normalizeMods migrates legacy label-only marks and validates stored bytes', () => {
   const m = B.normalizeMods({
     49: 'Calculator',                                       // pre-group-toggle format: bare label
