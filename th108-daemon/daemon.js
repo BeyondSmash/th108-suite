@@ -65,6 +65,21 @@ for (const [name, code] of Object.entries(UIOHOOK_TO_CODE)) {
 }
 uIOhook.on('keydown', e => { if (state) { const i = UIO2IDX[e.keycode]; if (i !== undefined) E.stampKey(state, i); } });
 uIOhook.on('keyup',   e => { if (state) { const i = UIO2IDX[e.keycode]; if (i !== undefined) E.releaseKey(state, i); } });
+// Global recovery hotkey: Ctrl+Alt+End in ANY app = "my lighting broke — fix it" (user request
+// 2026-06-11). Typing keeps flowing through an ACK-mute wedge, so the chord always arrives.
+// Action = the proven PnP software replug + a reopen window; ownership then sorts itself out
+// (the page rebinds and resumes, or hands back and the daemon drives). Deliberately ignores the
+// settings.usbReset toggle — that governs AUTOMATIC restarts, and this is an explicit human ask.
+let hotkeyAt = 0;
+uIOhook.on('keydown', e => {
+  if (e.keycode !== UiohookKey.End || !e.ctrlKey || !e.altKey) return;
+  if (Date.now() - hotkeyAt < 15_000) return;   // swallow key-repeat + no replug spam
+  hotkeyAt = Date.now();
+  log('🔧 recovery hotkey (Ctrl+Alt+End) — PnP-restarting the keyboard; typing drops ~1-2s, lighting returns by itself');
+  usbFiredAt = Date.now();
+  U.fire(log);
+  closeDevice(); nextOpenAt = Date.now() + 3000;   // let the re-enumeration settle, then the tick reopens (when not yielded)
+});
 uIOhook.start();
 
 // ----- device lifecycle -----
