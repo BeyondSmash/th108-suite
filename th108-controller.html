@@ -405,6 +405,10 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
       <button id="akApply" disabled>Apply</button>
       <span class="hint" id="akState" style="margin:0"></span>
     </div>
+    <div style="display:flex;align-items:center;gap:8px;margin-top:8px">
+      <button id="akVerify" title="show exactly what Windows receives when you press a key — the way to verify a Combination or Mod-Tap without hunting for an app that reacts to it">⌨ Chord check</button>
+      <span class="hint" id="akVerifyOut" style="margin:0"></span>
+    </div>
   </div>
 
   <!-- ========== PROFILES ========== -->
@@ -1173,18 +1177,19 @@ const KBOARD=(function(){
       document.getElementById('kbSelInfo').textContent='Selected: '+friendly(base,idx);
       notify();
     });
-    d.addEventListener('contextmenu',e=>{ e.preventDefault(); if(code) showTip(e, idx, base); });   // Fn (no code) is firmware-handled — no reset for it
+    d.addEventListener('contextmenu',e=>{ e.preventDefault(); if(code) showTip(d, idx, base); });   // Fn (no code) is firmware-handled — no reset for it
     host.appendChild(d);
   });
   // right-click reset tooltip: one floating button, dismissed by clicking elsewhere / Esc / another right-click
   let tipEl=null; const resetCbs=[];
   function hideTip(){ if(tipEl){ tipEl.remove(); tipEl=null; } }
-  function showTip(e, idx, base){
+  function showTip(cell, idx, base){
     hideTip();
     const b=document.createElement('button');
     b.className='kbreset'; b.textContent='Reset '+(base||'Space');
     b.title='restore this key to its default ("'+(base||'Space')+'") — rewrites the keymap, needs Connect';
-    b.style.left=e.clientX+'px'; b.style.top=(e.clientY+10)+'px';
+    const r=cell.getBoundingClientRect();                       // anchor to the KEY, not the cursor — re-right-clicks within the key must not move it
+    b.style.left=(r.x+r.width/2)+'px'; b.style.top=(r.bottom+6)+'px';
     b.addEventListener('click',()=>{ hideTip(); resetCbs.forEach(cb=>{ try{ cb(idx); }catch(_){ } }); });
     document.body.appendChild(b); tipEl=b;
   }
@@ -1223,7 +1228,10 @@ const BINDER=TH108Binder.create({
   pauseLighting: ()=>window.__lcdHost.pauseLighting(),
   resumeLighting: ()=>window.__lcdHost.resumeLighting()
 });
-KBOARD.onReset(idx=>BINDER.revertKey(idx));   // right-click Reset on a board key (SOCD pairs restore together)
+KBOARD.onReset(async idx=>{   // right-click Reset on a board key (SOCD pairs restore together); a reset key is done with — drop its selection
+  const ok=await BINDER.revertKey(idx);
+  if(ok && KBOARD.sel && KBOARD.sel.idx===idx) KBOARD.clear();
+});
 
 // ===== profiles — th108-profiles.js (named snapshots of the whole lighting setup, up to 10) =====
 const PROFILES=TH108Profiles.create({

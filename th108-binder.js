@@ -622,6 +622,21 @@
     }
     $('akApply').addEventListener('click', akApply);
     if (board) board.onChange(akRenderForm);   // selection change re-renders (MT tap default, SOCD partner list)
+
+    // chord check: live readout of what Windows actually receives — verifies a Combination/Mod-Tap
+    // without hunting for an app that visibly reacts to the shortcut
+    let akv = false;
+    function akvShow(e) {
+      const mods = [e.ctrlKey && 'Ctrl', e.shiftKey && 'Shift', e.altKey && 'Alt', e.metaKey && 'Win'].filter(Boolean);
+      const main = ['Control', 'Shift', 'Alt', 'Meta'].includes(e.key) ? [] : [e.key === ' ' ? 'Space' : (e.key.length === 1 ? e.key.toUpperCase() : e.key)];
+      $('akVerifyOut').textContent = 'received: ' + (mods.concat(main).join(' + ') || '—');
+      e.preventDefault(); e.stopPropagation();   // keep page hotkeys out of the test (browser/OS-level shortcuts still win)
+    }
+    $('akVerify').addEventListener('click', () => {
+      akv = !akv;
+      if (akv) { window.addEventListener('keydown', akvShow, true); $('akVerify').textContent = '⏹ Stop checking'; $('akVerifyOut').textContent = 'listening — tap the key you bound…'; }
+      else { window.removeEventListener('keydown', akvShow, true); $('akVerify').textContent = '⌨ Chord check'; $('akVerifyOut').textContent = ''; }
+    });
     akRenderTabs(); akRenderForm();
 
     // ---- decorative light toggles: bind Space to a light, hold the overlay open, Esc/✕ restores ----
