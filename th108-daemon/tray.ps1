@@ -1,8 +1,11 @@
 # tray.ps1 - system-tray face for the TH108 lighting daemon (no AI, no terminal needed).
-# Tray icon + menu: Open Controller / Start Daemon / Quit Daemon / Exit Tray.
+# Tray icon (a tiny salmon keyboard, matching the site favicon; gray + red dot when the daemon
+# is down) + menu: Open Controller / Start Daemon / Quit Daemon / Exit Tray.
 # On launch it starts the daemon if the port is dead; it polls /status every 5s and shows a
 # balloon if the daemon dies. Launch hidden via start-tray.vbs.
-# This file must stay pure ASCII (PS 5.1 reads UTF-8-without-BOM as ANSI).
+# NOTES: pure ASCII (PS 5.1 reads UTF-8-without-BOM as ANSI). HTTP goes through raw WebRequest
+# with Proxy = $null - Invoke-RestMethod uses the system proxy by default, and a configured
+# proxy silently eats localhost (real false-"daemon down" incident, 2026-06-11).
 
 $ErrorActionPreference = 'SilentlyContinue'
 Add-Type -AssemblyName System.Windows.Forms
@@ -10,15 +13,54 @@ Add-Type -AssemblyName System.Drawing
 
 $here = Split-Path -Parent $MyInvocation.MyCommand.Path
 
-function Get-DaemonStatus {
-  try { return Invoke-RestMethod -Uri 'http://localhost:8123/status' -TimeoutSec 2 } catch { return $null }
+function Invoke-Daemon([string]$path, [string]$method) {
+  try {
+    $req = [System.Net.WebRequest]::Create('http://127.0.0.1:8123' + $path)
+    $req.Method = $method
+    $req.Proxy = $null
+    $req.Timeout = 2000
+    if ($method -eq 'POST') { $req.ContentLength = 0 }
+    $resp = $req.GetResponse()
+    $sr = New-Object System.IO.StreamReader ($resp.GetResponseStream())
+    $body = $sr.ReadToEnd()
+    $resp.Close()
+    return ($body | ConvertFrom-Json)
+  } catch { return $null }
 }
+function Get-DaemonStatus { return Invoke-Daemon '/status' 'GET' }
 function Start-Daemon {
   if (-not (Get-DaemonStatus)) { Start-Process wscript.exe -ArgumentList ('"' + (Join-Path $here 'start-hidden.vbs') + '"') }
 }
 
+# tiny keyboard icon, favicon-style: salmon body, white/yellow/blue keys, mint space bar.
+# Down-state: gray body + red dot. Exactly two icons are created (GetHicon leaks if spammed).
+function New-TrayIcon([bool]$up) {
+  $bmp = New-Object System.Drawing.Bitmap 32, 32
+  $g = [System.Drawing.Graphics]::FromImage($bmp)
+  $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
+  $bodyColor = if ($up) { [System.Drawing.Color]::FromArgb(250, 128, 114) } else { [System.Drawing.Color]::FromArgb(120, 120, 120) }
+  $body = New-Object System.Drawing.SolidBrush ($bodyColor)
+  $g.FillRectangle($body, 1, 6, 30, 20)
+  $keyW = New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::White)
+  $keyY = New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::FromArgb(255, 217, 140))
+  $keyB = New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::FromArgb(152, 208, 255))
+  $bar  = New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::FromArgb(110, 210, 183))
+  $g.FillRectangle($keyW, 4, 9, 7, 6)
+  $g.FillRectangle($keyY, 13, 9, 7, 6)
+  $g.FillRectangle($keyB, 22, 9, 7, 6)
+  $g.FillRectangle($bar, 4, 17, 25, 6)
+  if (-not $up) {
+    $dot = New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::FromArgb(225, 60, 60))
+    $g.FillEllipse($dot, 19, 16, 12, 12)
+  }
+  $g.Dispose()
+  return [System.Drawing.Icon]::FromHandle($bmp.GetHicon())
+}
+$iconUp = New-TrayIcon $true
+$iconDown = New-TrayIcon $false
+
 $icon = New-Object System.Windows.Forms.NotifyIcon
-$icon.Icon = [System.Drawing.SystemIcons]::Application
+$icon.Icon = $iconDown
 $icon.Text = 'TH108 Lighting'
 $icon.Visible = $true
 
@@ -32,7 +74,7 @@ $icon.ContextMenuStrip = $menu
 
 $miOpen.Add_Click({ Start-Process 'http://localhost:8123/' })
 $miStart.Add_Click({ Start-Daemon })
-$miQuit.Add_Click({ try { Invoke-RestMethod -Uri 'http://localhost:8123/quit' -Method Post -TimeoutSec 2 } catch {} })
+$miQuit.Add_Click({ [void](Invoke-Daemon '/quit' 'POST') })
 $miExit.Add_Click({ $script:icon.Visible = $false; [System.Windows.Forms.Application]::Exit() })
 $icon.Add_DoubleClick({ Start-Process 'http://localhost:8123/' })
 
@@ -43,10 +85,12 @@ $timer.Add_Tick({
   $s = Get-DaemonStatus
   if ($s) {
     $script:wasUp = $true
+    $icon.Icon = $iconUp
     if ($s.paused) { $icon.Text = 'TH108: running - page holds the keyboard' }
     elseif ($s.deviceConnected) { $icon.Text = 'TH108: running - driving the keyboard' }
     else { $icon.Text = 'TH108: running - waiting for the keyboard' }
   } else {
+    $icon.Icon = $iconDown
     $icon.Text = 'TH108: daemon NOT running (right-click > Start Daemon)'
     if ($script:wasUp) {
       $script:wasUp = $false
