@@ -800,6 +800,10 @@ const HID=TH108Hid.create({
       return;
     }
     if(_wasRunning){ _wasRunning=false; start(); log('keyboard reconnected — layers resumed','ok'); }
+    // connected means DRIVING: with the policy grant a replug auto-rebinds even a fresh page
+    // (where _wasRunning is false) — leaving the board on its onboard effect after silently
+    // taking it from the daemon was the worst of both worlds (user report 2026-06-12 18:02)
+    else if(!running && !GIF.playing){ start(); log('keyboard reconnected — layers started','ok'); }
     else log('keyboard reconnected','ok');
   }
 });
