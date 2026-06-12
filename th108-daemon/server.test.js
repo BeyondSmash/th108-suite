@@ -28,6 +28,7 @@ function fakeControl() {
     usbFix() { this.calls.push('usbFix'); return { fired: this._usbReset }; },
     setNowPlaying(on) { this.calls.push('setNowPlaying:' + on); this._np = !!on; },
     setNpColors(t, a) { this.calls.push('setNpColors:' + t + '/' + a); },
+    setLighting(o) { this.calls.push('setLighting:' + JSON.stringify(o)); },
   };
 }
 
@@ -143,6 +144,18 @@ test('/nowplaying writes toggle and colors through control', async () => {
     await call(server, 'POST', '/nowplaying', { titleColor: '#ff0000', artistColor: '#00ff00' });
     assert.ok(ctl.calls.includes('setNpColors:#ff0000/#00ff00'));
     assert.ok(!ctl.calls.includes('setNowPlaying:undefined'), 'colors-only POST must not touch the toggle');
+  } finally { server.close(); }
+});
+
+test('/lighting relays the master switch + brightness through control', async () => {
+  const ctl = fakeControl();
+  const server = createServer({ control: ctl, root: path.join(__dirname, '..'), port: 0 });
+  await server.listening;
+  try {
+    assert.equal((await call(server, 'POST', '/lighting', { on: false })).json.ok, true);
+    assert.ok(ctl.calls.includes('setLighting:{"on":false}'));
+    await call(server, 'POST', '/lighting', { brightness: 50 });
+    assert.ok(ctl.calls.includes('setLighting:{"brightness":50}'));
   } finally { server.close(); }
 });
 

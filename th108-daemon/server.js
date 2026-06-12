@@ -76,6 +76,13 @@ function createServer({ control, root, port = 8123, watchdogMs = 12000 }) {
         console.log(ts() + ' [api] /usbreset ' + (on ? 'on' : 'off'));
         return sendJson(res, 200, { ok: true, enabled: on });
       }
+      if (req.method === 'POST' && u === '/lighting') {   // master lighting switch + global brightness (header controls)
+        const b = await readBody(req); let body;
+        try { body = JSON.parse(b || '{}'); } catch { return sendJson(res, 400, { error: 'bad json' }); }
+        control.setLighting(body);
+        console.log(ts() + ' [api] /lighting ' + JSON.stringify(body));
+        return sendJson(res, 200, { ok: true });
+      }
       if (req.method === 'POST' && u === '/nowplaying') {   // toggle and/or text colors (state reads back via /status)
         const b = await readBody(req); let body;
         try { body = JSON.parse(b || '{}'); } catch { return sendJson(res, 400, { error: 'bad json' }); }

@@ -128,6 +128,18 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
   /* lucide inline icons */
   .ic{ width:15px; height:15px; vertical-align:-2px; fill:none; stroke:currentColor; stroke-width:2;
        stroke-linecap:round; stroke-linejoin:round; flex:none; }
+  /* header lighting master switch + global brightness */
+  #lightCtl{ display:flex; align-items:center; gap:10px; }
+  #lightBtn{ margin:0; padding:6px 14px; font-weight:800; min-width:52px; }
+  #lightBtn.on{ color:var(--mint); }
+  #lightBtn.off{ color:var(--err, #e5534b); }
+  #lightCtl .srange{ width:120px; }
+  /* reset-layouts mini overlay */
+  .rlovl{ position:fixed; inset:0; z-index:400; background:rgba(9,12,16,.55); display:flex; align-items:center; justify-content:center; }
+  .rlovl[hidden]{ display:none !important; }
+  .rlbox{ background:var(--card); border-radius:18px; padding:22px 26px; box-shadow:0 18px 50px rgba(13,17,23,.35); max-width:340px; }
+  .rlbox h3{ margin:0 0 6px; }
+
   /* daemon online tag (header) — dim at rest, ripple only on hover so it never distracts passively */
   .dmnTag{ display:inline-flex; align-items:center; gap:6px; font-size:12px; font-weight:600;
            color:var(--muted); opacity:.65; cursor:default; }
@@ -296,6 +308,13 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
 
 <header>
   <div class="logo">th108</div>
+  <div id="lightCtl">
+    <button id="lightBtn" class="on" title="master lighting switch — affects whoever is driving (this page or the daemon)">On</button>
+    <span class="srange" id="briWrap" title="global brightness — snaps at 25 / 50 / 75%">
+      <div class="tick" style="left:25%"></div><div class="tick" style="left:50%"></div><div class="tick" style="left:75%"></div>
+      <input type="range" id="briSlider" min="5" max="100" value="100">
+    </span>
+  </div>
   <nav class="tabs" id="tabs">
     <div class="hl" id="tabHl"></div>
     <div class="tab" data-page="home">Home</div>
@@ -363,12 +382,27 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
     <input type="file" id="importFile" accept="application/json,.json" style="display:none">
     <button id="resetKbBtn" title="Factory-reset the keyboard HARDWARE (recovers a wedged board; clears the keyboard's onboard config/keymap — NOT this page's settings)">⟳ Factory Reset Keyboard</button>
     <button id="resetSiteBtn" title="Reset THIS page's settings (layers, per-pattern values, LCD calibration, layout) to defaults — keeps your media Library; does NOT touch the keyboard">↺ Reset All Settings</button>
+    <button id="resetLayoutBtn" title="put cards back to their default arrangement, per tab — settings and content untouched">⇲ Reset Layout(s)</button>
     <p class="hint" style="margin:6px 0 0">Drag any card by its title bar to rearrange the grid — the layout is saved.</p>
   </div>
 
   <div class="card s6" id="logCard" data-pages="home">
     <div class="cardbar"><span class="grip">⠿</span><h2>Log</h2></div>
     <div id="log"></div>
+  </div>
+
+  <!-- Reset Layout(s) mini overlay -->
+  <div id="rlOvl" class="rlovl" hidden>
+    <div class="rlbox">
+      <h3>Reset layouts</h3>
+      <p class="hint" style="margin:0 0 10px">Tick the tabs whose card arrangement should go back to default.
+         Settings and content are untouched — this only moves cards.</p>
+      <div id="rlPages"></div>
+      <div style="margin-top:14px">
+        <button id="rlGo" class="primary">Reset</button>
+        <button id="rlCancel">Cancel</button>
+      </div>
+    </div>
   </div>
 
   <!-- ========== HOTKEYS ========== -->
@@ -840,6 +874,7 @@ if(layerW) layerW.onmessage=layerTick;
 
 function start(){
   if(running||!HID.device) return;
+  if(localStorage.getItem('th108_lightsOn')==='0') return;   // master switch OFF: auto-starts stay dark (the header button / Start button flip it back on)
   if(GIF.playing){ GIF.stop(); }                            // layers + GIF are mutually exclusive
   running=true; obActive=false; state.lastFlat=null; state.lastSent=0; HID.resetStalls();
   state.react.fg.fill(0); state.react.t.fill(-1e12); state.react.down.fill(0); state.react.up.fill(-1e12);
@@ -1134,6 +1169,79 @@ function restoreLayout(){
   saved.forEach(id=>{ const c=document.getElementById(id); if(c && c.parentElement===gridEl) gridEl.appendChild(c); });
 }
 restoreLayout();
+
+// ===== master lighting switch + global brightness (header; daemon mirrors via /lighting) =====
+(function(){
+  const LIGHTS_KEY='th108_lightsOn', BRI_KEY='th108_bri';
+  const btn=document.getElementById('lightBtn'), sl=document.getElementById('briSlider');
+  if(!btn||!sl) return;
+  const lightsOn=()=>localStorage.getItem(LIGHTS_KEY)!=='0';
+  const briVal=()=>{ const v=+localStorage.getItem(BRI_KEY); return (v>=5&&v<=100)?v:100; };
+  function sync(){ const on=lightsOn(); btn.textContent=on?'On':'Off'; btn.classList.toggle('on',on); btn.classList.toggle('off',!on); }
+  let pushT=0;
+  function push(part){ clearTimeout(pushT); pushT=setTimeout(()=>{ if(DC.present) fetch('/lighting',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(part)}).catch(()=>{}); },250); }
+  sl.value=briVal(); state.bri=briVal()/100;
+  sl.addEventListener('input',()=>{
+    let v=+sl.value;
+    for(const t of [25,50,75]) if(Math.abs(v-t)<=3){ v=t; sl.value=v; break; }   // approach-snap ticks
+    localStorage.setItem(BRI_KEY,String(v)); state.bri=v/100; state.lastFlat=null;
+    push({brightness:v});
+  });
+  btn.addEventListener('click',()=>{
+    const on=!lightsOn();
+    localStorage.setItem(LIGHTS_KEY,on?'1':'0'); sync();
+    push({on});                                   // the daemon clears the board itself when off
+    if(HID.device){ if(on){ start(); } else if(running){ _wasRunning=false; stop(); } }
+    log(on?'lighting ON':'lighting OFF — board goes dark (whoever is driving clears it)', on?'ok':'dim');
+  });
+  // a manual Start click while the master switch is off means "turn it back on"
+  document.getElementById('start').addEventListener('click',()=>{
+    if(!lightsOn()){ localStorage.setItem(LIGHTS_KEY,'1'); sync(); push({on:true}); start(); }
+  });
+  // boot: adopt the daemon's persisted values once, so page and daemon agree after reloads
+  DC.ping().then(async()=>{
+    if(!DC.present) { sync(); return; }
+    try{
+      const s=await (await fetch('/status',{cache:'no-store'})).json();
+      if('lightsOn' in s) localStorage.setItem(LIGHTS_KEY, s.lightsOn?'1':'0');
+      if(s.brightness>=5){ localStorage.setItem(BRI_KEY,String(s.brightness)); sl.value=s.brightness; state.bri=s.brightness/100; }
+    }catch(_){ }
+    sync();
+  });
+  sync();
+})();
+
+// ===== Reset Layout(s): per-tab card-arrangement reset (Toolbox) =====
+(function(){
+  const PAGES=[['home','Home'],['hotkeys','Hotkeys'],['lighting','Lighting'],['lcd','LCD Screen'],['profiles','Profiles'],['faq','FAQ']];
+  const ovl=document.getElementById('rlOvl');
+  if(!ovl) return;
+  document.getElementById('resetLayoutBtn').addEventListener('click',()=>{
+    const host=document.getElementById('rlPages'); host.textContent='';
+    for(const [key,name] of PAGES){
+      const l=document.createElement('label'); l.style.display='block'; l.style.margin='4px 0'; l.style.cursor='pointer';
+      const c=document.createElement('input'); c.type='checkbox'; c.checked=true; c.dataset.page=key;
+      l.appendChild(c); l.appendChild(document.createTextNode(' '+name));
+      host.appendChild(l);
+    }
+    ovl.hidden=false;
+  });
+  document.getElementById('rlCancel').addEventListener('click',()=>{ ovl.hidden=true; });
+  ovl.addEventListener('click',e=>{ if(e.target===ovl) ovl.hidden=true; });
+  document.getElementById('rlGo').addEventListener('click',()=>{
+    const sel=[...document.querySelectorAll('#rlPages input:checked')].map(c=>c.dataset.page);
+    if(!sel.length){ ovl.hidden=true; return; }
+    if(sel.length===PAGES.length) localStorage.removeItem(LAYOUT_KEY);
+    else{
+      let order=[]; try{ order=JSON.parse(localStorage.getItem(LAYOUT_KEY)||'[]'); }catch(_){ }
+      const drop=new Set();
+      document.querySelectorAll('#grid .card').forEach(c=>{ const pages=(c.dataset.pages||'').split(/\s+/); if(sel.some(p=>pages.includes(p))) drop.add(c.id); });
+      localStorage.setItem(LAYOUT_KEY, JSON.stringify(order.filter(id=>!drop.has(id))));
+    }
+    log('layout reset: '+sel.join(', ')+' — reloading…','ok');
+    setTimeout(()=>location.reload(),300);
+  });
+})();
 
 // Export / Import the layer setup. Export's JSON IS the daemon's config.json format. Import also lets you
 // move settings across origins (e.g. file:// → http://localhost:8123, which don't share localStorage).
