@@ -12,6 +12,8 @@ const R = require('./nowplaying-render.js');
 const U = require('../th108-lcd-upload.js');
 
 const SETTLE_MS = 2500, PAUSE_HOLD_MS = 5000, FAIL_BACKOFF_MS = 30000;
+const MIN_GAP_MS = 5000;      // never two flash writes back-to-back (skip-chains wedged the board)
+const EVENT_QUIET_MS = 1200;  // no page-permit uploads right after a track event — a skip makes the queued song stale
 
 function newState() { return { pending: null, sinceMs: 0, lastShownKey: null, backoffUntil: 0 }; }
 function keyOf(info) { return info.title + '|' + info.artist + '|' + info.status; }
@@ -41,6 +43,7 @@ function start(opts) {
   let proc = null, timer = null, busy = false, stopped = false;
   let lastUploaded = null, gateLogged = false;   // lastUploaded feeds /status.npTrack (the page's Now Playing card)
   let lastInfo = null;                           // full last event incl. thumb — re-rendered when the user changes text colors
+  let lastUploadAt = 0, lastEventAt = 0;         // MIN_GAP / EVENT_QUIET gates
 
   function spawnSidecar() {
     if (stopped) return;
@@ -52,7 +55,7 @@ function start(opts) {
       while ((i = carry.indexOf('\n')) >= 0) {
         const line = carry.slice(0, i).trim(); carry = carry.slice(i + 1);
         if (!line) continue;
-        try { const ev = JSON.parse(line); lastInfo = ev; decide(state, ev, Date.now()); } catch (_) { }
+        try { const ev = JSON.parse(line); lastInfo = ev; lastEventAt = Date.now(); decide(state, ev, Date.now()); } catch (_) { }
       }
     });
     proc.on('exit', () => { proc = null; if (!stopped) { log('… media sidecar exited — restarting in 10s'); setTimeout(spawnSidecar, 10000); } });
@@ -61,6 +64,7 @@ function start(opts) {
   // the actual flash write — callers have already settled ownership/stream questions
   async function doUpload(act) {
     busy = true;
+    lastUploadAt = Date.now();
     const t0 = Date.now();
     opts.pauseRender();   // a flash upload can't share the board with the 0x32 stream
     const scr = T.openScreen();
@@ -84,6 +88,7 @@ function start(opts) {
   }
 
   async function maybeUpload() {
+    if (Date.now() - lastUploadAt < MIN_GAP_MS) return;   // flash writes never back-to-back
     const act = decide(state, null, Date.now());
     if (!act) return;
     // gates: hand-off safety + an upload already running. A skipped action is re-armed so the
@@ -105,6 +110,8 @@ function start(opts) {
   async function uploadNow() {
     if (busy) return { ok: false, reason: 'busy' };
     if (opts.isMute()) return { ok: false, reason: 'mute' };
+    if (Date.now() - lastUploadAt < MIN_GAP_MS) return { ok: false, reason: 'min gap' };          // skip-chains wedged the board
+    if (Date.now() - lastEventAt < EVENT_QUIET_MS) return { ok: false, reason: 'track changing' };// a fresh skip makes the queued song stale — wait for it to settle
     const act = decide(state, null, Date.now());   // respects settle / dedupe / backoff
     if (!act) return { ok: false, reason: 'nothing pending' };
     return await doUpload(act);

@@ -816,6 +816,7 @@ const DC = TH108DaemonClient.create({ log, getConfig: ()=>localStorage.getItem('
     window.__npPermit = true;
     try {
       window.__lcdHost.pauseLighting();
+      await new Promise(r=>setTimeout(r,300));   // drain: in-flight 0x32 chunks must finish ACKing before the flash erase starts (same rule as keymap passes)
       await fetch('/npgo', { method:'POST' });
     } catch(_){ }
     finally { window.__lcdHost.resumeLighting(); window.__npPermit = false; }
@@ -1228,11 +1229,18 @@ restoreLayout();
     localStorage.setItem(BRI_KEY,String(v)); state.bri=v/100; state.lastFlat=null;
     push({brightness:v});
   });
-  btn.addEventListener('click',()=>{
+  btn.addEventListener('click',async()=>{
     const on=!lightsOn();
     localStorage.setItem(LIGHTS_KEY,on?'1':'0'); sync();
     push({on});                                   // the daemon clears the board itself when off
-    if(HID.device){ if(on){ start(); } else if(running){ _wasRunning=false; stop(); } }
+    if(HID.device){
+      if(on){
+        // while the host was silent the board may have re-entered its onboard effect, which sets
+        // the "ACKs paint but ignores it" trap — a handle close+reopen is the documented cure
+        await HID.rebind();
+        start();
+      } else if(running){ _wasRunning=false; stop(); }
+    }
     log(on?'lighting ON':'lighting OFF — board goes dark (whoever is driving clears it)', on?'ok':'dim');
   });
   // a manual Start click while the master switch is off means "turn it back on"

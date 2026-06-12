@@ -256,7 +256,13 @@ const control = {
   // master lighting switch + global brightness (header controls; the page mirrors them here so the
   // look survives page↔daemon handoffs)
   setLighting(o) {
-    if (o && 'on' in o) { settings.lightsOn = !!o.on; offCleared = false; if (settings.lightsOn && state) state.lastFlat = null; }   // force a repaint on re-enable
+    if (o && 'on' in o) {
+      settings.lightsOn = !!o.on; offCleared = false;
+      if (settings.lightsOn) {
+        if (state) state.lastFlat = null;            // force a repaint
+        closeDevice(); nextOpenAt = 0;               // fresh handle: host silence can leave the board in the ACK-but-ignore state
+      }
+    }
     if (o && o.brightness != null) {
       settings.brightness = Math.max(5, Math.min(100, Math.round(o.brightness)));
       if (state) { state.bri = settings.brightness / 100; state.lastFlat = null; }   // live, and bust the dedupe so it applies now
