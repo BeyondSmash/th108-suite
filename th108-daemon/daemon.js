@@ -117,6 +117,7 @@ let probing = false, nextOpenAt = Date.now() + 5000;   // startup grace: a live 
 let lastOkAt = 0, streakStart = 0, muteLogged = false, muteAt = 0;   // mute-episode tracking (transition logging)
 let usbFiredAt = 0, lastTickAt = 0;   // USB-restart escalation state + sleep-gap detection
 let offCleared = false;               // lights-off: the one black frame was sent
+let sendingFrame = false;             // a 0x32 frame is mid-flight — closing the device NOW leaves the board's chunk parser desynced
 async function openIfPossible() {
   if (device || paused || probing) return;
   if (Date.now() < nextOpenAt) return;   // backoff after a mute/failed device — no 2s open/close churn against a wedged board
@@ -162,7 +163,8 @@ async function tick() {
     const now = performance.now();
     const flat = E.composeFrame(state, now);
     if (!E.flatEq(flat, state.lastFlat) || now - state.lastSent >= 1000) {
-      const ok = await send(flat);
+      sendingFrame = true;
+      let ok; try { ok = await send(flat); } finally { sendingFrame = false; }
       if (ok) {
         state.lastFlat = flat; state.lastSent = now;
         if (!lastOkAt || muteLogged) {                     // streaming (re)started — one transition line, with mute duration if recovering
@@ -236,7 +238,13 @@ const control = {
   // mid-flash-write wedged it hard and cost typing (2026-06-12 incident, "chunk N: no ACK" right
   // after a /yield line). Block the response until the upload finishes (≤ erase window) or 25s.
   async yield() {
-    paused = true; closeDevice();
+    paused = true;   // stops NEW frames; the in-flight one must COMPLETE before we close —
+    // closing mid-frame leaves the board's chunk parser waiting for bytes that never come, and
+    // the page's first writes then land desynced → no ACKs → onboard fallback (the recurring
+    // "refresh + Connect → rainbow" pattern, finally pinned 2026-06-12 17:51)
+    const tf = Date.now();
+    while (sendingFrame && Date.now() - tf < 1500) await new Promise(r => setTimeout(r, 25));
+    closeDevice();
     muteLogged = false;   // a mute episode ends at handoff — a stale flag here vetoed every page-permit upload (live repro 2026-06-12 13:41, endless /npgo "mute")
     const t0 = Date.now();
     while (lcdBusy && Date.now() - t0 < 25000) await new Promise(r => setTimeout(r, 100));
