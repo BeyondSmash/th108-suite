@@ -84,6 +84,10 @@ window.TH108DaemonClient = (function () {
             if (trEl) trEl.textContent = !s.nowPlaying ? '' :
               (s.npTrack ? 'Showing: ' + s.npTrack.title + ' — ' + s.npTrack.artist + (s.npTrack.status === 'paused' ? '  ⏸' : '')
                          : (s.npQueued && s.paused ? 'queued — waiting for this page to release the keyboard' : 'waiting for music…'));
+            for (const [id, key] of [['npTitleColor', 'npTitle'], ['npArtistColor', 'npArtist']]) {
+              const el = document.getElementById(id);
+              if (el) { el.disabled = !(key in s); if (key in s && document.activeElement !== el) el.value = s[key]; }
+            }
           }
         } catch (_) { alive = false; st.textContent = 'daemon: not running — start it with setup.cmd (lighting then survives closing this tab)'; auto.disabled = true; quit.disabled = true; if (usb) usb.disabled = true; if (np) np.disabled = true; }
       }
@@ -106,6 +110,15 @@ window.TH108DaemonClient = (function () {
           log('♪ now-playing on the LCD ' + (np.checked ? 'enabled — the daemon shows the current song (overwrites the LCD GIF while on)' : 'disabled — the LCD keeps its last image'), 'ok');
         } catch (_) { log('now-playing toggle failed', 'err'); refresh(); }
       });
+      for (const [id, key] of [['npTitleColor', 'titleColor'], ['npArtistColor', 'artistColor']]) {
+        const el = document.getElementById(id);
+        if (el) el.addEventListener('change', async () => {   // 'change' = picker closed — one flash re-paint per pick, not per drag
+          try {
+            await fetch('/nowplaying', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ [key]: el.value }) });
+            log('♪ now-playing ' + (key === 'titleColor' ? 'title' : 'artist') + ' color → ' + el.value + ' (the current song re-paints)', 'ok');
+          } catch (_) { log('color change failed', 'err'); }
+        });
+      }
       quit.addEventListener('click', async () => {
         if (!confirm('Quit the background daemon?\n\nAlways-on lighting and reactive-anywhere stop until setup.cmd or your next login starts it again. This page keeps working as-is.')) return;
         try { await fetch('/quit', { method: 'POST' }); log('daemon quit', 'dim'); } catch (_) {}

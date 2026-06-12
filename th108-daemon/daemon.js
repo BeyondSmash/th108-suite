@@ -61,8 +61,8 @@ let unpausedAt = 0;      // when the daemon last took ownership — flash upload
 // ----- daemon settings (separate from config.json, which is the page's layer array verbatim) -----
 const SETTINGS_PATH = path.join(__dirname, 'settings.json');
 function loadSettings() {
-  try { return Object.assign({ usbReset: true, nowPlaying: false }, JSON.parse(fs.readFileSync(SETTINGS_PATH, 'utf8'))); }
-  catch { return { usbReset: true, nowPlaying: false }; }   // usbReset default ON — the escalation fails gracefully (one log line) if the task isn't registered
+  try { return Object.assign({ usbReset: true, nowPlaying: false, npTitle: '#ffffff', npArtist: '#ffd98c' }, JSON.parse(fs.readFileSync(SETTINGS_PATH, 'utf8'))); }
+  catch { return { usbReset: true, nowPlaying: false, npTitle: '#ffffff', npArtist: '#ffd98c' }; }   // usbReset default ON — the escalation fails gracefully (one log line) if the task isn't registered
 }
 let settings = loadSettings();
 function saveSettings() { try { fs.writeFileSync(SETTINGS_PATH, JSON.stringify(settings)); } catch {} }
@@ -210,6 +210,7 @@ function syncNowPlaying() {
       isUnstable: () => !device || (Date.now() - lastOkAt > 3000) || (Date.now() - unpausedAt < 3000),
       pauseRender: () => { lcdBusy = true; },
       resumeRender: () => { lcdBusy = false; },
+      getColors: () => ({ title: settings.npTitle, artist: settings.npArtist }),
       log,
     });
   } else if (!settings.nowPlaying && npHandle) { npHandle.stop(); npHandle = null; }
@@ -233,8 +234,15 @@ const control = {
   // Persist the page's config; refresh live state immediately unless yielded to the page.
   saveConfig(cfg) { fs.writeFileSync(CONFIG_PATH, JSON.stringify(cfg)); if (!paused) rebuildState(); },
   status() { return { running: true, paused, deviceConnected: !!device, fps: FPS, usbReset: settings.usbReset, nowPlaying: settings.nowPlaying,
-                      npTrack: npHandle ? npHandle.current() : null, npQueued: npHandle ? npHandle.queued() : false }; },
+                      npTrack: npHandle ? npHandle.current() : null, npQueued: npHandle ? npHandle.queued() : false,
+                      npTitle: settings.npTitle, npArtist: settings.npArtist }; },
   setNowPlaying(on) { settings.nowPlaying = !!on; saveSettings(); syncNowPlaying(); },
+  setNpColors(title, artist) {   // valid hex only; a change re-paints the current song (one flash write)
+    if (/^#[0-9a-f]{6}$/i.test(title || '')) settings.npTitle = title;
+    if (/^#[0-9a-f]{6}$/i.test(artist || '')) settings.npArtist = artist;
+    saveSettings();
+    if (npHandle) npHandle.refresh();
+  },
   // page-initiated escalation: the PAGE drives the device and detected a persistent wedge its own
   // handle-rebinds couldn't clear — fire the same PnP restart the daemon uses, with a cooldown so
   // a stuck page can't replug-loop the keyboard.

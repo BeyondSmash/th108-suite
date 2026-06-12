@@ -76,12 +76,12 @@ function createServer({ control, root, port = 8123, watchdogMs = 12000 }) {
         console.log(ts() + ' [api] /usbreset ' + (on ? 'on' : 'off'));
         return sendJson(res, 200, { ok: true, enabled: on });
       }
-      if (req.method === 'POST' && u === '/nowplaying') {   // toggle now-playing-on-LCD (state reads back via /status.nowPlaying)
-        const b = await readBody(req); let on;
-        try { on = !!JSON.parse(b || '{}').on; } catch { return sendJson(res, 400, { error: 'bad json' }); }
-        control.setNowPlaying(on);
-        console.log(ts() + ' [api] /nowplaying ' + (on ? 'on' : 'off'));
-        return sendJson(res, 200, { ok: true, enabled: on });
+      if (req.method === 'POST' && u === '/nowplaying') {   // toggle and/or text colors (state reads back via /status)
+        const b = await readBody(req); let body;
+        try { body = JSON.parse(b || '{}'); } catch { return sendJson(res, 400, { error: 'bad json' }); }
+        if (body.titleColor || body.artistColor) { control.setNpColors(body.titleColor, body.artistColor); console.log(ts() + ' [api] /nowplaying colors ' + (body.titleColor || '-') + '/' + (body.artistColor || '-')); }
+        if ('on' in body) { control.setNowPlaying(!!body.on); console.log(ts() + ' [api] /nowplaying ' + (body.on ? 'on' : 'off')); }
+        return sendJson(res, 200, { ok: true });
       }
       if (req.method === 'POST' && u === '/usbfix') {   // the page's last-resort wedge recovery (cooldown enforced by control.usbFix)
         const r = control.usbFix();

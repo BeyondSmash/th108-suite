@@ -23,7 +23,16 @@ function fit(text, scale) { return F.fitText(text, W - 8, scale); }   // proport
 // hardware test shows wrong colors (Task 8 of the plan).
 const SWAP = false;
 
-function render(info) {
+function hexToRgb(hex, fallback) {
+  const m = /^#?([0-9a-f]{6})$/i.exec(String(hex || ''));
+  if (!m) return fallback;
+  const v = parseInt(m[1], 16);
+  return [(v >> 16) & 255, (v >> 8) & 255, v & 255];
+}
+
+function render(info, colors) {
+  const titleRgb = hexToRgb(colors && colors.title, [255, 255, 255]);
+  const artistRgb = hexToRgb(colors && colors.artist, [255, 217, 140]);
   const buf = new Uint8ClampedArray(W * H * 4);
   const art = decodeThumb(info.thumb);
   if (art) {                                  // cover-scale, darkened ~45% so the text reads
@@ -36,12 +45,12 @@ function render(info) {
   } else {                                    // suite-navy flat background
     for (let i = 0; i < buf.length; i += 4) { buf[i] = 13; buf[i + 1] = 17; buf[i + 2] = 23; buf[i + 3] = 255; }
   }
-  F.drawText(buf, W, 4, H - 42, fit(info.title, 1), 1, [255, 255, 255]);     // title, white
-  F.drawText(buf, W, 4, H - 22, fit(info.artist, 1), 1, [255, 217, 140]);   // artist, suite yellow
+  F.drawText(buf, W, 4, H - 42, fit(info.title, 1), 1, titleRgb);    // title (default white)
+  F.drawText(buf, W, 4, H - 22, fit(info.artist, 1), 1, artistRgb);  // artist (default suite yellow)
   if (info.status === 'paused') {             // ⏸ badge top-right: two white bars on a dark pill
     for (let y = 6; y < 22; y++) for (let x = W - 26; x < W - 6; x++) { const o = (y * W + x) * 4; buf[o] = 30; buf[o + 1] = 34; buf[o + 2] = 40; buf[o + 3] = 255; }
     for (let y = 9; y < 19; y++) for (const xs of [W - 21, W - 14]) for (let x = xs; x < xs + 3; x++) { const o = (y * W + x) * 4; buf[o] = buf[o + 1] = buf[o + 2] = 255; }
   }
   return { bytes: packRgb565(buf, SWAP), delayMs: 1000 };
 }
-module.exports = { render, decodeThumb };
+module.exports = { render, decodeThumb, hexToRgb };

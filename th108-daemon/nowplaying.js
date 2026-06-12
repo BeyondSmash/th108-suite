@@ -40,6 +40,7 @@ function start(opts) {
   const state = newState();
   let proc = null, timer = null, busy = false, stopped = false;
   let lastUploaded = null, gateLogged = false;   // lastUploaded feeds /status.npTrack (the page's Now Playing card)
+  let lastInfo = null;                           // full last event incl. thumb — re-rendered when the user changes text colors
 
   function spawnSidecar() {
     if (stopped) return;
@@ -51,7 +52,7 @@ function start(opts) {
       while ((i = carry.indexOf('\n')) >= 0) {
         const line = carry.slice(0, i).trim(); carry = carry.slice(i + 1);
         if (!line) continue;
-        try { const ev = JSON.parse(line); decide(state, ev, Date.now()); } catch (_) { }
+        try { const ev = JSON.parse(line); lastInfo = ev; decide(state, ev, Date.now()); } catch (_) { }
       }
     });
     proc.on('exit', () => { proc = null; if (!stopped) { log('… media sidecar exited — restarting in 10s'); setTimeout(spawnSidecar, 10000); } });
@@ -77,7 +78,7 @@ function start(opts) {
       // write unless the daemon still owns the board (2026-06-12: a yield arrived mid-upload and
       // the page streamed into an active flash-write → hard wedge + typing loss)
       if (opts.isYielded() || opts.isMute()) { state.pending = act.upload; state.sinceMs = 0; state.lastShownKey = null; return; }
-      const plan = U.planUpload([R.render(act.upload)]);
+      const plan = U.planUpload([R.render(act.upload, opts.getColors ? opts.getColors() : null)]);
       const eng = U.create({ sendChunk: scr.send, onInput: scr.onInput, log, pktLen: 4104 });
       const r = await eng.upload(plan);
       if (r.ok) { lastUploaded = { title: act.upload.title, artist: act.upload.artist, status: act.upload.status }; gateLogged = false; log('♪ now-playing on LCD: "' + act.upload.title + '" (' + act.upload.status + ', ' + plan.totalSize + 'B, ' + (Date.now() - t0) + 'ms)'); }
@@ -99,6 +100,10 @@ function start(opts) {
   return {
     current() { return lastUploaded; },
     queued() { return !!state.pending; },
+    refresh() {   // colors changed: re-upload the current song with the new look (one flash write)
+      if (!lastInfo) return;
+      state.pending = lastInfo; state.sinceMs = 0; state.lastShownKey = null;
+    },
     stop() {
       stopped = true;
       clearInterval(timer);

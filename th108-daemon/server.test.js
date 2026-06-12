@@ -27,6 +27,7 @@ function fakeControl() {
     quit() { this.calls.push('quit'); },
     usbFix() { this.calls.push('usbFix'); return { fired: this._usbReset }; },
     setNowPlaying(on) { this.calls.push('setNowPlaying:' + on); this._np = !!on; },
+    setNpColors(t, a) { this.calls.push('setNpColors:' + t + '/' + a); },
   };
 }
 
@@ -130,15 +131,18 @@ test('/usbreset writes through control; state reads back via /status', async () 
   } finally { server.close(); }
 });
 
-test('/nowplaying writes through control like /usbreset', async () => {
+test('/nowplaying writes toggle and colors through control', async () => {
   const ctl = fakeControl();
   const server = createServer({ control: ctl, root: path.join(__dirname, '..'), port: 0 });
   await server.listening;
   try {
-    assert.equal((await call(server, 'POST', '/nowplaying', { on: true })).json.enabled, true);
+    assert.equal((await call(server, 'POST', '/nowplaying', { on: true })).json.ok, true);
     assert.ok(ctl.calls.includes('setNowPlaying:true'));
-    assert.equal((await call(server, 'POST', '/nowplaying', { on: false })).json.enabled, false);
+    await call(server, 'POST', '/nowplaying', { on: false });
     assert.equal(ctl._np, false);
+    await call(server, 'POST', '/nowplaying', { titleColor: '#ff0000', artistColor: '#00ff00' });
+    assert.ok(ctl.calls.includes('setNpColors:#ff0000/#00ff00'));
+    assert.ok(!ctl.calls.includes('setNowPlaying:undefined'), 'colors-only POST must not touch the toggle');
   } finally { server.close(); }
 });
 

@@ -248,7 +248,7 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
   .kbkey.mod{ color:var(--warn); font-weight:700; }
   .kbkey.mod:hover,.kbkey.mod.sel{ color:#0d1117; }
   .kbkey .knew{ max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; padding:0 3px; font-size:.85em; }
-  .kbkey .kold{ position:absolute; right:4px; bottom:1px; font-size:14px; text-decoration:line-through; opacity:.8; }   /* user: 8px was unreadably small — "close to 15px" */
+  .kbkey .kold{ position:absolute; right:4px; bottom:1px; font-size:14px; color:#fff; text-decoration:line-through; opacity:.8; }   /* white + struck (user request); 14px after "8px was unreadably small" */
   /* right-click on a key: a one-button "Reset" tooltip instead of the browser context menu.
      Centered via computed left, NOT transform — the global button:hover sets transform:translateY(-1px),
      which would REPLACE a translateX(-50%) here and lurch the button half its width on every hover. */
@@ -476,9 +476,10 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
        sleep, or other devices power-cycling on the same bus.</p>
     <p>Cure ladder: wait ~30&nbsp;s (automatic USB restart; some mutes self-recover) → press
        <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>End</kbd> anywhere (the manual recovery hotkey, same restart) →
-       <b>flip the keyboard's power switch off and on</b>. The switch is the real reboot: the board runs on
-       battery, so <b>unplugging the cable does NOT restart it</b> — a deeply wedged board sails straight
-       through replugs and USB restarts and only the switch (or the in-app ⟳ factory reset) clears it.
+       <b>flip the mode switch to BT and back to wired</b> → <b>⟳ Factory Reset Keyboard</b> (Home tab; the
+       reset command gets through even when lighting is dead — then Restore Keymap on Hotkeys brings your
+       binds back). Note the board runs on battery, so <b>unplugging the cable alone does NOT reboot it</b> —
+       deep wedges sail straight through replugs and USB restarts.
        To make mutes rarer in the first place, see the "Stop Windows from suspending the keyboard" card.</p>
   </div>
   <div class="card s2 faqcard" id="faq7" data-pages="faq">
@@ -643,6 +644,10 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
        the GIF screen below; when music stops, the LCD keeps the last song. While <b>this page</b> holds the keyboard,
        songs queue and upload the moment the daemon takes over.</p>
     <label class="sl" style="margin:0;cursor:pointer"><input type="checkbox" id="lcdNowPlaying" disabled> Show now-playing on the LCD</label>
+    <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-top:10px">
+      <label class="hint" style="margin:0;display:flex;align-items:center;gap:6px">Title <input type="color" id="npTitleColor" value="#ffffff" disabled title="now-playing title text color (re-paints the current song)"></label>
+      <label class="hint" style="margin:0;display:flex;align-items:center;gap:6px">Artist <input type="color" id="npArtistColor" value="#ffd98c" disabled title="now-playing artist text color (re-paints the current song)"></label>
+    </div>
     <p class="hint" id="npTrack" style="margin:10px 0 0;font-weight:600"></p>
   </div>
 
@@ -748,8 +753,8 @@ const HID=TH108Hid.create({
     _resumeTimes=_resumeTimes.filter(t=>now-t<90000); _resumeTimes.push(now);
     if(_resumeTimes.length>=4){
       _wasRunning=false; _resumeTimes.length=0;
-      setStatus('lighting controller is wedged — flip the keyboard\'s POWER SWITCH off and on (a replug does NOT reboot it: the board runs on battery). Then press Start Layers.','err');
-      log('⛔ repeated resume→wedge cycles — auto-resume paused. Power-cycle the keyboard with its switch (replug/USB-restart can\'t reboot a battery-powered board), then Start Layers.','err');
+      setStatus('lighting controller is wedged — flip the mode switch to BT and back to wired, or use ⟳ Factory Reset Keyboard (Home tab; Restore Keymap brings your binds back). A replug alone can\'t reboot the battery-powered board. Then press Start Layers.','err');
+      log('⛔ repeated resume→wedge cycles — auto-resume paused. Recovery: flip the mode switch (BT ↔ wired) or ⟳ Factory Reset Keyboard — the reset command still gets through a wedge (proven 2026-06-12); a replug alone can\'t reboot the battery-powered board. Then Start Layers.','err');
       return;
     }
     if(_wasRunning){ _wasRunning=false; start(); log('keyboard reconnected — layers resumed','ok'); }
