@@ -37,9 +37,9 @@ function createServer({ control, root, port = 8123, watchdogMs = 12000 }) {
       }
     }, Math.max(50, Math.floor(watchdogMs / 4)));
   }
-  const readBody = (req) => new Promise((resolve, reject) => {   // capped to 64 KiB to avoid memory-DoS
+  const readBody = (req, maxBytes = 65536) => new Promise((resolve, reject) => {   // 64 KiB default cap (memory-DoS); /lcdgif raises it for the GIF mirror
     let b = '', over = false;
-    req.on('data', c => { if (over) return; b += c; if (b.length > 65536) { over = true; req.destroy(); reject(new Error('body too large')); } });
+    req.on('data', c => { if (over) return; b += c; if (b.length > maxBytes) { over = true; req.destroy(); reject(new Error('body too large')); } });
     req.on('end', () => { if (!over) resolve(b); });
   });
   const sendJson = (res, code, obj) => { res.writeHead(code, { 'content-type': 'application/json' }); res.end(JSON.stringify(obj)); };
@@ -88,6 +88,7 @@ function createServer({ control, root, port = 8123, watchdogMs = 12000 }) {
         try { body = JSON.parse(b || '{}'); } catch { return sendJson(res, 400, { error: 'bad json' }); }
         if (body.titleColor || body.artistColor) { control.setNpColors(body.titleColor, body.artistColor); console.log(ts() + ' [api] /nowplaying colors ' + (body.titleColor || '-') + '/' + (body.artistColor || '-')); }
         if (body.cal) { control.setNpCal(body.cal); console.log(ts() + ' [api] /nowplaying cal updated'); }
+        if ('revertSec' in body) { control.setNpRevertSec(body.revertSec); console.log(ts() + ' [api] /nowplaying revertSec=' + body.revertSec); }
         if ('on' in body) { control.setNowPlaying(!!body.on); console.log(ts() + ' [api] /nowplaying ' + (body.on ? 'on' : 'off')); }
         return sendJson(res, 200, { ok: true });
       }
@@ -111,6 +112,11 @@ function createServer({ control, root, port = 8123, watchdogMs = 12000 }) {
         // npWants rides the beat: the page learns within one heartbeat (≤3s) that a song is
         // waiting, pauses its stream, and grants the upload window via /npgo
         return sendJson(res, 200, { ok: true, npWants: control.npWants ? control.npWants() : false });
+      }
+      if (req.method === 'POST' && u === '/lcdgif') {   // the page mirrors its GIF Screen upload (pause-revert target)
+        const b = await readBody(req, 3_000_000); let body;
+        try { body = JSON.parse(b); } catch { return sendJson(res, 400, { error: 'bad json' }); }
+        return sendJson(res, 200, { ok: control.saveLcdGif(body) });
       }
       if (req.method === 'POST' && u === '/npgo') {   // the page paused its stream — write the pending song now
         const r = await control.npGo();

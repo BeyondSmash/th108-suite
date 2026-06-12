@@ -505,7 +505,8 @@
     // last frame makes the count ODD, which sends every byte and erases the full region. (Protocol-safe:
     // keeps the official's totalChunks formula intact.)
     if (up.length % 2 === 0) { up = up.concat([up[up.length - 1]]); log('even frame count → duplicating last frame to avoid the bottom-row glitch', 'dim'); }
-    const plan = TH108LcdUpload.planUpload(up.map(fr => ({ bytes: encodeFrame(fr.rgba), delayMs: fr.delayMs })));   // calibrated RGB565 per frame; shared engine builds header/chunks
+    const encFrames = up.map(fr => ({ bytes: encodeFrame(fr.rgba), delayMs: fr.delayMs }));   // calibrated RGB565 per frame
+    const plan = TH108LcdUpload.planUpload(encFrames);                                        // shared engine builds header/chunks
     const frameCount = plan.frameCount, totalSize = plan.totalSize, S = plan.chunkCount;
     log(`uploading ${frameCount} frame(s): ${totalSize} bytes (${S} chunks)`, 'in');
 
@@ -527,6 +528,11 @@
       if (!r.ok) throw new Error(r.error);
       setOverlay(100, 'Upload complete ✓', 'your GIF is now on the keyboard screen');
       log('✓ upload complete — check the screen!', 'ok');
+      try {   // mirror the frames to the daemon: now-playing's pause-revert target (no-op without a daemon)
+        const b64 = u8 => { let s = ''; for (let i = 0; i < u8.length; i += 8192) s += String.fromCharCode.apply(null, u8.subarray(i, i + 8192)); return btoa(s); };
+        fetch('/lcdgif', { method: 'POST', headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ frames: encFrames.map(f => ({ d: f.delayMs, b: b64(f.bytes) })) }) }).catch(() => {});
+      } catch (_) { }
       await new Promise(r2 => setTimeout(r2, 900));
     } catch (err) {
       result = 'FAILED: ' + err.message; D({ ev: 'FAIL', err: err.message });

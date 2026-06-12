@@ -61,7 +61,7 @@ let unpausedAt = 0;      // when the daemon last took ownership — flash upload
 // ----- daemon settings (separate from config.json, which is the page's layer array verbatim) -----
 const SETTINGS_PATH = path.join(__dirname, 'settings.json');
 function loadSettings() {
-  const DEF = { usbReset: true, nowPlaying: false, npTitle: '#ffffff', npArtist: '#ffd98c', lightsOn: true, brightness: 100 };
+  const DEF = { usbReset: true, nowPlaying: false, npTitle: '#ffffff', npArtist: '#ffd98c', lightsOn: true, brightness: 100, npRevertSec: 0 };   // npRevertSec 0 = never revert
   try { return Object.assign({}, DEF, JSON.parse(fs.readFileSync(SETTINGS_PATH, 'utf8'))); }
   catch { return Object.assign({}, DEF); }   // usbReset default ON — the escalation fails gracefully (one log line) if the task isn't registered
 }
@@ -210,6 +210,23 @@ function setAutostart(on) {
     // deleting an absent value errors — that's "already off", treat as success
 }
 
+// ----- standard-GIF mirror: the page pushes its last GIF Screen upload here so now-playing can
+// revert to it after a long pause. Stored as JSON {frames:[{d,b64}]} (≤33 frames ≈ ≤1.4 MB). -----
+const GIF_PATH = path.join(__dirname, 'standard-lcd.json');
+function saveStandardGif(obj) {
+  if (!obj || !Array.isArray(obj.frames) || !obj.frames.length || obj.frames.length > 33) return false;
+  for (const f of obj.frames) { if (typeof f.b !== 'string' || Buffer.from(f.b, 'base64').length !== 30720) return false; }
+  fs.writeFileSync(GIF_PATH, JSON.stringify(obj));
+  console.log(ts() + ' [api] standard GIF mirrored (' + obj.frames.length + ' frames) — pause-revert has a target');
+  return true;
+}
+function loadStandardGif() {
+  try {
+    const o = JSON.parse(fs.readFileSync(GIF_PATH, 'utf8'));
+    return o.frames.map(f => ({ bytes: new Uint8Array(Buffer.from(f.b, 'base64')), delayMs: Math.max(20, +f.d || 100) }));
+  } catch { return null; }
+}
+
 // ----- now-playing on the LCD (nowplaying.js: sidecar + state machine + flash upload) -----
 const NP = require('./nowplaying.js');
 let npHandle = null;
@@ -225,6 +242,8 @@ function syncNowPlaying() {
       resumeRender: () => { lcdBusy = false; },
       getColors: () => ({ title: settings.npTitle, artist: settings.npArtist }),
       getCal: () => settings.npCal || null,   // page-pushed LCD calibration (null → the baked default profile)
+      getRevertSec: () => settings.npRevertSec || 0,
+      getStandardGif: loadStandardGif,        // the page's last GIF Screen upload, mirrored here
       log,
     });
   } else if (!settings.nowPlaying && npHandle) { npHandle.stop(); npHandle = null; }
@@ -257,7 +276,8 @@ const control = {
   status() { return { running: true, paused, deviceConnected: !!device, fps: FPS, usbReset: settings.usbReset, nowPlaying: settings.nowPlaying,
                       npTrack: npHandle ? npHandle.current() : null, npQueued: npHandle ? npHandle.queued() : false,
                       npTitle: settings.npTitle, npArtist: settings.npArtist,
-                      lightsOn: settings.lightsOn, brightness: settings.brightness }; },
+                      lightsOn: settings.lightsOn, brightness: settings.brightness,
+                      npRevertSec: settings.npRevertSec, npHasGif: fs.existsSync(GIF_PATH) }; },
   setNowPlaying(on) { settings.nowPlaying = !!on; saveSettings(); syncNowPlaying(); },
   // page-permit upload path: the heartbeat advertises a pending song; the page pauses its own
   // 0x32 stream and POSTs /npgo, so songs land WITHOUT a device handoff (lighting holds, not off)
@@ -285,6 +305,8 @@ const control = {
     saveSettings();
     if (npHandle) npHandle.refresh();
   },
+  setNpRevertSec(sec) { settings.npRevertSec = Math.max(0, Math.min(3600, Math.round(+sec || 0))); saveSettings(); },
+  saveLcdGif(obj) { try { return saveStandardGif(obj); } catch { return false; } },
   setNpCal(cal) {   // the page's LCD color-correction sliders, mirrored so the art matches GIF uploads
     if (!cal || typeof cal !== 'object') return;
     const clean = {};

@@ -96,6 +96,16 @@ window.TH108DaemonClient = (function () {
               const el = document.getElementById(id);
               if (el) { el.disabled = !(key in s); if (key in s && document.activeElement !== el) el.value = s[key]; }
             }
+            const rv = document.getElementById('npRevert'), rvl = document.getElementById('npRevertLbl');
+            if (rv) {
+              rv.disabled = !('npRevertSec' in s);
+              if ('npRevertSec' in s && document.activeElement !== rv) rv.value = s.npRevertSec;
+              if (rvl) {
+                const v = +rv.value;
+                rvl.textContent = (v ? (v < 60 ? v + 's' : Math.floor(v / 60) + 'm' + (v % 60 ? ' ' + (v % 60) + 's' : '')) : 'never') +
+                                  (s.npHasGif === false && v ? ' · upload a GIF once' : '');
+              }
+            }
           }
         } catch (_) { alive = false; st.textContent = 'daemon: not running — start it with setup.cmd (lighting then survives closing this tab)'; auto.disabled = true; quit.disabled = true; if (usb) usb.disabled = true; if (np) np.disabled = true; }
       }
@@ -118,6 +128,16 @@ window.TH108DaemonClient = (function () {
           log('♪ now-playing on the LCD ' + (np.checked ? 'enabled — the daemon shows the current song (overwrites the LCD GIF while on)' : 'disabled — the LCD keeps its last image'), 'ok');
         } catch (_) { log('now-playing toggle failed', 'err'); refresh(); }
       });
+      const rv = document.getElementById('npRevert'), rvl = document.getElementById('npRevertLbl');
+      if (rv) {
+        rv.addEventListener('input', () => { const v = +rv.value; if (rvl) rvl.textContent = v ? (v < 60 ? v + 's' : Math.floor(v / 60) + 'm' + (v % 60 ? ' ' + (v % 60) + 's' : '')) : 'never'; });
+        rv.addEventListener('change', async () => {
+          try {
+            await fetch('/nowplaying', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ revertSec: +rv.value }) });
+            log('♪ pause-revert: ' + (+rv.value ? 'after ' + rv.value + 's paused, the LCD returns to your GIF' : 'never (the song stays)'), 'ok');
+          } catch (_) { log('pause-revert change failed', 'err'); }
+        });
+      }
       for (const [id, key] of [['npTitleColor', 'titleColor'], ['npArtistColor', 'artistColor']]) {
         const el = document.getElementById(id);
         if (el) el.addEventListener('change', async () => {   // 'change' = picker closed — one flash re-paint per pick, not per drag

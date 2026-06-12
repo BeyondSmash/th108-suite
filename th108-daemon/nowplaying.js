@@ -44,6 +44,7 @@ function start(opts) {
   let lastUploaded = null, gateLogged = false;   // lastUploaded feeds /status.npTrack (the page's Now Playing card)
   let lastInfo = null;                           // full last event incl. thumb — re-rendered when the user changes text colors
   let lastUploadAt = 0, lastEventAt = 0;         // MIN_GAP / EVENT_QUIET gates
+  let pausedSince = 0, reverted = false;         // pause-revert: after N s paused, the standard GIF returns to the LCD
 
   function spawnSidecar() {
     if (stopped) return;
@@ -55,7 +56,12 @@ function start(opts) {
       while ((i = carry.indexOf('\n')) >= 0) {
         const line = carry.slice(0, i).trim(); carry = carry.slice(i + 1);
         if (!line) continue;
-        try { const ev = JSON.parse(line); lastInfo = ev; lastEventAt = Date.now(); decide(state, ev, Date.now()); } catch (_) { }
+        try {
+          const ev = JSON.parse(line); lastInfo = ev; lastEventAt = Date.now();
+          if (ev.status === 'paused') { if (!pausedSince) pausedSince = Date.now(); }
+          else { pausedSince = 0; reverted = false; }   // playing again → the song repaints via the normal flow
+          decide(state, ev, Date.now());
+        } catch (_) { }
       }
     });
     proc.on('exit', () => { proc = null; if (!stopped) { log('… media sidecar exited — restarting in 10s'); setTimeout(spawnSidecar, 10000); } });
@@ -87,8 +93,35 @@ function start(opts) {
     }
   }
 
+  // after the configured pause duration, the user's standard GIF (mirrored from the page's GIF
+  // Screen uploads) goes back to the LCD; the next play/track event repaints the song
+  function revertDue() {
+    if (reverted || !pausedSince || !opts.getRevertSec || !opts.getStandardGif) return null;
+    const sec = opts.getRevertSec();
+    if (!sec || Date.now() - pausedSince < sec * 1000) return null;
+    const frames = opts.getStandardGif();
+    return frames && frames.length ? frames : null;
+  }
+  async function doRevert(frames) {
+    busy = true; lastUploadAt = Date.now();
+    opts.pauseRender();
+    const scr = T.openScreen();
+    try {
+      if (!scr) { state.backoffUntil = Date.now() + FAIL_BACKOFF_MS; return { ok: false }; }
+      const plan = U.planUpload(frames);
+      const eng = U.create({ sendChunk: scr.send, onInput: scr.onInput, log, pktLen: 4104 });
+      const r = await eng.upload(plan);
+      if (r.ok) { reverted = true; lastUploaded = null; log('♪ paused ' + opts.getRevertSec() + 's — standard GIF restored to the LCD (' + plan.frameCount + ' frames)'); return { ok: true }; }
+      log('♪ GIF revert failed: ' + r.error); state.backoffUntil = Date.now() + FAIL_BACKOFF_MS;
+      return { ok: false };
+    } catch (e) { log('♪ GIF revert error: ' + (e && e.message || e)); state.backoffUntil = Date.now() + FAIL_BACKOFF_MS; return { ok: false }; }
+    finally { if (scr) scr.close(); opts.resumeRender(); busy = false; }
+  }
+
   async function maybeUpload() {
     if (Date.now() - lastUploadAt < MIN_GAP_MS) return;   // flash writes never back-to-back
+    const rf = !busy && !opts.isYielded() && !opts.isMute() && !(opts.isUnstable && opts.isUnstable()) && Date.now() >= state.backoffUntil && revertDue();
+    if (rf) { await doRevert(rf); return; }
     const act = decide(state, null, Date.now());
     if (!act) return;
     // gates: hand-off safety + an upload already running. A skipped action is re-armed so the
@@ -112,6 +145,8 @@ function start(opts) {
     if (opts.isMute()) return { ok: false, reason: 'mute' };
     if (Date.now() - lastUploadAt < MIN_GAP_MS) return { ok: false, reason: 'min gap' };          // skip-chains wedged the board
     if (Date.now() - lastEventAt < EVENT_QUIET_MS) return { ok: false, reason: 'track changing' };// a fresh skip makes the queued song stale — wait for it to settle
+    const rf = Date.now() >= state.backoffUntil && revertDue();
+    if (rf) return await doRevert(rf);                                                            // the GIF revert rides the page-permit path too
     const act = decide(state, null, Date.now());   // respects settle / dedupe / backoff
     if (!act) return { ok: false, reason: 'nothing pending' };
     return await doUpload(act);
@@ -128,7 +163,7 @@ function start(opts) {
     // (advertising while gated made the page freeze its stream pointlessly every beat)
     ready() {
       const now = Date.now();
-      return !!state.pending && !busy && now - lastUploadAt >= MIN_GAP_MS &&
+      return (!!state.pending || !!revertDue()) && !busy && now - lastUploadAt >= MIN_GAP_MS &&
              now - lastEventAt >= EVENT_QUIET_MS && now >= state.backoffUntil;
     },
     uploadNow,
