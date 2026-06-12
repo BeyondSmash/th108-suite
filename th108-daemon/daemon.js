@@ -33,6 +33,22 @@ console.log = (...a) => {
 };
 console.log(ts() + ' ───── daemon start ─────');
 
+// The autostart daemon runs in a hidden window — stderr goes NOWHERE, so an uncaught throw used
+// to kill the process with zero trace (2026-06-11: died mid-stream the instant the user flipped
+// the keyboard's power switch; last log line was a healthy "board RECOVERED"). Log everything
+// fatal, and for the known class (HID handle errors when the device vanishes) keep running —
+// closeDevice + the 5s reopen loop is exactly the designed recovery.
+process.on('uncaughtException', (err) => {
+  console.log(ts() + ' ✗ UNCAUGHT: ' + (err && err.stack || err));
+  try { closeDevice(); } catch {}
+  nextOpenAt = Date.now() + 5000;
+});
+process.on('unhandledRejection', (err) => {
+  console.log(ts() + ' ✗ UNHANDLED REJECTION: ' + (err && err.stack || err));
+  try { closeDevice(); } catch {}
+  nextOpenAt = Date.now() + 5000;
+});
+
 // ----- config -----
 function loadConfig() {
   try { return JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8')); } catch { return null; }
@@ -165,7 +181,7 @@ timer = setInterval(() => { tick().catch(() => {}); }, Math.round(1000 / FPS));
 
 // ----- autostart = per-user HKCU Run key (NO admin needed, so the daemon can toggle it itself) -----
 const RUN_KEY = 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run', RUN_NAME = 'TH108LightingDaemon';
-const RUN_CMD = `wscript.exe "${path.join(__dirname, 'start-hidden.vbs')}"`;
+const RUN_CMD = `wscript.exe "${path.join(__dirname, 'start-tray.vbs')}"`;   // login starts the TRAY, which starts (and supervises via menu) the daemon
 function getAutostart() {
   if (process.platform !== 'win32') return Promise.resolve(false);
   return new Promise((resolve) => execFile('reg', ['query', RUN_KEY, '/v', RUN_NAME], (err) => resolve(!err)));
