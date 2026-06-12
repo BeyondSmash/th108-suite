@@ -473,9 +473,12 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
     <p>The board sometimes goes <b>mute</b> — it silently stops accepting host lighting (typing still works) and
        falls back to its saved firmware effect, which usually looks static. USB power events are the main trigger:
        sleep, or other devices power-cycling on the same bus.</p>
-    <p>Cure ladder: wait ~30&nbsp;s (the daemon fires an automatic USB restart, and some mutes self-recover) →
-       unplug/replug the keyboard (the reliable fix — the daemon reconnects within seconds). To make mutes rarer
-       in the first place, see the "Stop Windows from suspending the keyboard" card.</p>
+    <p>Cure ladder: wait ~30&nbsp;s (automatic USB restart; some mutes self-recover) → press
+       <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>End</kbd> anywhere (the manual recovery hotkey, same restart) →
+       <b>flip the keyboard's power switch off and on</b>. The switch is the real reboot: the board runs on
+       battery, so <b>unplugging the cable does NOT restart it</b> — a deeply wedged board sails straight
+       through replugs and USB restarts and only the switch (or the in-app ⟳ factory reset) clears it.
+       To make mutes rarer in the first place, see the "Stop Windows from suspending the keyboard" card.</p>
   </div>
   <div class="card s2 faqcard" id="faq7" data-pages="faq">
     <div class="cardbar"><span class="grip">⠿</span><span class="tbtag">Troubleshooting</span></div>
@@ -725,10 +728,23 @@ const HID=TH108Hid.create({
   },
   onReconnected:()=>{
     DC.heartbeatStart();
+    // CIRCUIT BREAKER (2026-06-11 night): a deeply wedged board turns auto-resume into a 17s
+    // thrash loop (resume → no ACKs → stop → rebind → resume …) with futile USB restarts — the
+    // board runs on BATTERY, so neither replug nor PnP restart reboots the wedged MCU. After 3
+    // auto-resumes inside 90s, stop pounding it and say the one thing that works: the power switch.
+    const now=Date.now();
+    _resumeTimes=_resumeTimes.filter(t=>now-t<90000); _resumeTimes.push(now);
+    if(_resumeTimes.length>=4){
+      _wasRunning=false; _resumeTimes.length=0;
+      setStatus('lighting controller is wedged — flip the keyboard\'s POWER SWITCH off and on (a replug does NOT reboot it: the board runs on battery). Then press Start Layers.','err');
+      log('⛔ repeated resume→wedge cycles — auto-resume paused. Power-cycle the keyboard with its switch (replug/USB-restart can\'t reboot a battery-powered board), then Start Layers.','err');
+      return;
+    }
     if(_wasRunning){ _wasRunning=false; start(); log('keyboard reconnected — layers resumed','ok'); }
     else log('keyboard reconnected','ok');
   }
 });
+let _resumeTimes=[];   // auto-resume timestamps for the wedge circuit breaker
 // ===== daemon auto-yield handshake — extracted to th108-daemon-client.js =====
 // When the page is served by the background daemon (http://localhost:8123) the daemon OWNS the HID device.
 // Before opening WebHID we must ask it to release; while we hold the device we heartbeat + push config; on close we resume.
