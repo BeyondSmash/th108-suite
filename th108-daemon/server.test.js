@@ -26,6 +26,7 @@ function fakeControl() {
     setAutostart(on) { this.calls.push('setAutostart:' + on); this._autostart = !!on; return Promise.resolve(); },
     quit() { this.calls.push('quit'); },
     usbFix() { this.calls.push('usbFix'); return { fired: this._usbReset }; },
+    setNowPlaying(on) { this.calls.push('setNowPlaying:' + on); this._np = !!on; },
   };
 }
 
@@ -126,6 +127,18 @@ test('/usbreset writes through control; state reads back via /status', async () 
     assert.ok(ctl.calls.includes('setUsbReset:false'));
     assert.equal((await call(server, 'GET', '/status')).json.usbReset, false);
     assert.equal((await call(server, 'POST', '/usbreset', { on: true })).json.enabled, true);
+  } finally { server.close(); }
+});
+
+test('/nowplaying writes through control like /usbreset', async () => {
+  const ctl = fakeControl();
+  const server = createServer({ control: ctl, root: path.join(__dirname, '..'), port: 0 });
+  await server.listening;
+  try {
+    assert.equal((await call(server, 'POST', '/nowplaying', { on: true })).json.enabled, true);
+    assert.ok(ctl.calls.includes('setNowPlaying:true'));
+    assert.equal((await call(server, 'POST', '/nowplaying', { on: false })).json.enabled, false);
+    assert.equal(ctl._np, false);
   } finally { server.close(); }
 });
 

@@ -636,7 +636,8 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
 
   <!-- ========== LCD SCREEN ========== -->
   <div class="card s6" id="lcdCard" data-pages="lcd">
-    <div class="cardbar"><span class="grip">⠿</span><h2>LCD Screen</h2></div>
+    <div class="cardbar"><span class="grip">⠿</span><h2>LCD Screen</h2>
+      <span class="aux"><label class="sl" style="margin:0;cursor:pointer" title="the background daemon reads what's playing (Spotify, browser, any player) and shows it on the LCD — works with this page closed. Overwrites the current LCD GIF while enabled; when music stops, the LCD keeps the last song image."><input type="checkbox" id="lcdNowPlaying" disabled> ♪ Show now-playing (daemon)</label></span></div>
     <div id="lcdBody"></div>
   </div>
 

@@ -55,12 +55,13 @@ function loadConfig() {
 }
 
 let state = null, device = null, send = null, paused = false, timer = null;
+let lcdBusy = false;   // a now-playing flash upload is running — the 0x32 stream must stay quiet
 
 // ----- daemon settings (separate from config.json, which is the page's layer array verbatim) -----
 const SETTINGS_PATH = path.join(__dirname, 'settings.json');
 function loadSettings() {
-  try { return Object.assign({ usbReset: true }, JSON.parse(fs.readFileSync(SETTINGS_PATH, 'utf8'))); }
-  catch { return { usbReset: true }; }   // default ON — the escalation fails gracefully (one log line) if the task isn't registered
+  try { return Object.assign({ usbReset: true, nowPlaying: false }, JSON.parse(fs.readFileSync(SETTINGS_PATH, 'utf8'))); }
+  catch { return { usbReset: true, nowPlaying: false }; }   // usbReset default ON — the escalation fails gracefully (one log line) if the task isn't registered
 }
 let settings = loadSettings();
 function saveSettings() { try { fs.writeFileSync(SETTINGS_PATH, JSON.stringify(settings)); } catch {} }
@@ -138,7 +139,7 @@ async function openIfPossible() {
 
 // ----- render loop ~30fps -----
 async function tick() {
-  if (paused) return;
+  if (paused || lcdBusy) return;   // lcdBusy: a flash upload owns the board — no lighting writes
   // Sleep-gap re-baseline: after a suspend, the pre-sleep muteAt is hours stale — without this the USB
   // restart would insta-fire on the first failed send at wake, even though wake mutes recover on their own.
   const nowWall = Date.now();
@@ -195,6 +196,22 @@ function setAutostart(on) {
     // deleting an absent value errors — that's "already off", treat as success
 }
 
+// ----- now-playing on the LCD (nowplaying.js: sidecar + state machine + flash upload) -----
+const NP = require('./nowplaying.js');
+let npHandle = null;
+function syncNowPlaying() {
+  if (settings.nowPlaying && !npHandle) {
+    npHandle = NP.start({
+      isYielded: () => paused,
+      isMute: () => muteLogged,
+      pauseRender: () => { lcdBusy = true; },
+      resumeRender: () => { lcdBusy = false; },
+      log,
+    });
+  } else if (!settings.nowPlaying && npHandle) { npHandle.stop(); npHandle = null; }
+}
+syncNowPlaying();
+
 // ----- control hooks for the server -----
 const control = {
   // Release the device for the WebHID page.
@@ -203,7 +220,8 @@ const control = {
   resume() { rebuildState(); paused = false; },
   // Persist the page's config; refresh live state immediately unless yielded to the page.
   saveConfig(cfg) { fs.writeFileSync(CONFIG_PATH, JSON.stringify(cfg)); if (!paused) rebuildState(); },
-  status() { return { running: true, paused, deviceConnected: !!device, fps: FPS, usbReset: settings.usbReset }; },
+  status() { return { running: true, paused, deviceConnected: !!device, fps: FPS, usbReset: settings.usbReset, nowPlaying: settings.nowPlaying }; },
+  setNowPlaying(on) { settings.nowPlaying = !!on; saveSettings(); syncNowPlaying(); },
   // page-initiated escalation: the PAGE drives the device and detected a persistent wedge its own
   // handle-rebinds couldn't clear — fire the same PnP restart the daemon uses, with a cooldown so
   // a stuck page can't replug-loop the keyboard.
@@ -238,6 +256,7 @@ function shutdown() {
       device.close();
     }
   } catch {}
+  try { if (npHandle) npHandle.stop(); } catch {}   // kill the sidecar — no orphaned powershell
   try { uIOhook.stop(); } catch {}
   process.exit(0);
 }

@@ -57,6 +57,7 @@ window.TH108DaemonClient = (function () {
     function mountPanel() {
       const st = document.getElementById('dmnStatus'), auto = document.getElementById('dmnAuto'), quit = document.getElementById('dmnQuit');
       const usb = document.getElementById('dmnUsbFix');
+      const np = document.getElementById('lcdNowPlaying');   // lives on the LCD tab, rides the same /status poll
       if (!st || !auto || !quit) return;
       let alive = false;
       async function refresh() {
@@ -73,7 +74,13 @@ window.TH108DaemonClient = (function () {
             usb.title = knows ? '' : 'the running daemon predates this setting — restart it (Quit, then setup.cmd or next login) to enable';
             if (knows && document.activeElement !== usb) usb.checked = !!s.usbReset;
           }
-        } catch (_) { alive = false; st.textContent = 'daemon: not running — start it with setup.cmd (lighting then survives closing this tab)'; auto.disabled = true; quit.disabled = true; if (usb) usb.disabled = true; }
+          if (np) {
+            const knowsNp = 'nowPlaying' in s;
+            np.disabled = !knowsNp;
+            if (!knowsNp) np.parentElement.title = 'the running daemon predates this setting — restart it (Quit, then the tray) to enable';
+            if (knowsNp && document.activeElement !== np) np.checked = !!s.nowPlaying;
+          }
+        } catch (_) { alive = false; st.textContent = 'daemon: not running — start it with setup.cmd (lighting then survives closing this tab)'; auto.disabled = true; quit.disabled = true; if (usb) usb.disabled = true; if (np) np.disabled = true; }
       }
       async function refreshAuto() { if (!alive) return; try { const r = await fetch('/autostart', { cache: 'no-store' }); auto.checked = !!(await r.json()).enabled; } catch (_) {} }
       auto.addEventListener('change', async () => {
@@ -87,6 +94,12 @@ window.TH108DaemonClient = (function () {
           await fetch('/usbreset', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ on: usb.checked }) });
           log('auto USB-restart wedge fix ' + (usb.checked ? 'enabled' : 'disabled'), 'ok');
         } catch (_) { log('USB-restart toggle failed', 'err'); refresh(); }
+      });
+      if (np) np.addEventListener('change', async () => {
+        try {
+          await fetch('/nowplaying', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ on: np.checked }) });
+          log('♪ now-playing on the LCD ' + (np.checked ? 'enabled — the daemon shows the current song (overwrites the LCD GIF while on)' : 'disabled — the LCD keeps its last image'), 'ok');
+        } catch (_) { log('now-playing toggle failed', 'err'); refresh(); }
       });
       quit.addEventListener('click', async () => {
         if (!confirm('Quit the background daemon?\n\nAlways-on lighting and reactive-anywhere stop until setup.cmd or your next login starts it again. This page keeps working as-is.')) return;
