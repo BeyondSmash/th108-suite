@@ -236,6 +236,7 @@ const control = {
   // after a /yield line). Block the response until the upload finishes (≤ erase window) or 25s.
   async yield() {
     paused = true; closeDevice();
+    muteLogged = false;   // a mute episode ends at handoff — a stale flag here vetoed every page-permit upload (live repro 2026-06-12 13:41, endless /npgo "mute")
     const t0 = Date.now();
     while (lcdBusy && Date.now() - t0 < 25000) await new Promise(r => setTimeout(r, 100));
     if (lcdBusy) console.log(ts() + ' ⚠ yield proceeded with a flash upload still busy after 25s — investigate');
@@ -251,7 +252,7 @@ const control = {
   setNowPlaying(on) { settings.nowPlaying = !!on; saveSettings(); syncNowPlaying(); },
   // page-permit upload path: the heartbeat advertises a pending song; the page pauses its own
   // 0x32 stream and POSTs /npgo, so songs land WITHOUT a device handoff (lighting holds, not off)
-  npWants() { return !!(npHandle && paused && npHandle.queued()); },
+  npWants() { return !!(npHandle && paused && !muteLogged && npHandle.ready()); },
   npGo() { return npHandle ? npHandle.uploadNow() : Promise.resolve({ ok: false, reason: 'now-playing off' }); },
   // master lighting switch + global brightness (header controls; the page mirrors them here so the
   // look survives page↔daemon handoffs)

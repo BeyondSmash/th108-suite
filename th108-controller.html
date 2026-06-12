@@ -813,12 +813,14 @@ const DC = TH108DaemonClient.create({ log, getConfig: ()=>localStorage.getItem('
   // (LEDs hold their last frame — no blackout), let it flash the screen, resume. ~2s freeze.
   onNpWants: async ()=>{
     if(!HID.device || window.__npPermit) return;
+    if(window.__npFailAt && Date.now()-window.__npFailAt < 5000) return;   // a failed grant backs off — no stream-freeze grinding every beat
     window.__npPermit = true;
     try {
       window.__lcdHost.pauseLighting();
       await new Promise(r=>setTimeout(r,300));   // drain: in-flight 0x32 chunks must finish ACKing before the flash erase starts (same rule as keymap passes)
-      await fetch('/npgo', { method:'POST' });
-    } catch(_){ }
+      const r = await (await fetch('/npgo', { method:'POST' })).json();
+      if(!r.ok) window.__npFailAt = Date.now();
+    } catch(_){ window.__npFailAt = Date.now(); }
     finally { window.__lcdHost.resumeLighting(); window.__npPermit = false; }
   }
 });

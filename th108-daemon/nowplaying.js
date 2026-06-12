@@ -124,6 +124,13 @@ function start(opts) {
   return {
     current() { return lastUploaded; },
     queued() { return !!state.pending; },
+    // would uploadNow plausibly proceed? — gates mirrored so heartbeats only advertise REAL work
+    // (advertising while gated made the page freeze its stream pointlessly every beat)
+    ready() {
+      const now = Date.now();
+      return !!state.pending && !busy && now - lastUploadAt >= MIN_GAP_MS &&
+             now - lastEventAt >= EVENT_QUIET_MS && now >= state.backoffUntil;
+    },
     uploadNow,
     refresh() {   // colors changed: re-upload the current song with the new look (one flash write)
       if (!lastInfo) return;
