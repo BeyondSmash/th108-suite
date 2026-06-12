@@ -249,6 +249,10 @@ const control = {
                       npTitle: settings.npTitle, npArtist: settings.npArtist,
                       lightsOn: settings.lightsOn, brightness: settings.brightness }; },
   setNowPlaying(on) { settings.nowPlaying = !!on; saveSettings(); syncNowPlaying(); },
+  // page-permit upload path: the heartbeat advertises a pending song; the page pauses its own
+  // 0x32 stream and POSTs /npgo, so songs land WITHOUT a device handoff (lighting holds, not off)
+  npWants() { return !!(npHandle && paused && npHandle.queued()); },
+  npGo() { return npHandle ? npHandle.uploadNow() : Promise.resolve({ ok: false, reason: 'now-playing off' }); },
   // master lighting switch + global brightness (header controls; the page mirrors them here so the
   // look survives page↔daemon handoffs)
   setLighting(o) {

@@ -58,39 +58,56 @@ function start(opts) {
     proc.on('exit', () => { proc = null; if (!stopped) { log('… media sidecar exited — restarting in 10s'); setTimeout(spawnSidecar, 10000); } });
   }
 
-  async function maybeUpload() {
-    const act = decide(state, null, Date.now());
-    if (!act) return;
-    // gates: hand-off safety + an upload already running. A skipped action is re-armed so the
-    // next tick retries once conditions clear.
-    if (busy || opts.isYielded() || opts.isMute() || (opts.isUnstable && opts.isUnstable())) {
-      state.pending = act.upload; state.sinceMs = 0; state.lastShownKey = null;
-      if (!gateLogged && opts.isYielded()) { gateLogged = true; log('♪ queued — the page holds the keyboard; the song uploads when the daemon takes over'); }
-      return;
-    }
+  // the actual flash write — callers have already settled ownership/stream questions
+  async function doUpload(act) {
     busy = true;
     const t0 = Date.now();
     opts.pauseRender();   // a flash upload can't share the board with the 0x32 stream
     const scr = T.openScreen();
     try {
-      if (!scr) { log('now-playing: screen interface not found — will retry on the next change'); state.backoffUntil = Date.now() + FAIL_BACKOFF_MS; return; }
-      // FINAL pre-flight: ownership can flip between the tick gate and here — never start a flash
-      // write unless the daemon still owns the board (2026-06-12: a yield arrived mid-upload and
-      // the page streamed into an active flash-write → hard wedge + typing loss)
-      if (opts.isYielded() || opts.isMute()) { state.pending = act.upload; state.sinceMs = 0; state.lastShownKey = null; return; }
+      if (!scr) { log('now-playing: screen interface not found — will retry on the next change'); state.backoffUntil = Date.now() + FAIL_BACKOFF_MS; return { ok: false }; }
       const plan = U.planUpload([R.render(act.upload, opts.getColors ? opts.getColors() : null)]);
       const eng = U.create({ sendChunk: scr.send, onInput: scr.onInput, log, pktLen: 4104 });
       const r = await eng.upload(plan);
-      if (r.ok) { lastUploaded = { title: act.upload.title, artist: act.upload.artist, status: act.upload.status }; gateLogged = false; log('♪ now-playing on LCD: "' + act.upload.title + '" (' + act.upload.status + ', ' + plan.totalSize + 'B, ' + (Date.now() - t0) + 'ms)'); }
-      else { log('♪ now-playing upload failed: ' + r.error); state.lastShownKey = null; state.backoffUntil = Date.now() + FAIL_BACKOFF_MS; }
+      if (r.ok) { lastUploaded = { title: act.upload.title, artist: act.upload.artist, status: act.upload.status }; gateLogged = false; log('♪ now-playing on LCD: "' + act.upload.title + '" (' + act.upload.status + ', ' + plan.totalSize + 'B, ' + (Date.now() - t0) + 'ms)'); return { ok: true }; }
+      log('♪ now-playing upload failed: ' + r.error); state.lastShownKey = null; state.backoffUntil = Date.now() + FAIL_BACKOFF_MS;
+      return { ok: false };
     } catch (e) {
       log('♪ now-playing upload error: ' + (e && e.message || e));
       state.lastShownKey = null; state.backoffUntil = Date.now() + FAIL_BACKOFF_MS;
+      return { ok: false };
     } finally {
       if (scr) scr.close();
       opts.resumeRender();
       busy = false;
     }
+  }
+
+  async function maybeUpload() {
+    const act = decide(state, null, Date.now());
+    if (!act) return;
+    // gates: hand-off safety + an upload already running. A skipped action is re-armed so the
+    // next tick retries once conditions clear (or the page grants a permit via uploadNow).
+    if (busy || opts.isYielded() || opts.isMute() || (opts.isUnstable && opts.isUnstable())) {
+      state.pending = act.upload; state.sinceMs = 0; state.lastShownKey = null;
+      if (!gateLogged && opts.isYielded()) { gateLogged = true; log('♪ queued — the page holds the keyboard (it will grant an upload window on its next heartbeat)'); }
+      return;
+    }
+    // FINAL pre-flight inside doUpload's window is unnecessary here: /yield BLOCKS on lcdBusy,
+    // so once we set busy/pauseRender no page can open mid-write. Re-check just before committing:
+    if (opts.isYielded() || opts.isMute()) { state.pending = act.upload; state.sinceMs = 0; state.lastShownKey = null; return; }
+    await doUpload(act);
+  }
+
+  // PAGE-PERMIT path (2026-06-12, "make it instant"): the page holds the device, has PAUSED its
+  // own 0x32 stream, and calls /npgo — the protocol safety (no paint during flash) is satisfied
+  // without a device handoff, so the song lands while the site stays connected.
+  async function uploadNow() {
+    if (busy) return { ok: false, reason: 'busy' };
+    if (opts.isMute()) return { ok: false, reason: 'mute' };
+    const act = decide(state, null, Date.now());   // respects settle / dedupe / backoff
+    if (!act) return { ok: false, reason: 'nothing pending' };
+    return await doUpload(act);
   }
 
   spawnSidecar();
@@ -100,6 +117,7 @@ function start(opts) {
   return {
     current() { return lastUploaded; },
     queued() { return !!state.pending; },
+    uploadNow,
     refresh() {   // colors changed: re-upload the current song with the new look (one flash write)
       if (!lastInfo) return;
       state.pending = lastInfo; state.sinceMs = 0; state.lastShownKey = null;

@@ -20,7 +20,15 @@ window.TH108DaemonClient = (function () {
     const D = { present: false, hb: null, yielded: false };
 
     const hbW = (() => { try { return new Worker(URL.createObjectURL(new Blob(['let t=null;onmessage=e=>{clearInterval(t);t=null;if(e.data&&e.data.ms)t=setInterval(()=>postMessage(1),e.data.ms);};'], { type: 'text/javascript' }))); } catch (_) { return null; } })();
-    const beat = () => { if (navigator.sendBeacon) navigator.sendBeacon('/heartbeat'); else fetch('/heartbeat', { method: 'POST' }); };
+    // beats use fetch (not sendBeacon) so the RESPONSE is readable: it carries npWants — the
+    // daemon's "a song is waiting for the LCD" flag, answered by the page granting an upload
+    // window (pause stream → /npgo → resume) without any device handoff.
+    const beat = () => {
+      fetch('/heartbeat', { method: 'POST', keepalive: true })
+        .then(r => r.json())
+        .then(j => { if (j && j.npWants && opts.onNpWants) opts.onNpWants(); })
+        .catch(() => {});
+    };
     if (hbW) hbW.onmessage = beat;
 
     async function ping() {

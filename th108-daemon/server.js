@@ -107,7 +107,14 @@ function createServer({ control, root, port = 8123, watchdogMs = 12000 }) {
           console.log(ts() + ' [api] heartbeat while not yielded — a page holds the device; yielding to it');
           await control.yield(); yielded = true; armWatchdog();
         }
-        return sendJson(res, 200, { ok: true });
+        // npWants rides the beat: the page learns within one heartbeat (≤3s) that a song is
+        // waiting, pauses its stream, and grants the upload window via /npgo
+        return sendJson(res, 200, { ok: true, npWants: control.npWants ? control.npWants() : false });
+      }
+      if (req.method === 'POST' && u === '/npgo') {   // the page paused its stream — write the pending song now
+        const r = await control.npGo();
+        console.log(ts() + ' [api] /npgo → ' + JSON.stringify(r));
+        return sendJson(res, 200, r);
       }
       if (req.method === 'POST' && u === '/config') {
         const b = await readBody(req); let cfg;

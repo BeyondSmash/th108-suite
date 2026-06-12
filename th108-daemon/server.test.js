@@ -29,6 +29,8 @@ function fakeControl() {
     setNowPlaying(on) { this.calls.push('setNowPlaying:' + on); this._np = !!on; },
     setNpColors(t, a) { this.calls.push('setNpColors:' + t + '/' + a); },
     setLighting(o) { this.calls.push('setLighting:' + JSON.stringify(o)); },
+    npWants() { return !!this._npWants; },
+    npGo() { this.calls.push('npGo'); return Promise.resolve({ ok: true }); },
   };
 }
 
@@ -144,6 +146,19 @@ test('/nowplaying writes toggle and colors through control', async () => {
     await call(server, 'POST', '/nowplaying', { titleColor: '#ff0000', artistColor: '#00ff00' });
     assert.ok(ctl.calls.includes('setNpColors:#ff0000/#00ff00'));
     assert.ok(!ctl.calls.includes('setNowPlaying:undefined'), 'colors-only POST must not touch the toggle');
+  } finally { server.close(); }
+});
+
+test('heartbeat response carries npWants; /npgo relays the page-permit upload', async () => {
+  const ctl = fakeControl();
+  const server = createServer({ control: ctl, root: path.join(__dirname, '..'), port: 0 });
+  await server.listening;
+  try {
+    assert.equal((await call(server, 'POST', '/heartbeat')).json.npWants, false);
+    ctl._npWants = true;
+    assert.equal((await call(server, 'POST', '/heartbeat')).json.npWants, true);
+    assert.equal((await call(server, 'POST', '/npgo')).json.ok, true);
+    assert.ok(ctl.calls.includes('npGo'));
   } finally { server.close(); }
 });
 

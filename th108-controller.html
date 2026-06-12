@@ -804,7 +804,19 @@ let _resumeTimes=[];   // auto-resume timestamps for the wedge circuit breaker
 // When the page is served by the background daemon (http://localhost:8123) the daemon OWNS the HID device.
 // Before opening WebHID we must ask it to release; while we hold the device we heartbeat + push config; on close we resume.
 // If no daemon is present (/status fails) every DC call is a no-op and the page behaves exactly as before (direct WebHID).
-const DC = TH108DaemonClient.create({ log, getConfig: ()=>localStorage.getItem('th108_layers')||'[]' });
+const DC = TH108DaemonClient.create({ log, getConfig: ()=>localStorage.getItem('th108_layers')||'[]',
+  // the daemon has a song waiting for the LCD while WE hold the keyboard: freeze our stream
+  // (LEDs hold their last frame — no blackout), let it flash the screen, resume. ~2s freeze.
+  onNpWants: async ()=>{
+    if(!HID.device || window.__npPermit) return;
+    window.__npPermit = true;
+    try {
+      window.__lcdHost.pauseLighting();
+      await fetch('/npgo', { method:'POST' });
+    } catch(_){ }
+    finally { window.__lcdHost.resumeLighting(); window.__npPermit = false; }
+  }
+});
 window.addEventListener('beforeunload', ()=>{ DC.heartbeatStop(); DC.resume(); try{ TH108LCD.setDevices({}); }catch(_){ } });
 DC.mountPanel();   // Background-daemon panel: status readout, auto-start toggle (HKCU Run key via the daemon), quit
 
