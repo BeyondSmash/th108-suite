@@ -17,11 +17,7 @@ function decodeThumb(b64) {
   return null;   // junk/unknown format → flat background, never throw
 }
 
-function fit(text, scale) {   // ellipsis-truncate to the drawable row width
-  const max = Math.floor((W - 8) / (F.CW * scale));
-  text = String(text || '');
-  return text.length > max ? text.slice(0, Math.max(1, max - 2)) + '..' : text;
-}
+function fit(text, scale) { return F.fitText(text, W - 8, scale); }   // proportional truncation lives in the font module
 
 // byte-order: false matches the page's default (#lcdSwap unchecked) — flip here if the first
 // hardware test shows wrong colors (Task 8 of the plan).

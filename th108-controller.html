@@ -101,7 +101,8 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
     body{ padding:0 12px 32px; }
     nav.tabs .tab{ padding:7px 10px; font-size:12.5px; }
   }
-  .cardbar{ display:flex; align-items:center; gap:9px; margin:-6px -6px 10px; padding:6px; border-radius:14px; cursor:grab; touch-action:none; }
+  .cardbar{ display:flex; align-items:center; gap:9px; margin:-6px -6px 10px; padding:6px; border-radius:14px 14px 0 0; cursor:grab; touch-action:none;
+            border-bottom:1px solid var(--border); }   /* the line marks exactly where the grabbable region ends (user request 2026-06-12) */
   .cardbar:active{ cursor:grabbing; }
   .cardbar .grip{ color:var(--muted); opacity:0; font-size:14px; transition:opacity .2s; }
   .card:hover .cardbar .grip{ opacity:.8; }
@@ -255,7 +256,7 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
             box-shadow:0 6px 18px rgba(13,17,23,.25); }
 
   /* hotkeys: binder palette (tabs + assignment grid) */
-  .bdtabs{ display:flex; gap:4px; flex-wrap:wrap; margin-bottom:10px; }
+  .bdtabs{ display:flex; gap:4px; flex-wrap:wrap; margin-bottom:10px; border-bottom:1px solid var(--border); padding-bottom:10px; }   /* separate the category tabs from the assignment buttons below */
   #bdGrid{ display:flex; flex-wrap:wrap; gap:6px; }
   #bdGrid .patbtn{ padding:7px 12px; }
 
