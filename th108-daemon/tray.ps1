@@ -79,22 +79,27 @@ $miExit.Add_Click({ $script:icon.Visible = $false; [System.Windows.Forms.Applica
 $icon.Add_DoubleClick({ Start-Process 'http://localhost:8123/' })
 
 $script:wasUp = $false
+$script:misses = 0
 $timer = New-Object System.Windows.Forms.Timer
 $timer.Interval = 5000
 $timer.Add_Tick({
   $s = Get-DaemonStatus
   if ($s) {
     $script:wasUp = $true
+    $script:misses = 0
     $icon.Icon = $iconUp
     if ($s.paused) { $icon.Text = 'TH108: running - page holds the keyboard' }
     elseif ($s.deviceConnected) { $icon.Text = 'TH108: running - driving the keyboard' }
     else { $icon.Text = 'TH108: running - waiting for the keyboard' }
   } else {
-    $icon.Icon = $iconDown
-    $icon.Text = 'TH108: daemon NOT running (right-click > Start Daemon)'
-    if ($script:wasUp) {
+    # tolerate brief gaps: deliberate restarts take ~10s and the supervisor revives crashes in 3s -
+    # the old single-miss balloon cried wolf on every planned restart (2026-06-12, twice)
+    $script:misses++
+    if ($script:misses -ge 2) { $icon.Icon = $iconDown; $icon.Text = 'TH108: daemon not answering...' }
+    if ($script:misses -ge 3 -and $script:wasUp) {
       $script:wasUp = $false
-      $icon.ShowBalloonTip(4000, 'TH108 Lighting', 'The daemon stopped. Right-click the tray icon and pick Start Daemon.', [System.Windows.Forms.ToolTipIcon]::Warning)
+      $icon.Text = 'TH108: daemon NOT running (right-click > Start Daemon)'
+      $icon.ShowBalloonTip(4000, 'TH108 Lighting', 'The daemon stopped and did not come back. Right-click the tray icon and pick Start Daemon.', [System.Windows.Forms.ToolTipIcon]::Warning)
     }
   }
 })
