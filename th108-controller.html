@@ -134,6 +134,9 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
   #lightBtn.on{ color:var(--mint); }
   #lightBtn.off{ color:var(--err, #e5534b); }
   #lightCtl .srange{ width:120px; }
+  #lightCtl .britick{ position:absolute; top:17px; transform:translateX(-50%); font-size:10.5px; font-weight:700;
+                      color:var(--text); background:var(--card); padding:1px 6px; border-radius:6px;
+                      box-shadow:0 2px 8px rgba(13,17,23,.25); pointer-events:none; white-space:nowrap; z-index:5; }
   /* reset-layouts mini overlay */
   .rlovl{ position:fixed; inset:0; z-index:400; background:rgba(9,12,16,.55); display:flex; align-items:center; justify-content:center; }
   .rlovl[hidden]{ display:none !important; }
@@ -310,6 +313,7 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
   <div class="logo">th108</div>
   <div id="lightCtl">
     <button id="lightBtn" class="on" title="master lighting switch — affects whoever is driving (this page or the daemon)">On</button>
+    <svg class="ic" viewBox="0 0 24 24" aria-hidden="true" style="opacity:.7"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg>
     <span class="srange" id="briWrap" title="global brightness — snaps at 25 / 50 / 75%">
       <div class="tick" style="left:25%"></div><div class="tick" style="left:50%"></div><div class="tick" style="left:75%"></div>
       <input type="range" id="briSlider" min="5" max="100" value="100">
@@ -1181,9 +1185,21 @@ restoreLayout();
   let pushT=0;
   function push(part){ clearTimeout(pushT); pushT=setTimeout(()=>{ if(DC.present) fetch('/lighting',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(part)}).catch(()=>{}); },250); }
   sl.value=briVal(); state.bri=briVal()/100;
+  // snap label: "<v>%" floats under the tick for 750ms; moving to another tick clears it instantly
+  let tickLbl=null, tickTimer=0;
+  function clearTickLbl(){ clearTimeout(tickTimer); if(tickLbl){ tickLbl.remove(); tickLbl=null; } }
+  function showTickLbl(v){
+    clearTickLbl();
+    tickLbl=document.createElement('div'); tickLbl.className='britick';
+    tickLbl.style.left=v+'%'; tickLbl.textContent=v+'%';
+    document.getElementById('briWrap').appendChild(tickLbl);
+    tickTimer=setTimeout(clearTickLbl,750);
+  }
   sl.addEventListener('input',()=>{
-    let v=+sl.value;
-    for(const t of [25,50,75]) if(Math.abs(v-t)<=3){ v=t; sl.value=v; break; }   // approach-snap ticks
+    let v=+sl.value, snapped=false;
+    for(const t of [25,50,75]) if(Math.abs(v-t)<=3){ v=t; sl.value=v; snapped=true; break; }   // approach-snap ticks
+    if(snapped){ if(!tickLbl||tickLbl.textContent!==v+'%') showTickLbl(v); }
+    else clearTickLbl();
     localStorage.setItem(BRI_KEY,String(v)); state.bri=v/100; state.lastFlat=null;
     push({brightness:v});
   });
