@@ -443,27 +443,14 @@
     return out;
   }
   function encodeFrame(srcRgba) {
-    const data = transformFrame(srcRgba), swap = $('#lcdSwap').checked, out = new Uint8Array(160 * 96 * 2);
-    for (let i = 0, o = 0; i < data.length; i += 4, o += 2) {
-      const v = ((data[i] & 0xF8) << 8) | ((data[i + 1] & 0xFC) << 3) | (data[i + 2] >> 3);
-      if (swap) { out[o] = v & 0xFF; out[o + 1] = v >> 8; } else { out[o] = v >> 8; out[o + 1] = v & 0xFF; }
-    }
-    return out;
+    // calibration stays here (page-specific sliders); the RGB565 pack lives in the shared engine
+    return TH108LcdUpload.packRgb565(transformFrame(srcRgba), $('#lcdSwap').checked);
   }
 
   // ---------------------------------------------------------------------------
-  // chunked, ACK-gated upload (cmd 0x50) via the screen handle
+  // chunked, ACK-gated upload (cmd 0x50) — protocol moved to th108-lcd-upload.js
+  // (shared with the daemon's now-playing uploader); this module keeps UI + diag.
   // ---------------------------------------------------------------------------
-  function buildPktTFT(chunkIndex, totalSize, dataBuf) {
-    const pkt = new Uint8Array(scrLen || 4104);
-    pkt[0] = 0xAA; pkt[1] = TFT_CMD;
-    pkt[2] = chunkIndex & 0xFF; pkt[3] = (chunkIndex >> 8) & 0xFF;
-    const totalChunks = Math.ceil(totalSize / 4096);   // match the official's chunk count exactly (firmware is sensitive to this)
-    pkt[4] = totalChunks & 0xFF; pkt[5] = (totalChunks >> 8) & 0xFF;
-    pkt[6] = (ADDR / 4096) & 0xFF; pkt[7] = ((ADDR / 4096) >> 8) & 0xFF;
-    pkt.set(dataBuf, 8);
-    return pkt;
-  }
   // ---- upload progress overlay (synced live with the device via ACK-gated chunks) ----
   function showOverlay(title, pct) { $('#lcdOvlTitle').textContent = title; $('#lcdOvlSub').textContent = 'keep the keyboard plugged in — this syncs live with the screen'; setOverlay(pct); $('#lcdOvl').style.display = 'flex'; }
   function setOverlay(pct, title, sub) {
@@ -517,16 +504,8 @@
     // last frame makes the count ODD, which sends every byte and erases the full region. (Protocol-safe:
     // keeps the official's totalChunks formula intact.)
     if (up.length % 2 === 0) { up = up.concat([up[up.length - 1]]); log('even frame count → duplicating last frame to avoid the bottom-row glitch', 'dim'); }
-    const FB = 160 * 96 * 2;                                // 30720 bytes/frame
-    const enc = up.map(fr => encodeFrame(fr.rgba));         // calibrated RGB565 per frame
-    const n = new Uint8Array(enc.length * FB); enc.forEach((e, i) => n.set(e, i * FB));
-    const frameCount = up.length;
-    const header = new Uint8Array(256).fill(255);
-    header[0] = frameCount;
-    for (let i = 0; i < frameCount - 1; i++) header[i + 1] = Math.min(255, Math.round((up[i].delayMs || 100) / 2)); // delay byte = ms/2 (=5×centiseconds)
-    header[frameCount] = 0;
-    const totalSize = n.length;
-    const S = Math.ceil(totalSize / 4096);
+    const plan = TH108LcdUpload.planUpload(up.map(fr => ({ bytes: encodeFrame(fr.rgba), delayMs: fr.delayMs })));   // calibrated RGB565 per frame; shared engine builds header/chunks
+    const frameCount = plan.frameCount, totalSize = plan.totalSize, S = plan.chunkCount;
     log(`uploading ${frameCount} frame(s): ${totalSize} bytes (${S} chunks)`, 'in');
 
     // diagnostic timeline (captured for the crash report)
@@ -534,53 +513,29 @@
     D({ ev: 'start', frames: frameCount, bytes: totalSize, chunks: S, reportId: scrId, reportLen: scrLen, mode: 'direct' });
     let result = 'ok';
 
-    // ACK gate — device replies 0x55 0x41 after each chunk is written
-    let resolveAck = null;
-    const onInput = e => { const b = new Uint8Array(e.data.buffer); D({ ev: 'in', b: hex(b.slice(0, 12)) }); if (b[0] === 0x55 && b[1] === 0x41 && resolveAck) resolveAck(); };
-    scrDev.addEventListener('inputreport', onInput);
-    // send one chunk and await its ACK (arms the listener BEFORE sending so an early ACK isn't missed)
-    const sendOne = (pkt, ms) => new Promise((resolve, reject) => {
-      let settled = false;
-      const to = setTimeout(() => { if (!settled) { settled = true; resolveAck = null; reject(new Error('ACK timeout')); } }, ms);
-      resolveAck = () => { if (!settled) { settled = true; clearTimeout(to); resolveAck = null; resolve(); } };
-      scrDev.sendReport(scrId, pkt).catch(err => { if (!settled) { settled = true; clearTimeout(to); resolveAck = null; reject(err); } });
+    // the ACK gate + chunk loop (incl. the never-resend abort and erase/settle windows) live in
+    // the shared engine now — this module injects the WebHID transport and keeps the diag feed
+    const eng = TH108LcdUpload.create({
+      sendChunk: p => scrDev.sendReport(scrId, p),
+      onInput: cb => { const h = e => cb(new Uint8Array(e.data.buffer)); scrDev.addEventListener('inputreport', h); return () => scrDev.removeEventListener('inputreport', h); },
+      log, pktLen: scrLen || 4104
     });
-
     try {
-      for (let v = 0; v < S; v++) {
-        let data;
-        if (v === 0) { const t = new Uint8Array(4096); t.set(header, 0); t.set(n.slice(0, 3840), 256); data = t; }
-        else { const a = 4096 * v - 256; data = n.slice(a, Math.min(a + 4096, n.length)); }
-        const pkt = buildPktTFT(v, totalSize, data);
-        if (v === 0) log('first packet: ' + hex(pkt.slice(0, 12)) + '… (flash erase — up to ~15s for big GIFs)', 'dim');
-        D({ ev: 'send', chunk: v });
-        // NEVER re-send a chunk. Re-sending while the firmware is mid flash-erase/commit corrupts adjacent
-        // flash (it wedged a board — recovered only via the official "Reset all settings"). The official driver
-        // is purely ACK-driven and never re-sends. So: one send, wait for the 0x55 0x41 ACK with a generous
-        // window, and on a real stall ABORT cleanly (no re-send). User power-cycles + retries the whole upload.
-        try { await sendOne(pkt, v === 0 ? 20000 : 4000); D({ ev: 'ack', chunk: v }); }   // chunk 0 = flash ERASE (scales with region size — up to ~15s for a ~1MB GIF); other chunks ACK in ~0.14s. Window only aborts cleanly on a true stall (never re-sends)
-        catch (err) {
-          D({ ev: 'GIVEUP', chunk: v, err: err.message });
-          throw new Error(`chunk ${v}: no ACK (${err.message}) — aborted WITHOUT re-sending (mid-write re-sends corrupt flash). Power-cycle the keyboard, then retry the whole upload.`);
-        }
-        if (v === 0) { D({ ev: 'settle' }); await new Promise(r => setTimeout(r, 250)); }  // let the flash erase fully settle before streaming
-        const pct = Math.floor((v + 1) / S * 100);
-        $('#lcdProg').value = pct; setOverlay(pct);
-      }
-      D({ ev: 'complete' });
+      log('first packet = flash erase — up to ~15s for big GIFs', 'dim');
+      const r = await eng.upload(plan, pct => { $('#lcdProg').value = pct; setOverlay(pct); }, D);
+      if (!r.ok) throw new Error(r.error);
       setOverlay(100, 'Upload complete ✓', 'your GIF is now on the keyboard screen');
       log('✓ upload complete — check the screen!', 'ok');
-      await new Promise(r => setTimeout(r, 900));
+      await new Promise(r2 => setTimeout(r2, 900));
     } catch (err) {
       result = 'FAILED: ' + err.message; D({ ev: 'FAIL', err: err.message });
       setOverlay(null, 'Upload failed', 'if the screen is frozen, replug → wait → reconnect → retry');
       log('✗ upload failed: ' + err.message + ' — click "📋 Copy last upload report" and paste it to me. If the screen is frozen, replug → wait → reconnect → retry.', 'err');
-      await new Promise(r => setTimeout(r, 1400));
+      await new Promise(r2 => setTimeout(r2, 1400));
     }
     finally {
       lastReport = buildReport(diag, { result, device: scrDev && scrDev.productName, reportId: scrId, reportLen: scrLen });
       hideOverlay();
-      scrDev.removeEventListener('inputreport', onInput);
       uploading = false;
       $('#lcdUpload').disabled = !scrDev;
       $('#lcdFile').disabled = false;
