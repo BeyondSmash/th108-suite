@@ -62,7 +62,7 @@ function start(opts) {
     if (!act) return;
     // gates: hand-off safety + an upload already running. A skipped action is re-armed so the
     // next tick retries once conditions clear.
-    if (busy || opts.isYielded() || opts.isMute()) {
+    if (busy || opts.isYielded() || opts.isMute() || (opts.isUnstable && opts.isUnstable())) {
       state.pending = act.upload; state.sinceMs = 0; state.lastShownKey = null;
       if (!gateLogged && opts.isYielded()) { gateLogged = true; log('♪ queued — the page holds the keyboard; the song uploads when the daemon takes over'); }
       return;
@@ -73,6 +73,10 @@ function start(opts) {
     const scr = T.openScreen();
     try {
       if (!scr) { log('now-playing: screen interface not found — will retry on the next change'); state.backoffUntil = Date.now() + FAIL_BACKOFF_MS; return; }
+      // FINAL pre-flight: ownership can flip between the tick gate and here — never start a flash
+      // write unless the daemon still owns the board (2026-06-12: a yield arrived mid-upload and
+      // the page streamed into an active flash-write → hard wedge + typing loss)
+      if (opts.isYielded() || opts.isMute()) { state.pending = act.upload; state.sinceMs = 0; state.lastShownKey = null; return; }
       const plan = U.planUpload([R.render(act.upload)]);
       const eng = U.create({ sendChunk: scr.send, onInput: scr.onInput, log, pktLen: 4104 });
       const r = await eng.upload(plan);

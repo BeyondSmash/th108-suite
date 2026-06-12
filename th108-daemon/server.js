@@ -59,7 +59,7 @@ function createServer({ control, root, port = 8123, watchdogMs = 12000 }) {
     }
     try {
       if (req.method === 'GET' && u === '/status') return sendJson(res, 200, control.status());
-      if (req.method === 'POST' && u === '/yield') { console.log(ts() + ' [api] /yield — page is taking the device'); control.yield(); yielded = true; lastBeat = Date.now(); armWatchdog(); return sendJson(res, 200, { ok: true }); }
+      if (req.method === 'POST' && u === '/yield') { console.log(ts() + ' [api] /yield — page is taking the device'); await control.yield(); yielded = true; lastBeat = Date.now(); armWatchdog(); return sendJson(res, 200, { ok: true }); }   // await: the response must not unleash the page onto a board mid-flash-write
       if (req.method === 'POST' && u === '/resume') { console.log(ts() + ' [api] /resume — page released the device'); control.resume(); yielded = false; clearInterval(wd); return sendJson(res, 200, { ok: true }); }
       if (req.method === 'GET' && u === '/autostart') return sendJson(res, 200, { enabled: await control.getAutostart() });
       if (req.method === 'POST' && u === '/autostart') {
@@ -98,7 +98,7 @@ function createServer({ control, root, port = 8123, watchdogMs = 12000 }) {
         lastBeat = Date.now();
         if (!yielded) {   // a beating page believes it holds the device (e.g. WE restarted under it and it won't re-/yield) — honor that instead of opening against it (live repro 2026-06-11 12:52)
           console.log(ts() + ' [api] heartbeat while not yielded — a page holds the device; yielding to it');
-          control.yield(); yielded = true; armWatchdog();
+          await control.yield(); yielded = true; armWatchdog();
         }
         return sendJson(res, 200, { ok: true });
       }

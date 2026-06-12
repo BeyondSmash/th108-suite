@@ -55,7 +55,8 @@ function loadConfig() {
 }
 
 let state = null, device = null, send = null, paused = false, timer = null;
-let lcdBusy = false;   // a now-playing flash upload is running — the 0x32 stream must stay quiet
+let lcdBusy = false;     // a now-playing flash upload is running — the 0x32 stream must stay quiet
+let unpausedAt = 0;      // when the daemon last took ownership — flash uploads need STABLE ownership
 
 // ----- daemon settings (separate from config.json, which is the page's layer array verbatim) -----
 const SETTINGS_PATH = path.join(__dirname, 'settings.json');
@@ -204,6 +205,9 @@ function syncNowPlaying() {
     npHandle = NP.start({
       isYielded: () => paused,
       isMute: () => muteLogged,
+      // flash writes need STABLE ownership: the daemon must hold a healthy, recently-ACKing board
+      // and must not be fresh off a takeover (handover turbulence muted boards three times today)
+      isUnstable: () => !device || (Date.now() - lastOkAt > 3000) || (Date.now() - unpausedAt < 3000),
       pauseRender: () => { lcdBusy = true; },
       resumeRender: () => { lcdBusy = false; },
       log,
@@ -214,10 +218,18 @@ syncNowPlaying();
 
 // ----- control hooks for the server -----
 const control = {
-  // Release the device for the WebHID page.
-  yield() { paused = true; closeDevice(); },
+  // Release the device for the WebHID page. MUST NOT complete while a flash upload is mid-flight:
+  // the page opens the device the moment /yield responds, and streaming 0x32 into a board that is
+  // mid-flash-write wedged it hard and cost typing (2026-06-12 incident, "chunk N: no ACK" right
+  // after a /yield line). Block the response until the upload finishes (≤ erase window) or 25s.
+  async yield() {
+    paused = true; closeDevice();
+    const t0 = Date.now();
+    while (lcdBusy && Date.now() - t0 < 25000) await new Promise(r => setTimeout(r, 100));
+    if (lcdBusy) console.log(ts() + ' ⚠ yield proceeded with a flash upload still busy after 25s — investigate');
+  },
   // Reload config (the page may have saved edits) and resume rendering.
-  resume() { rebuildState(); paused = false; },
+  resume() { rebuildState(); paused = false; unpausedAt = Date.now(); },
   // Persist the page's config; refresh live state immediately unless yielded to the page.
   saveConfig(cfg) { fs.writeFileSync(CONFIG_PATH, JSON.stringify(cfg)); if (!paused) rebuildState(); },
   status() { return { running: true, paused, deviceConnected: !!device, fps: FPS, usbReset: settings.usbReset, nowPlaying: settings.nowPlaying,
