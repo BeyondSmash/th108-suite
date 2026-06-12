@@ -248,7 +248,7 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
   .kbkey.mod{ color:var(--warn); font-weight:700; }
   .kbkey.mod:hover,.kbkey.mod.sel{ color:#0d1117; }
   .kbkey .knew{ max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; padding:0 3px; font-size:.85em; }
-  .kbkey .kold{ position:absolute; right:4px; bottom:1px; font-size:14px; text-decoration:line-through; text-decoration-color:#fff; opacity:.8; }   /* amber glyph (inherits .mod), WHITE strike line (user request); 14px after "8px was unreadably small" */
+  .kbkey .kold{ position:absolute; right:4px; bottom:1px; font-size:14px; color:#ff8f33; text-decoration:line-through; text-decoration-color:#fff; opacity:.85; }   /* ORANGE glyph (distinct from the amber new-label), WHITE strike line; 14px after "8px was unreadably small" */
   /* right-click on a key: a one-button "Reset" tooltip instead of the browser context menu.
      Centered via computed left, NOT transform — the global button:hover sets transform:translateY(-1px),
      which would REPLACE a translateX(-50%) here and lurch the button half its width on every hover. */
