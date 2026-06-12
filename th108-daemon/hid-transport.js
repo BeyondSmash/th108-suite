@@ -70,4 +70,26 @@ function probeTraffic(device, ms = 1500) {
   });
 }
 
-module.exports = { findPath, openDevice, makeSender, probeTraffic, VENDOR, USAGE_PAGE, USAGE };
+// ----- screen interface (usagePage 0xFF67, ~4104B output reports) — cmd 0x50 LCD flash upload -----
+const SCREEN_PAGE = 0xFF67;
+function pickScreenPath(list) {   // pure (unit-tested): the 0xFF67 iface on our vendor
+  const d = list.find(d => d.vendorId === VENDOR && d.usagePage === SCREEN_PAGE);
+  return d ? d.path : null;
+}
+function findScreenPath() { try { return pickScreenPath(HID.devices()); } catch { return null; } }
+// Open the screen iface and adapt it to th108-lcd-upload's transport contract
+// ({sendChunk, onInput}). Caller owns close(); never hold this open between uploads.
+function openScreen() {
+  const p = findScreenPath(); if (!p) return null;
+  const d = new HID.HID(p);
+  d.on('error', () => {});   // a vanished handle must not crash the daemon (same rule as openDevice)
+  return {
+    raw: d,
+    send: (pkt) => new Promise((res, rej) => { try { d.write([0x00, ...pkt]); res(); } catch (e) { rej(e); } }),
+    onInput: (cb) => { const h = buf => cb(new Uint8Array(buf)); d.on('data', h); return () => { try { d.removeListener('data', h); } catch {} }; },
+    close: () => { try { d.close(); } catch {} },
+  };
+}
+
+module.exports = { findPath, openDevice, makeSender, probeTraffic, VENDOR, USAGE_PAGE, USAGE,
+                   SCREEN_PAGE, pickScreenPath, findScreenPath, openScreen };

@@ -68,3 +68,15 @@ test('probeTraffic resolves 0 on a silent device', async () => {
   const dev = fakeListener();
   assert.equal(await probeTraffic(dev, 60), 0);
 });
+
+test('pickScreenPath picks the 0xFF67 screen interface on our vendor only', () => {
+  const T = require('./hid-transport.js');
+  const list = [
+    { vendorId: 0x0C45, usagePage: 0xFF68, usage: 0x61, path: 'ctrl' },
+    { vendorId: 0x0C45, usagePage: 0xFF67, usage: 0x61, path: 'screen' },
+    { vendorId: 0x9999, usagePage: 0xFF67, usage: 0x61, path: 'other' },
+  ];
+  assert.equal(T.pickScreenPath(list), 'screen');
+  assert.equal(T.pickScreenPath([list[0]]), null);
+  assert.equal(T.pickScreenPath([list[2]]), null);
+});
