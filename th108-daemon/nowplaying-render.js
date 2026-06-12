@@ -19,9 +19,26 @@ function decodeThumb(b64) {
 
 function fit(text, scale) { return F.fitText(text, W - 8, scale); }   // proportional truncation lives in the font module
 
-// byte-order: false matches the page's default (#lcdSwap unchecked) — flip here if the first
-// hardware test shows wrong colors (Task 8 of the plan).
-const SWAP = false;
+// word-wrap up to maxLines (the title gets 2 lines before truncating — user request)
+function wrapText(text, maxW, scale, maxLines) {
+  const words = String(text || '').split(/\s+/).filter(Boolean);
+  const lines = []; let cur = '';
+  for (let i = 0; i < words.length; i++) {
+    const t = cur ? cur + ' ' + words[i] : words[i];
+    if (F.textWidth(t, scale) <= maxW || !cur) cur = t;
+    else {
+      lines.push(cur); cur = words[i];
+      if (lines.length === maxLines - 1) { cur = words.slice(i).join(' '); break; }
+    }
+  }
+  if (cur) lines.push(cur);
+  return lines.slice(0, maxLines).map(l => F.fitText(l, maxW, scale));
+}
+
+// byte-order: TRUE — hardware-confirmed 2026-06-12: with false the panel showed rainbow pixel
+// noise with CRISP WHITE TEXT (white/black are swap-invariant in RGB565, colors aren't); the
+// little-endian simulation reproduced the user's photo exactly.
+const SWAP = true;
 
 function hexToRgb(hex, fallback) {
   const m = /^#?([0-9a-f]{6})$/i.exec(String(hex || ''));
@@ -45,8 +62,9 @@ function render(info, colors) {
   } else {                                    // suite-navy flat background
     for (let i = 0; i < buf.length; i += 4) { buf[i] = 13; buf[i + 1] = 17; buf[i + 2] = 23; buf[i + 3] = 255; }
   }
-  F.drawText(buf, W, 4, H - 42, fit(info.title, 1), 1, titleRgb);    // title (default white)
-  F.drawText(buf, W, 4, H - 22, fit(info.artist, 1), 1, artistRgb);  // artist (default suite yellow)
+  const tl = wrapText(info.title, W - 8, 1, 2);                      // title wraps to 2 lines before truncating
+  tl.forEach((line, i) => F.drawText(buf, W, 4, H - 22 - 18 * (tl.length - i), line, 1, titleRgb));
+  F.drawText(buf, W, 4, H - 20, fit(info.artist, 1), 1, artistRgb);  // artist (default suite yellow)
   if (info.status === 'paused') {             // ⏸ badge top-right: two white bars on a dark pill
     for (let y = 6; y < 22; y++) for (let x = W - 26; x < W - 6; x++) { const o = (y * W + x) * 4; buf[o] = 30; buf[o + 1] = 34; buf[o + 2] = 40; buf[o + 3] = 255; }
     for (let y = 9; y < 19; y++) for (const xs of [W - 21, W - 14]) for (let x = xs; x < xs + 3; x++) { const o = (y * W + x) * 4; buf[o] = buf[o + 1] = buf[o + 2] = 255; }

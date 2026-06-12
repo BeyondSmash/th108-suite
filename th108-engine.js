@@ -480,7 +480,14 @@
         L.lastTick = now;
       }
     }
-    return composite(state);
+    const flat = composite(state);
+    // global brightness (the header slider; daemon mirrors it via settings.brightness).
+    // composite() allocates a fresh flat each call, so in-place scaling can't compound.
+    const b = state.bri;
+    if (b != null && b !== 1) for (let o = 0; o < flat.length; o += 4) {
+      flat[o+1]=(flat[o+1]*b)|0; flat[o+2]=(flat[o+2]*b)|0; flat[o+3]=(flat[o+3]*b)|0;
+    }
+    return flat;
   }
   function stampKey(state, ledIndex){
     state.react.down[ledIndex]=1;

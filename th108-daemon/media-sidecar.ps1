@@ -8,6 +8,7 @@
 # load them via [Type]::GetType('...ContentType=WindowsRuntime') instead (the literal failing
 # silently inside the thumbnail try/catch cost us the album art, 2026-06-12).
 $ErrorActionPreference = 'SilentlyContinue'
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8   # non-ASCII titles/artists survive the pipe (was ANSI -> '????')
 Add-Type -AssemblyName System.Runtime.WindowsRuntime
 $asTaskGeneric = ([System.WindowsRuntimeSystemExtensions].GetMethods() | Where-Object { $_.Name -eq 'AsTask' -and $_.GetParameters().Count -eq 1 -and $_.GetParameters()[0].ParameterType.Name -eq 'IAsyncOperation`1' })[0]
 # the WinRT stream comes back as a bare __ComObject; PS's binder can't pass it to AsStream, but

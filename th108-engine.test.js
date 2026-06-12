@@ -78,3 +78,20 @@ test('stampKey lights its LED in a reactive layer; releaseKey lets it fade', () 
   const o = E.INDICES.indexOf(E.KEYMAP.KeyA) * 4;
   assert.ok(lit[o+1] > 0, 'A key red channel should be lit right after press');
 });
+
+test('composeFrame applies global brightness (state.bri) without compounding', () => {
+  const E = require('./th108-engine.js');
+  // a pre-rendered layer with lastTick in the future skips renderLayer — composite reads L.rgb as-is
+  const L = { enabled: true, type: 'pattern', opacity: 1, blend: 'normal', fps: 30, lastTick: 1e15,
+              rgb: new Uint8Array(E.NLED * 3).fill(200), settings: {} };
+  const state = { layers: [L] };
+  const f1 = E.composeFrame(state, 0);
+  assert.equal(f1[1], 200, 'no bri → untouched');
+  state.bri = 0.5;
+  const f2 = E.composeFrame(state, 0);
+  assert.equal(f2[1], 100, 'bri 0.5 halves the output');
+  const f3 = E.composeFrame(state, 0);
+  assert.equal(f3[1], 100, 'second frame identical — no compounding');
+  state.bri = 1;
+  assert.equal(E.composeFrame(state, 0)[1], 200, 'bri 1 = untouched');
+});

@@ -61,8 +61,9 @@ let unpausedAt = 0;      // when the daemon last took ownership — flash upload
 // ----- daemon settings (separate from config.json, which is the page's layer array verbatim) -----
 const SETTINGS_PATH = path.join(__dirname, 'settings.json');
 function loadSettings() {
-  try { return Object.assign({ usbReset: true, nowPlaying: false, npTitle: '#ffffff', npArtist: '#ffd98c' }, JSON.parse(fs.readFileSync(SETTINGS_PATH, 'utf8'))); }
-  catch { return { usbReset: true, nowPlaying: false, npTitle: '#ffffff', npArtist: '#ffd98c' }; }   // usbReset default ON — the escalation fails gracefully (one log line) if the task isn't registered
+  const DEF = { usbReset: true, nowPlaying: false, npTitle: '#ffffff', npArtist: '#ffd98c', lightsOn: true, brightness: 100 };
+  try { return Object.assign({}, DEF, JSON.parse(fs.readFileSync(SETTINGS_PATH, 'utf8'))); }
+  catch { return Object.assign({}, DEF); }   // usbReset default ON — the escalation fails gracefully (one log line) if the task isn't registered
 }
 let settings = loadSettings();
 function saveSettings() { try { fs.writeFileSync(SETTINGS_PATH, JSON.stringify(settings)); } catch {} }
@@ -71,6 +72,7 @@ function saveSettings() { try { fs.writeFileSync(SETTINGS_PATH, JSON.stringify(s
 function rebuildState() {
   const cfg = loadConfig();
   state = cfg ? E.createState(cfg) : null;
+  if (state) state.bri = Math.max(5, Math.min(100, settings.brightness || 100)) / 100;   // global brightness parity with the page (shared engine reads state.bri)
 }
 rebuildState();
 
@@ -114,6 +116,7 @@ function closeDevice() {
 let probing = false, nextOpenAt = Date.now() + 5000;   // startup grace: a live page's heartbeat needs a beat (≤3s) to park us before we first touch the device
 let lastOkAt = 0, streakStart = 0, muteLogged = false, muteAt = 0;   // mute-episode tracking (transition logging)
 let usbFiredAt = 0, lastTickAt = 0;   // USB-restart escalation state + sleep-gap detection
+let offCleared = false;               // lights-off: the one black frame was sent
 async function openIfPossible() {
   if (device || paused || probing) return;
   if (Date.now() < nextOpenAt) return;   // backoff after a mute/failed device — no 2s open/close churn against a wedged board
@@ -147,6 +150,14 @@ async function tick() {
   if (lastTickAt && nowWall - lastTickAt > 30_000 && muteLogged) muteAt = nowWall;
   lastTickAt = nowWall;
   await openIfPossible();
+  // master lighting switch (header toggle, mirrored here): clear the board once, then stay quiet
+  if (!settings.lightsOn) {
+    if (device && send && !offCleared) {
+      const off = []; INDICES.forEach(i => off.push(i, 0, 0, 0));
+      if (await send(off)) offCleared = true;
+    }
+    return;
+  }
   if (device && send && state) {
     const now = performance.now();
     const flat = E.composeFrame(state, now);
@@ -235,8 +246,19 @@ const control = {
   saveConfig(cfg) { fs.writeFileSync(CONFIG_PATH, JSON.stringify(cfg)); if (!paused) rebuildState(); },
   status() { return { running: true, paused, deviceConnected: !!device, fps: FPS, usbReset: settings.usbReset, nowPlaying: settings.nowPlaying,
                       npTrack: npHandle ? npHandle.current() : null, npQueued: npHandle ? npHandle.queued() : false,
-                      npTitle: settings.npTitle, npArtist: settings.npArtist }; },
+                      npTitle: settings.npTitle, npArtist: settings.npArtist,
+                      lightsOn: settings.lightsOn, brightness: settings.brightness }; },
   setNowPlaying(on) { settings.nowPlaying = !!on; saveSettings(); syncNowPlaying(); },
+  // master lighting switch + global brightness (header controls; the page mirrors them here so the
+  // look survives page↔daemon handoffs)
+  setLighting(o) {
+    if (o && 'on' in o) { settings.lightsOn = !!o.on; offCleared = false; if (settings.lightsOn && state) state.lastFlat = null; }   // force a repaint on re-enable
+    if (o && o.brightness != null) {
+      settings.brightness = Math.max(5, Math.min(100, Math.round(o.brightness)));
+      if (state) { state.bri = settings.brightness / 100; state.lastFlat = null; }   // live, and bust the dedupe so it applies now
+    }
+    saveSettings();
+  },
   setNpColors(title, artist) {   // valid hex only; a change re-paints the current song (one flash write)
     if (/^#[0-9a-f]{6}$/i.test(title || '')) settings.npTitle = title;
     if (/^#[0-9a-f]{6}$/i.test(artist || '')) settings.npArtist = artist;
