@@ -39,6 +39,7 @@ function start(opts) {
   const log = opts.log || function () {};
   const state = newState();
   let proc = null, timer = null, busy = false, stopped = false;
+  let lastUploaded = null, gateLogged = false;   // lastUploaded feeds /status.npTrack (the page's Now Playing card)
 
   function spawnSidecar() {
     if (stopped) return;
@@ -61,7 +62,11 @@ function start(opts) {
     if (!act) return;
     // gates: hand-off safety + an upload already running. A skipped action is re-armed so the
     // next tick retries once conditions clear.
-    if (busy || opts.isYielded() || opts.isMute()) { state.pending = act.upload; state.sinceMs = 0; state.lastShownKey = null; return; }
+    if (busy || opts.isYielded() || opts.isMute()) {
+      state.pending = act.upload; state.sinceMs = 0; state.lastShownKey = null;
+      if (!gateLogged && opts.isYielded()) { gateLogged = true; log('♪ queued — the page holds the keyboard; the song uploads when the daemon takes over'); }
+      return;
+    }
     busy = true;
     const t0 = Date.now();
     opts.pauseRender();   // a flash upload can't share the board with the 0x32 stream
@@ -71,7 +76,7 @@ function start(opts) {
       const plan = U.planUpload([R.render(act.upload)]);
       const eng = U.create({ sendChunk: scr.send, onInput: scr.onInput, log, pktLen: 4104 });
       const r = await eng.upload(plan);
-      if (r.ok) log('♪ now-playing on LCD: "' + act.upload.title + '" (' + act.upload.status + ', ' + plan.totalSize + 'B, ' + (Date.now() - t0) + 'ms)');
+      if (r.ok) { lastUploaded = { title: act.upload.title, artist: act.upload.artist, status: act.upload.status }; gateLogged = false; log('♪ now-playing on LCD: "' + act.upload.title + '" (' + act.upload.status + ', ' + plan.totalSize + 'B, ' + (Date.now() - t0) + 'ms)'); }
       else { log('♪ now-playing upload failed: ' + r.error); state.lastShownKey = null; state.backoffUntil = Date.now() + FAIL_BACKOFF_MS; }
     } catch (e) {
       log('♪ now-playing upload error: ' + (e && e.message || e));
@@ -87,12 +92,16 @@ function start(opts) {
   timer = setInterval(() => { maybeUpload().catch(() => {}); }, 500);
   log('♪ now-playing enabled — watching the system media session');
 
-  return { stop() {
-    stopped = true;
-    clearInterval(timer);
-    if (proc) { try { proc.kill(); } catch (_) { } proc = null; }
-    log('♪ now-playing disabled');
-  } };
+  return {
+    current() { return lastUploaded; },
+    queued() { return !!state.pending; },
+    stop() {
+      stopped = true;
+      clearInterval(timer);
+      if (proc) { try { proc.kill(); } catch (_) { } proc = null; }
+      log('♪ now-playing disabled');
+    },
+  };
 }
 
 module.exports = { newState, decide, start, SETTLE_MS, PAUSE_HOLD_MS };

@@ -220,7 +220,8 @@ const control = {
   resume() { rebuildState(); paused = false; },
   // Persist the page's config; refresh live state immediately unless yielded to the page.
   saveConfig(cfg) { fs.writeFileSync(CONFIG_PATH, JSON.stringify(cfg)); if (!paused) rebuildState(); },
-  status() { return { running: true, paused, deviceConnected: !!device, fps: FPS, usbReset: settings.usbReset, nowPlaying: settings.nowPlaying }; },
+  status() { return { running: true, paused, deviceConnected: !!device, fps: FPS, usbReset: settings.usbReset, nowPlaying: settings.nowPlaying,
+                      npTrack: npHandle ? npHandle.current() : null, npQueued: npHandle ? npHandle.queued() : false }; },
   setNowPlaying(on) { settings.nowPlaying = !!on; saveSettings(); syncNowPlaying(); },
   // page-initiated escalation: the PAGE drives the device and detected a persistent wedge its own
   // handle-rebinds couldn't clear — fire the same PnP restart the daemon uses, with a cooldown so
