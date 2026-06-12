@@ -40,6 +40,32 @@ function wrapText(text, maxW, scale, maxLines) {
 // little-endian simulation reproduced the user's photo exactly.
 const SWAP = true;
 
+// ---- color-correction calibration (ported from th108-lcd.js inv(): the upload sends the INVERSE
+// of the panel's measured distortion so the LCD ends up showing corrected colors). Values are the
+// page's raw slider numbers (/100 = params). DEFAULT_CAL = the dialed-in TH108 V2 PRO profile.
+const DEFAULT_CAL = { rGain: 100, rGamma: 97, rBlack: 0, gGain: 100, gGamma: 100, gBlack: 4, bGain: 122, bGamma: 100, bBlack: 9, warmth: 95, brightness: 114, saturation: 100, contrast: 104 };
+const cl01 = x => x < 0 ? 0 : x > 1 ? 1 : x;
+const invC = (y, gain, gamma, black) => cl01(Math.pow(cl01((y - black) / gain), gamma));
+function calParams(raw) {
+  const p = {};
+  for (const k in DEFAULT_CAL) p[k] = ((raw && typeof raw[k] === 'number') ? raw[k] : DEFAULT_CAL[k]) / 100;
+  return p;
+}
+function applyCal(buf, raw) {
+  const p = calParams(raw);
+  for (let i = 0; i < buf.length; i += 4) {
+    let r = buf[i] / 255, g = buf[i + 1] / 255, b = buf[i + 2] / 255;
+    const lum = 0.299 * r + 0.587 * g + 0.114 * b;
+    r = lum + (r - lum) / p.saturation; g = lum + (g - lum) / p.saturation; b = lum + (b - lum) / p.saturation;
+    r = (r - 0.5) / p.contrast + 0.5; g = (g - 0.5) / p.contrast + 0.5; b = (b - 0.5) / p.contrast + 0.5;
+    const wf = p.warmth - 1; r /= 1 + wf; b /= 1 - wf;
+    r /= p.brightness; g /= p.brightness; b /= p.brightness;
+    buf[i] = Math.round(cl01(invC(r, p.rGain, p.rGamma, p.rBlack)) * 255);
+    buf[i + 1] = Math.round(cl01(invC(g, p.gGain, p.gGamma, p.gBlack)) * 255);
+    buf[i + 2] = Math.round(cl01(invC(b, p.bGain, p.bGamma, p.bBlack)) * 255);
+  }
+}
+
 function hexToRgb(hex, fallback) {
   const m = /^#?([0-9a-f]{6})$/i.exec(String(hex || ''));
   if (!m) return fallback;
@@ -47,7 +73,7 @@ function hexToRgb(hex, fallback) {
   return [(v >> 16) & 255, (v >> 8) & 255, v & 255];
 }
 
-function render(info, colors) {
+function render(info, colors, cal) {
   const titleRgb = hexToRgb(colors && colors.title, [255, 255, 255]);
   const artistRgb = hexToRgb(colors && colors.artist, [255, 217, 140]);
   const buf = new Uint8ClampedArray(W * H * 4);
@@ -69,6 +95,7 @@ function render(info, colors) {
     for (let y = 6; y < 22; y++) for (let x = W - 26; x < W - 6; x++) { const o = (y * W + x) * 4; buf[o] = 30; buf[o + 1] = 34; buf[o + 2] = 40; buf[o + 3] = 255; }
     for (let y = 9; y < 19; y++) for (const xs of [W - 21, W - 14]) for (let x = xs; x < xs + 3; x++) { const o = (y * W + x) * 4; buf[o] = buf[o + 1] = buf[o + 2] = 255; }
   }
+  applyCal(buf, cal);   // same inverse-correction the page applies to its GIF uploads (whole frame, text included)
   return { bytes: packRgb565(buf, SWAP), delayMs: 1000 };
 }
-module.exports = { render, decodeThumb, hexToRgb };
+module.exports = { render, decodeThumb, hexToRgb, applyCal, calParams, DEFAULT_CAL };

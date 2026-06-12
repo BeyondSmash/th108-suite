@@ -222,6 +222,7 @@ function syncNowPlaying() {
       pauseRender: () => { lcdBusy = true; },
       resumeRender: () => { lcdBusy = false; },
       getColors: () => ({ title: settings.npTitle, artist: settings.npArtist }),
+      getCal: () => settings.npCal || null,   // page-pushed LCD calibration (null → the baked default profile)
       log,
     });
   } else if (!settings.nowPlaying && npHandle) { npHandle.stop(); npHandle = null; }
@@ -275,6 +276,16 @@ const control = {
     if (/^#[0-9a-f]{6}$/i.test(artist || '')) settings.npArtist = artist;
     saveSettings();
     if (npHandle) npHandle.refresh();
+  },
+  setNpCal(cal) {   // the page's LCD color-correction sliders, mirrored so the art matches GIF uploads
+    if (!cal || typeof cal !== 'object') return;
+    const clean = {};
+    for (const k of Object.keys(cal)) { const v = +cal[k]; if (Number.isFinite(v) && v >= 0 && v <= 300) clean[k] = v; }
+    if (!Object.keys(clean).length) return;
+    const before = JSON.stringify(settings.npCal || null);
+    settings.npCal = clean;
+    saveSettings();
+    if (npHandle && JSON.stringify(clean) !== before) npHandle.refresh();   // re-paint only on a real change
   },
   // page-initiated escalation: the PAGE drives the device and detected a persistent wedge its own
   // handle-rebinds couldn't clear — fire the same PnP restart the daemon uses, with a cooldown so

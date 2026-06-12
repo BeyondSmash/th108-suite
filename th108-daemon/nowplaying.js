@@ -70,7 +70,7 @@ function start(opts) {
     const scr = T.openScreen();
     try {
       if (!scr) { log('now-playing: screen interface not found — will retry on the next change'); state.backoffUntil = Date.now() + FAIL_BACKOFF_MS; return { ok: false }; }
-      const plan = U.planUpload([R.render(act.upload, opts.getColors ? opts.getColors() : null)]);
+      const plan = U.planUpload([R.render(act.upload, opts.getColors ? opts.getColors() : null, opts.getCal ? opts.getCal() : null)]);
       const eng = U.create({ sendChunk: scr.send, onInput: scr.onInput, log, pktLen: 4104 });
       const r = await eng.upload(plan);
       if (r.ok) { lastUploaded = { title: act.upload.title, artist: act.upload.artist, status: act.upload.status }; gateLogged = false; log('♪ now-playing on LCD: "' + act.upload.title + '" (' + act.upload.status + ', ' + plan.totalSize + 'B, ' + (Date.now() - t0) + 'ms)'); return { ok: true }; }

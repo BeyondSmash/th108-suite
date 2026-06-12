@@ -87,6 +87,7 @@ function createServer({ control, root, port = 8123, watchdogMs = 12000 }) {
         const b = await readBody(req); let body;
         try { body = JSON.parse(b || '{}'); } catch { return sendJson(res, 400, { error: 'bad json' }); }
         if (body.titleColor || body.artistColor) { control.setNpColors(body.titleColor, body.artistColor); console.log(ts() + ' [api] /nowplaying colors ' + (body.titleColor || '-') + '/' + (body.artistColor || '-')); }
+        if (body.cal) { control.setNpCal(body.cal); console.log(ts() + ' [api] /nowplaying cal updated'); }
         if ('on' in body) { control.setNowPlaying(!!body.on); console.log(ts() + ' [api] /nowplaying ' + (body.on ? 'on' : 'off')); }
         return sendJson(res, 200, { ok: true });
       }

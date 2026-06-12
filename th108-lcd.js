@@ -399,6 +399,7 @@
     const p = {}; CAL_KEYS.forEach(key => p[key] = calEl(key).value);
     localStorage.setItem(CAL_KEY, JSON.stringify(p));
     $('#lcdCalStatus').textContent = '· saved';
+    try { window.dispatchEvent(new CustomEvent('th108-cal-saved')); } catch (_) { }   // the page mirrors the cal to the daemon (now-playing art uses the same correction)
   }
   // dialed-in TH108 V2 PRO color-correction profile, baked in as the standard default
   const DEFAULT_CAL = { rGain: 100, rGamma: 97, rBlack: 0, gGain: 100, gGamma: 100, gBlack: 4, bGain: 122, bGamma: 100, bBlack: 9, warmth: 95, brightness: 114, saturation: 100, contrast: 104 };

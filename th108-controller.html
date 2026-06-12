@@ -1494,6 +1494,17 @@ const BINDER=TH108Binder.create({
   pauseLighting: ()=>window.__lcdHost.pauseLighting(),
   resumeLighting: ()=>window.__lcdHost.resumeLighting()
 });
+// mirror the LCD color-correction to the daemon so now-playing art matches GIF uploads
+function pushNpCal(){
+  try{
+    const p=JSON.parse(localStorage.getItem('th108_rgb_calibration')||'null');
+    if(p&&DC.present){ const cal={}; for(const k in p) cal[k]=+p[k];
+      fetch('/nowplaying',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({cal})}).catch(()=>{}); }
+  }catch(_){ }
+}
+window.addEventListener('th108-cal-saved',pushNpCal);
+DC.ping().then(()=>{ if(DC.present) pushNpCal(); });
+
 KBOARD.onReset(async idx=>{   // right-click Reset on a board key (SOCD pairs restore together); a reset key is done with — drop its selection
   const ok=await BINDER.revertKey(idx);
   if(ok && KBOARD.sel && KBOARD.sel.idx===idx) KBOARD.clear();
