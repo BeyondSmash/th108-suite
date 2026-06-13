@@ -760,14 +760,15 @@ let _wasRunning=false;   // layers were running when the keyboard went away (sle
 // onboard rainbow. The picker-free policy grant made every tab auto-connect, so this is essential.
 // Web Locks API: the first tab holds 'th108-driver' forever (until it closes); other tabs queue and
 // only become the driver when the holder closes (automatic handoff). No Web Locks → behave as before.
-window.__isDriver = !(navigator.locks && navigator.locks.request);
+window.__isDriver = false;
+let __driverResolve; const __driverGained = new Promise(r=>{ __driverResolve=r; });   // resolves when THIS tab is the sole driver
 if(navigator.locks && navigator.locks.request){
   navigator.locks.request('th108-driver', { mode:'exclusive' }, ()=> new Promise(()=>{
-    window.__isDriver = true;
+    window.__isDriver = true; __driverResolve();
     log('this tab now drives the keyboard','dim');
-    if(window.__onBecomeDriver) window.__onBecomeDriver();   // boot may have already passed — (re)try the silent reconnect
+    if(window.__onDriverGained) window.__onDriverGained();   // a queued tab just became driver (the holder closed) → take over
   }));   // promise never resolves → lock held until this tab closes
-}
+} else { window.__isDriver = true; __driverResolve(); }   // no Web Locks API → behave as before (sole driver)
 
 const HID=TH108Hid.create({
   log, setStatus, ledCount:INDICES.length,
@@ -1374,16 +1375,19 @@ document.getElementById('dmnStart').addEventListener('click',async()=>{
   try{ await navigator.clipboard.writeText(cmd); }catch(_){ }
   alert('Browsers can\'t launch programs, so this can\'t be one click.\n\nTo start the daemon:\n• run setup.cmd in the project folder (installs auto-start too), or\n• run th108-daemon\\start-hidden.vbs (command copied to your clipboard), or\n• just log in again — it auto-starts.\n\nThe Online tag updates within ~30 s once it\'s up.');
 });
-// silent boot reconnect — gated on the driver lock (HID.autoReconnect checks canDrive). If this
-// tab isn't the driver yet, it retries when it BECOMES the driver (the holder tab closed).
+// silent boot reconnect — WAITS until this tab is the sole driver (the lock), so it can never
+// auto-grab a board another tab is driving. A queued tab connects only when it becomes driver.
+let __bootRan=false;
 async function bootReconnect(){
+  await __driverGained;            // blocks forever in a non-driver tab; resolves when this tab owns the lock
+  if(__bootRan) return; __bootRan=true;
   await DC.ping();
   dmnTagSync();
   if(DC.present) return;   // daemon is driving — merely OPENING this page must never steal the device from it (Connect is the explicit handover)
   await HID.autoReconnect();
   if(!HID.device && DC.beating){ DC.heartbeatStop(); DC.resume(); }
 }
-window.__onBecomeDriver = ()=>{ if(!HID.device) bootReconnect(); };   // became sole driver (other tab closed) → take over
+window.__onDriverGained = ()=>{ if(!HID.device && !__bootRan) bootReconnect(); };   // became driver after the holder closed
 bootReconnect();
 // (sleep/wake + unplug/replug re-bind lives in th108-hid.js; this page's side is the onDisconnected/onReconnected callbacks up top)
 // (sleep/wake + unplug/replug re-bind lives in th108-hid.js; this page's side is the onDisconnected/onReconnected callbacks up top)
