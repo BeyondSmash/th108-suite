@@ -398,8 +398,10 @@ const control = {
   setNowPlaying(on) {
     const was = settings.nowPlaying;
     settings.nowPlaying = !!on; saveSettings();
-    if (was && !on && npHandle) npHandle.revertNow().catch(() => {});   // turning OFF → restore the user's standard GIF to the LCD (fire-and-forget; self-gates on board ownership)
+    let revert = null;
+    if (was && !on && npHandle) revert = npHandle.revertNow();   // turning OFF → restore the standard GIF (fast gate-check; the upload fires async). revert.reason explains a no-op
     syncNowPlaying();
+    return { revert };
   },
   // page-permit upload path: the heartbeat advertises a pending song; the page pauses its own
   // 0x32 stream and POSTs /npgo, so songs land WITHOUT a device handoff (lighting holds, not off)

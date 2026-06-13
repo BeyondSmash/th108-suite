@@ -287,16 +287,18 @@ function start(opts) {
     },
     // turning now-playing OFF → put the user's standard GIF back on the LCD (one-shot, forced — not the
     // auto pause-revert). Needs the daemon to own a healthy board, same as any flash write.
-    async revertNow() {
-      if (opts.isMute && opts.isMute()) return { ok: false, reason: 'board muted' };
-      if (opts.isYielded && opts.isYielded()) return { ok: false, reason: 'page holds the device' };
-      if (busy) return { ok: false, reason: 'an upload is running' };
+    // Returns the GATE result FAST (so the toggle's HTTP response can report WHY it can't revert);
+    // the actual GIF upload (slow — 33 frames) fires async so it never blocks the request.
+    revertNow() {
+      if (opts.isMute && opts.isMute()) return { ok: false, reason: 'the board is muted' };
+      if (opts.isYielded && opts.isYielded()) return { ok: false, reason: 'the page holds the keyboard — hide/close the tab so the daemon can drive' };
+      if (busy) return { ok: false, reason: 'an upload is already running' };
       const frames = opts.getStandardGif && opts.getStandardGif();
-      if (!frames || !frames.length) { log('♪ now-playing off — no standard GIF mirrored yet, LCD keeps the last song'); return { ok: false, reason: 'no standard GIF' }; }
+      if (!frames || !frames.length) { log('♪ now-playing off — no standard GIF mirrored yet, LCD keeps the last song'); return { ok: false, reason: 'no standard GIF uploaded yet' }; }
       state.lastShownKey = null;   // so re-enabling later re-pushes the song
-      const r = await doRevert(frames);
-      if (r && r.ok) note('Now-playing off — restored your GIF to the LCD');
-      return r || { ok: false };
+      note('Now-playing off — reverting to your GIF…');
+      doRevert(frames).then(r => { if (r && r.ok) note('GIF restored to the LCD'); }).catch(() => {});   // slow upload, fire-and-forget
+      return { ok: true, started: true };
     },
     // DEBUG "Refresh LCD" button: force-repaint the live song NOW, bypassing the dedupe / MIN_GAP /
     // backoff (an explicit user click). Still respects busy / mute / ownership for board safety.

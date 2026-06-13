@@ -122,7 +122,7 @@ function createServer({ control, root, port = 8123, watchdogMs = 12000 }) {
         if ('artFit' in body && control.setNpArtFit) { control.setNpArtFit(!!body.artFit); console.log(ts() + ' [api] /nowplaying artFit=' + !!body.artFit); }
         if (body.source && typeof body.source.id === 'string') { control.setNpSource(body.source.id, !!body.source.allow); console.log(ts() + ' [api] /nowplaying source ' + body.source.id + '=' + !!body.source.allow); }
         if (body.bar && control.setNpBar) { control.setNpBar(body.bar); console.log(ts() + ' [api] /nowplaying bar ' + JSON.stringify(body.bar)); }
-        if ('on' in body) { control.setNowPlaying(!!body.on); console.log(ts() + ' [api] /nowplaying ' + (body.on ? 'on' : 'off')); }
+        if ('on' in body) { const r = control.setNowPlaying(!!body.on); console.log(ts() + ' [api] /nowplaying ' + (body.on ? 'on' : 'off') + (r && r.revert ? ' revert=' + JSON.stringify(r.revert) : '')); return sendJson(res, 200, { ok: true, revert: r && r.revert }); }
         if (body.refresh && control.npRefresh) { const r = await control.npRefresh(); console.log(ts() + ' [api] /nowplaying refresh → ' + JSON.stringify(r)); return sendJson(res, 200, r); }
         if ('mask' in body && control.setOnboardMask) { const r = await control.setOnboardMask(!!body.mask); console.log(ts() + ' [api] /nowplaying mask=' + !!body.mask + ' → ' + JSON.stringify(r)); return sendJson(res, 200, r); }
         return sendJson(res, 200, { ok: true });
