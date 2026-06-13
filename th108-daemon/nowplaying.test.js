@@ -18,17 +18,18 @@ test('track change uploads only after 2.5s stability; skip-spam collapses to one
   assert.equal(NP.decide(st, null, 9000), null);
 });
 
-test('pause must hold >5s; flapping costs nothing; a held pause re-uploads the paused variant', () => {
+test('TRACK-CHANGE-ONLY: play/pause/resume of the SAME song never triggers another upload (brick safety)', () => {
   const st = NP.newState();
   NP.decide(st, { title: 'A', artist: 'x', status: 'playing' }, 0);
-  assert.ok(NP.decide(st, null, 2600), 'playing uploaded');
-  NP.decide(st, { title: 'A', artist: 'x', status: 'paused' }, 3000);
-  assert.equal(NP.decide(st, null, 6000), null);                      // only 3s paused
-  NP.decide(st, { title: 'A', artist: 'x', status: 'playing' }, 7000);   // flap back before 5s
-  assert.equal(NP.decide(st, null, 13000), null, 'playing already shown — nothing to do');
-  NP.decide(st, { title: 'A', artist: 'x', status: 'paused' }, 14000);
-  const act = NP.decide(st, null, 19200);                             // 5.2s held
-  assert.equal(act.upload.status, 'paused');
+  assert.ok(NP.decide(st, null, 2600), 'the new song uploaded once');
+  NP.decide(st, { title: 'A', artist: 'x', status: 'paused' }, 3000);   // pause — same title/artist
+  assert.equal(NP.decide(st, null, 9000), null, 'pause does NOT re-upload');
+  NP.decide(st, { title: 'A', artist: 'x', status: 'playing' }, 10000);  // resume
+  assert.equal(NP.decide(st, null, 16000), null, 'resume does NOT re-upload');
+  // only a genuinely new song writes again
+  NP.decide(st, { title: 'B', artist: 'x', status: 'playing' }, 17000);
+  assert.equal(NP.decide(st, null, 19000), null, 'still settling (2s < 2.5s)');
+  assert.equal(NP.decide(st, null, 19700).upload.title, 'B');           // new track → one upload after settle
 });
 
 test('backoff suppresses uploads until it expires, then the pending item goes out', () => {

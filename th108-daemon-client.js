@@ -167,7 +167,7 @@ window.TH108DaemonClient = (function () {
         // BRICK WARNING: every media change writes the LCD FLASH (cmd 0x50). On this board a flash
         // write occasionally wedges the firmware — a softbrick that kills typing until a factory
         // reset (happened repeatedly 2026-06-12/13). So enabling is an explicit, warned opt-in.
-        if (np.checked && !confirm('⚠ Enable now-playing on the LCD?\n\nEvery time a song plays, pauses, or changes, this writes to the keyboard\'s LCD flash. On this board a flash write can occasionally WEDGE the firmware — a softbrick that stops typing until you factory-reset on Epomaker\'s site.\n\nIt usually works, but it HAS bricked the keyboard before. Enable at your own risk?')) {
+        if (np.checked && !confirm('⚠ Enable now-playing on the LCD?\n\nThis writes the keyboard\'s LCD flash on each TRACK CHANGE (not on play/pause), waits 20s between writes, and caps at 30/hour — to minimize risk. But a flash write can still occasionally WEDGE the firmware (a softbrick that stops typing until you factory-reset on Epomaker\'s site).\n\nIt has bricked the keyboard before. Only enable if you can afford a possible factory reset. Continue?')) {
           np.checked = false; return;
         }
         try {

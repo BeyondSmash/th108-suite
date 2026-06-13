@@ -681,10 +681,11 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
   <!-- ========== LCD SCREEN ========== -->
   <div class="card s2" id="npCard" data-pages="lcd">
     <div class="cardbar"><span class="grip">⠿</span><h2>♪ Now Playing</h2><span class="aux" id="npState">daemon off</span></div>
-    <p class="hint" style="margin:4px 0 10px">The background daemon reads what's playing — Spotify, a browser, any
-       player — and paints it on the LCD with the album art. Works with this page closed. While enabled it overwrites
-       the GIF screen below; when music stops, the LCD keeps the last song. While <b>this page</b> holds the keyboard,
-       songs queue and upload the moment the daemon takes over.</p>
+    <p class="hint" style="margin:4px 0 10px">The background daemon shows the current song on the LCD with album art (Spotify
+       only by default). <b>⚠ Each update writes the LCD flash, which can occasionally softbrick this board.</b> To minimize that:
+       it updates <b>only on a track change</b> (never play/pause/resume), waits ≥20&nbsp;s between writes, and caps at 30/hour.
+       Still a real risk — leave it off if you can't afford a possible factory reset. While this page holds the keyboard, a new
+       song queues and lands when the daemon takes over.</p>
     <label class="sl" style="margin:0;cursor:pointer"><input type="checkbox" id="lcdNowPlaying" disabled> Show now-playing on the LCD</label>
     <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-top:10px">
       <label class="hint" style="margin:0;display:flex;align-items:center;gap:6px">Title <input type="color" id="npTitleColor" value="#ffffff" disabled title="now-playing title text color (re-paints the current song)"></label>

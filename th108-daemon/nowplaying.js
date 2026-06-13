@@ -12,11 +12,15 @@ const R = require('./nowplaying-render.js');
 const U = require('../th108-lcd-upload.js');
 
 const SETTLE_MS = 2500, PAUSE_HOLD_MS = 5000, FAIL_BACKOFF_MS = 30000;
-const MIN_GAP_MS = 5000;      // never two flash writes back-to-back (skip-chains wedged the board)
+const MIN_GAP_MS = 20000;     // SAFETY: 20s minimum between flash writes (each is a brick risk; was 5s)
 const EVENT_QUIET_MS = 1200;  // no page-permit uploads right after a track event — a skip makes the queued song stale
+const MAX_WRITES_PER_HOUR = 30;   // SAFETY cap: refuse to flash more than this in any rolling hour
 
 function newState() { return { pending: null, sinceMs: 0, lastShownKey: null, backoffUntil: 0 }; }
-function keyOf(info) { return info.title + '|' + info.artist + '|' + info.status; }
+// TRACK-CHANGE-ONLY (user request 2026-06-13, brick mitigation): the key is title+artist ONLY —
+// play/pause/resume do NOT change it, so they never trigger a flash write. Only a genuinely new
+// song writes the LCD. Fewer flash writes = far lower softbrick odds.
+function keyOf(info) { return info.title + '|' + info.artist; }
 
 // event = parsed sidecar object or null (timer tick). Returns {upload: info} or null.
 function decide(state, event, nowMs) {
@@ -46,6 +50,8 @@ function start(opts) {
   let lastUploadAt = 0, lastEventAt = 0;         // MIN_GAP / EVENT_QUIET gates
   let pausedSince = 0, reverted = false;         // pause-revert: after N s paused, the standard GIF returns to the LCD
   let lastBlockedSrc = null;                     // dedupe the "ignoring media from X" log line
+  let writeTimes = [];                           // upload timestamps for the rolling-hour cap
+  function hourlyCapHit() { const now = Date.now(); writeTimes = writeTimes.filter(t => now - t < 3600000); return writeTimes.length >= MAX_WRITES_PER_HOUR; }
 
   function spawnSidecar() {
     if (stopped) return;
@@ -80,6 +86,7 @@ function start(opts) {
   async function doUpload(act) {
     busy = true;
     lastUploadAt = Date.now();
+    writeTimes.push(Date.now());   // count every flash write toward the rolling-hour cap
     const t0 = Date.now();
     opts.pauseRender();   // a flash upload can't share the board with the 0x32 stream
     const scr = T.openScreen();
@@ -129,6 +136,7 @@ function start(opts) {
 
   async function maybeUpload() {
     if (Date.now() - lastUploadAt < MIN_GAP_MS) return;   // flash writes never back-to-back
+    if (hourlyCapHit()) { if (state.pending) { if (!gateLogged) { gateLogged = true; log('♪ hourly flash-write cap reached (' + MAX_WRITES_PER_HOUR + '/hr) — holding off to protect the board'); } } return; }
     const rf = !busy && !opts.isYielded() && !opts.isMute() && !(opts.isUnstable && opts.isUnstable()) && Date.now() >= state.backoffUntil && revertDue();
     if (rf) { await doRevert(rf); return; }
     const act = decide(state, null, Date.now());
@@ -152,6 +160,7 @@ function start(opts) {
   async function uploadNow() {
     if (busy) return { ok: false, reason: 'busy' };
     if (opts.isMute()) return { ok: false, reason: 'mute' };
+    if (hourlyCapHit()) return { ok: false, reason: 'hourly cap' };                                 // brick-protection write cap
     if (Date.now() - lastUploadAt < MIN_GAP_MS) return { ok: false, reason: 'min gap' };          // skip-chains wedged the board
     if (Date.now() - lastEventAt < EVENT_QUIET_MS) return { ok: false, reason: 'track changing' };// a fresh skip makes the queued song stale — wait for it to settle
     const rf = Date.now() >= state.backoffUntil && revertDue();
@@ -172,7 +181,7 @@ function start(opts) {
     // (advertising while gated made the page freeze its stream pointlessly every beat)
     ready() {
       const now = Date.now();
-      return (!!state.pending || !!revertDue()) && !busy && now - lastUploadAt >= MIN_GAP_MS &&
+      return (!!state.pending || !!revertDue()) && !busy && !hourlyCapHit() && now - lastUploadAt >= MIN_GAP_MS &&
              now - lastEventAt >= EVENT_QUIET_MS && now >= state.backoffUntil;
     },
     uploadNow,
