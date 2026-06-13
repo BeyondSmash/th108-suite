@@ -77,15 +77,17 @@
         card.querySelector('.ln').addEventListener('input',e=>{ L.name=e.target.value; });
         card.querySelector('.lt').addEventListener('change',e=>{ L.type=e.target.value; E.ensureSettings(L); buildLayerBody(card,L); });
         const lo=card.querySelector('.lo'), lon=card.querySelector('.lon');
-        const setOpa=v=>{ v=Math.max(0,Math.min(100,Math.round(v||0))); L.opacity=v/100; lo.value=v; lon.value=v; };
-        lo.addEventListener('input',e=>setOpa(+e.target.value));
-        lon.addEventListener('input',e=>setOpa(+e.target.value));
+        const setOpa=(v,reNum)=>{ v=Math.max(0,Math.min(100,Math.round(v||0))); L.opacity=v/100; lo.value=v; if(reNum) lon.value=v; };
+        lo.addEventListener('input',e=>setOpa(+e.target.value,true));
+        lon.addEventListener('input',e=>{ if(e.target.value!=='') setOpa(+e.target.value,false); });
+        lon.addEventListener('change',e=>setOpa(+e.target.value,true));
         card.querySelector('.lbl').addEventListener('change',e=>{ L.blend=e.target.value; });
-        // fps: range <-> number input, synced bidirectionally (min 1 max 60)
+        // fps: range <-> number input, synced bidirectionally (min 1 max 30)
         const lf=card.querySelector('.lf'), lfn=card.querySelector('.lfn');
-        const setFps=v=>{ v=Math.max(1,Math.min(30,Math.round(v||1))); L.fps=v; lf.value=v; lfn.value=v; };   // 30fps cap — board can't sustain faster full-frame streaming
-        lf.addEventListener('input',e=>setFps(+e.target.value));
-        lfn.addEventListener('input',e=>setFps(+e.target.value));
+        const setFps=(v,reNum)=>{ v=Math.max(1,Math.min(30,Math.round(v||1))); L.fps=v; lf.value=v; if(reNum) lfn.value=v; };   // 30fps cap — board can't sustain faster full-frame streaming
+        lf.addEventListener('input',e=>setFps(+e.target.value,true));
+        lfn.addEventListener('input',e=>{ if(e.target.value!=='') setFps(+e.target.value,false); });
+        lfn.addEventListener('change',e=>setFps(+e.target.value,true));
         // layer card drag-to-reorder (grip only)
         card.addEventListener('dragstart',e=>{
           if(!e.target.closest('.lgrip')){ e.preventDefault(); return; }   // only the grip starts a card drag
@@ -189,14 +191,18 @@
         const colC=body.querySelector('.s-colorC'); if(colC) colC.addEventListener('input',e=>s.colorC=e.target.value);
         body.querySelector('.s-isolate').addEventListener('change',e=>s.isolate=e.target.checked);
         const hd=body.querySelector('.s-hold'), hdn=body.querySelector('.s-holdN'), hv=body.querySelector('.s-holdV');
-        const setHold=v=>{ v=Math.max(0,Math.min(1000,Math.round(v||0))); s.hold=v; hd.value=v; hdn.value=v; hv.textContent='ms'; };
-        hd.addEventListener('input',e=>setHold(+e.target.value));
-        hdn.addEventListener('input',e=>setHold(+e.target.value));
+        // reNum=true rewrites the number field (slider drag / blur); on typing we update the model+slider
+        // but leave the field alone — clamping it mid-keystroke made "9" jump to the min (the Fade bug)
+        const setHold=(v,reNum)=>{ v=Math.max(0,Math.min(1000,Math.round(v||0))); s.hold=v; hd.value=v; if(reNum) hdn.value=v; hv.textContent='ms'; };
+        hd.addEventListener('input',e=>setHold(+e.target.value,true));
+        hdn.addEventListener('input',e=>{ if(e.target.value!=='') setHold(+e.target.value,false); });
+        hdn.addEventListener('change',e=>setHold(+e.target.value,true));
         hv.textContent='ms';
         const fd=body.querySelector('.s-fade'), fdn=body.querySelector('.s-fadeN'), fv=body.querySelector('.s-fadeV');
-        const setFade=v=>{ v=Math.max(80,Math.min(1500,Math.round(v||80))); s.fade=v; fd.value=v; fdn.value=v; fv.textContent='ms'; };
-        fd.addEventListener('input',e=>setFade(+e.target.value));
-        fdn.addEventListener('input',e=>setFade(+e.target.value));
+        const setFade=(v,reNum)=>{ v=Math.max(80,Math.min(1500,Math.round(v||80))); s.fade=v; fd.value=v; if(reNum) fdn.value=v; fv.textContent='ms'; };
+        fd.addEventListener('input',e=>setFade(+e.target.value,true));
+        fdn.addEventListener('input',e=>{ if(e.target.value!=='') setFade(+e.target.value,false); });
+        fdn.addEventListener('change',e=>setFade(+e.target.value,true));
         fv.textContent='ms';
       } else if(L.type==='gradient'){
         body.innerHTML='<div class="ctl">'+
@@ -227,9 +233,11 @@
           row('Color 2','<input type="color" class="s-color2" value="'+(pp.color2||'#ff00ff')+'"><span></span>')+
           row('Color 3','<input type="color" class="s-color3" value="'+(pp.color3||'#00ff00')+'"><span></span>')+
           row('Speed','<span class="srange" style="width:100%"><input type="range" class="s-speed" min="0" max="100" value="'+(pp.speed!=null?pp.speed:50)+'"><i class="tick" style="left:calc(7px + (100% - 14px)*0.5)"></i></span><span class="val s-speedV"></span>')+
-          row('Scale','<span class="srange" style="width:100%"><input type="range" class="s-scale" min="0" max="'+(fountain?50:100)+'" value="'+(pp.scale!=null?pp.scale:10)+'"><i class="tick" style="left:calc(7px + (100% - 14px)*'+(fountain?0.2:0.10)+')"></i></span><span style="display:flex;gap:4px;align-items:center"><input type="number" class="numin s-scaleN" min="0" max="'+(fountain?50:100)+'" value="'+(pp.scale!=null?pp.scale:10)+'"><span class="val">%</span></span>')+
+          row('Scale','<span class="srange" style="width:100%"><input type="range" class="s-scale" min="0" max="100" value="'+(pp.scale!=null?pp.scale:(fountain?50:10))+'"><i class="tick" style="left:calc(7px + (100% - 14px)*'+(fountain?0.5:0.10)+')"></i></span><span style="display:flex;gap:4px;align-items:center"><input type="number" class="numin s-scaleN" min="0" max="100" value="'+(pp.scale!=null?pp.scale:(fountain?50:10))+'"><span class="val">%</span></span>')+
           (fountain ? (
             row('Ring gap','<span class="srange" style="width:100%"><input type="range" class="s-gap" min="0" max="300" value="'+(pp.gap!=null?pp.gap:150)+'"><i class="tick" style="left:calc(7px + (100% - 14px)*0.5)"></i></span><span class="val s-gapV"></span>')+
+            row('Ring darkness','<span class="srange" style="width:100%"><input type="range" class="s-ringdark" min="0" max="100" value="'+(pp.ringDark!=null?pp.ringDark:70)+'"><i class="tick" style="left:calc(7px + (100% - 14px)*0.7)"></i></span><span class="val s-ringdarkV"></span>')+
+            row('Ring falloff','<span class="srange" style="width:100%"><input type="range" class="s-ringedge" min="0" max="100" value="'+(pp.ringEdge!=null?pp.ringEdge:17)+'"><i class="tick" style="left:calc(7px + (100% - 14px)*0.17)"></i></span><span class="val s-ringedgeV"></span>')+
             row('Center X','<span class="srange" style="width:100%"><input type="range" class="s-cx" min="-50" max="50" value="'+(pp.cox!=null?pp.cox:-8)+'"><i class="tick" style="left:calc(7px + (100% - 14px)*0.5)"></i></span><span class="val s-cxV"></span>')+
             row('Center Y','<span class="srange" style="width:100%"><input type="range" class="s-cy" min="-50" max="50" value="'+(pp.coy!=null?pp.coy:-10)+'"><i class="tick" style="left:calc(7px + (100% - 14px)*0.5)"></i></span><span class="val s-cyV"></span>')
           ) : '')+
@@ -244,10 +252,12 @@
         c('.s-color3').addEventListener('input',e=>pp.color3=e.target.value);
         const spv=c('.s-speedV'), upSp=()=>spv.textContent=(pp.speed!=null?pp.speed:50)+'%';
         c('.s-speed').addEventListener('input',e=>{ snap(e.target,50,4); pp.speed=+e.target.value; upSp(); }); upSp();
-        const scMax=(fountain?50:100), scsl=c('.s-scale'), scn=c('.s-scaleN');
-        scsl.addEventListener('input',e=>{ snap(e.target,10,4); const v=Math.max(0,Math.min(scMax,Math.round(+e.target.value||0))); pp.scale=v; scn.value=v; });
-        scn.addEventListener('input',e=>{ const v=Math.max(0,Math.min(scMax,Math.round(+e.target.value||0))); pp.scale=v; scsl.value=v; });   // type-in; don't reformat while typing
+        const scsl=c('.s-scale'), scn=c('.s-scaleN');
+        scsl.addEventListener('input',e=>{ snap(e.target,fountain?50:10,4); const v=Math.max(0,Math.min(100,Math.round(+e.target.value||0))); pp.scale=v; scn.value=v; });
+        scn.addEventListener('input',e=>{ const v=Math.max(0,Math.min(100,Math.round(+e.target.value||0))); pp.scale=v; scsl.value=v; });   // type-in; don't reformat while typing
         const gp=c('.s-gap'); if(gp){ const gpv=c('.s-gapV'), upGp=()=>{ gpv.textContent=(pp.gap!=null?pp.gap:150)+'%'; }; gp.addEventListener('input',e=>{ snap(e.target,150,8); pp.gap=+e.target.value; upGp(); }); upGp();
+          const rd=c('.s-ringdark'), rdv=c('.s-ringdarkV'), upRd=()=>{ rdv.textContent=(pp.ringDark!=null?pp.ringDark:70)+'%'; }; rd.addEventListener('input',e=>{ snap(e.target,70,4); pp.ringDark=+e.target.value; upRd(); }); upRd();
+          const re=c('.s-ringedge'), rev=c('.s-ringedgeV'), upRe=()=>{ rev.textContent=(pp.ringEdge!=null?pp.ringEdge:17)+'%'; }; re.addEventListener('input',e=>{ snap(e.target,17,4); pp.ringEdge=+e.target.value; upRe(); }); upRe();
           const sgn=v=>(v>0?'+':'')+v;
           const cxi=c('.s-cx'), cxv=c('.s-cxV'), upCx=()=>{ cxv.textContent=sgn(pp.cox!=null?pp.cox:-8); }; cxi.addEventListener('input',e=>{ snap(e.target,0,3); pp.cox=+e.target.value; upCx(); }); upCx();
           const cyi=c('.s-cy'), cyv=c('.s-cyV'), upCy=()=>{ cyv.textContent=sgn(pp.coy!=null?pp.coy:-10); }; cyi.addEventListener('input',e=>{ snap(e.target,0,3); pp.coy=+e.target.value; upCy(); }); upCy(); }

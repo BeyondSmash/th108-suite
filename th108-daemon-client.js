@@ -164,9 +164,15 @@ window.TH108DaemonClient = (function () {
         } catch (_) { log('USB-restart toggle failed', 'err'); refresh(); }
       });
       if (np) np.addEventListener('change', async () => {
+        // BRICK WARNING: every media change writes the LCD FLASH (cmd 0x50). On this board a flash
+        // write occasionally wedges the firmware — a softbrick that kills typing until a factory
+        // reset (happened repeatedly 2026-06-12/13). So enabling is an explicit, warned opt-in.
+        if (np.checked && !confirm('⚠ Enable now-playing on the LCD?\n\nEvery time a song plays, pauses, or changes, this writes to the keyboard\'s LCD flash. On this board a flash write can occasionally WEDGE the firmware — a softbrick that stops typing until you factory-reset on Epomaker\'s site.\n\nIt usually works, but it HAS bricked the keyboard before. Enable at your own risk?')) {
+          np.checked = false; return;
+        }
         try {
           await fetch('/nowplaying', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ on: np.checked }) });
-          log('♪ now-playing on the LCD ' + (np.checked ? 'enabled — the daemon shows the current song (overwrites the LCD GIF while on)' : 'disabled — the LCD keeps its last image'), 'ok');
+          log('♪ now-playing on the LCD ' + (np.checked ? 'enabled — ⚠ writes the LCD flash on each song change (small brick risk)' : 'disabled — no more LCD flash writes (safe)'), np.checked ? 'err' : 'ok');
         } catch (_) { log('now-playing toggle failed', 'err'); refresh(); }
       });
       const rv = document.getElementById('npRevert'), rvl = document.getElementById('npRevertLbl'),

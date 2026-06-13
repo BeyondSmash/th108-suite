@@ -306,7 +306,9 @@
       } else if(pat==='color-fountain'){
         const cx=0.5+(pp.cox!=null?pp.cox:-8)/100, cy=0.5-(pp.coy!=null?pp.coy:-10)/100;   // centre = signed offset
         const dx=(nx-cx)*BOARDW, dy=(ny-cy)*BOARDH, dist=Math.sqrt(dx*dx+dy*dy)/13.6;   // PHYSICAL units → TRUE circular rings
-        const sp2=0.2+spd*0.6, w=0.02+scl*0.20, depth=0.45+scl*0.55, edge=0.05;
+        const sp2=0.2+spd*0.6, w=0.02+scl*0.20;
+        const depth=(pp.ringDark!=null?pp.ringDark:70)/100;          // ring darkness slider: subtle → blackout (was tied to Scale)
+        const edge=(pp.ringEdge!=null?pp.ringEdge:17)/100*0.3;       // ring falloff slider: harder → softer contrast edge (was fixed 0.05)
         const gapFrac=0.12+((pp.gap!=null?pp.gap:150)/100)*0.6, spacing=2*w+edge+gapFrac, nr=Math.max(1,Math.min(10,Math.ceil(1/spacing))); let ring=0;   // spacing = ring width + empty gap
         for(let i=0;i<nr;i++){ const r=((t*sp2)+i*spacing)%1;
           const env=Math.min(1,r/0.12)*Math.min(1,(1-r)/0.12);   // plateau: deep through its travel, soft only at birth/death

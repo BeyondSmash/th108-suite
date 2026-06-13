@@ -202,7 +202,7 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
   .srange input[type=range]::-moz-range-thumb{ width:14px; height:14px; border:none; border-radius:50%; background:var(--text); cursor:pointer; }
   .srange input[type=range].snapped::-webkit-slider-thumb{ background:var(--accent); }
   .srange input[type=range].snapped::-moz-range-thumb{ background:var(--accent); }
-  .srange .tick{ position:absolute; top:1px; bottom:1px; width:2px; background:var(--blue); transform:translateX(-50%); pointer-events:none; border-radius:1px; }   /* marks the snap/default value */
+  .srange .tick{ position:absolute; top:50%; height:9px; width:2px; background:var(--blue); transform:translate(-50%,-50%); pointer-events:none; border-radius:1px; }   /* marks the snap/default value — short, centered on the track */
 
   /* layer cards — bento sub-grid inside the compositor card (order still = stacking order, row-major) */
   #layerCards{ display:grid; grid-template-columns:repeat(auto-fill,minmax(440px,1fr)); gap:12px; align-items:start; }
