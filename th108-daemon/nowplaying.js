@@ -285,6 +285,19 @@ function start(opts) {
       if (!lastInfo) return;
       state.pending = lastInfo; state.sinceMs = 0; state.lastShownKey = null;
     },
+    // turning now-playing OFF → put the user's standard GIF back on the LCD (one-shot, forced — not the
+    // auto pause-revert). Needs the daemon to own a healthy board, same as any flash write.
+    async revertNow() {
+      if (opts.isMute && opts.isMute()) return { ok: false, reason: 'board muted' };
+      if (opts.isYielded && opts.isYielded()) return { ok: false, reason: 'page holds the device' };
+      if (busy) return { ok: false, reason: 'an upload is running' };
+      const frames = opts.getStandardGif && opts.getStandardGif();
+      if (!frames || !frames.length) { log('♪ now-playing off — no standard GIF mirrored yet, LCD keeps the last song'); return { ok: false, reason: 'no standard GIF' }; }
+      state.lastShownKey = null;   // so re-enabling later re-pushes the song
+      const r = await doRevert(frames);
+      if (r && r.ok) note('Now-playing off — restored your GIF to the LCD');
+      return r || { ok: false };
+    },
     // DEBUG "Refresh LCD" button: force-repaint the live song NOW, bypassing the dedupe / MIN_GAP /
     // backoff (an explicit user click). Still respects busy / mute / ownership for board safety.
     async forceUpload() {

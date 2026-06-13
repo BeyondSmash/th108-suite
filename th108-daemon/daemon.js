@@ -373,7 +373,12 @@ const control = {
                       npSources: sourceList(),
                       npBar: settings.npBar, npBarColor: settings.npBarColor, npBarBright: settings.npBarBright,
                       npFlash: settings.npFlash, npFlashColor: settings.npFlashColor, npBarIdleSec: settings.npBarIdleSec }; },
-  setNowPlaying(on) { settings.nowPlaying = !!on; saveSettings(); syncNowPlaying(); },
+  setNowPlaying(on) {
+    const was = settings.nowPlaying;
+    settings.nowPlaying = !!on; saveSettings();
+    if (was && !on && npHandle) npHandle.revertNow().catch(() => {});   // turning OFF → restore the user's standard GIF to the LCD (fire-and-forget; self-gates on board ownership)
+    syncNowPlaying();
+  },
   // page-permit upload path: the heartbeat advertises a pending song; the page pauses its own
   // 0x32 stream and POSTs /npgo, so songs land WITHOUT a device handoff (lighting holds, not off)
   npWants() { return !!(npHandle && paused && !muteLogged && npHandle.ready()); },
