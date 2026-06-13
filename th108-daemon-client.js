@@ -142,7 +142,6 @@ window.TH108DaemonClient = (function () {
               rv.disabled = !knows || off;
               if (rvReset) rvReset.disabled = !knows || off;
               rvNever.disabled = !knows;
-              if (rvTick) rvTick.style.left = 'calc(7px + (100% - 14px)*' + (((+rv.value) - 1) / 14).toFixed(4) + ')';   // tick at the CURRENT value (default 3)
               if (rvl) rvl.textContent = off ? 'never' : (+rv.value + 's') + (s.npHasGif === false ? ' · upload a GIF once' : '');
             }
             // recognized media sources (whitelist) — Spotify allowed by default, others off
@@ -179,7 +178,7 @@ window.TH108DaemonClient = (function () {
           log('♪ pause-revert: ' + (sec ? 'after ' + sec + 's paused, the LCD returns to your GIF' : 'never (the song stays on the LCD)'), 'ok');
         } catch (_) { log('pause-revert change failed', 'err'); }
       };
-      const liveRevertLbl = () => { if (rvl) rvl.textContent = (rvNever && rvNever.checked) ? 'never' : (+rv.value + 's'); if (rvTick) rvTick.style.left = 'calc(7px + (100% - 14px)*' + (((+rv.value) - 1) / 14).toFixed(4) + ')'; };
+      const liveRevertLbl = () => { if (rvl) rvl.textContent = (rvNever && rvNever.checked) ? 'never' : (+rv.value + 's'); };   // tick stays at the static 3s default marker
       if (rv) {
         rv.addEventListener('input', liveRevertLbl);
         rv.addEventListener('change', () => { if (!rvNever.checked) postRevert(+rv.value); });

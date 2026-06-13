@@ -691,9 +691,9 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
       <label class="hint" style="margin:0;display:flex;align-items:center;gap:6px">Artist <input type="color" id="npArtistColor" value="#ffd98c" disabled title="now-playing artist text color (re-paints the current song)"></label>
     </div>
     <div style="display:flex;align-items:center;gap:8px;margin-top:10px;flex-wrap:wrap">
-      <span class="hint" style="margin:0">Back to the GIF after</span>
+      <span class="hint" style="margin:0">Return to GIF when paused for</span>
       <span class="srange" id="npRevertWrap" title="when media stays PAUSED this long, the LCD returns to your last GIF Screen upload">
-        <div class="tick" id="npRevertTick"></div>
+        <div class="tick" id="npRevertTick" style="left:calc(7px + (100% - 14px)*0.1429)"></div>
         <input type="range" id="npRevert" min="1" max="15" step="1" value="3" style="width:120px" disabled>
       </span>
       <span class="hint" id="npRevertLbl" style="margin:0;min-width:34px;font-weight:700">3s</span>
