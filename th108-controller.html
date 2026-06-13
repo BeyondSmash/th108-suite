@@ -415,7 +415,7 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
 
   <!-- ========== HOTKEYS ========== -->
   <div class="card s6" id="kbBoardCard" data-pages="hotkeys">
-    <div class="cardbar"><span class="grip">⠿</span><h2>Pick a Key</h2><span class="aux" style="display:flex;flex-direction:column;align-items:flex-end;gap:1px"><span id="kbSelInfo">no key selected</span><span id="kbSelSub" style="color:var(--warn)" hidden></span></span></div>
+    <div class="cardbar"><span class="grip">⠿</span><h2>Pick a Key</h2><button id="kbRefresh" title="re-apply your saved key bindings to the keyboard — use after a factory reset put the keys back to default" style="margin:0;padding:5px 11px">↻ Refresh</button><span class="aux" style="display:flex;flex-direction:column;align-items:flex-end;gap:1px;margin-left:auto"><span id="kbSelInfo">no key selected</span><span id="kbSelSub" style="color:var(--warn)" hidden></span></span></div>
     <div id="kbBoard"></div>
   </div>
 
@@ -690,12 +690,17 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
       <label class="hint" style="margin:0;display:flex;align-items:center;gap:6px">Title <input type="color" id="npTitleColor" value="#ffffff" disabled title="now-playing title text color (re-paints the current song)"></label>
       <label class="hint" style="margin:0;display:flex;align-items:center;gap:6px">Artist <input type="color" id="npArtistColor" value="#ffd98c" disabled title="now-playing artist text color (re-paints the current song)"></label>
     </div>
-    <div style="display:flex;align-items:center;gap:8px;margin-top:10px">
+    <div style="display:flex;align-items:center;gap:8px;margin-top:10px;flex-wrap:wrap">
       <span class="hint" style="margin:0">Back to the GIF after</span>
-      <input type="range" id="npRevert" min="0" max="600" step="15" value="0" style="width:110px" disabled
-             title="when media stays PAUSED this long, the LCD returns to your last GIF Screen upload (0 = never)">
-      <span class="hint" id="npRevertLbl" style="margin:0;min-width:64px">never</span>
+      <span class="srange" id="npRevertWrap" title="when media stays PAUSED this long, the LCD returns to your last GIF Screen upload">
+        <div class="tick" id="npRevertTick"></div>
+        <input type="range" id="npRevert" min="1" max="15" step="1" value="3" style="width:120px" disabled>
+      </span>
+      <span class="hint" id="npRevertLbl" style="margin:0;min-width:34px;font-weight:700">3s</span>
+      <button id="npRevertReset" title="reset to 3 seconds" style="margin:0;padding:4px 9px">↺</button>
+      <label class="sl" style="margin:0;cursor:pointer"><input type="checkbox" id="npRevertNever"> Never</label>
     </div>
+    <div id="npSources" style="margin-top:12px"></div>
     <p class="hint" id="npTrack" style="margin:10px 0 0;font-weight:600"></p>
   </div>
 
@@ -1504,6 +1509,8 @@ const BINDER=TH108Binder.create({
   pauseLighting: ()=>window.__lcdHost.pauseLighting(),
   resumeLighting: ()=>window.__lcdHost.resumeLighting()
 });
+// Pick-a-Key "Refresh": re-apply saved bindings to the board (e.g. after a factory reset)
+document.getElementById('kbRefresh').addEventListener('click', ()=>{ BINDER.reapplyAll(); });
 // mirror the LCD color-correction to the daemon so now-playing art matches GIF uploads
 function pushNpCal(){
   try{

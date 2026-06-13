@@ -522,6 +522,20 @@
     }
     $('bdToggleAll').addEventListener('click', toggleAll);
 
+    // ---- re-apply every saved binding to the keyboard (the "Refresh" button on the Pick-a-Key card).
+    // After a factory reset the board is at defaults but th108_key_mods still holds your bindings —
+    // this writes them all back in one keymap pass. Skips parked (off) keys and legacy byte-less marks.
+    async function reapplyAll() {
+      const mods = loadMods();
+      const writes = [];
+      for (const [k, v] of Object.entries(mods)) if (v.bytes && !v.off) writes.push({ idx: +k, bytes: v.bytes });
+      if (!writes.length) { log('no saved key bindings to refresh (assign some on the Hotkeys tab first)', 'dim'); return false; }
+      const ok = await keymapRMW(km => writes.forEach(w => setEntry(km, w.idx, w.bytes)),
+        'Re-applying ' + writes.length + ' saved binding' + (writes.length === 1 ? '' : 's') + '…');
+      if (ok) { writes.forEach(w => { const e = mods[w.idx]; if (board && board.mark && e) board.mark(w.idx, e.label); }); log('✓ re-applied ' + writes.length + ' saved key binding' + (writes.length === 1 ? '' : 's') + ' to the keyboard', 'ok'); }
+      return ok;
+    }
+
     // ---- Advanced Keys card: CB / MT / TGL / SOCD (entry types 0x07/0x09/0x0a/0x0b) ----
     const AK_TYPES = [
       { key: 'cb',   name: 'Combination', desc: 'One key presses a whole shortcut — e.g. M acts as L-Alt + R-Ctrl + C.' },
@@ -737,7 +751,7 @@
     renderTabs();
     refresh();
 
-    return { setConnected, exitSpace, revertKey, get busy() { return busy; } };
+    return { setConnected, exitSpace, revertKey, reapplyAll, get busy() { return busy; } };
   }
 
   return { create, PALETTE, SPACE_FUNCS, DEFAULT_HID, SPACE_VAL, SPACE_HID, FN_VAL,

@@ -68,6 +68,37 @@ window.TH108DaemonClient = (function () {
       const np = document.getElementById('lcdNowPlaying');   // lives on the LCD tab, rides the same /status poll
       if (!st || !auto || !quit) return;
       let alive = false;
+
+      // friendly label for a source AUMID (Spotify.exe / SpotifyAB.SpotifyMusic… / Chrome / MSEdge / Brave…)
+      function srcLabel(id) {
+        if (/spotify/i.test(id)) return 'Spotify';
+        if (/chrome/i.test(id)) return 'Chrome';
+        if (/brave/i.test(id)) return 'Brave';
+        if (/edge|msedge/i.test(id)) return 'Edge';
+        if (/firefox/i.test(id)) return 'Firefox';
+        if (/vlc/i.test(id)) return 'VLC';
+        const m = String(id).split(/[!\\._]/).filter(Boolean); return m[0] || id || 'unknown';
+      }
+      // render the recognized-sources whitelist. SAFETY: only checked sources may drive the LCD.
+      function renderSources(host, sources) {
+        const sig = JSON.stringify(sources);
+        if (host.dataset.sig === sig) return;   // no churn while unchanged (don't clobber a click)
+        host.dataset.sig = sig;
+        host.textContent = '';
+        const h = document.createElement('p'); h.className = 'hint'; h.style.margin = '0 0 4px';
+        h.textContent = sources.length ? 'Allowed media sources (only Spotify by default — uncheck to block X/browser tabs):' : 'No media sources seen yet — play something.';
+        host.appendChild(h);
+        sources.forEach(src => {
+          const l = document.createElement('label'); l.className = 'sl'; l.style.cssText = 'margin:0;cursor:pointer;display:flex;align-items:center;gap:6px';
+          const c = document.createElement('input'); c.type = 'checkbox'; c.checked = !!src.allowed;
+          c.addEventListener('change', async () => {
+            try { await fetch('/nowplaying', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ source: { id: src.id, allow: c.checked } }) });
+              log('♪ media source ' + (c.checked ? 'allowed' : 'blocked') + ': ' + srcLabel(src.id), 'ok'); } catch (_) { log('source toggle failed', 'err'); }
+          });
+          const t = document.createElement('span'); t.textContent = srcLabel(src.id); t.title = src.id;
+          l.appendChild(c); l.appendChild(t); host.appendChild(l);
+        });
+      }
       async function refresh() {
         try {
           const r = await fetch('/status', { cache: 'no-store' }); if (!r.ok) throw 0;
@@ -96,16 +127,27 @@ window.TH108DaemonClient = (function () {
               const el = document.getElementById(id);
               if (el) { el.disabled = !(key in s); if (key in s && document.activeElement !== el) el.value = s[key]; }
             }
-            const rv = document.getElementById('npRevert'), rvl = document.getElementById('npRevertLbl');
-            if (rv) {
-              rv.disabled = !('npRevertSec' in s);
-              if ('npRevertSec' in s && document.activeElement !== rv) rv.value = s.npRevertSec;
-              if (rvl) {
-                const v = +rv.value;
-                rvl.textContent = (v ? (v < 60 ? v + 's' : Math.floor(v / 60) + 'm' + (v % 60 ? ' ' + (v % 60) + 's' : '')) : 'never') +
-                                  (s.npHasGif === false && v ? ' · upload a GIF once' : '');
+            // pause-revert: slider 1-15s + a "Never" checkbox. revertSec 0 = Never.
+            const rv = document.getElementById('npRevert'), rvl = document.getElementById('npRevertLbl'),
+                  rvNever = document.getElementById('npRevertNever'), rvReset = document.getElementById('npRevertReset'),
+                  rvTick = document.getElementById('npRevertTick');
+            if (rv && rvNever) {
+              const knows = 'npRevertSec' in s;
+              if (knows && document.activeElement !== rv && document.activeElement !== rvNever) {
+                const sec = s.npRevertSec | 0;
+                rvNever.checked = (sec === 0);
+                if (sec >= 1) rv.value = Math.min(15, sec);   // keep slider showing the active value; 0 leaves it at its last position
               }
+              const off = rvNever.checked;
+              rv.disabled = !knows || off;
+              if (rvReset) rvReset.disabled = !knows || off;
+              rvNever.disabled = !knows;
+              if (rvTick) rvTick.style.left = 'calc(7px + (100% - 14px)*' + (((+rv.value) - 1) / 14).toFixed(4) + ')';   // tick at the CURRENT value (default 3)
+              if (rvl) rvl.textContent = off ? 'never' : (+rv.value + 's') + (s.npHasGif === false ? ' · upload a GIF once' : '');
             }
+            // recognized media sources (whitelist) — Spotify allowed by default, others off
+            const srcHost = document.getElementById('npSources');
+            if (srcHost && Array.isArray(s.npSources)) renderSources(srcHost, s.npSources);
           }
         } catch (_) { alive = false; st.textContent = 'daemon: not running — start it with setup.cmd (lighting then survives closing this tab)'; auto.disabled = true; quit.disabled = true; if (usb) usb.disabled = true; if (np) np.disabled = true; }
       }
@@ -128,16 +170,25 @@ window.TH108DaemonClient = (function () {
           log('♪ now-playing on the LCD ' + (np.checked ? 'enabled — the daemon shows the current song (overwrites the LCD GIF while on)' : 'disabled — the LCD keeps its last image'), 'ok');
         } catch (_) { log('now-playing toggle failed', 'err'); refresh(); }
       });
-      const rv = document.getElementById('npRevert'), rvl = document.getElementById('npRevertLbl');
+      const rv = document.getElementById('npRevert'), rvl = document.getElementById('npRevertLbl'),
+            rvNever = document.getElementById('npRevertNever'), rvReset = document.getElementById('npRevertReset'),
+            rvTick = document.getElementById('npRevertTick');
+      const postRevert = async (sec) => {
+        try {
+          await fetch('/nowplaying', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ revertSec: sec }) });
+          log('♪ pause-revert: ' + (sec ? 'after ' + sec + 's paused, the LCD returns to your GIF' : 'never (the song stays on the LCD)'), 'ok');
+        } catch (_) { log('pause-revert change failed', 'err'); }
+      };
+      const liveRevertLbl = () => { if (rvl) rvl.textContent = (rvNever && rvNever.checked) ? 'never' : (+rv.value + 's'); if (rvTick) rvTick.style.left = 'calc(7px + (100% - 14px)*' + (((+rv.value) - 1) / 14).toFixed(4) + ')'; };
       if (rv) {
-        rv.addEventListener('input', () => { const v = +rv.value; if (rvl) rvl.textContent = v ? (v < 60 ? v + 's' : Math.floor(v / 60) + 'm' + (v % 60 ? ' ' + (v % 60) + 's' : '')) : 'never'; });
-        rv.addEventListener('change', async () => {
-          try {
-            await fetch('/nowplaying', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ revertSec: +rv.value }) });
-            log('♪ pause-revert: ' + (+rv.value ? 'after ' + rv.value + 's paused, the LCD returns to your GIF' : 'never (the song stays)'), 'ok');
-          } catch (_) { log('pause-revert change failed', 'err'); }
-        });
+        rv.addEventListener('input', liveRevertLbl);
+        rv.addEventListener('change', () => { if (!rvNever.checked) postRevert(+rv.value); });
       }
+      if (rvNever) rvNever.addEventListener('change', () => {
+        rv.disabled = rvNever.checked; if (rvReset) rvReset.disabled = rvNever.checked;
+        liveRevertLbl(); postRevert(rvNever.checked ? 0 : +rv.value);
+      });
+      if (rvReset) rvReset.addEventListener('click', () => { rv.value = 3; liveRevertLbl(); if (!rvNever.checked) postRevert(3); });
       for (const [id, key] of [['npTitleColor', 'titleColor'], ['npArtistColor', 'artistColor']]) {
         const el = document.getElementById(id);
         if (el) el.addEventListener('change', async () => {   // 'change' = picker closed — one flash re-paint per pick, not per drag

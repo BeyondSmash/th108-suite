@@ -89,6 +89,7 @@ function createServer({ control, root, port = 8123, watchdogMs = 12000 }) {
         if (body.titleColor || body.artistColor) { control.setNpColors(body.titleColor, body.artistColor); console.log(ts() + ' [api] /nowplaying colors ' + (body.titleColor || '-') + '/' + (body.artistColor || '-')); }
         if (body.cal) { control.setNpCal(body.cal); console.log(ts() + ' [api] /nowplaying cal updated'); }
         if ('revertSec' in body) { control.setNpRevertSec(body.revertSec); console.log(ts() + ' [api] /nowplaying revertSec=' + body.revertSec); }
+        if (body.source && typeof body.source.id === 'string') { control.setNpSource(body.source.id, !!body.source.allow); console.log(ts() + ' [api] /nowplaying source ' + body.source.id + '=' + !!body.source.allow); }
         if ('on' in body) { control.setNowPlaying(!!body.on); console.log(ts() + ' [api] /nowplaying ' + (body.on ? 'on' : 'off')); }
         return sendJson(res, 200, { ok: true });
       }

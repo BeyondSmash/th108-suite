@@ -39,3 +39,13 @@ test('backoff suppresses uploads until it expires, then the pending item goes ou
   const act = NP.decide(st, null, 10001);
   assert.equal(act.upload.title, 'A');
 });
+
+test('isSpotifySource: Spotify variants pass, browsers/others blocked (the safety default)', () => {
+  assert.equal(NP.isSpotifySource('Spotify.exe'), true);
+  assert.equal(NP.isSpotifySource('SpotifyAB.SpotifyMusic_zpdnekdrzrea0!Spotify'), true);
+  assert.equal(NP.isSpotifySource('Chrome'), false);
+  assert.equal(NP.isSpotifySource('MSEdge'), false);
+  assert.equal(NP.isSpotifySource('Brave.Brave'), false);
+  assert.equal(NP.isSpotifySource(''), false);
+  assert.equal(NP.isSpotifySource(undefined), false);
+});

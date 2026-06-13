@@ -61,7 +61,7 @@ let unpausedAt = 0;      // when the daemon last took ownership — flash upload
 // ----- daemon settings (separate from config.json, which is the page's layer array verbatim) -----
 const SETTINGS_PATH = path.join(__dirname, 'settings.json');
 function loadSettings() {
-  const DEF = { usbReset: true, nowPlaying: false, npTitle: '#ffffff', npArtist: '#ffd98c', lightsOn: true, brightness: 100, npRevertSec: 0 };   // npRevertSec 0 = never revert
+  const DEF = { usbReset: true, nowPlaying: false, npTitle: '#ffffff', npArtist: '#ffd98c', lightsOn: true, brightness: 100, npRevertSec: 0, npAllow: {} };   // npRevertSec 0 = never revert; npAllow = per-source override (absent → Spotify-only default)
   try { return Object.assign({}, DEF, JSON.parse(fs.readFileSync(SETTINGS_PATH, 'utf8'))); }
   catch { return Object.assign({}, DEF); }   // usbReset default ON — the escalation fails gracefully (one log line) if the task isn't registered
 }
@@ -227,6 +227,20 @@ function loadStandardGif() {
   } catch { return null; }
 }
 
+// ----- media-source whitelist (SAFETY: X/Twitter video tabs spamming LCD flash writes softbricked
+// the board 2026-06-12). Default = Spotify only; the user can allow others per-source in the UI. -----
+const seenSources = new Set();          // every source AUMID observed this run (for the UI list)
+function isSourceAllowed(aumid) {
+  aumid = aumid || '';
+  if (Object.prototype.hasOwnProperty.call(settings.npAllow, aumid)) return !!settings.npAllow[aumid];
+  return NP.isSpotifySource(aumid);     // default: only Spotify (desktop "Spotify.exe" / store "SpotifyAB.SpotifyMusic…")
+}
+function noteSource(aumid) { if (aumid && !seenSources.has(aumid)) { seenSources.add(aumid); console.log(ts() + ' ♪ media source seen: ' + aumid + (isSourceAllowed(aumid) ? ' (allowed)' : ' (blocked)')); } }
+function sourceList() {                  // seen ∪ configured, each with its current allow state
+  const ids = new Set(seenSources); Object.keys(settings.npAllow).forEach(k => ids.add(k));
+  return [...ids].map(id => ({ id, allowed: isSourceAllowed(id) }));
+}
+
 // ----- now-playing on the LCD (nowplaying.js: sidecar + state machine + flash upload) -----
 const NP = require('./nowplaying.js');
 let npHandle = null;
@@ -244,6 +258,7 @@ function syncNowPlaying() {
       getCal: () => settings.npCal || null,   // page-pushed LCD calibration (null → the baked default profile)
       getRevertSec: () => settings.npRevertSec || 0,
       getStandardGif: loadStandardGif,        // the page's last GIF Screen upload, mirrored here
+      isSourceAllowed, noteSource,            // SAFETY whitelist: only Spotify drives the LCD by default
       log,
     });
   } else if (!settings.nowPlaying && npHandle) { npHandle.stop(); npHandle = null; }
@@ -277,7 +292,8 @@ const control = {
                       npTrack: npHandle ? npHandle.current() : null, npQueued: npHandle ? npHandle.queued() : false,
                       npTitle: settings.npTitle, npArtist: settings.npArtist,
                       lightsOn: settings.lightsOn, brightness: settings.brightness,
-                      npRevertSec: settings.npRevertSec, npHasGif: fs.existsSync(GIF_PATH) }; },
+                      npRevertSec: settings.npRevertSec, npHasGif: fs.existsSync(GIF_PATH),
+                      npSources: sourceList() }; },
   setNowPlaying(on) { settings.nowPlaying = !!on; saveSettings(); syncNowPlaying(); },
   // page-permit upload path: the heartbeat advertises a pending song; the page pauses its own
   // 0x32 stream and POSTs /npgo, so songs land WITHOUT a device handoff (lighting holds, not off)
@@ -306,6 +322,7 @@ const control = {
     if (npHandle) npHandle.refresh();
   },
   setNpRevertSec(sec) { settings.npRevertSec = Math.max(0, Math.min(3600, Math.round(+sec || 0))); saveSettings(); },
+  setNpSource(id, allow) { if (typeof id === 'string' && id) { settings.npAllow[id] = !!allow; saveSettings(); } },
   saveLcdGif(obj) { try { return saveStandardGif(obj); } catch { return false; } },
   setNpCal(cal) {   // the page's LCD color-correction sliders, mirrored so the art matches GIF uploads
     if (!cal || typeof cal !== 'object') return;

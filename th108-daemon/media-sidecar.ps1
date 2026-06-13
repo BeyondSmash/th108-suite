@@ -37,7 +37,11 @@ while ($true) {
   if (-not $info.Title) { continue }
   $play = $s.GetPlaybackInfo().PlaybackStatus
   $status = if ("$play" -eq 'Playing') { 'playing' } else { 'paused' }
-  $key = $info.Title + '|' + $info.Artist + '|' + $status
+  # the source app id (AUMID) — Spotify.exe / SpotifyAB.SpotifyMusic..., browsers report Chrome /
+  # MSEdge / Brave etc. The daemon whitelists by this so X/Twitter video can't drive the LCD.
+  $source = ''
+  try { $source = "$($s.SourceAppUserModelId)" } catch { $source = '' }
+  $key = $source + '|' + $info.Title + '|' + $info.Artist + '|' + $status
   if ($key -eq $last) { continue }
   $last = $key
   $thumb = ''
@@ -54,6 +58,6 @@ while ($true) {
       }
     } catch { $thumb = '' }
   }
-  $obj = @{ title = "$($info.Title)"; artist = "$($info.Artist)"; status = $status; thumb = $thumb }
+  $obj = @{ title = "$($info.Title)"; artist = "$($info.Artist)"; status = $status; thumb = $thumb; source = $source }
   Write-Output (ConvertTo-Json $obj -Compress)
 }

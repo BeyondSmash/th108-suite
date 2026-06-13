@@ -45,6 +45,7 @@ function start(opts) {
   let lastInfo = null;                           // full last event incl. thumb — re-rendered when the user changes text colors
   let lastUploadAt = 0, lastEventAt = 0;         // MIN_GAP / EVENT_QUIET gates
   let pausedSince = 0, reverted = false;         // pause-revert: after N s paused, the standard GIF returns to the LCD
+  let lastBlockedSrc = null;                     // dedupe the "ignoring media from X" log line
 
   function spawnSidecar() {
     if (stopped) return;
@@ -57,7 +58,15 @@ function start(opts) {
         const line = carry.slice(0, i).trim(); carry = carry.slice(i + 1);
         if (!line) continue;
         try {
-          const ev = JSON.parse(line); lastInfo = ev; lastEventAt = Date.now();
+          const ev = JSON.parse(line);
+          if (ev.source && opts.noteSource) opts.noteSource(ev.source);   // remember every source for the UI list
+          // SAFETY-CRITICAL whitelist: only allowed sources (default = Spotify) may drive the LCD.
+          // X/Twitter video tabs spam media changes; each one is a flash write = a softbrick risk.
+          if (opts.isSourceAllowed && !opts.isSourceAllowed(ev.source || '')) {
+            if (lastBlockedSrc !== (ev.source || '')) { lastBlockedSrc = ev.source || ''; log('♪ ignoring media from "' + (ev.source || 'unknown') + '" (not whitelisted)'); }
+            continue;
+          }
+          lastInfo = ev; lastEventAt = Date.now();
           if (ev.status === 'paused') { if (!pausedSince) pausedSince = Date.now(); }
           else { pausedSince = 0; reverted = false; }   // playing again → the song repaints via the normal flow
           decide(state, ev, Date.now());
@@ -180,4 +189,8 @@ function start(opts) {
   };
 }
 
-module.exports = { newState, decide, start, SETTLE_MS, PAUSE_HOLD_MS };
+// the Spotify-only default for the source whitelist (matches desktop "Spotify.exe" + store
+// "SpotifyAB.SpotifyMusic…"; browsers report Chrome/MSEdge/Brave and are blocked by default)
+function isSpotifySource(aumid) { return /spotify/i.test(aumid || ''); }
+
+module.exports = { newState, decide, start, isSpotifySource, SETTLE_MS, PAUSE_HOLD_MS };
