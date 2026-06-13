@@ -30,13 +30,29 @@ while ($true) {
   Start-Sleep -Milliseconds 1000
   $mgr = Await ([Windows.Media.Control.GlobalSystemMediaTransportControlsSessionManager]::RequestAsync()) ($mgrType)
   if (-not $mgr) { continue }
-  $s = $mgr.GetCurrentSession()
+  # Pick the BEST session, not just the current one: prefer a Spotify session (the default
+  # whitelist) over a browser tab, and a playing one over paused. This way Spotify keeps showing
+  # even while X/Twitter is the foreground media session (which the daemon would block anyway).
+  $s = $null; $status = ''
+  try {
+    $sessions = $mgr.GetSessions()
+    $bestScore = -1
+    foreach ($sess in $sessions) {
+      try {
+        $st = if ("$($sess.GetPlaybackInfo().PlaybackStatus)" -eq 'Playing') { 'playing' } else { 'paused' }
+        $src = "$($sess.SourceAppUserModelId)"
+        $score = 0
+        if ($src -match 'spotify') { $score += 2 }
+        if ($st -eq 'playing') { $score += 1 }
+        if ($score -gt $bestScore) { $bestScore = $score; $s = $sess; $status = $st }
+      } catch { }
+    }
+  } catch { }
+  if (-not $s) { $s = $mgr.GetCurrentSession(); if ($s) { $status = if ("$($s.GetPlaybackInfo().PlaybackStatus)" -eq 'Playing') { 'playing' } else { 'paused' } } }
   if (-not $s) { continue }
   $info = Await ($s.TryGetMediaPropertiesAsync()) ($propType)
   if (-not $info) { continue }
   if (-not $info.Title) { continue }
-  $play = $s.GetPlaybackInfo().PlaybackStatus
-  $status = if ("$play" -eq 'Playing') { 'playing' } else { 'paused' }
   # the source app id (AUMID) — Spotify.exe / SpotifyAB.SpotifyMusic..., browsers report Chrome /
   # MSEdge / Brave etc. The daemon whitelists by this so X/Twitter video can't drive the LCD.
   $source = ''
