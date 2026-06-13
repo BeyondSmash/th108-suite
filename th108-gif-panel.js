@@ -323,7 +323,7 @@
     document.getElementById('gifBarColor').addEventListener('input',refresh);
     document.getElementById('gifContrast').addEventListener('input',e=>{ snap(e.target,100,8); if(gifFrames[gifIdx]) drawKb(gifFrames[gifIdx].rgb); });
     document.getElementById('gifGamma').addEventListener('input',e=>{ snap(e.target,180,8); if(gifFrames[gifIdx]) drawKb(gifFrames[gifIdx].rgb); });
-    document.getElementById('gifRot').addEventListener('input',e=>{ snapMul(e.target,45,6); refresh(); });   // rotate → resample + redraw, snaps every 45°
+    document.getElementById('gifRot').addEventListener('input',e=>{ snapMul(e.target,45,6); const v=document.getElementById('gifRotV'); if(v) v.textContent=(+e.target.value)+'°'; refresh(); });   // rotate → resample + redraw, snaps every 45°; re-sync the label AFTER the snap (enhanceSlider's display listener ran first, on the un-snapped value)
     (function(){ const sr=document.getElementById('gifRotRange'); for(let d=45;d<360;d+=45){ const i=document.createElement('i'); i.className='tick'; i.style.left='calc(7px + (100% - 14px)*'+(d/360)+')'; sr.appendChild(i); } })();   // ticks at 45..315 only — 0/360 are the redundant endpoints (user request)
     // load by URL (CORS-permitting) and from the clipboard (paste button + Ctrl+V anywhere on the page)
     async function loadFromUrl(url){

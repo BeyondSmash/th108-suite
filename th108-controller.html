@@ -315,12 +315,12 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
   <div id="lightCtl">
     <button id="lightBtn" class="on" title="master lighting switch — affects whoever is driving (this page or the daemon)">On</button>
     <svg class="ic" viewBox="0 0 24 24" aria-hidden="true" style="opacity:.7"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg>
-    <span class="srange" id="briWrap" title="global brightness — 50% = normal, left dims toward off, right boosts brighter; snaps at 25 / 50 / 75">
+    <span class="srange" id="briWrap" title="global brightness — 100% = full colour, drag left to dim (preserves colour); snaps at 25 / 50 / 75">
       <!-- tick left = thumb-CENTER position: 7px edge inset + (track - thumb) * v/100 (min=0) -->
       <div class="tick" data-v="25" style="left:calc(7px + (100% - 14px)*0.25)"></div>
       <div class="tick" data-v="50" style="left:calc(7px + (100% - 14px)*0.50)"></div>
       <div class="tick" data-v="75" style="left:calc(7px + (100% - 14px)*0.75)"></div>
-      <input type="range" id="briSlider" min="0" max="100" value="50">
+      <input type="range" id="briSlider" min="0" max="100" value="100">
     </span>
   </div>
   <nav class="tabs" id="tabs">
@@ -1229,12 +1229,12 @@ restoreLayout();
 
 // ===== master lighting switch + global brightness (header; daemon mirrors via /lighting) =====
 (function(){
-  const LIGHTS_KEY='th108_lightsOn', BRI_KEY='th108_bri2';   // bri2: new scale (0-100, 50=normal 1.0x, 100=2x boost); old th108_bri ignored
-  const briToFactor=v=>Math.max(0,Math.min(100,v))/50;       // slider value → brightness multiplier (50 → 1.0)
+  const LIGHTS_KEY='th108_lightsOn', BRI_KEY='th108_bri';   // 0-100% of full; dim-only (a boost would clip channels and shift hue)
+  const briToFactor=v=>Math.max(0,Math.min(100,v))/100;    // slider value → 0..1 multiplier (100 = full colour, no distortion)
   const btn=document.getElementById('lightBtn'), sl=document.getElementById('briSlider');
   if(!btn||!sl) return;
   const lightsOn=()=>localStorage.getItem(LIGHTS_KEY)!=='0';
-  const briVal=()=>{ const r=localStorage.getItem(BRI_KEY); const v=+r; return (r!=null&&v>=0&&v<=100)?v:50; };   // default 50 = normal
+  const briVal=()=>{ const r=localStorage.getItem(BRI_KEY); const v=+r; return (r!=null&&v>=0&&v<=100)?v:100; };   // default 100 = full
   function sync(){ const on=lightsOn(); btn.textContent=on?'On':'Off'; btn.classList.toggle('on',on); btn.classList.toggle('off',!on); }
   // LEADING throttle (~150ms): the daemon repaints live while the slider drags — the old
   // trailing debounce only applied brightness on mouse release

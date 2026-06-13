@@ -61,7 +61,7 @@ let unpausedAt = 0;      // when the daemon last took ownership — flash upload
 // ----- daemon settings (separate from config.json, which is the page's layer array verbatim) -----
 const SETTINGS_PATH = path.join(__dirname, 'settings.json');
 function loadSettings() {
-  const DEF = { usbReset: true, nowPlaying: false, npTitle: '#ffffff', npArtist: '#ffd98c', lightsOn: true, brightness: 50, npRevertSec: 0, npAllow: {} };   // npRevertSec 0 = never revert; npAllow = per-source override (absent → Spotify-only default)
+  const DEF = { usbReset: true, nowPlaying: false, npTitle: '#ffffff', npArtist: '#ffd98c', lightsOn: true, brightness: 100, npRevertSec: 0, npAllow: {} };   // npRevertSec 0 = never revert; npAllow = per-source override (absent → Spotify-only default)
   try { return Object.assign({}, DEF, JSON.parse(fs.readFileSync(SETTINGS_PATH, 'utf8'))); }
   catch { return Object.assign({}, DEF); }   // usbReset default ON — the escalation fails gracefully (one log line) if the task isn't registered
 }
@@ -72,7 +72,7 @@ function saveSettings() { try { fs.writeFileSync(SETTINGS_PATH, JSON.stringify(s
 function rebuildState() {
   const cfg = loadConfig();
   state = cfg ? E.createState(cfg) : null;
-  if (state) state.bri = Math.max(0, Math.min(100, settings.brightness != null ? settings.brightness : 50)) / 50;   // global brightness parity with the page (shared engine reads state.bri)
+  if (state) state.bri = Math.max(0, Math.min(100, settings.brightness != null ? settings.brightness : 100)) / 100;   // global brightness parity with the page (shared engine reads state.bri)
 }
 rebuildState();
 
@@ -311,7 +311,7 @@ const control = {
     }
     if (o && o.brightness != null) {
       settings.brightness = Math.max(0, Math.min(100, Math.round(o.brightness)));
-      if (state) { state.bri = settings.brightness / 50; state.lastFlat = null; }   // live, and bust the dedupe so it applies now
+      if (state) { state.bri = settings.brightness / 100; state.lastFlat = null; }   // live, and bust the dedupe so it applies now
     }
     saveSettings();
   },
