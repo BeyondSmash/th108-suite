@@ -257,7 +257,8 @@
         scn.addEventListener('input',e=>{ const v=Math.max(0,Math.min(100,Math.round(+e.target.value||0))); pp.scale=v; scsl.value=v; });   // type-in; don't reformat while typing
         const gp=c('.s-gap'); if(gp){ const gpv=c('.s-gapV'), upGp=()=>{ gpv.textContent=(pp.gap!=null?pp.gap:150)+'%'; }; gp.addEventListener('input',e=>{ snap(e.target,150,8); pp.gap=+e.target.value; upGp(); }); upGp();
           const rd=c('.s-ringdark'), rdv=c('.s-ringdarkV'), upRd=()=>{ rdv.textContent=(pp.ringDark!=null?pp.ringDark:70)+'%'; }; rd.addEventListener('input',e=>{ snap(e.target,70,4); pp.ringDark=+e.target.value; upRd(); }); upRd();
-          const re=c('.s-ringedge'), rev=c('.s-ringedgeV'), upRe=()=>{ rev.textContent=(pp.ringEdge!=null?pp.ringEdge:17)+'%'; }; re.addEventListener('input',e=>{ snap(e.target,17,4); pp.ringEdge=+e.target.value; upRe(); }); upRe();
+          const edgeWord=v=>v<34?'hard':v<67?'medium':'soft';   // describe the edge, not a % (hard = left, soft = right)
+          const re=c('.s-ringedge'), rev=c('.s-ringedgeV'), upRe=()=>{ rev.textContent=edgeWord(pp.ringEdge!=null?pp.ringEdge:17); }; re.addEventListener('input',e=>{ snap(e.target,17,4); pp.ringEdge=+e.target.value; upRe(); }); upRe();
           const sgn=v=>(v>0?'+':'')+v;
           const cxi=c('.s-cx'), cxv=c('.s-cxV'), upCx=()=>{ cxv.textContent=sgn(pp.cox!=null?pp.cox:-8); }; cxi.addEventListener('input',e=>{ snap(e.target,0,3); pp.cox=+e.target.value; upCx(); }); upCx();
           const cyi=c('.s-cy'), cyv=c('.s-cyV'), upCy=()=>{ cyv.textContent=sgn(pp.coy!=null?pp.coy:-10); }; cyi.addEventListener('input',e=>{ snap(e.target,0,3); pp.coy=+e.target.value; upCy(); }); upCy(); }
