@@ -822,6 +822,16 @@ if(navigator.locks && navigator.locks.request){
 const HID=TH108Hid.create({
   log, setStatus, ledCount:INDICES.length,
   canDrive:()=>window.__isDriver,   // gate every AUTO-bind path; manual Connect bypasses (explicit user intent)
+  // DAEMON-DEFERENCE gate for the wake/replug auto-rebind: only grab if no daemon is driving, OR this
+  // page was genuinely driving (running / _wasRunning) and is reclaiming its own session. Ping fresh —
+  // presence can change across a sleep/wake. Stops the first wake 'connect' event from silently yanking
+  // the board from a daemon the user never asked to displace (the #1 recurring villain). Manual Connect
+  // bypasses this entirely (explicit handover).
+  shouldAutoBind:async()=>{ await DC.ping(); return !DC.present || running || _wasRunning; },
+  onDeferred:()=>{   // auto-rebind declined to grab — make sure we aren't secretly holding a yield/heartbeat, so the daemon keeps driving
+    if(DC.beating){ DC.heartbeatStop(); DC.resume(); }
+    log('keyboard reconnected — left to the background daemon (it keeps driving; click Connect Keyboard to take over from this page)','dim');
+  },
   // board unresponsive / fatal send error. On a physical unplug the failing WRITE lands before the disconnect
   // event, so this stop() would clear `running` and the disconnect handler would see false — capture the
   // resume intent HERE, or unplug/replug never auto-resumes (sleep/wake worked only because no write fails asleep).
