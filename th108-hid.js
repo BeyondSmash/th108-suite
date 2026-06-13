@@ -45,7 +45,14 @@
           onWedged = opts.onWedged || noop,         // handle-rebind retries exhausted on a mute board — last-resort recovery hook (daemon USB restart)
           canDrive = opts.canDrive || (() => true); // SINGLE-DRIVER GATE: only the tab holding the cross-tab lock may auto-bind (WebHID opens are shared on Windows → two tabs streaming 0x32 interleave and wedge the board → onboard rainbow). Manual connect() bypasses this.
     let device = null, reportId = 0, packLen = 64;
-    let _sendStalls = 0, _ackWaiter = null, _inRpts = 0;
+    let _sendStalls = 0, _ackWaiter = null, _inRpts = 0, _lastWriteAt = 0;
+    // minimum gap between writes — the board's real per-chunk drain rate. The board sends UNSOLICITED
+    // 0x55 broadcasts (chatty, esp. while an animated onboard effect runs after a factory reset) that
+    // FALSELY satisfy the ACK gate; without this floor the 8 chunks/frame fire in a sub-ms burst that
+    // overruns the board's buffer → it goes silent ~0.8s in (the recurring "board not keeping up").
+    // 3ms/chunk = ~330 chunks/s, comfortably above 30fps×8=240, but far below a runaway false-ACK burst.
+    const MIN_WRITE_GAP_MS = 3;
+    const _sleep = ms => new Promise(r => setTimeout(r, ms));
 
     function buildPkt(cmd, len, off, chunk, aux, last) {
       const s = new Uint8Array(packLen);
@@ -85,11 +92,14 @@
       const room = packLen - 8, n = Math.max(1, Math.ceil(flat.length / room));
       for (let c = 0; c < n; c++) {
         const off = c * room, chunk = flat.slice(off, off + room);
+        const since = (typeof performance !== 'undefined' ? performance.now() : Date.now()) - _lastWriteAt;
+        if (since < MIN_WRITE_GAP_MS) await _sleep(MIN_WRITE_GAP_MS - since);   // pacing floor: never burst faster than the board can drain (false-ACK guard)
         const ack = waitAck(800);                         // arm the ACK waiter BEFORE the write so we can't miss it
         let timer; const wto = new Promise((_, rej) => { timer = setTimeout(() => rej(new Error('__wstall__')), 800); });
         try {
           await Promise.race([device.sendReport(reportId, buildPkt(CMD, chunk.length, off, chunk, aux, c === n - 1)), wto]);
           clearTimeout(timer);
+          _lastWriteAt = (typeof performance !== 'undefined' ? performance.now() : Date.now());
         } catch (e) {
           clearTimeout(timer);
           if (e && e.message === '__wstall__') { noteStall(); return false; }    // the write itself hung — drop frame, keep loop alive
