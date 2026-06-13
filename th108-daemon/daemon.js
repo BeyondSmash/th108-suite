@@ -10,6 +10,7 @@ const path = require('path');
 const { execFile } = require('child_process');
 const { uIOhook, UiohookKey } = require('uiohook-napi');
 const E = require('../th108-engine.js');
+const OBP = require('../th108-onboard.js');   // packAllled() — build the cmd-0x23 onboard-effect payload (for the "mask onboard flash to black" toggle)
 const T = require('./hid-transport.js');
 const U = require('./usb-reset.js');
 const { KEYMAP, INDICES, UIOHOOK_TO_CODE } = require('./th108-map.js');
@@ -72,7 +73,7 @@ let framesSent = 0, framesDeduped = 0;   // HID 0x32 stream stats for /metrics (
 const SETTINGS_PATH = path.join(__dirname, 'settings.json');
 function loadSettings() {
   const DEF = { usbReset: true, nowPlaying: false, npTitle: '#ffffff', npArtist: '#ffd98c', lightsOn: true, brightness: 100, npRevertSec: 0, npAllow: {}, npArtFit: false,
-                npBar: false, npBarColor: '#11ff00', npBarBright: 60, npFlash: true, npFlashColor: '#ffd000', npBarIdleSec: 3 };   // npBarIdleSec = fade the bar out after this long with nothing playing   // npRevertSec 0 = never revert; npAllow = per-source override (absent → Spotify-only default); npBar = the 1-0 song-progress light-bar (lighting-only, no flash writes), npFlash = yellow track-change blip
+                npBar: false, npBarColor: '#11ff00', npBarBright: 60, npFlash: true, npFlashColor: '#ffd000', npBarIdleSec: 3, npOnboardMask: false };   // npOnboardMask = set the keyboard's onboard effect to BLACK so the per-update flash is a dark blink, not rainbow   // npBarIdleSec = fade the bar out after this long with nothing playing   // npRevertSec 0 = never revert; npAllow = per-source override (absent → Spotify-only default); npBar = the 1-0 song-progress light-bar (lighting-only, no flash writes), npFlash = yellow track-change blip
   try { return Object.assign({}, DEF, JSON.parse(fs.readFileSync(SETTINGS_PATH, 'utf8'))); }
   catch { return Object.assign({}, DEF); }   // usbReset default ON — the escalation fails gracefully (one log line) if the task isn't registered
 }
@@ -117,6 +118,26 @@ uIOhook.start();
 function closeDevice() {
   if (device) { try { device.close(); } catch {} }
   device = null; send = null;
+}
+
+// Write a single onboard-effect packet (cmd 0x23, 16-byte allled) on the control interface, then cycle
+// the handle (a live 0x23 leaves the board ACKing-but-IGNORING 0x32 paint). Pauses the 0x32 stream while
+// it writes — same protocol-safety stance as an LCD flash. Returns false if we don't own a healthy board.
+async function sendOnboard(allled) {
+  if (!device || paused || muteLogged) return false;
+  const prevBusy = lcdBusy; lcdBusy = true;                       // hold the 0x32 stream off while we write 0x23
+  const t0 = Date.now(); while (sendingFrame && Date.now() - t0 < 1000) await new Promise(r => setTimeout(r, 20));
+  try {
+    const pkt = Buffer.alloc(64);
+    pkt[0] = 0xAA; pkt[1] = 0x23; pkt[2] = 16; pkt[6] = 1;        // header: marker, cmd, len, last=1 (offset 0)
+    for (let i = 0; i < 16; i++) pkt[8 + i] = allled[i];
+    device.write([0x00, ...pkt]);                                // leading reportId 0 (Windows)
+    await new Promise(r => setTimeout(r, 350));                  // let the 0x23 ACK land (mirrors the page)
+  } catch { lcdBusy = prevBusy; return false; }
+  closeDevice(); nextOpenAt = 0;                                 // cure: fresh handle so 0x32 paints again
+  if (state) state.lastFlat = null;                             // force a repaint on the reopened handle
+  lcdBusy = prevBusy;
+  return true;
 }
 
 // Try to (re)open the control interface when we have none and aren't paused.
@@ -372,7 +393,8 @@ const control = {
                       npRevertSec: settings.npRevertSec, npHasGif: fs.existsSync(GIF_PATH),
                       npSources: sourceList(),
                       npBar: settings.npBar, npBarColor: settings.npBarColor, npBarBright: settings.npBarBright,
-                      npFlash: settings.npFlash, npFlashColor: settings.npFlashColor, npBarIdleSec: settings.npBarIdleSec }; },
+                      npFlash: settings.npFlash, npFlashColor: settings.npFlashColor, npBarIdleSec: settings.npBarIdleSec,
+                      npOnboardMask: settings.npOnboardMask }; },
   setNowPlaying(on) {
     const was = settings.nowPlaying;
     settings.nowPlaying = !!on; saveSettings();
@@ -423,6 +445,20 @@ const control = {
     if (state) state.lastFlat = null;   // repaint now
   },
   npRefresh() { return npHandle ? npHandle.forceUpload() : Promise.resolve({ ok: false, reason: 'now-playing off' }); },   // DEBUG "Refresh LCD" — force-repaint the live song now
+  // "Mask onboard flash to black": write the keyboard's onboard EFFECT (persistent cmd 0x23) to a solid
+  // black so when the board reclaims to onboard during an LCD flash it shows a dark blink, not rainbow.
+  // Mirrors th108-onboard.js's proven page sequence (write 0x23 → settle → cycle the handle, since a live
+  // 0x23 leaves the board ACKing-but-IGNORING 0x32 paint). Best-effort; needs the daemon to own the board.
+  async setOnboardMask(on) {
+    settings.npOnboardMask = !!on; saveSettings();
+    const allled = on
+      ? OBP.packAllled({ effect: 1, primary: [0, 0, 0], secondary: [0, 0, 0], colorful: false, brightness: 1, speed: 1 })       // Static Bright + black = off
+      : OBP.packAllled({ effect: 11, primary: [255, 0, 0], secondary: [0, 0, 255], colorful: true, brightness: 4, speed: 3 });  // restore a visible flowing-rainbow default
+    const ok = await sendOnboard(allled);
+    log(ok ? ('♪ onboard mask ' + (on ? 'ON — onboard set to BLACK (LCD flash now a dark blink)' : 'OFF — onboard restored to a colorful default'))
+           : '♪ onboard mask could not apply — the daemon must be driving a healthy board (not yielded/muted)');
+    return { ok, reason: ok ? undefined : 'daemon not driving the board' };
+  },
   setNpSource(id, allow) { if (typeof id === 'string' && id) { settings.npAllow[id] = !!allow; saveSettings(); } },
   saveLcdGif(obj) { try { return saveStandardGif(obj); } catch { return false; } },
   setNpCal(cal) {   // the page's LCD color-correction sliders, mirrored so the art matches GIF uploads

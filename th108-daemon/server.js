@@ -124,6 +124,7 @@ function createServer({ control, root, port = 8123, watchdogMs = 12000 }) {
         if (body.bar && control.setNpBar) { control.setNpBar(body.bar); console.log(ts() + ' [api] /nowplaying bar ' + JSON.stringify(body.bar)); }
         if ('on' in body) { control.setNowPlaying(!!body.on); console.log(ts() + ' [api] /nowplaying ' + (body.on ? 'on' : 'off')); }
         if (body.refresh && control.npRefresh) { const r = await control.npRefresh(); console.log(ts() + ' [api] /nowplaying refresh → ' + JSON.stringify(r)); return sendJson(res, 200, r); }
+        if ('mask' in body && control.setOnboardMask) { const r = await control.setOnboardMask(!!body.mask); console.log(ts() + ' [api] /nowplaying mask=' + !!body.mask + ' → ' + JSON.stringify(r)); return sendJson(res, 200, r); }
         return sendJson(res, 200, { ok: true });
       }
       if (req.method === 'POST' && u === '/usbfix') {   // the page's last-resort wedge recovery (cooldown enforced by control.usbFix)

@@ -187,6 +187,9 @@ window.TH108DaemonClient = (function () {
             // Refresh-LCD debug button — only meaningful when LCD now-playing is on
             const rfb = document.getElementById('npRefreshLcd');
             if (rfb) rfb.disabled = !('nowPlaying' in s) || !s.nowPlaying;
+            // onboard-mask toggle
+            const maskEl = document.getElementById('npOnboardMask');
+            if (maskEl) { const k = 'npOnboardMask' in s; maskEl.disabled = !k; if (k && document.activeElement !== maskEl) maskEl.checked = !!s.npOnboardMask; }
             // live-status feed — media transitions + LCD-sync outcomes (newest first)
             const feedWrap = document.getElementById('npFeedWrap'), feed = document.getElementById('npFeed');
             if (feed && feedWrap) {
@@ -296,6 +299,16 @@ window.TH108DaemonClient = (function () {
           log(r && r.ok ? '↻ LCD refreshed — repainted the current song' : '↻ LCD refresh skipped: ' + ((r && r.reason) || 'unknown'), r && r.ok ? 'ok' : 'err');
         } catch (_) { log('↻ LCD refresh failed', 'err'); }
         setTimeout(() => { npRefreshBtn.disabled = false; }, 1200);
+      });
+      const npMaskEl = document.getElementById('npOnboardMask');
+      if (npMaskEl) npMaskEl.addEventListener('change', async () => {
+        npMaskEl.disabled = true;
+        try {
+          const r = await (await fetch('/nowplaying', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ mask: npMaskEl.checked }) })).json();
+          if (r && r.ok) log('♪ onboard mask ' + (npMaskEl.checked ? 'on — onboard set to black; the update-flash is a dark blink now (A/B vs off)' : 'off — onboard restored to a colorful default'), 'ok');
+          else { log('♪ onboard mask didn\'t apply: ' + ((r && r.reason) || 'the daemon must be driving the board'), 'err'); npMaskEl.checked = !npMaskEl.checked; }
+        } catch (_) { log('onboard mask change failed', 'err'); npMaskEl.checked = !npMaskEl.checked; }
+        setTimeout(() => { npMaskEl.disabled = false; }, 1500);   // it cycles the keyboard once — brief settle
       });
       quit.addEventListener('click', async () => {
         if (!confirm('Quit the background daemon?\n\nAlways-on lighting and reactive-anywhere stop until setup.cmd or your next login starts it again. This page keeps working as-is.')) return;
