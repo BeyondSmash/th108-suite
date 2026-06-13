@@ -357,7 +357,13 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
 
   <!-- ========== HOME ========== -->
   <div class="card s3" id="bioCard" data-pages="home">
-    <div class="cardbar"><span class="grip">⠿</span></div>
+    <div class="cardbar"><span class="grip">⠿</span>
+      <span id="setupPathWrap" onpointerdown="event.stopPropagation()" style="display:none;margin-left:auto;align-items:center;gap:7px;font-size:11.5px;color:var(--muted)">
+        <span style="opacity:.7">setup.cmd</span>
+        <code id="setupPathTxt" title="full path to setup.cmd — run it (or your TH108 Lighting desktop shortcut) to start the daemon" style="font-family:ui-monospace,SFMono-Regular,Menlo,monospace;background:var(--inset);padding:2px 7px;border-radius:6px;user-select:all;cursor:text;max-width:340px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></code>
+        <button id="setupPathCopy" style="margin:0;padding:2px 9px;font-size:11.5px" title="copy the full path to the clipboard">⧉ Copy</button>
+      </span>
+    </div>
     <div class="avatar">⌨️</div>
     <p style="margin:0;font-size:15px">I'm <span class="bigtype">th108</span>, the host-side lighting &amp; LCD suite
        for the <b>Epomaker TH108 V2 PRO</b>. Four composited lighting layers, keypress-reactive in every app,
