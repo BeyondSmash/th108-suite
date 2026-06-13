@@ -42,7 +42,8 @@
           onBound = opts.onBound || noop, onConnected = opts.onConnected || noop,
           onDisconnected = opts.onDisconnected || noop, onReconnected = opts.onReconnected || noop,
           onGrantLost = opts.onGrantLost || noop,   // replug revoked the WebHID grant — only a user click can get it back
-          onWedged = opts.onWedged || noop;         // handle-rebind retries exhausted on a mute board — last-resort recovery hook (daemon USB restart)
+          onWedged = opts.onWedged || noop,         // handle-rebind retries exhausted on a mute board — last-resort recovery hook (daemon USB restart)
+          canDrive = opts.canDrive || (() => true); // SINGLE-DRIVER GATE: only the tab holding the cross-tab lock may auto-bind (WebHID opens are shared on Windows → two tabs streaming 0x32 interleave and wedge the board → onboard rainbow). Manual connect() bypasses this.
     let device = null, reportId = 0, packLen = 64;
     let _sendStalls = 0, _ackWaiter = null, _inRpts = 0;
 
@@ -144,6 +145,7 @@
       } catch (e) { setStatus('connect failed: ' + e.message, 'err'); log('connect error: ' + e.message, 'err'); }
     }
     async function autoReconnect() {   // on page load: if the keyboard was granted in a past session, reconnect silently (keeps the convenience, without Cancel-means-connect)
+      if (!canDrive()) { setStatus('another th108 tab is driving the keyboard — close it, or use that tab', 'dim'); return; }   // never auto-grab from another tab
       try { if (!('hid' in navigator)) return; const known = await navigator.hid.getDevices(); if (known && known.length) { await beforeAutoReconnect(); const ok = await bindDevice(known, true); if (ok) onConnected(); } } catch (_) { }
     }
 
@@ -158,6 +160,7 @@
       stopRebindPoll(); _pollN = 0;
       _pollT = setInterval(async () => {
         if (device) { stopRebindPoll(); return; }
+        if (!canDrive()) { stopRebindPoll(); return; }   // another tab owns the driver lock — don't auto-rebind
         let known = []; try { known = await navigator.hid.getDevices(); } catch (_) { }
         const w = findWritable(known);
         if (w && w.usagePage === 0xFF68 && w.usage === 0x61) {
@@ -187,6 +190,7 @@
       navigator.hid.addEventListener('connect', async e => {
         if (device) return;                                     // already bound
         if (e.device && e.device.vendorId !== VENDOR) return;   // not our keyboard
+        if (!canDrive()) return;                                // another tab owns the driver lock — let it handle the replug
         try { await beforeConnect(); } catch (_) { }
         const known = await navigator.hid.getDevices();
         // a replug fires one connect event per HID interface as each re-enumerates — don't bind until the

@@ -754,8 +754,24 @@ function log(m,c=''){ const d=document.createElement('div'); if(c)d.className=c;
 function setStatus(s,c='',tip=''){ const e=document.getElementById('status'); e.textContent=s; e.className='aux '+(c||'dim'); e.title=tip; }   // tip = hover tooltip for the jargon behind a friendly status
 
 let _wasRunning=false;   // layers were running when the keyboard went away (sleep/unplug/wedge) → resume on re-bind; cleared only by a deliberate Stop
+
+// ===== single-tab driver lock: ONLY ONE controller tab may drive the keyboard. WebHID device
+// opens are SHARED on Windows, so two tabs both streaming 0x32 interleave and wedge the board into
+// onboard rainbow. The picker-free policy grant made every tab auto-connect, so this is essential.
+// Web Locks API: the first tab holds 'th108-driver' forever (until it closes); other tabs queue and
+// only become the driver when the holder closes (automatic handoff). No Web Locks → behave as before.
+window.__isDriver = !(navigator.locks && navigator.locks.request);
+if(navigator.locks && navigator.locks.request){
+  navigator.locks.request('th108-driver', { mode:'exclusive' }, ()=> new Promise(()=>{
+    window.__isDriver = true;
+    log('this tab now drives the keyboard','dim');
+    if(window.__onBecomeDriver) window.__onBecomeDriver();   // boot may have already passed — (re)try the silent reconnect
+  }));   // promise never resolves → lock held until this tab closes
+}
+
 const HID=TH108Hid.create({
   log, setStatus, ledCount:INDICES.length,
+  canDrive:()=>window.__isDriver,   // gate every AUTO-bind path; manual Connect bypasses (explicit user intent)
   // board unresponsive / fatal send error. On a physical unplug the failing WRITE lands before the disconnect
   // event, so this stop() would clear `running` and the disconnect handler would see false — capture the
   // resume intent HERE, or unplug/replug never auto-resumes (sleep/wake worked only because no write fails asleep).
@@ -946,7 +962,9 @@ const GIF=TH108GifPanel.create({
   clearObActive: ()=>{ obActive=false; }                      // GIF playback overrides any firmware effect
 });
 
-document.getElementById('connect').addEventListener('click',async()=>{ await HID.connect();
+// another tab holds the driver lock → block manual Connect too (it would fight over WebHID)
+function guardDriver(){ if(window.__isDriver) return true; log('another th108 tab is already driving the keyboard — close that tab first, then Connect here (it hands over automatically)','err'); setStatus('another tab is driving — close it to connect here','err'); return false; }
+document.getElementById('connect').addEventListener('click',async()=>{ if(!guardDriver()) return; await HID.connect();
   if(!HID.device && DC.beating){ DC.heartbeatStop(); DC.resume(); } });   // cancelled/failed pick after yielding → hand the device back
 
 // header Connect: visible on every tab while this page doesn't hold the keyboard (the daemon may
@@ -961,7 +979,7 @@ function hdrConnSync(){
     }
   } else { b.classList.remove('flash'); b.hidden=false; }
 }
-document.getElementById('connectHdr').addEventListener('click',async()=>{ await HID.connect();
+document.getElementById('connectHdr').addEventListener('click',async()=>{ if(!guardDriver()) return; await HID.connect();
   if(!HID.device && DC.beating){ DC.heartbeatStop(); DC.resume(); } });   // same flow/handback as the Home Connect button
 hdrConnSync();   // boot: nothing bound yet → the button shows
 document.getElementById('start').addEventListener('click',start);
@@ -1356,11 +1374,18 @@ document.getElementById('dmnStart').addEventListener('click',async()=>{
   try{ await navigator.clipboard.writeText(cmd); }catch(_){ }
   alert('Browsers can\'t launch programs, so this can\'t be one click.\n\nTo start the daemon:\n• run setup.cmd in the project folder (installs auto-start too), or\n• run th108-daemon\\start-hidden.vbs (command copied to your clipboard), or\n• just log in again — it auto-starts.\n\nThe Online tag updates within ~30 s once it\'s up.');
 });
-DC.ping().then(async()=>{
+// silent boot reconnect — gated on the driver lock (HID.autoReconnect checks canDrive). If this
+// tab isn't the driver yet, it retries when it BECOMES the driver (the holder tab closed).
+async function bootReconnect(){
+  await DC.ping();
   dmnTagSync();
   if(DC.present) return;   // daemon is driving — merely OPENING this page must never steal the device from it (Connect is the explicit handover)
   await HID.autoReconnect();
-  if(!HID.device && DC.beating){ DC.heartbeatStop(); DC.resume(); } });   // no daemon: silently re-bind a previously-granted device; failed re-bind → hand back
+  if(!HID.device && DC.beating){ DC.heartbeatStop(); DC.resume(); }
+}
+window.__onBecomeDriver = ()=>{ if(!HID.device) bootReconnect(); };   // became sole driver (other tab closed) → take over
+bootReconnect();
+// (sleep/wake + unplug/replug re-bind lives in th108-hid.js; this page's side is the onDisconnected/onReconnected callbacks up top)
 // (sleep/wake + unplug/replug re-bind lives in th108-hid.js; this page's side is the onDisconnected/onReconnected callbacks up top)
 
 // ===== Onboard (firmware) effects — extracted to th108-onboard.js (single 0x23 16-byte allledPack, persists on the keyboard) =====
