@@ -22,6 +22,13 @@ function newState() { return { pending: null, sinceMs: 0, lastShownKey: null, ba
 // song writes the LCD. Fewer flash writes = far lower softbrick odds.
 function keyOf(info) { return info.title + '|' + info.artist; }
 function fmtTime(ms) { const s = Math.max(0, Math.floor((+ms || 0) / 1000)); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); }   // ms → m:ss for the seek log
+// cheap content signature of a GIF's frames (count + per-frame length + sampled bytes) — to skip
+// re-uploading the SAME GIF that's already on the LCD. Sampling keeps it ~ms over ~1MB.
+function gifSig(frames) {
+  let h = (frames.length >>> 0) || 0;
+  for (const f of frames) { const b = f.bytes || []; h = (h * 31 + b.length) >>> 0; for (let i = 0; i < b.length; i += 257) h = (h * 31 + b[i]) >>> 0; }
+  return h;
+}
 
 // event = parsed sidecar object or null (timer tick). Returns {upload: info} or null.
 function decide(state, event, nowMs) {
@@ -50,6 +57,7 @@ function start(opts) {
   let lastInfo = null;                           // full last event incl. thumb — re-rendered when the user changes text colors
   let lastUploadAt = 0, lastEventAt = 0;         // MIN_GAP / EVENT_QUIET gates
   let pausedSince = 0, reverted = false;         // pause-revert: after N s paused, the standard GIF returns to the LCD
+  let lcdShowsGif = false, lcdGifSig = null;      // what's believed to be on the LCD now: true+sig = THAT exact standard GIF, false = a song. Skip a redundant reload of the SAME GIF.
   let lastBlockedSrc = null;                     // dedupe the "ignoring media from X" log line
   let lastTrackKey = null;                       // detect a genuine track change (for the throttled-skip blink + flash)
   let mediaPos = 0, mediaPosAt = 0, mediaDur = 0, mediaPlaying = false, lastPlayingAt = 0;   // timeline for the keyboard progress-bar (+ idle-fade clock)
@@ -150,7 +158,7 @@ function start(opts) {
       writeTimes.push(Date.now());   // count toward the rolling-hour cap only once we're actually about to write the flash (a failed render never touched the board)
       const eng = U.create({ sendChunk: scr.send, onInput: scr.onInput, log, pktLen: 4104 });
       const r = await eng.upload(plan);
-      if (r.ok) { lastUploaded = { title: act.upload.title, artist: act.upload.artist, status: act.upload.status }; gateLogged = false; staleLogged = false; sendOk = true; sendFails = 0; lastSendAt = Date.now(); lastSendErr = null; note('✓ LCD synced: "' + act.upload.title + '" (' + (Date.now() - t0) + 'ms)'); log('♪ now-playing on LCD: "' + act.upload.title + '" (' + act.upload.status + ', ' + plan.totalSize + 'B, ' + (Date.now() - t0) + 'ms)'); return { ok: true }; }
+      if (r.ok) { lastUploaded = { title: act.upload.title, artist: act.upload.artist, status: act.upload.status }; lcdShowsGif = false; gateLogged = false; staleLogged = false; sendOk = true; sendFails = 0; lastSendAt = Date.now(); lastSendErr = null; note('✓ LCD synced: "' + act.upload.title + '" (' + (Date.now() - t0) + 'ms)'); log('♪ now-playing on LCD: "' + act.upload.title + '" (' + act.upload.status + ', ' + plan.totalSize + 'B, ' + (Date.now() - t0) + 'ms)'); return { ok: true }; }
       // FAILED send: keep lastShownKey null so the verifier re-queues this song, and ARM a fresh
       // sidecar event re-check. Loud + surfaced via health() so a botched update can't go silent.
       sendOk = false; sendFails++; lastSendAt = Date.now(); lastSendErr = String(r.error || 'upload returned not-ok');
@@ -188,7 +196,7 @@ function start(opts) {
       const plan = U.planUpload(frames);
       const eng = U.create({ sendChunk: scr.send, onInput: scr.onInput, log, pktLen: 4104 });
       const r = await eng.upload(plan);
-      if (r.ok) { reverted = true; lastUploaded = null; log('♪ paused ' + opts.getRevertSec() + 's — standard GIF restored to the LCD (' + plan.frameCount + ' frames)'); return { ok: true }; }
+      if (r.ok) { reverted = true; lastUploaded = null; lcdShowsGif = true; lcdGifSig = gifSig(frames); log('♪ paused ' + opts.getRevertSec() + 's — standard GIF restored to the LCD (' + plan.frameCount + ' frames)'); return { ok: true }; }
       log('♪ GIF revert failed: ' + r.error); state.backoffUntil = Date.now() + FAIL_BACKOFF_MS;
       return { ok: false };
     } catch (e) { log('♪ GIF revert error: ' + (e && e.message || e)); state.backoffUntil = Date.now() + FAIL_BACKOFF_MS; return { ok: false }; }
@@ -295,6 +303,7 @@ function start(opts) {
       if (busy) return { ok: false, reason: 'an upload is already running' };
       const frames = opts.getStandardGif && opts.getStandardGif();
       if (!frames || !frames.length) { log('♪ now-playing off — no standard GIF mirrored yet, LCD keeps the last song'); return { ok: false, reason: 'no standard GIF uploaded yet' }; }
+      if (lcdShowsGif && lcdGifSig === gifSig(frames)) { note('Now-playing off — that GIF is already on the LCD, no reload'); return { ok: true, skipped: true, reason: 'that GIF is already on the LCD' }; }   // SAME GIF already shown → skip the slow re-upload
       state.lastShownKey = null;   // so re-enabling later re-pushes the song
       note('Now-playing off — reverting to your GIF…');
       doRevert(frames).then(r => { if (r && r.ok) note('GIF restored to the LCD'); }).catch(() => {});   // slow upload, fire-and-forget

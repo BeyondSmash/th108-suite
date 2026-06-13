@@ -233,7 +233,8 @@ window.TH108DaemonClient = (function () {
           if (np.checked) log('♪ now-playing on the LCD enabled — ⚠ writes the LCD flash on each song change (small brick risk)', 'err');
           else {   // turning off should revert to your GIF — say whether it could, and why not
             const rv = r && r.revert;
-            if (rv && rv.ok) log('♪ now-playing off — reverting the LCD to your GIF (the 33-frame reload takes a bit)', 'ok');
+            if (rv && rv.skipped) log('♪ now-playing off — that GIF is already on the LCD, no reload needed', 'ok');
+            else if (rv && rv.ok) log('♪ now-playing off — reverting the LCD to your GIF (the 33-frame reload takes a bit)', 'ok');
             else log('♪ now-playing off — couldn\'t revert to your GIF: ' + ((rv && rv.reason) || 'unknown') + '. It\'ll revert once the daemon owns the keyboard.', 'err');
           }
         } catch (_) { log('now-playing toggle failed', 'err'); refresh(); }
