@@ -56,6 +56,8 @@ function loadConfig() {
 
 let state = null, device = null, send = null, paused = false, timer = null;
 let lcdBusy = false;     // a now-playing flash upload is running — the 0x32 stream must stay quiet
+let npBlinkAt = 0;       // timestamp of a throttled-skip → blink the spacebar red twice
+const SPACE_K = INDICES.indexOf(KEYMAP['Space']);   // spacebar's slot in the flat frame (for the blink overlay)
 let unpausedAt = 0;      // when the daemon last took ownership — flash uploads need STABLE ownership
 
 // ----- daemon settings (separate from config.json, which is the page's layer array verbatim) -----
@@ -162,6 +164,16 @@ async function tick() {
   if (device && send && state) {
     const now = performance.now();
     const flat = E.composeFrame(state, now);
+    // throttled-skip feedback: blink the SPACEBAR red TWICE when a media command lands inside the
+    // safety window (it's queued until the buffer clears). Overlay on the live frame; force-send.
+    if (npBlinkAt) {
+      const bt = Date.now() - npBlinkAt;
+      if (bt >= 0 && bt < 640) {                       // 2 blinks: on [0,160) off [160,320) on [320,480) off [480,640)
+        const ph = Math.floor(bt / 160);
+        if (ph === 0 || ph === 2) { flat[SPACE_K * 4 + 1] = 255; flat[SPACE_K * 4 + 2] = 0; flat[SPACE_K * 4 + 3] = 0; }
+        state.lastFlat = null;                         // force every blink frame out (bust the dedupe)
+      } else npBlinkAt = 0;
+    }
     if (!E.flatEq(flat, state.lastFlat) || now - state.lastSent >= 1000) {
       sendingFrame = true;
       let ok; try { ok = await send(flat); } finally { sendingFrame = false; }
@@ -259,6 +271,7 @@ function syncNowPlaying() {
       getRevertSec: () => settings.npRevertSec || 0,
       getStandardGif: loadStandardGif,        // the page's last GIF Screen upload, mirrored here
       isSourceAllowed, noteSource,            // SAFETY whitelist: only Spotify drives the LCD by default
+      onThrottled: () => { npBlinkAt = Date.now(); },   // a skip landed inside the safety window → spacebar blinks "queued, wait"
       log,
     });
   } else if (!settings.nowPlaying && npHandle) { npHandle.stop(); npHandle = null; }

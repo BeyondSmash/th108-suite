@@ -50,6 +50,7 @@ function start(opts) {
   let lastUploadAt = 0, lastEventAt = 0;         // MIN_GAP / EVENT_QUIET gates
   let pausedSince = 0, reverted = false;         // pause-revert: after N s paused, the standard GIF returns to the LCD
   let lastBlockedSrc = null;                     // dedupe the "ignoring media from X" log line
+  let lastTrackKey = null;                       // detect a genuine track change (for the throttled-skip blink)
   let writeTimes = [];                           // upload timestamps for the rolling-hour cap
   function hourlyCapHit() { const now = Date.now(); writeTimes = writeTimes.filter(t => now - t < 3600000); return writeTimes.length >= MAX_WRITES_PER_HOUR; }
 
@@ -72,10 +73,17 @@ function start(opts) {
             if (lastBlockedSrc !== (ev.source || '')) { lastBlockedSrc = ev.source || ''; log('♪ ignoring media from "' + (ev.source || 'unknown') + '" (not whitelisted)'); }
             continue;
           }
-          lastInfo = ev; lastEventAt = Date.now();
+          // a genuinely NEW track that can't write yet (inside the 20s gap or the hourly cap) →
+          // signal the "queued, please wait" spacebar blink so the user knows their skip registered
+          const k = keyOf(ev), nowMs = Date.now();
+          if (k !== lastTrackKey) {
+            lastTrackKey = k;
+            if (lastUploadAt && (nowMs - lastUploadAt < MIN_GAP_MS || hourlyCapHit()) && opts.onThrottled) opts.onThrottled();
+          }
+          lastInfo = ev; lastEventAt = nowMs;
           if (ev.status === 'paused') { if (!pausedSince) pausedSince = Date.now(); }
           else { pausedSince = 0; reverted = false; }   // playing again → the song repaints via the normal flow
-          decide(state, ev, Date.now());
+          decide(state, ev, nowMs);
         } catch (_) { }
       }
     });
