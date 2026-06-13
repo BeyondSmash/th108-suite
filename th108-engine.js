@@ -486,8 +486,10 @@
     // global brightness (the header slider; daemon mirrors it via settings.brightness).
     // composite() allocates a fresh flat each call, so in-place scaling can't compound.
     const b = state.bri;
+    // bri 1.0 = normal (the 50% slider tick); <1 dims toward off, >1 boosts (clamp at 255 so a
+    // boost can't overflow the byte — Uint8Array.set WRAPS, it doesn't clamp).
     if (b != null && b !== 1) for (let o = 0; o < flat.length; o += 4) {
-      flat[o+1]=(flat[o+1]*b)|0; flat[o+2]=(flat[o+2]*b)|0; flat[o+3]=(flat[o+3]*b)|0;
+      flat[o+1]=Math.min(255,(flat[o+1]*b)|0); flat[o+2]=Math.min(255,(flat[o+2]*b)|0); flat[o+3]=Math.min(255,(flat[o+3]*b)|0);
     }
     return flat;
   }

@@ -133,7 +133,7 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
   #lightBtn{ margin:0; padding:6px 14px; font-weight:800; min-width:52px; }
   #lightBtn.on{ color:var(--mint); }
   #lightBtn.off{ color:var(--err, #e5534b); }
-  #lightCtl .srange{ width:120px; }
+  #lightCtl .srange{ width:190px; }
   #lightCtl .tick.lit{ background:var(--card); }   /* snapped: inverted vs the (--text) handle, peeking above/below it */
   #lightCtl .britick{ position:absolute; top:17px; transform:translateX(-50%); font-size:10.5px; font-weight:700;
                       color:var(--text); background:var(--card); padding:1px 6px; border-radius:6px;
@@ -315,12 +315,12 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
   <div id="lightCtl">
     <button id="lightBtn" class="on" title="master lighting switch — affects whoever is driving (this page or the daemon)">On</button>
     <svg class="ic" viewBox="0 0 24 24" aria-hidden="true" style="opacity:.7"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg>
-    <span class="srange" id="briWrap" title="global brightness — snaps at 25 / 50 / 75%">
-      <!-- tick left = thumb-CENTER position: 7px edge inset + (track - thumb) * (v-5)/95 (min=5) -->
-      <div class="tick" data-v="25" style="left:calc(7px + (100% - 14px)*0.21053)"></div>
-      <div class="tick" data-v="50" style="left:calc(7px + (100% - 14px)*0.47368)"></div>
-      <div class="tick" data-v="75" style="left:calc(7px + (100% - 14px)*0.73684)"></div>
-      <input type="range" id="briSlider" min="5" max="100" value="100">
+    <span class="srange" id="briWrap" title="global brightness — 50% = normal, left dims toward off, right boosts brighter; snaps at 25 / 50 / 75">
+      <!-- tick left = thumb-CENTER position: 7px edge inset + (track - thumb) * v/100 (min=0) -->
+      <div class="tick" data-v="25" style="left:calc(7px + (100% - 14px)*0.25)"></div>
+      <div class="tick" data-v="50" style="left:calc(7px + (100% - 14px)*0.50)"></div>
+      <div class="tick" data-v="75" style="left:calc(7px + (100% - 14px)*0.75)"></div>
+      <input type="range" id="briSlider" min="0" max="100" value="50">
     </span>
   </div>
   <nav class="tabs" id="tabs">
@@ -1229,11 +1229,12 @@ restoreLayout();
 
 // ===== master lighting switch + global brightness (header; daemon mirrors via /lighting) =====
 (function(){
-  const LIGHTS_KEY='th108_lightsOn', BRI_KEY='th108_bri';
+  const LIGHTS_KEY='th108_lightsOn', BRI_KEY='th108_bri2';   // bri2: new scale (0-100, 50=normal 1.0x, 100=2x boost); old th108_bri ignored
+  const briToFactor=v=>Math.max(0,Math.min(100,v))/50;       // slider value → brightness multiplier (50 → 1.0)
   const btn=document.getElementById('lightBtn'), sl=document.getElementById('briSlider');
   if(!btn||!sl) return;
   const lightsOn=()=>localStorage.getItem(LIGHTS_KEY)!=='0';
-  const briVal=()=>{ const v=+localStorage.getItem(BRI_KEY); return (v>=5&&v<=100)?v:100; };
+  const briVal=()=>{ const r=localStorage.getItem(BRI_KEY); const v=+r; return (r!=null&&v>=0&&v<=100)?v:50; };   // default 50 = normal
   function sync(){ const on=lightsOn(); btn.textContent=on?'On':'Off'; btn.classList.toggle('on',on); btn.classList.toggle('off',!on); }
   // LEADING throttle (~150ms): the daemon repaints live while the slider drags — the old
   // trailing debounce only applied brightness on mouse release
@@ -1244,11 +1245,11 @@ restoreLayout();
       if(DC.present&&b) fetch('/lighting',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(b)}).catch(()=>{}); };
     if(!pushTimer){ const wait=Math.max(0,150-(Date.now()-lastPushAt)); if(wait===0) fire(); else pushTimer=setTimeout(fire,wait); }
   }
-  sl.value=briVal(); state.bri=briVal()/100;
+  sl.value=briVal(); state.bri=briToFactor(briVal());
   // snap label: "<v>%" floats under the tick for 750ms; moving to another tick clears it instantly
   let tickLbl=null, tickTimer=0;
   function clearTickLbl(){ clearTimeout(tickTimer); if(tickLbl){ tickLbl.remove(); tickLbl=null; } }
-  const tickLeft=v=>'calc(7px + (100% - 14px)*'+((v-5)/95).toFixed(5)+')';   // thumb-CENTER x for value v (min=5, 14px thumb)
+  const tickLeft=v=>'calc(7px + (100% - 14px)*'+(v/100).toFixed(5)+')';   // thumb-CENTER x for value v (min=0, 14px thumb)
   function showTickLbl(v){
     clearTickLbl();
     tickLbl=document.createElement('div'); tickLbl.className='britick';
@@ -1262,7 +1263,7 @@ restoreLayout();
     document.querySelectorAll('#briWrap .tick').forEach(t=>t.classList.toggle('lit', snapped && +t.dataset.v===v));
     if(snapped){ if(!tickLbl||tickLbl.textContent!==v+'%') showTickLbl(v); }
     else clearTickLbl();
-    localStorage.setItem(BRI_KEY,String(v)); state.bri=v/100; state.lastFlat=null;
+    localStorage.setItem(BRI_KEY,String(v)); state.bri=briToFactor(v); state.lastFlat=null;
     push({brightness:v});
   });
   btn.addEventListener('click',async()=>{
@@ -1289,7 +1290,7 @@ restoreLayout();
     try{
       const s=await (await fetch('/status',{cache:'no-store'})).json();
       if('lightsOn' in s) localStorage.setItem(LIGHTS_KEY, s.lightsOn?'1':'0');
-      if(s.brightness>=5){ localStorage.setItem(BRI_KEY,String(s.brightness)); sl.value=s.brightness; state.bri=s.brightness/100; }
+      if(typeof s.brightness==='number'){ localStorage.setItem(BRI_KEY,String(s.brightness)); sl.value=s.brightness; state.bri=briToFactor(s.brightness); }
     }catch(_){ }
     sync();
   });
