@@ -273,8 +273,13 @@ window.TH108DaemonClient = (function () {
       if (npBarEl) npBarEl.addEventListener('change', () => postBar({ on: npBarEl.checked }, '♪ song-progress bar (keys 1-0) ' + (npBarEl.checked ? 'on — lighting only, safe; needs the daemon running' : 'off')));
       if (npBarColorEl) npBarColorEl.addEventListener('change', () => postBar({ color: npBarColorEl.value }, '♪ progress-bar color → ' + npBarColorEl.value));
       if (npBarBrightEl) {
-        npBarBrightEl.addEventListener('input', () => { if (npBarBrightLblEl) npBarBrightLblEl.textContent = (+npBarBrightEl.value) + '%'; });
-        npBarBrightEl.addEventListener('change', () => postBar({ bright: +npBarBrightEl.value }, '♪ progress-bar brightness → ' + npBarBrightEl.value + '%'));
+        let _briAt = 0;
+        npBarBrightEl.addEventListener('input', () => {
+          if (npBarBrightLblEl) npBarBrightLblEl.textContent = (+npBarBrightEl.value) + '%';
+          const now = Date.now();
+          if (now - _briAt >= 100) { _briAt = now; postBar({ bright: +npBarBrightEl.value }); }   // LIVE on the keyboard (the bar is daemon-rendered), throttled ~10/s; no log per tick
+        });
+        npBarBrightEl.addEventListener('change', () => postBar({ bright: +npBarBrightEl.value }, '♪ progress-bar brightness → ' + npBarBrightEl.value + '%'));   // final value + one log line on release
       }
       if (npFlashEl) npFlashEl.addEventListener('change', () => postBar({ flash: npFlashEl.checked }, '♪ track-change flash ' + (npFlashEl.checked ? 'on' : 'off')));
       if (npFlashColorEl) npFlashColorEl.addEventListener('change', () => postBar({ flashColor: npFlashColorEl.value }, '♪ track-change flash color → ' + npFlashColorEl.value));
