@@ -13,7 +13,7 @@
   else root.TH108LayersUI = factory();
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
-  const TYPES=['background','reactive','gradient','pattern','media'], BLENDS=['normal','add','screen','multiply','max'];
+  const TYPES=['background','reactive','gradient','pattern','media'], BLENDS=['normal','add','screen','multiply','max','replace'];
   // lucide chevrons-down-up (= "collapse") / chevrons-up-down (= "expand") for the card corner toggle
   const SVGA='<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">';
   const CHEV_COLLAPSE=SVGA+'<path d="m7 20 5-5 5 5"/><path d="m7 4 5 5 5-5"/></svg>';

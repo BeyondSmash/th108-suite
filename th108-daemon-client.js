@@ -35,7 +35,23 @@ window.TH108DaemonClient = (function () {
       if (!/^https?:$/.test(location.protocol)) { D.present = false; return; }   // file:// page → no daemon server to talk to; skip (avoids a console CORS error)
       try { const r = await fetch('/status', { cache: 'no-store' }); D.present = r.ok; } catch (_) { D.present = false; }
     }
-    async function yieldDevice() { if (D.present) { try { await fetch('/yield', { method: 'POST' }); D.yielded = true; } catch (_) {} } }
+    // BUFFERED HANDOFF (2026-06-13): a wedged/flapping board makes the HID layer fire reconnect
+    // events in a tight loop, each calling yieldDevice — bursts of 5+/sec stormed the daemon (2149
+    // /yield in one session) → two-writer churn → board MUTE → onboard rainbow. Coalesce concurrent
+    // calls onto ONE in-flight request and skip if we already handed off within the cooldown, so the
+    // handoff fires at most ~once/3s no matter how hard the caller loops.
+    let _yieldAt = 0, _yieldInflight = null;
+    async function yieldDevice() {
+      if (!D.present) return;
+      if (_yieldInflight) return _yieldInflight;                       // a /yield is already in flight — don't pile on
+      if (D.yielded && Date.now() - _yieldAt < 3000) return;           // already handed off recently — don't re-storm
+      _yieldAt = Date.now();
+      _yieldInflight = fetch('/yield', { method: 'POST' })
+        .then(() => { D.yielded = true; })
+        .catch(() => {})
+        .finally(() => { _yieldInflight = null; });
+      return _yieldInflight;
+    }
     function heartbeatStart() {
       if (!D.present || D.hb) return;
       beat();                                                       // first beat NOW — the yield→bind gap (device picker open) must be covered too
@@ -127,6 +143,8 @@ window.TH108DaemonClient = (function () {
               const el = document.getElementById(id);
               if (el) { el.disabled = !(key in s); if (key in s && document.activeElement !== el) el.value = s[key]; }
             }
+            const fitEl = document.getElementById('npArtFit');
+            if (fitEl) { const knows = 'npArtFit' in s; fitEl.disabled = !knows; if (knows && document.activeElement !== fitEl) fitEl.value = s.npArtFit ? 'fit' : 'crop'; }
             // pause-revert: slider 1-15s + a "Never" checkbox. revertSec 0 = Never.
             const rv = document.getElementById('npRevert'), rvl = document.getElementById('npRevertLbl'),
                   rvNever = document.getElementById('npRevertNever'), rvReset = document.getElementById('npRevertReset'),
@@ -147,6 +165,40 @@ window.TH108DaemonClient = (function () {
             // recognized media sources (whitelist) — Spotify allowed by default, others off
             const srcHost = document.getElementById('npSources');
             if (srcHost && Array.isArray(s.npSources)) renderSources(srcHost, s.npSources);
+            // song-progress light-bar (keys 1-0) — SAFE: lighting only, no LCD flash writes
+            const bar = document.getElementById('npBar');
+            if (bar) {
+              const knowsBar = 'npBar' in s;
+              bar.disabled = !knowsBar;
+              if (!knowsBar) bar.parentElement.title = 'the running daemon predates this feature — restart it (Quit, then the tray) to enable';
+              if (knowsBar && document.activeElement !== bar) bar.checked = !!s.npBar;
+              const on = !!s.npBar;
+              const bc = document.getElementById('npBarColor'), bb = document.getElementById('npBarBright'),
+                    bbl = document.getElementById('npBarBrightLbl'), fl = document.getElementById('npFlash'),
+                    fc = document.getElementById('npFlashColor');
+              if (bc) { bc.disabled = !on; if ('npBarColor' in s && document.activeElement !== bc) bc.value = s.npBarColor; }
+              if (bb) { bb.disabled = !on; if ('npBarBright' in s && document.activeElement !== bb) bb.value = s.npBarBright; }
+              if (bbl && bb) bbl.textContent = (+bb.value) + '%';
+              if (fl) { fl.disabled = !on; if ('npFlash' in s && document.activeElement !== fl) fl.checked = !!s.npFlash; }
+              if (fc) { fc.disabled = !on || !(fl && fl.checked); if ('npFlashColor' in s && document.activeElement !== fc) fc.value = s.npFlashColor; }
+              const idle = document.getElementById('npBarIdle'), idleLbl = document.getElementById('npBarIdleLbl');
+              if (idle) { idle.disabled = !on; if ('npBarIdleSec' in s && document.activeElement !== idle) idle.value = s.npBarIdleSec; if (idleLbl) idleLbl.textContent = (+idle.value) + 's'; }
+            }
+            // Refresh-LCD debug button — only meaningful when LCD now-playing is on
+            const rfb = document.getElementById('npRefreshLcd');
+            if (rfb) rfb.disabled = !('nowPlaying' in s) || !s.nowPlaying;
+            // live-status feed — media transitions + LCD-sync outcomes (newest first)
+            const feedWrap = document.getElementById('npFeedWrap'), feed = document.getElementById('npFeed');
+            if (feed && feedWrap) {
+              const lg = Array.isArray(s.npLog) ? s.npLog : [];
+              if (lg.length && (s.nowPlaying || s.npBar)) {
+                feedWrap.style.display = '';
+                const now = Date.now();
+                const ago = ms => { const sec = Math.max(0, Math.round(ms / 1000)); return sec < 3 ? 'just now' : sec < 60 ? sec + 's ago' : Math.round(sec / 60) + 'm ago'; };
+                const esc = t => String(t).replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+                feed.innerHTML = lg.slice().reverse().map(e => '<div><span style="opacity:.55">' + ago(now - e.t) + '</span> · ' + esc(e.msg) + '</div>').join('');
+              } else { feedWrap.style.display = 'none'; }
+            }
           }
         } catch (_) { alive = false; st.textContent = 'daemon: not running — start it with setup.cmd (lighting then survives closing this tab)'; auto.disabled = true; quit.disabled = true; if (usb) usb.disabled = true; if (np) np.disabled = true; }
       }
@@ -203,12 +255,49 @@ window.TH108DaemonClient = (function () {
           } catch (_) { log('color change failed', 'err'); }
         });
       }
+      const npFitEl = document.getElementById('npArtFit');
+      if (npFitEl) npFitEl.addEventListener('change', async () => {
+        try {
+          await fetch('/nowplaying', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ artFit: npFitEl.value === 'fit' }) });
+          log('♪ album art → ' + (npFitEl.value === 'fit' ? 'Fit (whole cover, letterboxed)' : 'Crop (fill + crop)') + ' (the current song re-paints)', 'ok');
+        } catch (_) { log('album-art style change failed', 'err'); }
+      });
+      // song-progress light-bar (keys 1-0) — SAFE, lighting only; all of it rides /nowplaying {bar:{…}}
+      const postBar = async (patch, msg) => {
+        try { await fetch('/nowplaying', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ bar: patch }) }); if (msg) log(msg, 'ok'); }
+        catch (_) { log('progress-bar change failed', 'err'); }
+      };
+      const npBarEl = document.getElementById('npBar'), npBarColorEl = document.getElementById('npBarColor'),
+            npBarBrightEl = document.getElementById('npBarBright'), npBarBrightLblEl = document.getElementById('npBarBrightLbl'),
+            npFlashEl = document.getElementById('npFlash'), npFlashColorEl = document.getElementById('npFlashColor');
+      if (npBarEl) npBarEl.addEventListener('change', () => postBar({ on: npBarEl.checked }, '♪ song-progress bar (keys 1-0) ' + (npBarEl.checked ? 'on — lighting only, safe; needs the daemon running' : 'off')));
+      if (npBarColorEl) npBarColorEl.addEventListener('change', () => postBar({ color: npBarColorEl.value }, '♪ progress-bar color → ' + npBarColorEl.value));
+      if (npBarBrightEl) {
+        npBarBrightEl.addEventListener('input', () => { if (npBarBrightLblEl) npBarBrightLblEl.textContent = (+npBarBrightEl.value) + '%'; });
+        npBarBrightEl.addEventListener('change', () => postBar({ bright: +npBarBrightEl.value }, '♪ progress-bar brightness → ' + npBarBrightEl.value + '%'));
+      }
+      if (npFlashEl) npFlashEl.addEventListener('change', () => postBar({ flash: npFlashEl.checked }, '♪ track-change flash ' + (npFlashEl.checked ? 'on' : 'off')));
+      if (npFlashColorEl) npFlashColorEl.addEventListener('change', () => postBar({ flashColor: npFlashColorEl.value }, '♪ track-change flash color → ' + npFlashColorEl.value));
+      const npIdleEl = document.getElementById('npBarIdle'), npIdleLblEl = document.getElementById('npBarIdleLbl');
+      if (npIdleEl) {
+        npIdleEl.addEventListener('input', () => { if (npIdleLblEl) npIdleLblEl.textContent = (+npIdleEl.value) + 's'; });
+        npIdleEl.addEventListener('change', () => postBar({ idleSec: +npIdleEl.value }, '♪ progress-bar fades out after ' + npIdleEl.value + 's idle'));
+      }
+      const npRefreshBtn = document.getElementById('npRefreshLcd');
+      if (npRefreshBtn) npRefreshBtn.addEventListener('click', async () => {
+        npRefreshBtn.disabled = true;
+        try {
+          const r = await (await fetch('/nowplaying', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ refresh: true }) })).json();
+          log(r && r.ok ? '↻ LCD refreshed — repainted the current song' : '↻ LCD refresh skipped: ' + ((r && r.reason) || 'unknown'), r && r.ok ? 'ok' : 'err');
+        } catch (_) { log('↻ LCD refresh failed', 'err'); }
+        setTimeout(() => { npRefreshBtn.disabled = false; }, 1200);
+      });
       quit.addEventListener('click', async () => {
         if (!confirm('Quit the background daemon?\n\nAlways-on lighting and reactive-anywhere stop until setup.cmd or your next login starts it again. This page keeps working as-is.')) return;
         try { await fetch('/quit', { method: 'POST' }); log('daemon quit', 'dim'); } catch (_) {}
         setTimeout(refresh, 600);
       });
-      if (/^https?:$/.test(location.protocol)) { refresh().then(refreshAuto); setInterval(() => refresh(), 5000); }   // display-only poll; tab-throttling is fine
+      if (/^https?:$/.test(location.protocol)) { refresh().then(refreshAuto); setInterval(() => refresh(), 2500); }   // display-only poll (2.5s so the live-status feed feels responsive); tab-throttling is fine
       else { st.textContent = 'daemon: unavailable on file:// — open via http://localhost:8123'; auto.disabled = true; quit.disabled = true; }
     }
 

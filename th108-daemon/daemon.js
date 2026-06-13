@@ -57,13 +57,22 @@ function loadConfig() {
 let state = null, device = null, send = null, paused = false, timer = null;
 let lcdBusy = false;     // a now-playing flash upload is running — the 0x32 stream must stay quiet
 let npBlinkAt = 0;       // timestamp of a throttled-skip → blink the spacebar red twice
+let npFlashAt = 0;       // timestamp of a track change → flash the number row (keys 1-0) for 150ms
+let barCount = 0, barStepAt = 0;   // ANIMATED lit-key count for the progress-bar (lerps toward target one key per BAR_STEP_MS — a seek visibly counts up/down)
+const BAR_STEP_MS = 50, BAR_FADE_MS = 600;   // 50ms per key (the sequential walk) / 600ms idle crossfade-out
 const SPACE_K = INDICES.indexOf(KEYMAP['Space']);   // spacebar's slot in the flat frame (for the blink overlay)
+// keys 1..0 (the number row) → their slots in the flat frame, for the song-progress light-bar
+const DIGIT_KS = ['Digit1','Digit2','Digit3','Digit4','Digit5','Digit6','Digit7','Digit8','Digit9','Digit0']
+  .map(c => INDICES.indexOf(KEYMAP[c])).filter(k => k >= 0);
+const hexRGB = (h) => { const m = /^#?([0-9a-f]{6})$/i.exec(h || ''); if (!m) return [17, 255, 0]; const n = parseInt(m[1], 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; };
 let unpausedAt = 0;      // when the daemon last took ownership — flash uploads need STABLE ownership
+let framesSent = 0, framesDeduped = 0;   // HID 0x32 stream stats for /metrics (sent vs deduped — shows how much the dedupe is saving)
 
 // ----- daemon settings (separate from config.json, which is the page's layer array verbatim) -----
 const SETTINGS_PATH = path.join(__dirname, 'settings.json');
 function loadSettings() {
-  const DEF = { usbReset: true, nowPlaying: false, npTitle: '#ffffff', npArtist: '#ffd98c', lightsOn: true, brightness: 100, npRevertSec: 0, npAllow: {} };   // npRevertSec 0 = never revert; npAllow = per-source override (absent → Spotify-only default)
+  const DEF = { usbReset: true, nowPlaying: false, npTitle: '#ffffff', npArtist: '#ffd98c', lightsOn: true, brightness: 100, npRevertSec: 0, npAllow: {}, npArtFit: false,
+                npBar: false, npBarColor: '#11ff00', npBarBright: 60, npFlash: true, npFlashColor: '#ffd000', npBarIdleSec: 3 };   // npBarIdleSec = fade the bar out after this long with nothing playing   // npRevertSec 0 = never revert; npAllow = per-source override (absent → Spotify-only default); npBar = the 1-0 song-progress light-bar (lighting-only, no flash writes), npFlash = yellow track-change blip
   try { return Object.assign({}, DEF, JSON.parse(fs.readFileSync(SETTINGS_PATH, 'utf8'))); }
   catch { return Object.assign({}, DEF); }   // usbReset default ON — the escalation fails gracefully (one log line) if the task isn't registered
 }
@@ -165,19 +174,54 @@ async function tick() {
     const now = performance.now();
     const flat = E.composeFrame(state, now);
     // throttled-skip feedback: blink the SPACEBAR red TWICE when a media command lands inside the
-    // safety window (it's queued until the buffer clears). Overlay on the live frame; force-send.
+    // safety window (it's queued until the buffer clears). Overlaid on the live frame — flatEq below
+    // sends only on each phase change (on↔off), so static frames still idle to the 1fps keepalive.
     if (npBlinkAt) {
       const bt = Date.now() - npBlinkAt;
       if (bt >= 0 && bt < 640) {                       // 2 blinks: on [0,160) off [160,320) on [320,480) off [480,640)
         const ph = Math.floor(bt / 160);
         if (ph === 0 || ph === 2) { flat[SPACE_K * 4 + 1] = 255; flat[SPACE_K * 4 + 2] = 0; flat[SPACE_K * 4 + 3] = 0; }
-        state.lastFlat = null;                         // force every blink frame out (bust the dedupe)
       } else npBlinkAt = 0;
+    }
+    // song-progress light-bar on the number row (keys 1-0): light the first N of 10 keys in the bar
+    // color to show how far through the song we are. SAFE — lighting only, no LCD flash writes. The
+    // yellow track-change flash (150ms, all 10) rides the same toggle, gated by its own on/off.
+    if (settings.npBar && npHandle && DIGIT_KS.length) {
+      const ms = npHandle.mediaState();
+      // idle crossfade: nothing playing for npBarIdleSec → fade the bar out (reveal the lighting beneath)
+      let op = 1;
+      if (ms.hasMedia && !ms.playing) {
+        const idleSec = settings.npBarIdleSec == null ? 3 : settings.npBarIdleSec;
+        const over = (ms.idleMs || 0) - idleSec * 1000;
+        if (over > 0) op = Math.max(0, 1 - over / BAR_FADE_MS);
+      }
+      if (ms.hasMedia && op > 0) {
+        const [br, bg, bb] = hexRGB(settings.npBarColor);
+        const f = (Math.max(0, Math.min(100, settings.npBarBright == null ? 60 : settings.npBarBright)) / 100) * op;
+        // sequential lerp: walk the lit-key count toward the target ONE key per BAR_STEP_MS, so a seek
+        // (e.g. 73% → 24%) visibly counts down rather than snapping. Normal playback advances 1 step
+        // every ~(song/10)s, so it just keeps pace.
+        const target = Math.round(ms.progress * DIGIT_KS.length);
+        const nowMs = Date.now();
+        if (barCount !== target && nowMs - barStepAt >= BAR_STEP_MS) { barCount += Math.sign(target - barCount); barStepAt = nowMs; }
+        for (let i = 0; i < barCount && i < DIGIT_KS.length; i++) {   // crossfade the bar OVER the underlying lighting (op<1 mid-fade)
+          const o = DIGIT_KS[i] * 4;
+          flat[o + 1] = (flat[o + 1] * (1 - op) + br * f) | 0; flat[o + 2] = (flat[o + 2] * (1 - op) + bg * f) | 0; flat[o + 3] = (flat[o + 3] * (1 - op) + bb * f) | 0;
+        }
+        // NO lastFlat reset: flatEq below catches a step/fade change and sends it; a STATIC bar over
+        // static lighting stays equal → idles to the 1fps keepalive instead of forcing 30fps.
+      } else if (!ms.hasMedia) { barCount = 0; }   // media gone → next song fills from empty
+      if (npFlashAt && settings.npFlash) {
+        const ft = Date.now() - npFlashAt;
+        if (ft >= 0 && ft < 150) { const [fr, fg, fb] = hexRGB(settings.npFlashColor); for (const k of DIGIT_KS) { const o = k * 4; flat[o + 1] = fr; flat[o + 2] = fg; flat[o + 3] = fb; } }   // flatEq sends the flash on its on/off edges
+        else if (ft >= 150) npFlashAt = 0;
+      } else if (npFlashAt && !settings.npFlash) npFlashAt = 0;
     }
     if (!E.flatEq(flat, state.lastFlat) || now - state.lastSent >= 1000) {
       sendingFrame = true;
       let ok; try { ok = await send(flat); } finally { sendingFrame = false; }
       if (ok) {
+        framesSent++;
         state.lastFlat = flat; state.lastSent = now;
         if (!lastOkAt || muteLogged) {                     // streaming (re)started — one transition line, with mute duration if recovering
           streakStart = Date.now();
@@ -201,7 +245,7 @@ async function tick() {
           U.fire(log);
         }
       }
-    }
+    } else framesDeduped++;   // frame identical to the last + inside the keepalive window → skipped (the dedupe idling static lighting to ~1fps)
   }
 }
 timer = setInterval(() => { tick().catch(() => {}); }, Math.round(1000 / FPS));
@@ -257,16 +301,34 @@ function sourceList() {                  // seen ∪ configured, each with its c
 const NP = require('./nowplaying.js');
 let npHandle = null;
 function syncNowPlaying() {
-  if (settings.nowPlaying && !npHandle) {
+  const wantSidecar = settings.nowPlaying || settings.npBar;   // the bar needs the sidecar's media position too — run it, but with LCD writes gated off
+  if (wantSidecar && !npHandle) {
     npHandle = NP.start({
+      lcdEnabled: () => settings.nowPlaying,   // bar-only (nowPlaying off) → sidecar runs for the progress-bar, but NO LCD flash writes
+      onTrackChange: () => { npFlashAt = Date.now(); },   // new song → yellow flash on the number row (150ms)
       isYielded: () => paused,
       isMute: () => muteLogged,
       // flash writes need STABLE ownership: the daemon must hold a healthy, recently-ACKing board
       // and must not be fresh off a takeover (handover turbulence muted boards three times today)
       isUnstable: () => !device || (Date.now() - lastOkAt > 3000) || (Date.now() - unpausedAt < 3000),
-      pauseRender: () => { lcdBusy = true; },
-      resumeRender: () => { lcdBusy = false; },
+      // PARK the key lighting to BLACK right before the flash, then RESUME (force-repaint) right after.
+      // The board reclaims to its onboard startup-animation when the host goes silent mid-effect; a clean
+      // "all-off" command parks it dark (a lights-out blink the user accepts) instead, and the forced
+      // repaint re-asserts custom lighting the instant the flash ends (not after the 1s keepalive).
+      pauseRender: async () => {
+        lcdBusy = true;
+        try {
+          if (device && send) {
+            const t0 = Date.now(); while (sendingFrame && Date.now() - t0 < 500) await new Promise(r => setTimeout(r, 10));   // let any in-flight frame finish
+            const off = []; INDICES.forEach(i => off.push(i, 0, 0, 0));
+            sendingFrame = true; try { await send(off); } finally { sendingFrame = false; }
+            if (state) state.lastFlat = null;   // so the post-flash repaint is guaranteed to differ from this black frame
+          }
+        } catch {}
+      },
+      resumeRender: () => { lcdBusy = false; if (state) state.lastFlat = null; },   // force an immediate repaint — re-assert lighting at once
       getColors: () => ({ title: settings.npTitle, artist: settings.npArtist }),
+      getFit: () => !!settings.npArtFit,       // album-art style: true = Fit (letterbox the whole cover), false = Crop (fill+crop)
       getCal: () => settings.npCal || null,   // page-pushed LCD calibration (null → the baked default profile)
       getRevertSec: () => settings.npRevertSec || 0,
       getStandardGif: loadStandardGif,        // the page's last GIF Screen upload, mirrored here
@@ -274,7 +336,7 @@ function syncNowPlaying() {
       onThrottled: () => { npBlinkAt = Date.now(); },   // a skip landed inside the safety window → spacebar blinks "queued, wait"
       log,
     });
-  } else if (!settings.nowPlaying && npHandle) { npHandle.stop(); npHandle = null; }
+  } else if (!wantSidecar && npHandle) { npHandle.stop(); npHandle = null; }
 }
 syncNowPlaying();
 
@@ -303,10 +365,14 @@ const control = {
   saveConfig(cfg) { fs.writeFileSync(CONFIG_PATH, JSON.stringify(cfg)); if (!paused) rebuildState(); },
   status() { return { running: true, paused, deviceConnected: !!device, fps: FPS, usbReset: settings.usbReset, nowPlaying: settings.nowPlaying,
                       npTrack: npHandle ? npHandle.current() : null, npQueued: npHandle ? npHandle.queued() : false,
-                      npTitle: settings.npTitle, npArtist: settings.npArtist,
+                      npHealth: npHandle ? npHandle.health() : null,
+                      npLog: npHandle ? npHandle.recent() : [],
+                      npTitle: settings.npTitle, npArtist: settings.npArtist, npArtFit: settings.npArtFit,
                       lightsOn: settings.lightsOn, brightness: settings.brightness,
                       npRevertSec: settings.npRevertSec, npHasGif: fs.existsSync(GIF_PATH),
-                      npSources: sourceList() }; },
+                      npSources: sourceList(),
+                      npBar: settings.npBar, npBarColor: settings.npBarColor, npBarBright: settings.npBarBright,
+                      npFlash: settings.npFlash, npFlashColor: settings.npFlashColor, npBarIdleSec: settings.npBarIdleSec }; },
   setNowPlaying(on) { settings.nowPlaying = !!on; saveSettings(); syncNowPlaying(); },
   // page-permit upload path: the heartbeat advertises a pending song; the page pauses its own
   // 0x32 stream and POSTs /npgo, so songs land WITHOUT a device handoff (lighting holds, not off)
@@ -335,6 +401,23 @@ const control = {
     if (npHandle) npHandle.refresh();
   },
   setNpRevertSec(sec) { settings.npRevertSec = Math.max(0, Math.min(3600, Math.round(+sec || 0))); saveSettings(); },
+  setNpArtFit(on) {   // album-art style Crop⇄Fit — re-paints the current song (one flash write)
+    const before = !!settings.npArtFit; settings.npArtFit = !!on; saveSettings();
+    if (npHandle && before !== settings.npArtFit) npHandle.refresh();
+  },
+  // song-progress light-bar (keys 1-0) + yellow track-change flash — SAFE (lighting only, no flash writes)
+  setNpBar(o) {
+    if (o && 'on' in o) settings.npBar = !!o.on;
+    if (o && o.color != null && /^#[0-9a-f]{6}$/i.test(o.color)) settings.npBarColor = o.color;
+    if (o && o.bright != null) settings.npBarBright = Math.max(0, Math.min(100, Math.round(+o.bright || 0)));
+    if (o && 'flash' in o) settings.npFlash = !!o.flash;
+    if (o && o.flashColor != null && /^#[0-9a-f]{6}$/i.test(o.flashColor)) settings.npFlashColor = o.flashColor;
+    if (o && o.idleSec != null) settings.npBarIdleSec = Math.max(0, Math.min(60, Math.round(+o.idleSec || 0)));
+    saveSettings();
+    syncNowPlaying();   // toggling the bar may need to start/stop the media sidecar
+    if (state) state.lastFlat = null;   // repaint now
+  },
+  npRefresh() { return npHandle ? npHandle.forceUpload() : Promise.resolve({ ok: false, reason: 'now-playing off' }); },   // DEBUG "Refresh LCD" — force-repaint the live song now
   setNpSource(id, allow) { if (typeof id === 'string' && id) { settings.npAllow[id] = !!allow; saveSettings(); } },
   saveLcdGif(obj) { try { return saveStandardGif(obj); } catch { return false; } },
   setNpCal(cal) {   // the page's LCD color-correction sliders, mirrored so the art matches GIF uploads
@@ -359,6 +442,16 @@ const control = {
     return { fired: true };
   },
   getAutostart, setAutostart,
+  // HID/now-playing diagnostics for /metrics — pairs with the server's per-endpoint rates
+  metrics() {
+    const sec = Math.max(1, Math.round(process.uptime()));
+    return {
+      uptimeSec: sec, paused, deviceConnected: !!device, fps: FPS,
+      framesSent, framesDeduped, framesSentPerSec: +(framesSent / sec).toFixed(2),
+      dedupeRatio: framesSent + framesDeduped ? +(framesDeduped / (framesSent + framesDeduped)).toFixed(2) : 0,
+      np: npHandle ? npHandle.health() : null,
+    };
+  },
   setUsbReset(on) { settings.usbReset = !!on; saveSettings(); },
   quit() { shutdown(); },
 };

@@ -73,19 +73,33 @@ function hexToRgb(hex, fallback) {
   return [(v >> 16) & 255, (v >> 8) & 255, v & 255];
 }
 
-function render(info, colors, cal) {
+function render(info, colors, cal, fitArt) {   // fitArt: true = Fit (letterbox), false = Crop. (NOT `fit` — that shadows the fit() text helper below → "fit is not a function")
   const titleRgb = hexToRgb(colors && colors.title, [255, 255, 255]);
   const artistRgb = hexToRgb(colors && colors.artist, [255, 217, 140]);
   const buf = new Uint8ClampedArray(W * H * 4);
   const art = decodeThumb(info.thumb);
-  if (art) {                                  // cover-scale, darkened ~45% so the text reads
+  if (art && !fitArt) {                        // CROP (cover): fill the panel, crop the overflow; darkened ~45% so the text reads
     const s = Math.max(W / art.w, H / art.h), ox = (art.w - W / s) / 2, oy = (art.h - H / s) / 2;
     for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
       const sx = Math.min(art.w - 1, Math.floor(ox + x / s)), sy = Math.min(art.h - 1, Math.floor(oy + y / s));
       const si = (sy * art.w + sx) * 4, di = (y * W + x) * 4;
       buf[di] = art.data[si] * 0.55; buf[di + 1] = art.data[si + 1] * 0.55; buf[di + 2] = art.data[si + 2] * 0.55; buf[di + 3] = 255;
     }
-  } else {                                    // suite-navy flat background
+  } else if (art) {                           // FIT (contain): whole cover visible, letterboxed over a heavily-darkened ambient backdrop of itself
+    const bs = Math.max(W / art.w, H / art.h), bx = (art.w - W / bs) / 2, by = (art.h - H / bs) / 2;
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {   // ambient backdrop = the cover, ~18% — fills the bars with colour, not dead navy
+      const sx = Math.min(art.w - 1, Math.floor(bx + x / bs)), sy = Math.min(art.h - 1, Math.floor(by + y / bs));
+      const si = (sy * art.w + sx) * 4, di = (y * W + x) * 4;
+      buf[di] = art.data[si] * 0.18; buf[di + 1] = art.data[si + 1] * 0.18; buf[di + 2] = art.data[si + 2] * 0.18; buf[di + 3] = 255;
+    }
+    const s = Math.min(W / art.w, H / art.h);                   // contain scale; centred
+    const dw = Math.round(art.w * s), dh = Math.round(art.h * s), dx = Math.floor((W - dw) / 2), dy = Math.floor((H - dh) / 2);
+    for (let y = 0; y < dh; y++) for (let x = 0; x < dw; x++) {
+      const sx = Math.min(art.w - 1, Math.floor(x / s)), sy = Math.min(art.h - 1, Math.floor(y / s));
+      const si = (sy * art.w + sx) * 4, di = ((dy + y) * W + (dx + x)) * 4;
+      buf[di] = art.data[si] * 0.6; buf[di + 1] = art.data[si + 1] * 0.6; buf[di + 2] = art.data[si + 2] * 0.6; buf[di + 3] = 255;
+    }
+  } else {                                    // no art → suite-navy flat background
     for (let i = 0; i < buf.length; i += 4) { buf[i] = 13; buf[i + 1] = 17; buf[i + 2] = 23; buf[i + 3] = 255; }
   }
   const tl = wrapText(info.title, W - 8, 1, 2);                      // title wraps to 2 lines before truncating

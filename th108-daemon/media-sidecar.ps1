@@ -26,6 +26,8 @@ $propType = [Windows.Media.Control.GlobalSystemMediaTransportControlsSessionMedi
 $rasType  = [System.Type]::GetType('Windows.Storage.Streams.IRandomAccessStreamWithContentType, Windows.Storage.Streams, ContentType=WindowsRuntime')
 
 $last = ''
+$lastThumbKey = ''
+$lastEmit = (Get-Date).AddSeconds(-10)
 while ($true) {
   Start-Sleep -Milliseconds 1000
   $mgr = Await ([Windows.Media.Control.GlobalSystemMediaTransportControlsSessionManager]::RequestAsync()) ($mgrType)
@@ -53,15 +55,24 @@ while ($true) {
   $info = Await ($s.TryGetMediaPropertiesAsync()) ($propType)
   if (-not $info) { continue }
   if (-not $info.Title) { continue }
-  # the source app id (AUMID) — Spotify.exe / SpotifyAB.SpotifyMusic..., browsers report Chrome /
+  # the source app id (AUMID) - Spotify.exe / SpotifyAB.SpotifyMusic..., browsers report Chrome /
   # MSEdge / Brave etc. The daemon whitelists by this so X/Twitter video can't drive the LCD.
   $source = ''
   try { $source = "$($s.SourceAppUserModelId)" } catch { $source = '' }
+  # timeline (for the keyboard progress-bar): position + total duration, in ms
+  $posMs = 0; $durMs = 0
+  try { $tl = $s.GetTimelineProperties(); $posMs = [int]$tl.Position.TotalMilliseconds; $durMs = [int]$tl.EndTime.TotalMilliseconds } catch { }
+  # emit on any change, AND every ~2s while playing so the progress bar keeps advancing
   $key = $source + '|' + $info.Title + '|' + $info.Artist + '|' + $status
-  if ($key -eq $last) { continue }
-  $last = $key
+  $thumbKey = $info.Title + '|' + $info.Artist
+  $changed = ($key -ne $last)
+  $tick = ($status -eq 'playing' -and ((Get-Date) - $lastEmit).TotalMilliseconds -ge 2000)
+  if (-not $changed -and -not $tick) { continue }
+  $last = $key; $lastEmit = Get-Date
+  # fetch the album-art thumbnail ONLY when the track changed (it's ~150KB; not on every 2s tick)
   $thumb = ''
-  if ($info.Thumbnail -and $rasType) {
+  if ($thumbKey -ne $lastThumbKey -and $info.Thumbnail -and $rasType) {
+    $lastThumbKey = $thumbKey
     try {
       $stream = Await ($info.Thumbnail.OpenReadAsync()) ($rasType)
       if ($stream) {
@@ -74,6 +85,6 @@ while ($true) {
       }
     } catch { $thumb = '' }
   }
-  $obj = @{ title = "$($info.Title)"; artist = "$($info.Artist)"; status = $status; thumb = $thumb; source = $source }
+  $obj = @{ title = "$($info.Title)"; artist = "$($info.Artist)"; status = $status; thumb = $thumb; source = $source; posMs = $posMs; durMs = $durMs }
   Write-Output (ConvertTo-Json $obj -Compress)
 }

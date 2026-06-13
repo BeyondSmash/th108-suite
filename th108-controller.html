@@ -91,6 +91,11 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
   .card{ background:var(--card); border-radius:28px; padding:20px; box-shadow:var(--shadow); }
   .card[hidden]{ display:none !important; }   /* recurring gotcha: any later display: rule on a class beats [hidden] — keep the !important */
   .s2{ grid-column:span 2 } .s3{ grid-column:span 3 } .s4{ grid-column:span 4 } .s6{ grid-column:span 6 }
+  /* landscape Now Playing: two side-by-side columns so the full-width card stays short, not tall */
+  .npCols{ display:flex; gap:0 30px; flex-wrap:wrap; align-items:flex-start; }
+  .npCols > div{ flex:1 1 360px; min-width:300px; }
+  .npCols > div + div{ border-left:1px solid var(--border); padding-left:30px; }
+  @media (max-width:820px){ .npCols > div + div{ border-left:0; padding-left:0; border-top:1px solid var(--border); padding-top:14px; } }
   @media (max-width:1040px){
     #grid{ grid-template-columns:repeat(2,1fr); }
     .s2{ grid-column:span 1 } .s3,.s4,.s6{ grid-column:span 2 }
@@ -679,30 +684,64 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
   </div>
 
   <!-- ========== LCD SCREEN ========== -->
-  <div class="card s2" id="npCard" data-pages="lcd">
+  <div class="card s6" id="npCard" data-pages="lcd">
     <div class="cardbar"><span class="grip">⠿</span><h2>♪ Now Playing</h2><span class="aux" id="npState">daemon off</span></div>
-    <p class="hint" style="margin:4px 0 10px">The background daemon shows the current song on the LCD with album art (Spotify
-       only by default). <b>⚠ Each update writes the LCD flash, which can occasionally softbrick this board.</b> To minimize that:
-       it updates <b>only on a track change</b> (never play/pause/resume), waits ≥20&nbsp;s between writes, and caps at 30/hour.
-       Still a real risk — leave it off if you can't afford a possible factory reset. While this page holds the keyboard, a new
-       song queues and lands when the daemon takes over.</p>
-    <label class="sl" style="margin:0;cursor:pointer"><input type="checkbox" id="lcdNowPlaying" disabled> Show now-playing on the LCD</label>
-    <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-top:10px">
-      <label class="hint" style="margin:0;display:flex;align-items:center;gap:6px">Title <input type="color" id="npTitleColor" value="#ffffff" disabled title="now-playing title text color (re-paints the current song)"></label>
-      <label class="hint" style="margin:0;display:flex;align-items:center;gap:6px">Artist <input type="color" id="npArtistColor" value="#ffd98c" disabled title="now-playing artist text color (re-paints the current song)"></label>
+    <div class="npCols">
+      <div>
+        <p class="hint" style="margin:4px 0 10px">The background daemon shows the current song on the LCD with album art (Spotify
+           only by default). <b>⚠ Each update writes the LCD flash, which can occasionally softbrick this board.</b> To minimize that:
+           it updates <b>only on a track change</b> (never play/pause/resume), waits ≥20&nbsp;s between writes, and caps at 30/hour.
+           Still a real risk — leave it off if you can't afford a possible factory reset. While this page holds the keyboard, a new
+           song queues and lands when the daemon takes over.</p>
+        <p class="hint" style="margin:0 0 10px"><b>⌨ Heads-up:</b> during each LCD upload the key lighting pauses and the board can briefly drop input (a fraction of a second) — <b>not recommended during gaming or competitive play</b>.</p>
+        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+          <label class="sl" style="margin:0;cursor:pointer"><input type="checkbox" id="lcdNowPlaying" disabled> Show now-playing on the LCD</label>
+          <button id="npRefreshLcd" disabled title="force-repaint the current song to the LCD now (debug — bypasses the dedupe/gap when the display looks stuck)" style="margin:0;padding:4px 10px">↻ Refresh LCD</button>
+        </div>
+        <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-top:10px">
+          <label class="hint" style="margin:0;display:flex;align-items:center;gap:6px">Title <input type="color" id="npTitleColor" value="#ffffff" disabled title="now-playing title text color (re-paints the current song)"></label>
+          <label class="hint" style="margin:0;display:flex;align-items:center;gap:6px">Artist <input type="color" id="npArtistColor" value="#ffd98c" disabled title="now-playing artist text color (re-paints the current song)"></label>
+          <label class="hint" style="margin:0;display:flex;align-items:center;gap:6px" title="Crop = fill the LCD and crop the edges. Fit = show the whole cover letterboxed.">Album art
+            <select id="npArtFit" disabled><option value="crop">Crop</option><option value="fit">Fit</option></select></label>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;margin-top:10px;flex-wrap:wrap">
+          <span class="hint" style="margin:0">Return to GIF when paused for</span>
+          <span class="srange" id="npRevertWrap" title="when media stays PAUSED this long, the LCD returns to your last GIF Screen upload">
+            <div class="tick" id="npRevertTick" style="left:calc(7px + (100% - 14px)*0.1429)"></div>
+            <input type="range" id="npRevert" min="1" max="15" step="1" value="3" style="width:120px" disabled>
+          </span>
+          <span class="hint" id="npRevertLbl" style="margin:0;min-width:34px;font-weight:700">3s</span>
+          <button id="npRevertReset" title="reset to 3 seconds" style="margin:0;padding:4px 9px">↺</button>
+          <label class="sl" style="margin:0;cursor:pointer"><input type="checkbox" id="npRevertNever"> Never</label>
+        </div>
+        <div id="npSources" style="margin-top:12px"></div>
+      </div>
+      <div>
+        <label class="sl" style="margin:0;cursor:pointer"><input type="checkbox" id="npBar"> Song progress on keys 1-0 (light-bar)</label>
+        <p class="hint" style="margin:4px 0 10px">Keys&nbsp;1-0 light up to show how far through the song you are — <b>lighting only, no LCD writes, so it can't softbrick</b>.
+           Needs the background daemon running (it reads Spotify's playback position). Works whether or not the LCD now-playing on the left is on.</p>
+        <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+          <label class="hint" style="margin:0;display:flex;align-items:center;gap:6px">Bar color <input type="color" id="npBarColor" value="#11ff00" disabled title="the song-progress bar color"></label>
+          <span class="hint" style="margin:0;display:flex;align-items:center;gap:6px">Brightness
+            <input type="range" id="npBarBright" min="5" max="100" step="5" value="60" style="width:110px" disabled></span>
+          <span class="hint" id="npBarBrightLbl" style="margin:0;min-width:34px;font-weight:700">60%</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-top:10px">
+          <label class="sl" style="margin:0;cursor:pointer"><input type="checkbox" id="npFlash" disabled> Flash keys 1-0 on track change</label>
+          <label class="hint" style="margin:0;display:flex;align-items:center;gap:6px">Flash color <input type="color" id="npFlashColor" value="#ffd000" disabled title="the 150ms flash when the song changes"></label>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:10px">
+          <span class="hint" style="margin:0">Fade the bar out after idle for</span>
+          <input type="range" id="npBarIdle" min="0" max="15" step="1" value="3" style="width:120px" disabled title="when nothing's playing this long, the bar crossfades to gone (0 = fade immediately)">
+          <span class="hint" id="npBarIdleLbl" style="margin:0;min-width:34px;font-weight:700">3s</span>
+        </div>
+      </div>
     </div>
-    <div style="display:flex;align-items:center;gap:8px;margin-top:10px;flex-wrap:wrap">
-      <span class="hint" style="margin:0">Return to GIF when paused for</span>
-      <span class="srange" id="npRevertWrap" title="when media stays PAUSED this long, the LCD returns to your last GIF Screen upload">
-        <div class="tick" id="npRevertTick" style="left:calc(7px + (100% - 14px)*0.1429)"></div>
-        <input type="range" id="npRevert" min="1" max="15" step="1" value="3" style="width:120px" disabled>
-      </span>
-      <span class="hint" id="npRevertLbl" style="margin:0;min-width:34px;font-weight:700">3s</span>
-      <button id="npRevertReset" title="reset to 3 seconds" style="margin:0;padding:4px 9px">↺</button>
-      <label class="sl" style="margin:0;cursor:pointer"><input type="checkbox" id="npRevertNever"> Never</label>
+    <p class="hint" id="npTrack" style="margin:14px 0 0;font-weight:600"></p>
+    <div id="npFeedWrap" style="margin-top:10px;display:none">
+      <div class="hint" style="margin:0 0 4px;font-weight:600;opacity:.8">Live status</div>
+      <div id="npFeed" style="font:500 12px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--muted);background:var(--inset);border-radius:12px;padding:9px 12px;max-height:148px;overflow:auto"></div>
     </div>
-    <div id="npSources" style="margin-top:12px"></div>
-    <p class="hint" id="npTrack" style="margin:10px 0 0;font-weight:600"></p>
   </div>
 
   <div class="card s6" id="lcdCard" data-pages="lcd">
@@ -858,6 +897,38 @@ const DC = TH108DaemonClient.create({ log, getConfig: ()=>localStorage.getItem('
   }
 });
 window.addEventListener('beforeunload', ()=>{ DC.heartbeatStop(); DC.resume(); try{ TH108LCD.setDevices({}); }catch(_){ } });
+
+// TAB-HIDDEN HANDOFF: a backgrounded tab gets its render loop throttled to ~1fps by the browser, so
+// smooth effects (radiating rings) stutter into "static / periodic trickle" while WE still hold the
+// device. The always-on daemon renders at full 30fps with no throttling — so when the tab hides, hand
+// the keyboard to it (and take it back on return). This also lets the daemon's now-playing + 1-0
+// progress-bar run, since those only render when the daemon is the driver. Mirrors the proven
+// beforeunload handback + Connect re-take; guarded so rapid alt-tabbing can't overlap handoffs.
+let _hiddenHandoff=false, _handoffBusy=false;
+document.addEventListener('visibilitychange', async ()=>{
+  if(_handoffBusy) return;
+  if(document.hidden){
+    if(DC.present && DC.beating && running && HID.device){   // only when WE'RE actively driving layers via the daemon handshake
+      _handoffBusy=true;
+      try{
+        _hiddenHandoff=true;
+        running=false; if(layerW) layerW.postMessage({stop:true});   // stop OUR (throttled) writes — no blackout frame, the daemon paints over within a tick
+        DC.heartbeatStop(); await DC.resume();
+        log('tab hidden — handed lighting to the background daemon so it animates at full speed','dim');
+      } finally { _handoffBusy=false; }
+    }
+  } else if(_hiddenHandoff){
+    _handoffBusy=true;
+    try{
+      _hiddenHandoff=false;
+      if(HID.device){   // our WebHID handle was never closed → take back: make the daemon release, then resume our loop
+        if(DC.present){ await DC.yieldDevice(); DC.heartbeatStart(); }
+        start();
+        log('tab visible — page took the keyboard back','dim');
+      }
+    } finally { _handoffBusy=false; }
+  }
+});
 DC.mountPanel();   // Background-daemon panel: status readout, auto-start toggle (HKCU Run key via the daemon), quit
 
 // ===== layer compositor engine =====

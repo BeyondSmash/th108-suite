@@ -16,7 +16,7 @@ const ts = () => new Date().toTimeString().slice(0, 8);   // timestamped logs �
 // behavior (heartbeats only started after device-bind, and main-thread timers throttle in hidden tabs)
 // — the watchdog "resumed" into a live page and the two writers wedged the board.
 function createServer({ control, root, port = 8123, watchdogMs = 12000 }) {
-  let lastBeat = Date.now(), yielded = false, wd = null, boundPort = port;
+  let lastBeat = Date.now(), yielded = false, wd = null, boundPort = port, lastYieldAt = 0;
   function armWatchdog() {
     clearInterval(wd);
     let lastTick = Date.now();
@@ -44,8 +44,29 @@ function createServer({ control, root, port = 8123, watchdogMs = 12000 }) {
   });
   const sendJson = (res, code, obj) => { res.writeHead(code, { 'content-type': 'application/json' }); res.end(JSON.stringify(obj)); };
 
+  // ---- request-rate metrics + flood detector: so the next /yield-class loop ANNOUNCES itself in the
+  // log (⚠ FLOOD) instead of being found by luck, and /metrics shows live per-endpoint rates. ----
+  const metrics = Object.create(null), floodAt = Object.create(null);
+  const FLOOD_WINDOW_MS = 5000, FLOOD_THRESHOLD = 25;   // >25 hits to one endpoint in 5s = a client looping
+  function recordHit(key) {
+    const now = Date.now();
+    const m = metrics[key] || (metrics[key] = { total: 0, recent: [] });
+    m.total++; m.recent.push(now);
+    const cut = now - FLOOD_WINDOW_MS; while (m.recent.length && m.recent[0] < cut) m.recent.shift();
+    if (m.recent.length > FLOOD_THRESHOLD && (!floodAt[key] || now - floodAt[key] > 10000)) {
+      floodAt[key] = now;
+      console.log(ts() + ' ⚠ FLOOD: ' + key + ' — ' + m.recent.length + ' hits in ' + (FLOOD_WINDOW_MS / 1000) + 's (' + (m.recent.length / (FLOOD_WINDOW_MS / 1000)).toFixed(1) + '/s); a client is looping — check its rate-limit');
+    }
+  }
+  function metricsSnapshot() {
+    const now = Date.now(), eps = {};
+    for (const k in metrics) { const r = metrics[k].recent.filter(t => now - t < FLOOD_WINDOW_MS); eps[k] = { total: metrics[k].total, ratePerSec: +(r.length / (FLOOD_WINDOW_MS / 1000)).toFixed(2) }; }
+    return eps;
+  }
+
   const srv = http.createServer(async (req, res) => {
     const u = req.url.split('?')[0];
+    if (req.method === 'POST' || u === '/status') recordHit(req.method + ' ' + u);   // count the API surface (not static asset GETs)
     // Loopback-only + CSRF/DNS-rebinding guard: this is an always-on local service with state-changing
     // endpoints. The server binds 127.0.0.1 only; a DNS-rebound request carries the attacker's Host (not
     // localhost), and a cross-site POST carries a foreign Origin — reject both. /config additionally
@@ -59,7 +80,16 @@ function createServer({ control, root, port = 8123, watchdogMs = 12000 }) {
     }
     try {
       if (req.method === 'GET' && u === '/status') return sendJson(res, 200, control.status());
-      if (req.method === 'POST' && u === '/yield') { console.log(ts() + ' [api] /yield — page is taking the device'); await control.yield(); yielded = true; lastBeat = Date.now(); armWatchdog(); return sendJson(res, 200, { ok: true }); }   // await: the response must not unleash the page onto a board mid-flash-write
+      if (req.method === 'GET' && u === '/metrics') return sendJson(res, 200, { endpoints: metricsSnapshot(), windowSec: FLOOD_WINDOW_MS / 1000, driver: control.metrics ? control.metrics() : null });
+      if (req.method === 'POST' && u === '/yield') {
+        // BACKSTOP for the yield-storm (2026-06-13): if we're already yielded and another /yield
+        // lands within 1s, it's a flapping page looping — ACK without re-running control.yield()
+        // (which closes the device + waits on lcdBusy each time). Stops the storm even from a stale tab.
+        const now = Date.now();
+        if (yielded && now - lastYieldAt < 1000) return sendJson(res, 200, { ok: true, coalesced: true });
+        lastYieldAt = now;
+        console.log(ts() + ' [api] /yield — page is taking the device'); await control.yield(); yielded = true; lastBeat = now; armWatchdog(); return sendJson(res, 200, { ok: true });   // await: the response must not unleash the page onto a board mid-flash-write
+      }
       if (req.method === 'POST' && u === '/resume') { console.log(ts() + ' [api] /resume — page released the device'); control.resume(); yielded = false; clearInterval(wd); return sendJson(res, 200, { ok: true }); }
       if (req.method === 'GET' && u === '/autostart') return sendJson(res, 200, { enabled: await control.getAutostart() });
       if (req.method === 'POST' && u === '/autostart') {
@@ -89,8 +119,11 @@ function createServer({ control, root, port = 8123, watchdogMs = 12000 }) {
         if (body.titleColor || body.artistColor) { control.setNpColors(body.titleColor, body.artistColor); console.log(ts() + ' [api] /nowplaying colors ' + (body.titleColor || '-') + '/' + (body.artistColor || '-')); }
         if (body.cal) { control.setNpCal(body.cal); console.log(ts() + ' [api] /nowplaying cal updated'); }
         if ('revertSec' in body) { control.setNpRevertSec(body.revertSec); console.log(ts() + ' [api] /nowplaying revertSec=' + body.revertSec); }
+        if ('artFit' in body && control.setNpArtFit) { control.setNpArtFit(!!body.artFit); console.log(ts() + ' [api] /nowplaying artFit=' + !!body.artFit); }
         if (body.source && typeof body.source.id === 'string') { control.setNpSource(body.source.id, !!body.source.allow); console.log(ts() + ' [api] /nowplaying source ' + body.source.id + '=' + !!body.source.allow); }
+        if (body.bar && control.setNpBar) { control.setNpBar(body.bar); console.log(ts() + ' [api] /nowplaying bar ' + JSON.stringify(body.bar)); }
         if ('on' in body) { control.setNowPlaying(!!body.on); console.log(ts() + ' [api] /nowplaying ' + (body.on ? 'on' : 'off')); }
+        if (body.refresh && control.npRefresh) { const r = await control.npRefresh(); console.log(ts() + ' [api] /nowplaying refresh → ' + JSON.stringify(r)); return sendJson(res, 200, r); }
         return sendJson(res, 200, { ok: true });
       }
       if (req.method === 'POST' && u === '/usbfix') {   // the page's last-resort wedge recovery (cooldown enforced by control.usbFix)

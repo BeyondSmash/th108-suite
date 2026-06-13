@@ -405,6 +405,14 @@
         for(let k=0;k<NLED;k++){ const m=1-Math.max(0,Math.min(1,L._inten[k])), t=k*3;
           acc[t]*=m; acc[t+1]*=m; acc[t+2]*=m; }
       }
+      // REPLACE: per-KEY overlay — where this layer has ANY colour, those keys REPLACE the layers
+      // below (crossfaded by opacity); fully-black keys are transparent and pass the layers through.
+      // The "this layer owns these specific keys" mode (e.g. a song-progress bar on the number row).
+      if(bl==='replace'){
+        for(let k=0;k<NLED;k++){ const t=k*3, sr=src[t]/255, sg=src[t+1]/255, sb=src[t+2]/255;
+          if(sr>0||sg>0||sb>0){ acc[t]=acc[t]*(1-a)+sr*a; acc[t+1]=acc[t+1]*(1-a)+sg*a; acc[t+2]=acc[t+2]*(1-a)+sb*a; } }
+        continue;
+      }
       for(let i=0;i<acc.length;i++){
         const dst=acc[i], s=src[i]/255; let v;
         if(bl==='add')           v=Math.min(1, dst + s*a);
