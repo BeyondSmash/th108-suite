@@ -638,7 +638,7 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
 
   <!-- PARKED (user request): hidden until onboard-vs-custom pattern-accuracy comparison is needed.
        Kept in the DOM with data-pages="" so TH108Onboard's bindings stay intact — just never shown. -->
-  <div class="card s3" id="onboardPanel" data-pages="">
+  <div class="card s3" id="onboardPanel" data-pages="lighting">   <!-- un-parked 2026-06-13: lets the user write a fresh onboard effect to overwrite a possibly-corrupt lighting config after the softbrick -->
     <div class="cardbar"><span class="grip">⠿</span><h2>Onboard Effects</h2></div>
     <p class="hint" style="margin:4px 0 10px">Firmware effects — run on the keyboard itself, persist without a PC. Setting one stops the live layers/GIF.</p>
     <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
