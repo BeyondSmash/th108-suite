@@ -540,7 +540,10 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
     <h3>Lighting froze or went static by itself?</h3>
     <p>The board sometimes goes <b>mute</b> — it silently stops accepting host lighting (typing still works) and
        falls back to its saved firmware effect, which usually looks static. USB power events are the main trigger:
-       sleep, or other devices power-cycling on the same bus.</p>
+       sleep, or other devices power-cycling on the same bus. <b>Rapidly handing the board back and forth</b>
+       between this tab and the background daemon — lots of Connect/Disconnect, replug, or tab-switching in quick
+       succession — can also wedge it: every handoff briefly risks two writers on the same board, and its firmware
+       doesn't love the churn. If you're toggling a lot, give it a second to settle between switches.</p>
     <p>Cure ladder: wait ~30&nbsp;s (automatic USB restart; some mutes self-recover) → press
        <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>End</kbd> anywhere (the manual recovery hotkey, same restart) →
        <b>flip the mode switch to BT and back to wired</b> → <b>⟳ Factory Reset Keyboard</b> (Home tab; the
