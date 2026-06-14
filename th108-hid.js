@@ -43,7 +43,9 @@
           onDisconnected = opts.onDisconnected || noop, onReconnected = opts.onReconnected || noop,
           onGrantLost = opts.onGrantLost || noop,   // replug revoked the WebHID grant — only a user click can get it back
           onWedged = opts.onWedged || noop,         // handle-rebind retries exhausted on a mute board — last-resort recovery hook (daemon USB restart)
-          canDrive = opts.canDrive || (() => true); // SINGLE-DRIVER GATE: only the tab holding the cross-tab lock may auto-bind (WebHID opens are shared on Windows → two tabs streaming 0x32 interleave and wedge the board → onboard rainbow). Manual connect() bypasses this.
+          onDeferred = opts.onDeferred || noop,     // an AUTO-bind path declined to grab (a daemon is driving and this page wasn't) — clean up any stale yield/heartbeat so the daemon keeps the board
+          canDrive = opts.canDrive || (() => true), // SINGLE-DRIVER GATE: only the tab holding the cross-tab lock may auto-bind (WebHID opens are shared on Windows → two tabs streaming 0x32 interleave and wedge the board → onboard rainbow). Manual connect() bypasses this.
+          shouldAutoBind = opts.shouldAutoBind || (() => true); // DAEMON-DEFERENCE GATE (async): true only when no daemon is driving OR this page was genuinely driving (running/_wasRunning) and is reclaiming its own session. Stops the wake/replug 'connect' event + rebind poll from silently yanking the board from a daemon the user never asked to displace. Manual connect() bypasses this.
     let device = null, reportId = 0, packLen = 64;
     let _sendStalls = 0, _ackWaiter = null, _inRpts = 0, _lastWriteAt = 0;
     // minimum gap between writes — the board's real per-chunk drain rate. The board sends UNSOLICITED
@@ -175,6 +177,7 @@
         const w = findWritable(known);
         if (w && w.usagePage === 0xFF68 && w.usage === 0x61) {
           stopRebindPoll();
+          if (!(await shouldAutoBind())) { onDeferred(); return; }   // a daemon is driving and this page wasn't — leave the board to it (Connect to take over from here)
           try { await beforeAutoReconnect(); } catch (_) { }   // re-yield the daemon FIRST — at wake its watchdog may have resumed it, and silently rebinding over it = two writers (the 2026-06-11 wake fight)
           try { const ok = await bindDevice(known, true); if (ok) onReconnected(); }
           catch (_) { device = null; reportId = 0; startRebindPoll(); }   // not ready yet — keep polling
@@ -201,6 +204,7 @@
         if (device) return;                                     // already bound
         if (e.device && e.device.vendorId !== VENDOR) return;   // not our keyboard
         if (!canDrive()) return;                                // another tab owns the driver lock — let it handle the replug
+        if (!(await shouldAutoBind())) { onDeferred(); return; }   // a daemon is driving and this page wasn't — the first wake/replug event must NOT silently take the board from it (this was the #1 recurring villain). Connect to drive from here.
         try { await beforeConnect(); } catch (_) { }
         const known = await navigator.hid.getDevices();
         // a replug fires one connect event per HID interface as each re-enumerates — don't bind until the
