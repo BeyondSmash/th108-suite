@@ -23,8 +23,13 @@ function openDevice(path) {
 
 // Build an ACK-gated sender bound to one open device.
 // Returns async sendFrame(flat) -> true on success, false on stall (never throws, so the loop survives).
-function makeSender(device, { packLen = 64, cmd = 0x32, ackTimeoutMs = 800 } = {}) {
-  let ackWaiter = null, noise = 0;
+function makeSender(device, { packLen = 64, cmd = 0x32, ackTimeoutMs = 800, minWriteGapMs = 3 } = {}) {
+  // minWriteGapMs = pacing FLOOR between chunk writes. The board's unsolicited 0x55 broadcasts (esp. while
+  // the onboard effect runs after a mute/revert) falsely satisfy the ACK gate, letting us burst 8 chunks
+  // sub-ms and overrun the board's FIFO -> it goes silent (the recurring "comes on then off" mute churn).
+  // Cap the write rate to the board's real drain rate. PARITY with the page's th108-hid.js fix (eedf926) —
+  // the daemon transport never got it, so the always-on daemon was the one still overrunning the board.
+  let ackWaiter = null, noise = 0, lastWriteAt = 0;
   device.on('data', (buf) => {
     if (buf && buf[0] === 0x55 && ackWaiter) { const w = ackWaiter; ackWaiter = null; w(true); }
     else if (buf && buf[0] === 0x55) {
@@ -48,9 +53,12 @@ function makeSender(device, { packLen = 64, cmd = 0x32, ackTimeoutMs = 800 } = {
       pkt[0] = 0xAA; pkt[1] = cmd; pkt[2] = chunk.length;
       pkt[3] = off & 0xFF; pkt[4] = (off >> 8) & 0xFF; pkt[5] = 0; pkt[6] = last ? 1 : 0;
       for (let i = 0; i < chunk.length; i++) pkt[8 + i] = chunk[i];
+      const since = Date.now() - lastWriteAt;
+      if (since < minWriteGapMs) await new Promise(r => setTimeout(r, minWriteGapMs - since));   // pacing floor — never burst faster than the board drains (false-ACK overrun guard)
       const ack = waitAck();                       // arm BEFORE the write so we can't miss the ACK
       try { device.write([0x00, ...pkt]); }        // leading reportId 0 (Windows)
       catch { return false; }
+      lastWriteAt = Date.now();
       if (!(await ack)) return false;              // stalled → drop frame; caller keeps looping / reconnects
     }
     return true;
