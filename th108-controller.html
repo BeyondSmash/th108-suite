@@ -817,6 +817,7 @@ function log(m,c=''){ const d=document.createElement('div'); if(c)d.className=c;
 function setStatus(s,c='',tip=''){ const e=document.getElementById('status'); e.textContent=s; e.className='aux '+(c||'dim'); e.title=tip; }   // tip = hover tooltip for the jargon behind a friendly status
 
 let _wasRunning=false;   // layers were running when the keyboard went away (sleep/unplug/wedge) → resume on re-bind; cleared only by a deliberate Stop
+let _deferLogAt=0;       // debounce the "left to the background daemon" line: a replug fires one connect event PER interface, so onDeferred runs 2-3× in a burst
 
 // ===== single-tab driver lock: ONLY ONE controller tab may drive the keyboard. WebHID device
 // opens are SHARED on Windows, so two tabs both streaming 0x32 interleave and wedge the board into
@@ -844,7 +845,8 @@ const HID=TH108Hid.create({
   shouldAutoBind:async()=>{ await DC.ping(); return !DC.present || running || _wasRunning; },
   onDeferred:()=>{   // auto-rebind declined to grab — make sure we aren't secretly holding a yield/heartbeat, so the daemon keeps driving
     if(DC.beating){ DC.heartbeatStop(); DC.resume(); }
-    log('keyboard reconnected — left to the background daemon (it keeps driving; click Connect Keyboard to take over from this page)','dim');
+    const now=Date.now();
+    if(now-_deferLogAt>2500){ log('keyboard reconnected — left to the background daemon (it keeps driving; click “Drive from this Tab” to take over from this page)','dim'); _deferLogAt=now; }   // one line per replug, not one per re-enumerating interface
     refreshDriverUI();   // page deferred → daemon owns the board: flip the pill to Daemon now (don't wait for the 30s presence poll)
   },
   // board unresponsive / fatal send error. On a physical unplug the failing WRITE lands before the disconnect
@@ -1075,6 +1077,11 @@ async function stop(handToDaemon){
 function refreshDriverUI(){
   const gifOn = (typeof GIF!=='undefined' && GIF.playing);
   const tabDriving = running || gifOn;                                        // this tab is painting (layers or GIF) over WebHID
+  const cb=document.getElementById('connect');
+  if(cb){ const held=!!HID.device;                                          // Connect ⇄ Disconnect: the button reflects whether THIS tab holds the WebHID handle
+    cb.textContent = held ? 'Disconnect Keyboard' : 'Connect Keyboard';
+    cb.title = held ? 'release the keyboard from this tab entirely — the background daemon takes over (click Connect Keyboard to take it back)'
+                    : 'hands the keyboard from the daemon to this page and starts your layers automatically'; }
   const b=document.getElementById('driveToggle');
   if(b){
     if(gifOn){ b.textContent='Drive from this Tab ▶'; b.disabled=true; b.classList.remove('stop'); b.classList.add('go'); }   // GIF owns the board — use Stop GIF
@@ -1108,7 +1115,18 @@ const GIF=TH108GifPanel.create({
 
 // another tab holds the driver lock → block manual Connect too (it would fight over WebHID)
 function guardDriver(){ if(window.__isDriver) return true; log('another th108 tab is already driving the keyboard — close that tab first, then Connect here (it hands over automatically)','err'); setStatus('another tab is driving — close it to connect here','err'); return false; }
-document.getElementById('connect').addEventListener('click',async()=>{ if(!guardDriver()) return; await HID.connect();
+document.getElementById('connect').addEventListener('click',async()=>{
+  if(HID.device){   // DISCONNECT: release the handle entirely and hand the lit board to the daemon (tab fully out)
+    _wasRunning=false;
+    if(running){ running=false; if(layerW) layerW.postMessage({stop:true}); }   // stop our stream BEFORE releasing (so onDisconnected won't flag a resume)
+    await HID.disconnect();                                                       // closes control+screen handles, device=null, runs onDisconnected cleanup
+    _wasRunning=false;                                                            // deliberate disconnect never auto-resumes on a later reconnect
+    if(DC.present){ DC.heartbeatStop(); DC.resume(); }                            // the daemon drives now
+    setStatus('Keyboard released — the background daemon is driving (click Connect Keyboard to take over again)','dim');
+    refreshDriverUI();
+    return;
+  }
+  if(!guardDriver()) return; await HID.connect();
   if(!HID.device && DC.beating){ DC.heartbeatStop(); DC.resume(); } });   // cancelled/failed pick after yielding → hand the device back
 
 // header Connect: visible on every tab while this page doesn't hold the keyboard (the daemon may
@@ -1134,7 +1152,7 @@ async function toggleDriver(){
   if(HID.device){
     if(DC.present && !DC.beating){                               // reclaim from the daemon — yield it FIRST or two writers → wedge
       await DC.yieldDevice(); DC.heartbeatStart();
-      setStatus('Keyboard connected: this tab is driving the lighting','ok');
+      setStatus('Keyboard Connected: this tab is driving the lighting','ok');
       log('took the keyboard back from the daemon — this tab is driving again','ok');
     }
     start();

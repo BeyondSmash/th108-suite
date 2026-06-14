@@ -124,7 +124,7 @@
       if (!device.opened) await device.open();
       if (!device._inHooked) { device._inHooked = true; device.addEventListener('inputreport', onInputReport); }   // read the board's ACK/status reports + gate sends on them
       // user-facing status; the wire jargon rides the hover tooltip (3rd arg) and the log keeps the full line
-      setStatus('Keyboard connected: ' + String(device.productName || 'unknown').replace(/_/g, ' '), 'ok',
+      setStatus('Keyboard Connected: ' + String(device.productName || 'unknown').replace(/_/g, ' '), 'ok',
         'iface 0x' + (w.usagePage || 0).toString(16) + '/0x' + (w.usage || 0).toString(16) + ' · reportId=' + reportId + ' · packLen=' + packLen + ' · ' + opts.ledCount + ' LEDs');
       log('connected: ' + device.productName + ' · iface 0x' + (w.usagePage || 0).toString(16) + '/0x' + (w.usage || 0).toString(16) + ' · reportId=' + reportId + ' · packLen=' + packLen + ' · ' + opts.ledCount + ' LEDs', 'ok');
       let screenDev = null, screenRid = 0;
@@ -246,9 +246,18 @@
       try { const known = await navigator.hid.getDevices(); return await bindDevice(known, true); }
       catch (_) { return false; }
     }
+    // Deliberate user disconnect: release the WebHID handle entirely so the tab no longer holds the device
+    // (the daemon can then own it cleanly). NOT a rebind — we stay disconnected until an explicit Connect.
+    // device.close() does NOT fire navigator.hid 'disconnect' (that's for physical removal), so no auto-poll.
+    async function disconnect() {
+      stopRebindPoll();
+      try { if (device) await device.close(); } catch (_) { }
+      device = null; reportId = 0;
+      onDisconnected();   // host cleanup: stop the loop, clear LCD/binder handles, refresh the toggle/pill
+    }
 
     return {
-      connect, autoReconnect, bindDevice, sendFrame, buildPkt, findWritable, findScreen, rebind,
+      connect, disconnect, autoReconnect, bindDevice, sendFrame, buildPkt, findWritable, findScreen, rebind,
       resetStalls() { _sendStalls = 0; },
       get device() { return device; },
       get reportId() { return reportId; },
