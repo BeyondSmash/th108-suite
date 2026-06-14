@@ -43,11 +43,8 @@
           onDisconnected = opts.onDisconnected || noop, onReconnected = opts.onReconnected || noop,
           onGrantLost = opts.onGrantLost || noop,   // replug revoked the WebHID grant — only a user click can get it back
           onWedged = opts.onWedged || noop,         // handle-rebind retries exhausted on a mute board — last-resort recovery hook (daemon USB restart)
-          onDeferred = opts.onDeferred || noop,     // an AUTO-bind path declined to grab (a daemon is driving and this page wasn't) — clean up any stale yield/heartbeat so the daemon keeps the board
-          canDrive = opts.canDrive || (() => true), // SINGLE-DRIVER GATE: only the tab holding the cross-tab lock may auto-bind (WebHID opens are shared on Windows → two tabs streaming 0x32 interleave and wedge the board → onboard rainbow). Manual connect() bypasses this.
-          shouldAutoBind = opts.shouldAutoBind || (() => true); // DAEMON-DEFERENCE GATE (async): true only when no daemon is driving OR this page was genuinely driving (running/_wasRunning) and is reclaiming its own session. Stops the wake/replug 'connect' event + rebind poll from silently yanking the board from a daemon the user never asked to displace. Manual connect() bypasses this.
+          canDrive = opts.canDrive || (() => true); // SINGLE-DRIVER GATE: only the tab holding the cross-tab lock may auto-bind (WebHID opens are shared on Windows → two tabs streaming 0x32 interleave and wedge the board → onboard rainbow). Manual connect() bypasses this.
     let device = null, reportId = 0, packLen = 64;
-    let _binding = false;   // SINGLE-FLIGHT bind guard: a replug fires one 'connect' event PER interface and the rebind poll runs too — without this they bind concurrently (observed: "operation in progress" + null _inHooked + a board that ACKs but stays dark until a manual Connect). Set synchronously (no await) right after the entry checks so the claim is atomic.
     let _sendStalls = 0, _ackWaiter = null, _inRpts = 0, _lastWriteAt = 0;
     // minimum gap between writes — the board's real per-chunk drain rate. The board sends UNSOLICITED
     // 0x55 broadcasts (chatty, esp. while an animated onboard effect runs after a factory reset) that
@@ -139,8 +136,6 @@
     }
     async function connect() {
       if (!('hid' in navigator)) { setStatus('WebHID needs Chrome/Edge', 'err'); return; }
-      if (_binding) return;        // a bind is already in flight (auto-rebind) — don't race it
-      _binding = true;
       try {
         await beforeConnect();   // daemon holds the device — make it release BEFORE we open, or the open fails
         // a surviving grant binds silently — the picker is ONLY for re-granting after Chrome forgot
@@ -158,13 +153,10 @@
         const ok = await bindDevice(picked, false);
         if (ok) onConnected();   // tell the daemon's watchdog we're alive & holding the device
       } catch (e) { setStatus('connect failed: ' + e.message, 'err'); log('connect error: ' + e.message, 'err'); }
-      finally { _binding = false; }
     }
     async function autoReconnect() {   // on page load: if the keyboard was granted in a past session, reconnect silently (keeps the convenience, without Cancel-means-connect)
       if (!canDrive()) { setStatus('another th108 tab is driving the keyboard — close it, or use that tab', 'dim'); return; }   // never auto-grab from another tab
-      if (_binding) return; _binding = true;   // single-flight: don't race a connect-event / poll bind
       try { if (!('hid' in navigator)) return; const known = await navigator.hid.getDevices(); if (known && known.length) { await beforeAutoReconnect(); const ok = await bindDevice(known, true); if (ok) onConnected(); } } catch (_) { }
-      finally { _binding = false; }
     }
 
     // After a disconnect, ALSO poll getDevices() for the grant coming back — the navigator.hid 'connect' event
@@ -177,20 +169,15 @@
     function startRebindPoll() {
       stopRebindPoll(); _pollN = 0;
       _pollT = setInterval(async () => {
-        if (device || _binding) { if (device) stopRebindPoll(); return; }   // bound, or a bind is already in flight — don't race it
+        if (device) { stopRebindPoll(); return; }
         if (!canDrive()) { stopRebindPoll(); return; }   // another tab owns the driver lock — don't auto-rebind
         let known = []; try { known = await navigator.hid.getDevices(); } catch (_) { }
         const w = findWritable(known);
         if (w && w.usagePage === 0xFF68 && w.usage === 0x61) {
-          if (device || _binding) return;   // re-check after the getDevices await, THEN claim synchronously (atomic with this check — no await between)
-          _binding = true;
           stopRebindPoll();
-          try {
-            if (!(await shouldAutoBind())) { onDeferred(); return; }   // a daemon is driving and this page wasn't — leave the board to it (Connect to take over from here)
-            await beforeAutoReconnect();   // re-yield the daemon FIRST — at wake its watchdog may have resumed it, and silently rebinding over it = two writers (the 2026-06-11 wake fight)
-            const ok = await bindDevice(known, true); if (ok) onReconnected();
-          } catch (_) { device = null; reportId = 0; startRebindPoll(); }   // not ready yet — keep polling
-          finally { _binding = false; }
+          try { await beforeAutoReconnect(); } catch (_) { }   // re-yield the daemon FIRST — at wake its watchdog may have resumed it, and silently rebinding over it = two writers (the 2026-06-11 wake fight)
+          try { const ok = await bindDevice(known, true); if (ok) onReconnected(); }
+          catch (_) { device = null; reportId = 0; startRebindPoll(); }   // not ready yet — keep polling
         } else if (++_pollN === 4) {   // ~6s with no grant in sight → it was a replug (grant revoked) — needs the user
           setStatus('keyboard disconnected — if you replugged it, click Connect Keyboard to re-grant (Chrome forgets the permission on unplug)', 'dim');
           onGrantLost();               // hand lighting back to the daemon — the page can't recover without a click anyway
@@ -211,27 +198,27 @@
         startRebindPoll();                                     // the 'connect' event alone is not enough — see startRebindPoll
       });
       navigator.hid.addEventListener('connect', async e => {
-        if (device || _binding) return;                         // already bound, or a bind is already in flight (replug fires one event PER interface — serialize them; this is the dark-board race fix)
+        if (device) return;                                     // already bound
         if (e.device && e.device.vendorId !== VENDOR) return;   // not our keyboard
         if (!canDrive()) return;                                // another tab owns the driver lock — let it handle the replug
-        _binding = true;                                        // claim the bind slot synchronously (no await since the checks above) — only ONE bind runs at a time
+        try { await beforeConnect(); } catch (_) { }
+        const known = await navigator.hid.getDevices();
+        // a replug fires one connect event per HID interface as each re-enumerates — don't bind until the
+        // 0xFF68/0x61 control iface is actually back, or findWritable's fallback could grab the screen iface
+        // (writes ACK but don't drive LEDs) and lock out the later, correct events
+        const w = findWritable(known);
+        if (!w || w.usagePage !== 0xFF68 || w.usage !== 0x61) { log('keyboard re-enumerating — waiting for the control interface…', 'dim'); return; }
         try {
-          if (!(await shouldAutoBind())) { onDeferred(); return; }   // a daemon is driving and this page wasn't — the first wake/replug event must NOT silently take the board from it (this was the #1 recurring villain). Connect to drive from here.
-          try { await beforeConnect(); } catch (_) { }
-          const known = await navigator.hid.getDevices();
-          // a replug fires one connect event per HID interface as each re-enumerates — don't bind until the
-          // 0xFF68/0x61 control iface is actually back, or findWritable's fallback could grab the screen iface
-          // (writes ACK but don't drive LEDs) and lock out the later, correct events
-          const w = findWritable(known);
-          if (!w || w.usagePage !== 0xFF68 || w.usage !== 0x61) { log('keyboard re-enumerating — waiting for the control interface…', 'dim'); return; }
           const ok = await bindDevice(known, true);             // re-open the FRESH handle (control + screen)
           if (ok) onReconnected();
         } catch (err) {
-          device = null; reportId = 0;                          // bind failed mid-enumeration (e.g. open() too early) — release so a later event/poll retries cleanly
+          device = null; reportId = 0;                          // bind failed mid-enumeration (e.g. open() too early) — release so the next connect event retries instead of seeing a broken "already bound" handle
           log('reconnect attempt failed: ' + (err && err.message || err) + ' — retrying shortly', 'dim');
-          setTimeout(() => { if (!device && !_binding) startRebindPoll(); }, 1000);   // single guarded retry via the poll instead of a racing direct bind
-        } finally {
-          _binding = false;
+          setTimeout(async () => {                              // the failed attempt may have been the LAST interface event — one delayed retry so we don't strand the page
+            if (device) return;
+            try { const ok = await bindDevice(await navigator.hid.getDevices(), true); if (ok) onReconnected(); }
+            catch (_) { device = null; reportId = 0; }
+          }, 1000);
         }
       });
     }

@@ -148,14 +148,6 @@ async function sendOnboard(allled) {
 let probing = false, nextOpenAt = Date.now() + 5000;   // startup grace: a live page's heartbeat needs a beat (≤3s) to park us before we first touch the device
 let lastOkAt = 0, streakStart = 0, muteLogged = false, muteAt = 0;   // mute-episode tracking (transition logging)
 let usbFiredAt = 0, lastTickAt = 0;   // USB-restart escalation state + sleep-gap detection
-let wokeAt = 0, wakeSuppressLogged = false;   // post-wake USB-restart suppression — see WAKE_USB_SUPPRESS_MS
-// A PnP USB-restart on wake disrupts the AMD xHCI controller this keyboard SHARES with the user's USB
-// DAC (Schiit Magni Unity, adjacent port on the same root hub) → its isochronous audio stream drops and
-// audio goes mute until a re-enumeration. And a wake-mute almost never clears from a PnP restart anyway
-// (the battery-powered board needs a real replug / mode-switch). So for this long after a detected wake,
-// NEVER auto-fire the restart — let the wake-mute self-recover or wait for the user. (Mid-session genuine
-// wedges, outside this window, still escalate; the explicit Ctrl+Alt+End hotkey ignores this entirely.)
-const WAKE_USB_SUPPRESS_MS = 120_000;
 let offCleared = false;               // lights-off: the one black frame was sent
 let sendingFrame = false;             // a 0x32 frame is mid-flight — closing the device NOW leaves the board's chunk parser desynced
 async function openIfPossible() {
@@ -167,7 +159,7 @@ async function openIfPossible() {
   let d = null;
   try {
     d = T.openDevice(p);
-    const traffic = await T.probeTraffic(d, 1500);   // ALWAYS the full two-writer guard. (Reverted the 250ms trusted-resume short probe 2026-06-14 — regression: a shorter probe let the daemon open onto a board another writer was still using -> two-writer wedge -> "lighting dies and won't sustain".)
+    const traffic = await T.probeTraffic(d, 1500);
     if (paused) { try { d.close(); } catch {} return; }   // yielded mid-probe — hand it straight back
     if (traffic > 0) {
       try { d.close(); } catch {}
@@ -188,10 +180,7 @@ async function tick() {
   // Sleep-gap re-baseline: after a suspend, the pre-sleep muteAt is hours stale — without this the USB
   // restart would insta-fire on the first failed send at wake, even though wake mutes recover on their own.
   const nowWall = Date.now();
-  if (lastTickAt && nowWall - lastTickAt > 30_000) {   // a >30s tick gap = the process was frozen by a PC suspend
-    wokeAt = nowWall; wakeSuppressLogged = false;      // arm the post-wake USB-restart suppression (protects the USB-DAC sharing the keyboard's controller)
-    if (muteLogged) muteAt = nowWall;                  // re-baseline the mute clock so a stale pre-sleep muteAt can't insta-fire
-  }
+  if (lastTickAt && nowWall - lastTickAt > 30_000 && muteLogged) muteAt = nowWall;
   lastTickAt = nowWall;
   await openIfPossible();
   // master lighting switch (header toggle, mirrored here): clear the board once, then stay quiet
@@ -272,13 +261,9 @@ async function tick() {
         // Escalation: a PnP restart of the keyboard's USB node = software replug (proven to clear a true
         // wedge). Loud by design — it drops typing ~1-2s, so the log must say exactly when and why.
         if (settings.usbReset && U.shouldFire({ muteAt, now: Date.now(), lastFireAt: usbFiredAt })) {
-          if (Date.now() - wokeAt < WAKE_USB_SUPPRESS_MS) {   // within the post-wake window — suppress (it would drop USB-audio and rarely recovers a wake-mute anyway)
-            if (!wakeSuppressLogged) { wakeSuppressLogged = true; log('… board mute ' + Math.round((Date.now() - wokeAt) / 1000) + 's after a wake — NOT firing the USB-restart (it disrupts the USB-DAC on the shared controller; a wake-mute needs a real replug / mode-switch). Auto-restart resumes ' + Math.round(WAKE_USB_SUPPRESS_MS / 1000) + 's post-wake.'); }
-          } else {
-            usbFiredAt = Date.now();
-            log('⚡ ESCALATING: mute has lasted ' + Math.round((usbFiredAt - muteAt) / 1000) + 's — PnP-restarting the keyboard USB device (task "' + U.TASK_NAME + '"); typing drops ~1-2s');
-            U.fire(log);
-          }
+          usbFiredAt = Date.now();
+          log('⚡ ESCALATING: mute has lasted ' + Math.round((usbFiredAt - muteAt) / 1000) + 's — PnP-restarting the keyboard USB device (task "' + U.TASK_NAME + '"); typing drops ~1-2s');
+          U.fire(log);
         }
       }
     } else framesDeduped++;   // frame identical to the last + inside the keepalive window → skipped (the dedupe idling static lighting to ~1fps)
@@ -395,7 +380,6 @@ const control = {
     while (lcdBusy && Date.now() - t0 < 25000) await new Promise(r => setTimeout(r, 100));
     if (lcdBusy) console.log(ts() + ' ⚠ yield proceeded with a flash upload still busy after 25s — investigate');
   },
-  // Reload config (the page may have saved edits) and resume rendering.
   // Reload config (the page may have saved edits) and resume rendering.
   resume() { rebuildState(); paused = false; unpausedAt = Date.now(); },
   // Persist the page's config; refresh live state immediately unless yielded to the page.
