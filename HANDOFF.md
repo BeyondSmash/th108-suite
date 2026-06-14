@@ -14,10 +14,9 @@ The **mute / lighting-safety arc is complete**: all four reverted stability fixe
 - **Single-flight bind guard** — `b89ca6e`. `_binding` flag in all 4 bind paths → replug-while-driving = one clean re-bind, no dark board. HW-verified.
 - **Auto-release on blur/hide** — `86ffcca`. Hands to daemon on window blur too (not just hidden), so reactive works typing in VSCode on a 2nd monitor; 1.2s debounce; reclaim on focus. HW-verified **seamless, no mute blink**.
 - **FAQ: rapid churn wedges the board** — `aba8451` (faq4). Documents Connect/Disconnect/replug/tab-switch churn as a wedge trigger + BT↔wired recovery.
-- **Status polish** — `91b79e2`. "Keyboard Connected" (capital C); "left to the daemon" log debounced to one per replug. User-confirmed.
+- **Connect⇄Disconnect button + status polish** — `91b79e2`. Connect flips to "Disconnect Keyboard" when the tab holds the handle (`HID.disconnect()` closes it + hands to daemon); "Keyboard Connected" (capital C); defer-log debounced to one per replug. **HW-verified** (Disconnect confirmed working 2026-06-14).
 
 ### 🟡 Open / in-progress
-- **Disconnect button NOT hardware-exercised** — `91b79e2`. Connect flips to "Disconnect Keyboard" when the tab holds the handle (`HID.disconnect()` closes it + hands to daemon). Reuses proven primitives (close + `DC.resume` + normal connect) but the board was resting, so it was never clicked on hardware. Verify casually: tab driving → "Disconnect Keyboard" → board stays lit (daemon), button → "Connect Keyboard", pill → Daemon → Connect re-takes.
 - **Feature queue** (none started): Clear LCD button (black-image push, lit-black ≠ true off); LCD parity controls (Rotate/Gamma/Speed + GIF stats); audio-reactive visualizer layer (the "music layer", design-first); UI tooling (wireframe toggle / Edit-layout / Arrange); driver sniffs incl. **true LCD screen-OFF** command.
 - **Two untracked `.ps1`** (`th108-daemon/install-audio-wake-fix.ps1`, `wake-audio-recovery-test.ps1`) — machine-specific audio-on-wake fix, intentionally NOT committed.
 
