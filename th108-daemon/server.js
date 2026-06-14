@@ -33,7 +33,7 @@ function createServer({ control, root, port = 8123, watchdogMs = 12000 }) {
       lastTick = now;
       if (yielded && now - lastBeat > watchdogMs) {
         console.log(`${ts()} [watchdog] no page heartbeat for >${watchdogMs}ms — resuming daemon control`);
-        control.resume(); yielded = false;
+        control.resume(false); yielded = false;   // NOT trusted: the page vanished without releasing — it may still be live/streaming, so keep the full reopen probe
       }
     }, Math.max(50, Math.floor(watchdogMs / 4)));
   }
@@ -90,7 +90,7 @@ function createServer({ control, root, port = 8123, watchdogMs = 12000 }) {
         lastYieldAt = now;
         console.log(ts() + ' [api] /yield — page is taking the device'); await control.yield(); yielded = true; lastBeat = now; armWatchdog(); return sendJson(res, 200, { ok: true });   // await: the response must not unleash the page onto a board mid-flash-write
       }
-      if (req.method === 'POST' && u === '/resume') { console.log(ts() + ' [api] /resume — page released the device'); control.resume(); yielded = false; clearInterval(wd); return sendJson(res, 200, { ok: true }); }
+      if (req.method === 'POST' && u === '/resume') { console.log(ts() + ' [api] /resume — page released the device'); control.resume(true); yielded = false; clearInterval(wd); return sendJson(res, 200, { ok: true }); }   // trusted: the page explicitly handed back (stopped + drained) → short reopen probe, no tab-switch blink
       if (req.method === 'GET' && u === '/autostart') return sendJson(res, 200, { enabled: await control.getAutostart() });
       if (req.method === 'POST' && u === '/autostart') {
         const b = await readBody(req); let on;

@@ -932,6 +932,7 @@ document.addEventListener('visibilitychange', async ()=>{
       try{
         _hiddenHandoff=true;
         running=false; if(layerW) layerW.postMessage({stop:true});   // stop OUR (throttled) writes — no blackout frame, the daemon paints over within a tick
+        for(let i=0;i<20 && layerInFlight;i++) await new Promise(r=>setTimeout(r,10));   // drain any in-flight 0x32 frame (≤200ms) so the daemon's shortened reopen probe sees a SILENT board — else our tail ACKs trip its two-writer backoff into a 5s gap
         DC.heartbeatStop(); await DC.resume();
         log('tab hidden — handed lighting to the background daemon so it animates at full speed','dim');
       } finally { _handoffBusy=false; }

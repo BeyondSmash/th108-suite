@@ -146,6 +146,7 @@ async function sendOnboard(allled) {
 // fresh handle first — unsolicited 0x55 ACK traffic means a live page is streaming (its yield expired
 // but it's still there); writing too would wedge the board. Back off and re-probe on a later tick.
 let probing = false, nextOpenAt = Date.now() + 5000;   // startup grace: a live page's heartbeat needs a beat (≤3s) to park us before we first touch the device
+let trustResumeUntil = 0;   // set by an explicit page /resume (cooperative handoff): the reopen may use a SHORT traffic-probe instead of the full 1.5s → no dark "blink" on tab-switch. NOT set by the watchdog resume (the page may still be live there).
 let lastOkAt = 0, streakStart = 0, muteLogged = false, muteAt = 0;   // mute-episode tracking (transition logging)
 let usbFiredAt = 0, lastTickAt = 0;   // USB-restart escalation state + sleep-gap detection
 let wokeAt = 0, wakeSuppressLogged = false;   // post-wake USB-restart suppression — see WAKE_USB_SUPPRESS_MS
@@ -167,7 +168,8 @@ async function openIfPossible() {
   let d = null;
   try {
     d = T.openDevice(p);
-    const traffic = await T.probeTraffic(d, 1500);
+    const probeMs = Date.now() < trustResumeUntil ? 250 : 1500;   // a trusted page handoff drained its stream first → short probe = near-instant takeover (kills the tab-switch blink); else the full guard against a live second writer
+    const traffic = await T.probeTraffic(d, probeMs);
     if (paused) { try { d.close(); } catch {} return; }   // yielded mid-probe — hand it straight back
     if (traffic > 0) {
       try { d.close(); } catch {}
@@ -175,7 +177,7 @@ async function openIfPossible() {
       log(`… another writer on the device (${traffic} reports during probe) — backing off`);
       return;
     }
-    device = d;
+    device = d; trustResumeUntil = 0;   // took over — the trust window is one-shot
     send = T.makeSender(device, { ackTimeoutMs: 800 });
     if (!muteLogged) log('✓ device open');   // stay quiet during a mute-retry loop — the MUTE/recovered transition lines tell the story
   } catch { try { if (d) d.close(); } catch {} nextOpenAt = Date.now() + 5000; }
@@ -396,7 +398,11 @@ const control = {
     if (lcdBusy) console.log(ts() + ' ⚠ yield proceeded with a flash upload still busy after 25s — investigate');
   },
   // Reload config (the page may have saved edits) and resume rendering.
-  resume() { rebuildState(); paused = false; unpausedAt = Date.now(); },
+  // trusted = an explicit page /yield→/resume handoff (the page guarantees it stopped + drained its
+  // stream), so the reopen can short-probe and take over fast (no tab-switch blink). The watchdog
+  // passes trusted=false: there the page may still be alive/streaming → keep the full probe (the
+  // 2026-06-11 double-open-into-a-live-page mute).
+  resume(trusted) { rebuildState(); paused = false; unpausedAt = Date.now(); if (trusted) trustResumeUntil = Date.now() + 5000; },
   // Persist the page's config; refresh live state immediately unless yielded to the page.
   saveConfig(cfg) { fs.writeFileSync(CONFIG_PATH, JSON.stringify(cfg)); if (!paused) rebuildState(); },
   status() { return { running: true, paused, deviceConnected: !!device, fps: FPS, setupPath: path.resolve(__dirname, '..', 'setup.cmd'), usbReset: settings.usbReset, nowPlaying: settings.nowPlaying,
