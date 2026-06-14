@@ -938,38 +938,53 @@ const DC = TH108DaemonClient.create({ log, getConfig: ()=>localStorage.getItem('
 });
 window.addEventListener('beforeunload', ()=>{ DC.heartbeatStop(); DC.resume(); try{ TH108LCD.setDevices({}); }catch(_){ } });
 
-// TAB-HIDDEN HANDOFF: a backgrounded tab gets its render loop throttled to ~1fps by the browser, so
-// smooth effects (radiating rings) stutter into "static / periodic trickle" while WE still hold the
-// device. The always-on daemon renders at full 30fps with no throttling — so when the tab hides, hand
-// the keyboard to it (and take it back on return). This also lets the daemon's now-playing + 1-0
-// progress-bar run, since those only render when the daemon is the driver. Mirrors the proven
-// beforeunload handback + Connect re-take; guarded so rapid alt-tabbing can't overlap handoffs.
-let _hiddenHandoff=false, _handoffBusy=false;
-document.addEventListener('visibilitychange', async ()=>{
-  if(_handoffBusy) return;
-  if(document.hidden){
-    if(DC.present && DC.beating && running && HID.device){   // only when WE'RE actively driving layers via the daemon handshake
-      _handoffBusy=true;
-      try{
-        _hiddenHandoff=true;
-        running=false; if(layerW) layerW.postMessage({stop:true});   // stop OUR (throttled) writes — no blackout frame, the daemon paints over within a tick
-        DC.heartbeatStop(); await DC.resume();
-        log('tab hidden — handed lighting to the background daemon so it animates at full speed','dim');
-        refreshDriverUI();
-      } finally { _handoffBusy=false; }
+// AUTO-RELEASE ON BLUR/HIDE: when this tab loses focus OR is hidden, hand the board to the daemon so
+// reactive lighting keeps working in EVERY app (the daemon's uiohook hooks keys system-wide) and smooth
+// effects run at full 30fps (a backgrounded tab's render loop is throttled to ~1fps). Reclaim on
+// focus+visible. This generalizes the old tab-HIDDEN handoff to also cover "visible but unfocused" — e.g.
+// the controller on one monitor while you type in VSCode on another — the case where reactive used to die.
+// SAFETY: only hand off while WE'RE actively driving layers (running) — which is FALSE during any LCD
+// flash upload (th108-lcd / now-playing both pause lighting first), during GIF playback, and when idle —
+// so a handoff can NEVER interrupt a 0x50 flash write (the brick risk). Debounced ~1.2s so a momentary
+// alt-tab / notification doesn't churn the board (rapid owner-swaps are what wedge it). Shared
+// _awayHandoff/_handoffBusy state + a single timer guard against overlapping handoffs.
+let _awayHandoff=false, _handoffBusy=false, _awayTimer=0;
+const AWAY_DELAY=1200;   // sustained-away debounce: don't hand off on a momentary blur
+function pageActive(){ return document.hasFocus() && !document.hidden; }
+async function handBoardToDaemon(){
+  if(_handoffBusy || _awayHandoff) return;
+  if(!(DC.present && DC.beating && running && HID.device)) return;   // only while WE actively drive layers (excludes LCD upload / GIF / idle — running=false there)
+  if(window.__npPermit) return;                                       // belt-and-suspenders: never mid now-playing flash upload
+  _handoffBusy=true;
+  try{
+    _awayHandoff=true;
+    running=false; if(layerW) layerW.postMessage({stop:true});       // stop OUR writes — no blackout frame, the daemon paints over within a tick
+    DC.heartbeatStop(); await DC.resume();
+    log('tab left focus — handed lighting to the background daemon (reactive keeps working in every app)','dim');
+    refreshDriverUI();
+  } finally { _handoffBusy=false; }
+}
+async function reclaimBoardFromDaemon(){
+  if(_handoffBusy || !_awayHandoff) return;
+  _handoffBusy=true;
+  try{
+    _awayHandoff=false;
+    if(HID.device){   // our WebHID handle was never closed → take back: make the daemon release, then resume our loop
+      if(DC.present){ await DC.yieldDevice(); DC.heartbeatStart(); }
+      start();
+      log('tab focused — page took the keyboard back','dim');
+      refreshDriverUI();
     }
-  } else if(_hiddenHandoff){
-    _handoffBusy=true;
-    try{
-      _hiddenHandoff=false;
-      if(HID.device){   // our WebHID handle was never closed → take back: make the daemon release, then resume our loop
-        if(DC.present){ await DC.yieldDevice(); DC.heartbeatStart(); }
-        start();
-        log('tab visible — page took the keyboard back','dim');
-      }
-    } finally { _handoffBusy=false; }
-  }
-});
+  } finally { _handoffBusy=false; }
+}
+function onAwayChange(){
+  clearTimeout(_awayTimer);
+  if(pageActive()) reclaimBoardFromDaemon();                          // back in focus + visible → reclaim now
+  else _awayTimer=setTimeout(handBoardToDaemon, AWAY_DELAY);          // sustained blur/hide → hand off (debounced)
+}
+window.addEventListener('blur', onAwayChange);
+window.addEventListener('focus', onAwayChange);
+document.addEventListener('visibilitychange', onAwayChange);
 DC.mountPanel();   // Background-daemon panel: status readout, auto-start toggle (HKCU Run key via the daemon), quit
 
 // ===== layer compositor engine =====
