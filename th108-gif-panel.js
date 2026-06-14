@@ -50,7 +50,8 @@
           hasDevice = opts.hasDevice || (() => false), sendFrame = opts.sendFrame || (async () => false),
           isRunning = opts.isRunning || (() => false),
           startLayers = opts.startLayers || noop, stopLayers = opts.stopLayers || noop,
-          clearObActive = opts.clearObActive || noop;
+          clearObActive = opts.clearObActive || noop,
+          refreshButtons = opts.refreshButtons || noop;   // host hook: re-sync the drive toggle/pill on GIF play/stop (GIF owns the board while playing)
     const {INDICES, BOARDW, BOARDH} = E;
 
     // uniform-grid positions (LED index -> [col,row]); the "Grid" mapping gives every key an equal cell — best for legible text/pixel art.
@@ -255,7 +256,7 @@
       if(isRunning()) stopLayers();                             // GIF mode replaces the reactive pulse
       gifPlaying=true; gifIdx=0;
       document.getElementById('gifPlay').disabled=true; document.getElementById('gifStop').disabled=false;
-      document.getElementById('start').disabled=true;
+      refreshButtons();   // GIF now owns the board → drive toggle disables, pill shows WebHID
       log('GIF playback started ('+gifFrames.length+' frames)','ok'); gifTick();
     }
     async function gifStopFn(){
@@ -263,7 +264,7 @@
       gifPlaying=false;
       if(tickW) tickW.postMessage({stop:true});
       document.getElementById('gifPlay').disabled=!hasDevice(); document.getElementById('gifStop').disabled=true;
-      document.getElementById('start').disabled=!hasDevice();
+      refreshButtons();   // GIF released the board → drive toggle reflects layers/daemon state again
       const off=[]; INDICES.forEach(i=>off.push(i,0,0,0)); await sendFrame(off);
       log('GIF playback stopped (board cleared)','dim');
     }
