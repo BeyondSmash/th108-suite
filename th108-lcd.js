@@ -26,6 +26,7 @@
   let off = null, octx = null;                     // 160x96 offscreen scratch canvas
   let srcCanvas = null, srcW = 0, srcH = 0;        // first full frame + dims (for the crop guide)
   let czoom = 1, cpanX = 0, cpanY = 0;             // adjustable crop transform (Crop mode)
+  let rot = 0;                                     // image rotation in degrees: 0/90/180/270 (90° steps → no empty corners on the fixed 160×96 LCD)
   let cropHist = [], cropHi = -1;                  // crop reposition/scale history
   let currentFile = null;                          // currently-loaded image/GIF blob
   let hist = [], hi = -1;                          // color-calibration undo/redo history
@@ -111,6 +112,7 @@
     </div>
     <p class="sub" style="margin:-4px 0 10px;color:#d29922">
       <b>Note:</b> Uploading writes the GIF to flash — the key lighting briefly blanks during the write, then resumes.</p>
+    <div class="row sub" id="lcdStats" style="margin:-4px 0 10px">load an image or GIF to see stats</div>
     <div class="row">
       <b style="margin-right:8px">Fit Mode:</b>
       <label><input type="radio" name="lcdFit" value="cover" checked /> <b>Crop</b> (fill the screen, cut the edges)</label>
@@ -128,6 +130,14 @@
       <span class="hint">how to fill the bars when using Fit mode</span>
       <span style="flex:1"></span>
       <button id="lcdCcToggle" title="per-channel RGB calibration + global adjustments (shown beside the previews)">Color Correction ▸</button>
+    </div>
+    <div class="row" style="display:flex;align-items:center;flex-wrap:wrap;gap:12px">
+      <b style="margin-right:2px">Transform:</b>
+      <button id="lcdRotate" title="rotate the image 90° clockwise — the LCD shows whole frames, so 90° steps avoid the empty corners an arbitrary angle would leave">⟳ Rotate <span id="lcdRotV" style="font-variant-numeric:tabular-nums">0°</span></button>
+      <label style="display:flex;align-items:center;gap:7px">Speed
+        <input type="range" id="lcdSpeed" min="25" max="400" value="100" style="width:150px">
+        <span id="lcdSpeedV" class="sub" style="min-width:34px;font-variant-numeric:tabular-nums">1.0×</span></label>
+      <span class="hint">Speed scales the GIF's baked-in frame delays before it's written to flash (preview matches).</span>
     </div>
     <div class="row" style="display:flex;gap:24px;align-items:flex-start;flex-wrap:wrap">
       <div style="display:flex;flex-direction:column;gap:8px"><!-- left column: crop guide → previews → log; Color Correction rides the right column, TOP-ALIGNED with the crop guide -->
@@ -217,7 +227,19 @@
     return { cx: (srcW - cw) / 2 + cpanX, cy: (srcH - ch) / 2 + cpanY, cw, ch };
   }
 
+  // rotate a drawable (VideoFrame / bitmap / canvas) by 0/90/180/270° into a fresh canvas, swapping
+  // dims for the quarter-turns. 90° steps only → the rotated frame still fully covers 160×96 (no corners).
+  function rotateDrawable(drawable, w, h, deg) {
+    if (!deg) return { canvas: drawable, w, h };
+    const swap = deg === 90 || deg === 270, rw = swap ? h : w, rh = swap ? w : h;
+    const c = document.createElement('canvas'); c.width = rw; c.height = rh;
+    const cx = c.getContext('2d');
+    cx.translate(rw / 2, rh / 2); cx.rotate(deg * Math.PI / 180); cx.drawImage(drawable, -w / 2, -h / 2, w, h);
+    return { canvas: c, w: rw, h: rh };
+  }
+
   function coverDraw(srcW, srcH, drawable) {   // render drawable to 160x96 (crop or fit), return RGBA bytes
+    if (rot) { const r = rotateDrawable(drawable, srcW, srcH, rot); drawable = r.canvas; srcW = r.w; srcH = r.h; }
     const tw = 160, th = 96, ir = srcW / srcH, tr = tw / th;
     octx.filter = 'none'; octx.clearRect(0, 0, tw, th);
     if (isFit()) {                            // FIT: whole image, filled bars
@@ -247,10 +269,11 @@
     return octx.getImageData(0, 0, tw, th).data;
   }
 
-  // keep the first full frame + its dimensions so we can draw the crop guide
+  // keep the first full frame + its dimensions so we can draw the crop guide (rotated to match the output)
   function captureSource(drawable, w, h) {
-    srcW = w; srcH = h; srcCanvas = document.createElement('canvas'); srcCanvas.width = w; srcCanvas.height = h;
-    srcCanvas.getContext('2d').drawImage(drawable, 0, 0, w, h);
+    const r = rotateDrawable(drawable, w, h, rot);
+    srcW = r.w; srcH = r.h; srcCanvas = document.createElement('canvas'); srcCanvas.width = srcW; srcCanvas.height = srcH;
+    srcCanvas.getContext('2d').drawImage(r.canvas, 0, 0, srcW, srcH);
   }
 
   // draw the full source with the kept (160×96 / 5:3) region highlighted and the cropped-out parts dimmed
@@ -289,6 +312,22 @@
   }
 
   // ---------------------------------------------------------------------------
+  // speed (scales the GIF's baked-in per-frame delays) + GIF stats readout
+  // ---------------------------------------------------------------------------
+  const speedVal = () => (+(($('#lcdSpeed') || {}).value) || 100) / 100;   // playback-speed multiplier (1 = native)
+  const fmtBytes = n => n >= 1048576 ? (n / 1048576).toFixed(1) + ' MB' : Math.round(n / 1024) + ' KB';
+  function updateStats() {
+    const st = $('#lcdStats'); if (!st) return;
+    if (!frames.length) { st.textContent = 'load an image or GIF to see stats'; return; }
+    const size = (currentFile && currentFile.size) ? fmtBytes(currentFile.size) : '—';
+    if (frames.length === 1) { st.textContent = `${size} · static image · ${srcW}×${srcH} source`; return; }
+    const totalMs = frames.reduce((a, f) => a + (f.delayMs || 100), 0), sp = speedVal();
+    let s = `${size} · ${frames.length} frames · ${(totalMs / 1000).toFixed(1)}s`;
+    if (Math.abs(sp - 1) > 0.001) s += ` (${(totalMs / 1000 / sp).toFixed(1)}s at ${sp.toFixed(1)}×)`;   // speed-adjusted play time
+    st.textContent = s;
+  }
+
+  // ---------------------------------------------------------------------------
   // preview loop
   // ---------------------------------------------------------------------------
   function stopPreview() { if (previewTimer) { clearTimeout(previewTimer); previewTimer = null; } }
@@ -296,7 +335,7 @@
     if (!frames.length) return;
     baseData = { data: frames[previewIdx].rgba }; applyColor();
     drawActual(frames[previewIdx].rgba);            // raw desktop colors, side-by-side for comparison
-    const d = Math.max(20, frames[previewIdx].delayMs || 100);
+    const d = Math.max(20, (frames[previewIdx].delayMs || 100) / speedVal());   // preview plays at the same speed the LCD will
     previewIdx = (previewIdx + 1) % frames.length;
     if (frames.length > 1) previewTimer = setTimeout(tickPreview, d);
   }
@@ -334,6 +373,7 @@
       if (!frames.length) { const bmp = await createImageBitmap(f); captureSource(bmp, bmp.width, bmp.height); frames.push({ rgba: coverDraw(bmp.width, bmp.height, bmp), delayMs: 100 }); bmp.close && bmp.close(); }
       log('decoded ' + frames.length + ' frame(s)' + (frames.length > 1 ? ' (animated)' : ''), 'ok');
       drawCropGuide();
+      updateStats();
       tickPreview();
     } catch (err) { log('decode failed: ' + err.message, 'err'); }
   }
@@ -505,7 +545,10 @@
     // last frame makes the count ODD, which sends every byte and erases the full region. (Protocol-safe:
     // keeps the official's totalChunks formula intact.)
     if (up.length % 2 === 0) { up = up.concat([up[up.length - 1]]); log('even frame count → duplicating last frame to avoid the bottom-row glitch', 'dim'); }
-    const encFrames = up.map(fr => ({ bytes: encodeFrame(fr.rgba), delayMs: fr.delayMs }));   // calibrated RGB565 per frame
+    const sp = speedVal();
+    if (Math.abs(sp - 1) > 0.001) log(`speed ${sp.toFixed(1)}× → scaling baked frame delays (floored at 20ms, the firmware caps each at ~510ms)`, 'dim');
+    // calibrated RGB565 per frame; Speed scales the baked delay (floor 20ms so we never write a 0ms frame; buildHeader caps at 255 → ~510ms)
+    const encFrames = up.map(fr => ({ bytes: encodeFrame(fr.rgba), delayMs: Math.max(20, Math.round((fr.delayMs || 100) / sp)) }));
     const plan = TH108LcdUpload.planUpload(encFrames);                                        // shared engine builds header/chunks
     const frameCount = plan.frameCount, totalSize = plan.totalSize, S = plan.chunkCount;
     log(`uploading ${frameCount} frame(s): ${totalSize} bytes (${S} chunks)`, 'in');
@@ -658,6 +701,17 @@
     $('#lcdBarFill').addEventListener('change', () => { updateBarColorVis(); if (currentFile) processFile(currentFile); });
     // debounce the color picker so dragging it doesn't re-decode every frame
     $('#lcdBarColor').addEventListener('input', () => { clearTimeout(barColorT); barColorT = setTimeout(() => { if (currentFile) processFile(currentFile); }, 150); });
+
+    // ---- Rotate (90° steps) + Speed ----
+    // Rotation changes the source aspect on quarter-turns, so the existing crop pan/zoom no longer maps —
+    // reset the crop and re-decode (same pattern as toggling Crop/Fit), then snapshot for undo.
+    $('#lcdRotate').addEventListener('click', () => {
+      rot = (rot + 90) % 360; $('#lcdRotV').textContent = rot + '°';
+      cropResetState();
+      if (currentFile) processFile(currentFile).then(cropPush); else drawCropGuide();
+    });
+    // Speed only re-times playback (no re-decode): update the readout + stats; the preview loop reads speedVal() each tick.
+    $('#lcdSpeed').addEventListener('input', () => { $('#lcdSpeedV').textContent = speedVal().toFixed(1) + '×'; updateStats(); });
 
     // ---- color calibration wiring ----
     const hadCal = loadCal();
