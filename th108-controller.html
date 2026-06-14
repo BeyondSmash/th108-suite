@@ -113,6 +113,21 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
   .card:hover .cardbar .grip{ opacity:.8; }
   .cardbar h2{ font-family:"Fraunces",Georgia,serif; font-weight:700; font-size:19.5px; margin:0; letter-spacing:-.2px; }
   .cardbar .aux{ margin-left:auto; font-size:12.5px; color:var(--muted); }
+  /* driver pill — which entity is painting the LEDs right now: WebHID (this tab) or Daemon (background app).
+     On a swap the edge glows in the new driver's color, holds ~350ms, then fades ~500ms (total .85s). */
+  .driverpill{ margin-left:8px; display:inline-flex; align-items:center; padding:2px 9px; border-radius:999px;
+    font-size:11px; font-weight:700; letter-spacing:.03em; line-height:1.6; white-space:nowrap;
+    border:1px solid rgb(var(--glow,140,140,140)); color:rgb(var(--glow,140,140,140)); background:rgba(var(--glow,140,140,140),.12);
+    transition:color .25s ease, border-color .25s ease, background-color .25s ease; }
+  .driverpill[hidden]{ display:none !important; }
+  .driverpill[data-driver="daemon"]{ --glow:240,136,62; }   /* orange */
+  .driverpill[data-driver="webhid"]{ --glow:88,166,255; }   /* blue  */
+  .driverpill.swap{ animation:pillSwap .85s ease-out; }
+  @keyframes pillSwap{
+    0%  { box-shadow:0 0 0 1px rgba(var(--glow),.95), 0 0 14px 4px rgba(var(--glow),.8); }
+    41% { box-shadow:0 0 0 1px rgba(var(--glow),.95), 0 0 14px 4px rgba(var(--glow),.8); }   /* hold ~350ms */
+    100%{ box-shadow:0 0 0 0 rgba(var(--glow),0),   0 0 0 0 rgba(var(--glow),0);   }          /* fade ~500ms */
+  }
   /* pointer-drag mechanics (react-grid-layout feel): the grabbed card floats with the cursor at FULL
      opacity with a lift shadow; a faded clone holds its grid slot as the drop shadow and lags behind
      the neighbors' rearrangement (FLIP transitions set inline by the drag code) */
@@ -371,7 +386,7 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
   </div>
 
   <div class="card s3" id="connectCard" data-pages="home">
-    <div class="cardbar"><span class="grip">⠿</span><h2>Keyboard</h2><span class="aux dim" id="status">not connected</span></div>
+    <div class="cardbar"><span class="grip">⠿</span><h2>Keyboard</h2><span class="aux dim" id="status">not connected</span><span id="driverPill" class="driverpill" data-driver="" title="which entity is currently driving the keyboard LEDs — WebHID = this browser tab, Daemon = the always-on background app" hidden></span></div>
     <div class="row">
       <button id="connect" class="primary" title="hands the keyboard from the daemon to this page and starts your layers automatically">Connect Keyboard</button>
       <button id="start" class="go" disabled title="resume the layers after a Stop">Start Layers ▶</button>
@@ -853,6 +868,7 @@ const HID=TH108Hid.create({
     // honor the pending resume intent here too, making replug recovery ONE click instead of Connect+Start
     if(_wasRunning){ _wasRunning=false; start(); log('layers resumed','ok'); }
     else if(!running && !GIF.playing){ start(); }   // an explicit Connect click auto-starts the layers — there is no two-step procedure
+    refreshDriverPill();
   },
   onDisconnected:()=>{
     _wasRunning=_wasRunning||running;   // don't overwrite an intent already captured by stopHost (the write fails before the disconnect event on unplug)
@@ -861,6 +877,7 @@ const HID=TH108Hid.create({
     try{ BINDER.setConnected(false); }catch(_){ }       // binding actions gate back to "needs Connect"
     document.getElementById('start').disabled=true; document.getElementById('stop').disabled=true;
     hdrConnSync();                                      // header Connect returns
+    refreshDriverPill();                                // device gone: daemon (if present) takes over, else hide the pill
   },
   onReconnected:()=>{
     DC.heartbeatStart();
@@ -924,6 +941,7 @@ document.addEventListener('visibilitychange', async ()=>{
         running=false; if(layerW) layerW.postMessage({stop:true});   // stop OUR (throttled) writes — no blackout frame, the daemon paints over within a tick
         DC.heartbeatStop(); await DC.resume();
         log('tab hidden — handed lighting to the background daemon so it animates at full speed','dim');
+        refreshDriverPill();
       } finally { _handoffBusy=false; }
     }
   } else if(_hiddenHandoff){
@@ -939,6 +957,7 @@ document.addEventListener('visibilitychange', async ()=>{
   }
 });
 DC.mountPanel();   // Background-daemon panel: status readout, auto-start toggle (HKCU Run key via the daemon), quit
+refreshDriverPill();   // boot: show the pill straight away if the daemon is already driving (page idle, daemon Online)
 
 // ===== layer compositor engine =====
 function fpsCap(){ return +document.getElementById('gifFps').value || 60; }   // global output FPS cap (shared with GIF) — lower = less compute
@@ -1017,19 +1036,42 @@ function start(){
   for(const L of state.layers) L.lastTick=0;
   document.getElementById('start').disabled=true; document.getElementById('stop').disabled=false;
   log('layers started','ok'); layerTick();
+  refreshDriverPill();
 }
 async function stop(){
   if(!running) return;
   running=false;
-  if(layerW) layerW.postMessage({stop:true});
+  if(layerW) layerW.postMessage({stop:true});   // stop OUR streaming FIRST — no two-writer overlap on the handoff below
   document.getElementById('start').disabled=!HID.device; document.getElementById('stop').disabled=true;
-  // black-out frame so it's visibly stopped
-  const off=[]; INDICES.forEach(i=>off.push(i,0,0,0));
-  await HID.sendFrame(off);
-  log('layers stopped (board cleared)','dim');
-  // NOTE: do NOT hand back to the daemon here — the page still holds the WebHID device (stop only
-  // pauses rendering). Handing back now would make the daemon re-grab a device we still own (two
-  // writers → wedge). The daemon re-grabs only when the page releases the device (beforeunload).
+  if(DC.present && DC.beating){
+    // DAEMON PRESENT: hand the board to the always-on daemon instead of going dark. We've already
+    // stopped streaming (running=false + worker stop above), so there's no two-writer fight — the
+    // daemon paints over within a tick. Mirrors the proven tab-hidden handoff (no blackout frame).
+    // Start takes it back (it yields the daemon first — see the Start button handler). We KEEP the
+    // WebHID handle open (instant take-back, LCD stays bound) — so the status, not a disconnect,
+    // tells the user the daemon is now driving.
+    DC.heartbeatStop(); await DC.resume();
+    setStatus('Background daemon is driving the lighting — click Start Layers to take it back','dim','the tab still holds the keyboard for an instant take-back; the daemon paints the LEDs until then');
+    log('layers stopped — handed lighting to the background daemon (Start Layers takes it back)','dim');
+  } else {
+    // STANDALONE (no daemon to take over): black-out frame so it's visibly stopped.
+    const off=[]; INDICES.forEach(i=>off.push(i,0,0,0));
+    await HID.sendFrame(off);
+    log('layers stopped (board cleared)','dim');
+  }
+  refreshDriverPill();
+}
+
+// driver-status pill: shows WebHID (this tab is streaming) or Daemon (the background app holds it),
+// glowing in the new driver's color on each swap. Read-only reflection of state — never drives anything.
+function refreshDriverPill(){
+  const p=document.getElementById('driverPill'); if(!p) return;
+  const tabDriving = running || (typeof GIF!=='undefined' && GIF.playing);   // this tab is painting (layers or GIF) over WebHID
+  const driver = tabDriving ? 'webhid' : (DC.present ? 'daemon' : '');         // else the daemon paints; else nothing (standalone + stopped)
+  if(!driver){ p.hidden=true; p.dataset.driver=''; return; }
+  const changed = p.hidden || p.dataset.driver!==driver;
+  p.hidden=false; p.dataset.driver=driver; p.textContent = driver==='webhid' ? 'WebHID' : 'Daemon';
+  if(changed){ p.classList.remove('swap'); void p.offsetWidth; p.classList.add('swap'); }   // restart the glow keyframe on a real swap
 }
 
 // ===== GIF → per-key lighting — extracted to th108-gif-panel.js (decode/sample/position/playback/library) =====
@@ -1064,7 +1106,17 @@ function hdrConnSync(){
 document.getElementById('connectHdr').addEventListener('click',async()=>{ if(!guardDriver()) return; await HID.connect();
   if(!HID.device && DC.beating){ DC.heartbeatStop(); DC.resume(); } });   // same flow/handback as the Home Connect button
 hdrConnSync();   // boot: nothing bound yet → the button shows
-document.getElementById('start').addEventListener('click',start);
+document.getElementById('start').addEventListener('click',async()=>{
+  // Stop hands the board to the daemon; Start takes it BACK to the page. Yield the daemon FIRST —
+  // page + daemon both streaming 0x32 = two writers → wedge. No daemon (DC.present false) → just start.
+  const takingBack = DC.present && !DC.beating && HID.device;   // daemon was driving (we handed off on Stop) → reclaim it
+  if(takingBack){
+    await DC.yieldDevice(); DC.heartbeatStart();
+    setStatus('Keyboard connected: this tab is driving the lighting','ok');
+    log('took the keyboard back from the daemon — this tab is driving again','ok');
+  }
+  start();
+});
 document.getElementById('stop').addEventListener('click',()=>{ _wasRunning=false; stop(); });   // a deliberate Stop also cancels any pending resume-on-reconnect
 
 // ===== layer cards UI — extracted to th108-layers-ui.js (cards + bodies + Adjust block + grip reorder + persist) =====
@@ -1442,6 +1494,7 @@ function dmnTagSync(){
   el.hidden=false;
   el.classList.toggle('off', !DC.present);
   document.getElementById('dmnTagTxt').textContent=DC.present?'Online':'Offline';
+  refreshDriverPill();   // daemon presence may have just changed → keep the driver pill in sync
   el.title=DC.present
     ?'Background daemon is running — layer edits apply live, reactive typing works in every app, no Connect needed'
     :'Background daemon is not running — lighting stops when this tab closes. Start it with setup.cmd (or log in again).';
