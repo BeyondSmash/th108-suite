@@ -76,7 +76,9 @@
         lc.addEventListener('click',()=>{ L.collapsed=!L.collapsed; card.classList.toggle('coll',L.collapsed); lc.innerHTML=L.collapsed?CHEV_EXPAND:CHEV_COLLAPSE; saveLayers(); });
         card.querySelector('.le').addEventListener('change',e=>{ L.enabled=e.target.checked; card.classList.toggle('off',!L.enabled); });
         card.querySelector('.ln').addEventListener('input',e=>{ L.name=e.target.value; });
-        card.querySelector('.lt').addEventListener('change',e=>{ L.type=e.target.value; E.ensureSettings(L); buildLayerBody(card,L); });
+        card.querySelector('.lt').addEventListener('change',e=>{ L.type=e.target.value; E.ensureSettings(L);
+          if(L.type==='individual' && L.blend!=='replace'){ L.blend='replace'; const bl=card.querySelector('.lbl'); if(bl) bl.value='replace'; }   // per-key paint defaults to the replace blend (black keys transparent)
+          buildLayerBody(card,L); });
         const lo=card.querySelector('.lo'), lon=card.querySelector('.lon');
         const setOpa=(v,reNum)=>{ v=Math.max(0,Math.min(100,Math.round(v||0))); L.opacity=v/100; lo.value=v; if(reNum) lon.value=v; };
         lo.addEventListener('input',e=>setOpa(+e.target.value,true));
@@ -268,32 +270,37 @@
         if(s.current===undefined) s.current='#ff8c00';
         body.innerHTML='<div class="ctl">'+
           row('Paint color','<input type="color" class="s-current" value="'+s.current+'"><span></span>')+
-          row('','<button class="s-showkb" type="button">⌨ Show Keyboard</button><span class="val s-selcount" style="margin-left:8px"></span>')+
+          row('','<button class="s-kbcompact" type="button">⌨ Compact</button> <button class="s-kblarge" type="button">⌨ Large</button><span class="val s-selcount" style="margin-left:8px"></span>')+
           row('','<button class="s-clearsel" type="button">Clear selection</button> <button class="s-clearall" type="button">Clear all</button>')+
         '</div>';
         const c=q=>body.querySelector(q);
-        let pb=null, wrap=null;
+        let pb=null, wrap=null, curSize=null;
         const reRender=()=>{ L.lastTick=0; };   // force the running layer loop to repaint next frame
         const updCount=()=>{ const el=c('.s-selcount'); if(el) el.textContent = pb ? (pb.selCount()+' selected') : ''; };
-        function mountBoard(){
+        const updBtns=()=>{ const cc=c('.s-kbcompact'), cl=c('.s-kblarge');
+          if(cc) cc.textContent = curSize==='compact'?'⌨ Hide':'⌨ Compact';
+          if(cl) cl.textContent = curSize==='large'?'⌨ Hide':'⌨ Large'; };
+        function ensureBoard(){
           if(pb) return;
           wrap=document.createElement('div'); wrap.className='pb-wrap';
           wrap.innerHTML='<div class="pb-board"></div><div class="pb-hint">Click/drag to paint · Shift+ add · Ctrl+ deselect · Alt+drag erase · pick a color to recolor the selection</div>';
           card.parentNode.insertBefore(wrap, card);   // wedge the board directly ABOVE this layer card
           pb=root_PaintBoard().mount(wrap.querySelector('.pb-board'), {
-            engine:E,
-            getKeys:()=>s.keys,
-            getColor:()=>s.current,
+            engine:E, getKeys:()=>s.keys, getColor:()=>s.current,
             onPaint:(idx,hex)=>{ if(hex) s.keys[idx]=hex; else delete s.keys[idx]; reRender(); },
             onChange:()=>{ updCount(); scheduleSaveLayers(); },
           });
-          c('.s-showkb').textContent='⌨ Hide Keyboard'; updCount();
         }
-        function unmountBoard(){ if(!pb) return; pb.destroy(); pb=null; if(wrap&&wrap.parentNode) wrap.parentNode.removeChild(wrap); wrap=null; c('.s-showkb').textContent='⌨ Show Keyboard'; updCount(); }
+        function setSize(size){   // 'compact' | 'large' | null (hide)
+          if(!size){ if(pb){ pb.destroy(); pb=null; } if(wrap&&wrap.parentNode) wrap.parentNode.removeChild(wrap); wrap=null; curSize=null; updBtns(); updCount(); return; }
+          ensureBoard(); curSize=size; wrap.classList.remove('pb-compact','pb-large'); wrap.classList.add('pb-'+size); pb.draw(); updBtns(); updCount();
+        }
         c('.s-current').addEventListener('input',e=>{ s.current=e.target.value; if(pb) pb.recolorSelection(); });
-        c('.s-showkb').addEventListener('click',()=>{ pb?unmountBoard():mountBoard(); });
+        c('.s-kbcompact').addEventListener('click',()=>setSize(curSize==='compact'?null:'compact'));
+        c('.s-kblarge').addEventListener('click',()=>setSize(curSize==='large'?null:'large'));
         c('.s-clearsel').addEventListener('click',()=>{ if(pb){ pb.clearSelection(); } reRender(); scheduleSaveLayers(); });
         c('.s-clearall').addEventListener('click',()=>{ s.keys={}; if(pb){ pb.selectNone(); pb.draw(); } reRender(); scheduleSaveLayers(); });
+        updBtns();
       } else {   // media — Stage 1 placeholder
         body.innerHTML='<div class="ph">Media layer — port of the GIF engine lands in Stage 2. (Use the GIF → keyboard panel below for now.)</div>';
       }

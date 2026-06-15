@@ -326,8 +326,10 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
   body .lcd-tool #lcdPreview,body .lcd-tool #lcdPreviewActual{ border:1px solid var(--border); border-radius:8px; }
   body .lcd-tool .lcd-log{ background:#010409; border:1px solid transparent; border-radius:12px; }
   body .lcd-tool select{ background:var(--inset) !important; color:var(--text) !important; border:1px solid var(--border) !important; }   /* the module sets dark colors inline — !important is the only override */
-    .pb-wrap{ margin:8px 0; padding:10px; background:var(--inset,#0d1117); border:1px solid var(--line,#30363d); border-radius:12px; }
-    .pb-canvas{ width:100%; max-width:520px; height:auto; image-rendering:pixelated; border-radius:6px; cursor:crosshair; display:block; }
+    .pb-wrap{ margin:8px 0; padding:10px; background:var(--inset,#0d1117); border:1px solid var(--line,#30363d); border-radius:12px; user-select:none; -webkit-user-select:none; }
+    .pb-canvas{ width:100%; height:auto; image-rendering:pixelated; border-radius:6px; cursor:crosshair; display:block; }
+    .pb-wrap.pb-compact .pb-canvas{ max-width:440px; }
+    .pb-wrap.pb-large .pb-canvas{ max-width:880px; }
     .pb-hint{ color:var(--dim,#8b949e); font-size:11px; margin-top:6px; }
 </style>
 </head>
