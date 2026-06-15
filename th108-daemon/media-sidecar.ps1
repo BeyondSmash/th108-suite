@@ -28,8 +28,16 @@ $rasType  = [System.Type]::GetType('Windows.Storage.Streams.IRandomAccessStreamW
 $last = ''
 $lastThumbKey = ''
 $lastEmit = (Get-Date).AddSeconds(-10)
+$iter = 0
 while ($true) {
   Start-Sleep -Milliseconds 1000
+  # Reclaim accumulated WinRT RCWs every ~20s. PowerShell rarely GCs inside a tight polling loop, so the
+  # per-iteration WinRT projection objects (session manager, sessions, media properties, timeline, thumbnail
+  # streams) pile up UNRELEASED and the process balloons -- this leaked to ~1.5GB / 6.9 CPU-hours over a
+  # session and lagged the whole machine (2026-06-14). Forcing a collect + finalizer drain releases their COM
+  # refs and keeps the heap small (which also slashes the GC CPU). Cheap on a small heap (<10ms).
+  $iter++
+  if ($iter % 20 -eq 0) { [System.GC]::Collect(); [System.GC]::WaitForPendingFinalizers(); [System.GC]::Collect() }
   $mgr = Await ([Windows.Media.Control.GlobalSystemMediaTransportControlsSessionManager]::RequestAsync()) ($mgrType)
   if (-not $mgr) { continue }
   # Pick the BEST session, not just the current one: prefer a Spotify session (the default
