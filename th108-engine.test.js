@@ -117,3 +117,16 @@ test('ensureSettings backfills individual fields', () => {
   assert.deepEqual(L.settings.keys, {});
   assert.equal(L.settings.current, '#ff8c00');
 });
+
+test('applyConfig updates settings in place (preserves running animation), rebuilds on structure change', () => {
+  const st = E.createState(E.defaultLayers());
+  st.layers[0]._clk = 12345; st.layers[0].lastTick = 999;          // a running animation
+  const cfg = E.defaultLayers(); cfg[0].settings.color = '#123456';
+  const st2 = E.applyConfig(st, cfg);
+  assert.equal(st2, st, 'settings-only edit reuses the same state');
+  assert.equal(st.layers[0]._clk, 12345, 'animation clock preserved');
+  assert.equal(st.layers[0].settings.color, '#123456', 'new settings applied');
+  const st3 = E.applyConfig(st, E.defaultLayers().slice(0, 2));
+  assert.notEqual(st3, st, 'structure change rebuilds');
+  assert.equal(st3.layers.length, 2);
+});

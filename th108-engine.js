@@ -491,6 +491,21 @@
     };
   }
 
+  // apply a new layer config to an EXISTING state WITHOUT resetting the running animation (per-layer clocks,
+  // reactive buffers, rgb) when the layer structure (count + types) is unchanged — only settings/name/
+  // enabled/opacity/blend/fps change in place. A structural change falls back to a fresh createState. Lets a
+  // live settings edit (e.g. painting an individual-keys layer) layer in seamlessly instead of restarting
+  // every layer's animation. Returns the state to use.
+  function applyConfig(state, configLayers){
+    if(!state || !Array.isArray(state.layers) || state.layers.length!==configLayers.length
+       || state.layers.some((L,i)=>L.type!==configLayers[i].type))
+      return createState(configLayers);
+    configLayers.forEach((c,i)=>{ const L=state.layers[i];
+      L.name=c.name; L.enabled=!!c.enabled; L.opacity=c.opacity; L.blend=c.blend; L.fps=c.fps;
+      L.settings=Object.assign({}, c.settings); ensureSettings(L); });
+    return state;
+  }
+
   // ===== orchestrators =====
   const SEND_FPS_CAP = 30;   // hard-cap layer streaming at 30fps (the board's HID pipe wedges above this sustained)
   function composeFrame(state, now){
@@ -525,7 +540,7 @@
     KEYMAP, INDICES, NLED, BOARDW, BOARDH,
     hexToRgb, hsv2rgb, patHash, patColorize,
     keyCell, layerCell,
-    PAT_DEFAULTS, patParams, ensureSettings, defaultLayers, createState,
+    PAT_DEFAULTS, patParams, ensureSettings, defaultLayers, createState, applyConfig,
     renderBackground, renderReactive, renderGradient, renderPattern, renderMedia, renderKeys,
     reactEnvelope, applyAdjust, layerNow, renderLayer, composite, flatEq,
     composeFrame, stampKey, releaseKey, SEND_FPS_CAP,

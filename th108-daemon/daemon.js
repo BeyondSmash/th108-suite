@@ -383,7 +383,9 @@ const control = {
   // Reload config (the page may have saved edits) and resume rendering.
   resume() { rebuildState(); paused = false; unpausedAt = Date.now(); },
   // Persist the page's config; refresh live state immediately unless yielded to the page.
-  saveConfig(cfg) { fs.writeFileSync(CONFIG_PATH, JSON.stringify(cfg)); if (!paused) rebuildState(); },
+  saveConfig(cfg) { fs.writeFileSync(CONFIG_PATH, JSON.stringify(cfg));
+    if (!paused) { state = E.applyConfig(state, cfg);   // in-place on a settings edit → no animation reset; rebuilds only on a structural change
+      if (state) state.bri = Math.max(0, Math.min(100, settings.brightness != null ? settings.brightness : 100)) / 100; } },
   status() { return { running: true, paused, deviceConnected: !!device, fps: FPS, setupPath: path.resolve(__dirname, '..', 'setup.cmd'), usbReset: settings.usbReset, nowPlaying: settings.nowPlaying,
                       npTrack: npHandle ? npHandle.current() : null, npQueued: npHandle ? npHandle.queued() : false,
                       npHealth: npHandle ? npHandle.health() : null,
