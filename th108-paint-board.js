@@ -36,6 +36,7 @@
     cv.addEventListener('pointerleave', () => { if (!drag) overBoard = false; });
     const altGuard = e => { if ((overBoard || drag) && (e.key === 'Alt' || e.altKey)) e.preventDefault(); };
     window.addEventListener('keydown', altGuard);
+    cv.addEventListener('contextmenu', e => e.preventDefault());   // no browser right-click menu over the paint board
 
     // key rect in canvas pixels, from the engine's normalized keyCell (center x,y + w,h, 0..1)
     function rectOf(idx) {
