@@ -95,3 +95,25 @@ test('composeFrame applies global brightness (state.bri) without compounding', (
   state.bri = 1;
   assert.equal(E.composeFrame(state, 0)[1], 200, 'bri 1 = untouched');
 });
+
+// ===== Individual-keys layer =====
+test('individual layer paints chosen keys; replace blend keeps unpainted transparent', () => {
+  const idxA = E.KEYMAP.KeyA, idxB = E.KEYMAP.KeyB;
+  const st = E.createState([
+    { name:'BG',   enabled:true, type:'background', opacity:1, blend:'normal',  fps:30,
+      settings:{ color:'#00ff00', period:2600, bgMin:100, bgMax:100 } },
+    { name:'Keys', enabled:true, type:'individual', opacity:1, blend:'replace', fps:30,
+      settings:{ keys:{ [idxA]:'#ff0000' }, current:'#ff0000' } },
+  ]);
+  const flat = E.composeFrame(st, 100);
+  const oA = E.INDICES.indexOf(idxA) * 4, oB = E.INDICES.indexOf(idxB) * 4;
+  assert.ok(flat[oA+1] > 200 && flat[oA+2] < 60 && flat[oA+3] < 60, 'painted A is red over the background');
+  assert.ok(flat[oB+2] > 0, 'unpainted B reveals the green background');
+});
+
+test('ensureSettings backfills individual fields', () => {
+  const L = { type:'individual', settings:{} };
+  E.ensureSettings(L);
+  assert.deepEqual(L.settings.keys, {});
+  assert.equal(L.settings.current, '#ff8c00');
+});

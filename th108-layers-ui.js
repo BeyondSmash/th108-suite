@@ -13,7 +13,8 @@
   else root.TH108LayersUI = factory();
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
-  const TYPES=['background','reactive','gradient','pattern','media'], BLENDS=['normal','add','screen','multiply','max','replace'];
+  const TYPES=['background','reactive','gradient','pattern','individual','media'], BLENDS=['normal','add','screen','multiply','max','replace'];
+  const root_PaintBoard = () => (typeof window!=='undefined' && window.TH108PaintBoard) || { mount(){ return { draw(){}, recolorSelection(){}, clearSelection(){}, selectNone(){}, selCount(){return 0;}, destroy(){} }; } };
   // lucide chevrons-down-up (= "collapse") / chevrons-up-down (= "expand") for the card corner toggle
   const SVGA='<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">';
   const CHEV_COLLAPSE=SVGA+'<path d="m7 20 5-5 5 5"/><path d="m7 4 5 5 5-5"/></svg>';
@@ -262,6 +263,37 @@
           const sgn=v=>(v>0?'+':'')+v;
           const cxi=c('.s-cx'), cxv=c('.s-cxV'), upCx=()=>{ cxv.textContent=sgn(pp.cox!=null?pp.cox:-8); }; cxi.addEventListener('input',e=>{ snap(e.target,0,3); pp.cox=+e.target.value; upCx(); }); upCx();
           const cyi=c('.s-cy'), cyv=c('.s-cyV'), upCy=()=>{ cyv.textContent=sgn(pp.coy!=null?pp.coy:-10); }; cyi.addEventListener('input',e=>{ snap(e.target,0,3); pp.coy=+e.target.value; upCy(); }); upCy(); }
+      } else if(L.type==='individual'){
+        if(!s.keys||typeof s.keys!=='object') s.keys={};
+        if(s.current===undefined) s.current='#ff8c00';
+        body.innerHTML='<div class="ctl">'+
+          row('Paint color','<input type="color" class="s-current" value="'+s.current+'"><span></span>')+
+          row('','<button class="s-showkb" type="button">⌨ Show Keyboard</button><span class="val s-selcount" style="margin-left:8px"></span>')+
+          row('','<button class="s-clearsel" type="button">Clear selection</button> <button class="s-clearall" type="button">Clear all</button>')+
+        '</div>';
+        const c=q=>body.querySelector(q);
+        let pb=null, wrap=null;
+        const reRender=()=>{ L.lastTick=0; };   // force the running layer loop to repaint next frame
+        const updCount=()=>{ const el=c('.s-selcount'); if(el) el.textContent = pb ? (pb.selCount()+' selected') : ''; };
+        function mountBoard(){
+          if(pb) return;
+          wrap=document.createElement('div'); wrap.className='pb-wrap';
+          wrap.innerHTML='<div class="pb-board"></div><div class="pb-hint">Click/drag to paint · Shift+ add · Ctrl+ deselect · Alt+drag erase · pick a color to recolor the selection</div>';
+          card.parentNode.insertBefore(wrap, card);   // wedge the board directly ABOVE this layer card
+          pb=root_PaintBoard().mount(wrap.querySelector('.pb-board'), {
+            engine:E,
+            getKeys:()=>s.keys,
+            getColor:()=>s.current,
+            onPaint:(idx,hex)=>{ if(hex) s.keys[idx]=hex; else delete s.keys[idx]; reRender(); },
+            onChange:()=>{ updCount(); scheduleSaveLayers(); },
+          });
+          c('.s-showkb').textContent='⌨ Hide Keyboard'; updCount();
+        }
+        function unmountBoard(){ if(!pb) return; pb.destroy(); pb=null; if(wrap&&wrap.parentNode) wrap.parentNode.removeChild(wrap); wrap=null; c('.s-showkb').textContent='⌨ Show Keyboard'; updCount(); }
+        c('.s-current').addEventListener('input',e=>{ s.current=e.target.value; if(pb) pb.recolorSelection(); });
+        c('.s-showkb').addEventListener('click',()=>{ pb?unmountBoard():mountBoard(); });
+        c('.s-clearsel').addEventListener('click',()=>{ if(pb){ pb.clearSelection(); } reRender(); scheduleSaveLayers(); });
+        c('.s-clearall').addEventListener('click',()=>{ s.keys={}; if(pb){ pb.selectNone(); pb.draw(); } reRender(); scheduleSaveLayers(); });
       } else {   // media — Stage 1 placeholder
         body.innerHTML='<div class="ph">Media layer — port of the GIF engine lands in Stage 2. (Use the GIF → keyboard panel below for now.)</div>';
       }

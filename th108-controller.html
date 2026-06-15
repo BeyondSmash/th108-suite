@@ -326,6 +326,9 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
   body .lcd-tool #lcdPreview,body .lcd-tool #lcdPreviewActual{ border:1px solid var(--border); border-radius:8px; }
   body .lcd-tool .lcd-log{ background:#010409; border:1px solid transparent; border-radius:12px; }
   body .lcd-tool select{ background:var(--inset) !important; color:var(--text) !important; border:1px solid var(--border) !important; }   /* the module sets dark colors inline — !important is the only override */
+    .pb-wrap{ margin:8px 0; padding:10px; background:var(--inset,#0d1117); border:1px solid var(--line,#30363d); border-radius:12px; }
+    .pb-canvas{ width:100%; max-width:520px; height:auto; image-rendering:pixelated; border-radius:6px; cursor:crosshair; display:block; }
+    .pb-hint{ color:var(--dim,#8b949e); font-size:11px; margin-top:6px; }
 </style>
 </head>
 <body>
@@ -803,6 +806,7 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
 <script src="th108-hid.js"></script>
 <script src="th108-daemon-client.js"></script>
 <script src="th108-layers-ui.js"></script>
+<script src="th108-paint-board.js"></script>
 <script src="th108-gif-panel.js"></script>
 <script src="th108-onboard.js"></script>
 <script src="th108-binder.js"></script>

@@ -208,6 +208,14 @@
       out[o]=ar+(r2-ar)*tt|0; out[o+1]=ag+(g2-ag)*tt|0; out[o+2]=ab+(b2-ab)*tt|0; }
   }
   function renderMedia(L,now){ L.rgb.fill(0); }   // media layers are a no-op in the engine (page-only in v1)
+  // individual-keys layer: paint explicit per-key colors. settings.keys = {ledIndex:'#rrggbb'};
+  // unpainted keys are black, i.e. transparent under the 'replace' blend (painted keys override below).
+  function renderKeys(L){
+    const keys=(L.settings&&L.settings.keys)||{}, out=L.rgb;
+    for(let k=0;k<NLED;k++){ const o=k*3, hex=keys[INDICES[k]];
+      if(hex){ const c=hexToRgb(hex); out[o]=c[0]; out[o+1]=c[1]; out[o+2]=c[2]; }
+      else { out[o]=out[o+1]=out[o+2]=0; } }
+  }
 
   // ----- common per-layer adjust (verbatim): saturation→contrast→gamma→brightness -----
   function applyAdjust(L){
@@ -389,6 +397,7 @@
     else if(L.type==='reactive') renderReactive(L,now,state);   // reactive uses REAL now (timing tied to real key-press timestamps)
     else if(L.type==='gradient') renderGradient(L,tnow);
     else if(L.type==='pattern') renderPattern(L,tnow);
+    else if(L.type==='individual') renderKeys(L);
     else renderMedia(L,now);
     applyAdjust(L);   // common color post-process (saturation→contrast→gamma→brightness)
   }
@@ -445,6 +454,7 @@
     else if(L.type==='gradient'){ ['colorA','colorB','angle','scroll','phase'].forEach(k=>{ if(s[k]===undefined)s[k]=def[k]; }); }
     else if(L.type==='pattern'){ const pd={ pattern:'rainbow', color:'#00ffff', color2:'#ff00ff', color3:'#00ff00', colMode:'rainbow', speed:50, scale:10, gap:150, cox:-8, coy:-10 };
       Object.keys(pd).forEach(k=>{ if(s[k]===undefined)s[k]=pd[k]; }); }
+    else if(L.type==='individual'){ if(!L.settings.keys || typeof L.settings.keys!=='object') L.settings.keys={}; if(L.settings.current===undefined) L.settings.current='#ff8c00'; }
     // common per-layer adjust fields — backfilled for EVERY layer type
     const cd={ bri:100, sat:100, con:100, gam:100, rot:0, spd:100, frozen:false };
     Object.keys(cd).forEach(k=>{ if(s[k]===undefined)s[k]=cd[k]; });
@@ -516,7 +526,7 @@
     hexToRgb, hsv2rgb, patHash, patColorize,
     keyCell, layerCell,
     PAT_DEFAULTS, patParams, ensureSettings, defaultLayers, createState,
-    renderBackground, renderReactive, renderGradient, renderPattern, renderMedia,
+    renderBackground, renderReactive, renderGradient, renderPattern, renderMedia, renderKeys,
     reactEnvelope, applyAdjust, layerNow, renderLayer, composite, flatEq,
     composeFrame, stampKey, releaseKey, SEND_FPS_CAP,
   };
