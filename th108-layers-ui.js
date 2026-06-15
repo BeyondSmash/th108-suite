@@ -306,6 +306,9 @@
       // [label, rawMin, rawMax, decimals, unit, default] — decimals>0 → number shows raw/100 (gamma 1.00, speed 1.0×); slider stays raw
       const CFG={ bri:['Brightness',0,200,0,'%',100], sat:['Saturation',0,300,0,'%',100], con:['Contrast',50,250,0,'%',100],
                   gam:['Gamma',50,300,2,'',100], rot:['Rotate',0,360,0,'°',0] };   // (per-layer "Speed" removed — each layer type has its own speed/period/scroll)
+      // Individual-keys layers paint EXACT colors; brightness >100% per-channel-boosts and clips → shifts the
+      // painted hue. Cap it at 100% (dim-only, never distorts) and pull any already-saved >100 value back down.
+      if(L.type==='individual'){ CFG.bri=['Brightness',0,100,0,'%',100]; if(s.bri>100) s.bri=100; }
       const disp=(key,raw)=>{ const d=CFG[key][3]; return d?(raw/100).toFixed(d):String(raw); };
       const ctl=key=>{ const c=CFG[key], dec=c[3], frac=(c[5]-c[1])/(c[2]-c[1]);   // tick at the default value
         const nMin=dec?c[1]/100:c[1], nMax=dec?c[2]/100:c[2], nStep=dec?1/Math.pow(10,dec):1;
