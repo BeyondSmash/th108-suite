@@ -7,6 +7,17 @@
 (function (root) {
   'use strict';
   const W = 468, H = 135, PAD = 4, SS = 3;   // logical W/H; SS = supersample factor so the board stays crisp when shown large (full Pick-a-Key width)
+  // key-face labels — matches the Pick-a-Key board's NICE map + slicing so the paint board reads the same
+  const NICE = { Escape:'Esc', Backquote:'`', Minus:'-', Equal:'=', Backspace:'⌫', Tab:'Tab', BracketLeft:'[', BracketRight:']',
+    Backslash:'\\', CapsLock:'Caps', Semicolon:';', Quote:"'", Enter:'Enter', ShiftLeft:'Shift', ShiftRight:'Shift',
+    Comma:',', Period:'.', Slash:'/', ControlLeft:'Ctrl', ControlRight:'Ctrl', MetaLeft:'Win', AltLeft:'Alt', AltRight:'Alt',
+    ContextMenu:'☰', Space:'', PrintScreen:'PrtSc', ScrollLock:'ScrLk', Pause:'Pause', Insert:'Ins', Home:'Home',
+    PageUp:'PgUp', Delete:'Del', End:'End', PageDown:'PgDn', ArrowUp:'↑', ArrowLeft:'←', ArrowDown:'↓', ArrowRight:'→',
+    NumLock:'Num', NumpadDivide:'/', NumpadMultiply:'*', NumpadSubtract:'-', NumpadAdd:'+', NumpadEnter:'⏎',
+    NumpadDecimal:'.', IntlBackslash:'\\' };
+  const keyLabel = code => { if (!code) return 'Fn'; if (NICE[code] !== undefined) return NICE[code];
+    if (code.startsWith('Key')) return code.slice(3); if (code.startsWith('Digit')) return code.slice(5);
+    if (code.startsWith('Numpad')) return code.slice(6); return code; };
 
   function mount(host, opts) {
     const E = opts.engine, INDICES = E.INDICES;
@@ -33,16 +44,28 @@
       return { x: PAD + (c[0]-c[2]/2)*iw, y: PAD + (c[1]-c[3]/2)*ih, w: c[2]*iw, h: c[3]*ih, idx };
     }
     const RECTS = INDICES.map(rectOf).filter(Boolean);
+    const CODE_BY_IDX = {}; for (const [code, i] of Object.entries(E.KEYMAP)) CODE_BY_IDX[i] = code;   // idx → KeyboardEvent.code, for the key-face label
 
     function draw() {
       const keys = opts.getKeys();
       ctx.setTransform(SS,0,0,SS,0,0);   // render at SS× internal res but draw in logical W/H coords (crisp at any display size); hit-testing/toCv stay in logical coords too
       ctx.fillStyle = '#0d1117'; ctx.fillRect(0,0,W,H);
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
       for (const r of RECTS) {
         const hex = keys[r.idx];
         ctx.fillStyle = hex || '#222831';                 // painted color, else dim neutral
         ctx.fillRect(r.x+0.75, r.y+0.75, Math.max(1,r.w-1.5), Math.max(1,r.h-1.5));
         if (sel.has(r.idx)) { ctx.strokeStyle = '#58a6ff'; ctx.lineWidth = 2; ctx.strokeRect(r.x+1, r.y+1, r.w-2, r.h-2); }
+        const lbl = keyLabel(CODE_BY_IDX[r.idx]);         // key-face character(s), color-contrasted against the fill
+        if (lbl) {
+          const c = E.hexToRgb(hex || '#222831'), lum = 0.299*c[0]+0.587*c[1]+0.114*c[2];
+          ctx.fillStyle = hex ? (lum>140 ? '#000' : '#fff') : '#8b949e';   // painted: black/white by luminance; unpainted: muted
+          let fs = Math.min(r.h*0.5, r.w*0.62);
+          ctx.font = '600 '+fs+'px ui-sans-serif, system-ui, "Segoe UI", sans-serif';
+          const maxw = r.w*0.84, tw = ctx.measureText(lbl).width;
+          if (tw > maxw) { fs *= maxw/tw; ctx.font = '600 '+fs+'px ui-sans-serif, system-ui, "Segoe UI", sans-serif'; }
+          ctx.fillText(lbl, r.x+r.w/2, r.y+r.h/2);
+        }
       }
       if (drag) {                                          // marquee outline
         const x=Math.min(drag.x0,drag.x1), y=Math.min(drag.y0,drag.y1), w=Math.abs(drag.x1-drag.x0), h=Math.abs(drag.y1-drag.y0);
