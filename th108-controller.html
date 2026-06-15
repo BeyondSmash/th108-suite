@@ -977,10 +977,16 @@ async function reclaimBoardFromDaemon(){
     }
   } finally { _handoffBusy=false; }
 }
+// the browser only delivers keyup while the tab is FOCUSED — so a key released (or never re-pressed)
+// while we're blurred is never cleared and sticks lit (incl. a brief <AWAY_DELAY blur that never hands
+// off, so start()'s reset on reclaim doesn't run). Releasing every held key the moment focus leaves
+// closes that gap: anything let go off-tab can't come back stuck; still-held keys just re-light on the
+// next press. (Fixes random stuck reactive keys, 2026-06-14.)
+function releaseHeldKeys(){ const d=state.react.down; for(let i=0;i<d.length;i++) if(d[i]) TH108Engine.releaseKey(state, i); }
 function onAwayChange(){
   clearTimeout(_awayTimer);
   if(pageActive()) reclaimBoardFromDaemon();                          // back in focus + visible → reclaim now
-  else _awayTimer=setTimeout(handBoardToDaemon, AWAY_DELAY);          // sustained blur/hide → hand off (debounced)
+  else { releaseHeldKeys(); _awayTimer=setTimeout(handBoardToDaemon, AWAY_DELAY); }   // blur/hide → release held keys NOW (no missed-keyup stick), then hand off (debounced)
 }
 window.addEventListener('blur', onAwayChange);
 window.addEventListener('focus', onAwayChange);
