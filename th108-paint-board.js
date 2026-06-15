@@ -18,6 +18,14 @@
     let sel = new Set();          // currently-selected LED indices (transient)
     let drag = null;              // {x0,y0,x1,y1,mode:'paint'|'add'|'deselect'|'erase'} during a marquee
 
+    // bare-Alt focuses the browser menu and can interrupt an Alt-drag erase — swallow Alt while the
+    // pointer is over/using THIS board (scoped, so Alt+letter shortcuts elsewhere are unaffected).
+    let overBoard = false;
+    cv.addEventListener('pointerenter', () => { overBoard = true; });
+    cv.addEventListener('pointerleave', () => { if (!drag) overBoard = false; });
+    const altGuard = e => { if ((overBoard || drag) && (e.key === 'Alt' || e.altKey)) e.preventDefault(); };
+    window.addEventListener('keydown', altGuard);
+
     // key rect in canvas pixels, from the engine's normalized keyCell (center x,y + w,h, 0..1)
     function rectOf(idx) {
       const c = E.keyCell(idx); if (!c) return null;
@@ -83,7 +91,8 @@
     function selCount() { return sel.size; }
 
     draw();
-    return { draw, recolorSelection, clearSelection, selectNone, selCount, destroy(){ host.innerHTML=''; } };
+    return { draw, recolorSelection, clearSelection, selectNone, selCount,
+             destroy(){ window.removeEventListener('keydown', altGuard); host.innerHTML=''; } };
   }
 
   root.TH108PaintBoard = { mount };
