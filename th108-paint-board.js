@@ -50,20 +50,25 @@
       const keys = opts.getKeys();
       ctx.setTransform(SS,0,0,SS,0,0);   // render at SS× internal res but draw in logical W/H coords (crisp at any display size); hit-testing/toCv stay in logical coords too
       ctx.fillStyle = '#0d1117'; ctx.fillRect(0,0,W,H);
+      // labels read EXACTLY like the Pick-a-Key board: pull the live page body font + --muted, weight 600,
+      // ~15px CSS. baseFs converts a 15px-CSS target into logical units via the current display scale.
+      const FONTFAM = getComputedStyle(document.body).fontFamily || 'system-ui, sans-serif';
+      const MUTED = (getComputedStyle(cv).getPropertyValue('--muted') || '#8b949e').trim();
+      const baseFs = 15 * W / (cv.getBoundingClientRect().width || W);
       ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
       for (const r of RECTS) {
         const hex = keys[r.idx];
         ctx.fillStyle = hex || '#222831';                 // painted color, else dim neutral
         ctx.fillRect(r.x+0.75, r.y+0.75, Math.max(1,r.w-1.5), Math.max(1,r.h-1.5));
         if (sel.has(r.idx)) { ctx.strokeStyle = '#58a6ff'; ctx.lineWidth = 2; ctx.strokeRect(r.x+1, r.y+1, r.w-2, r.h-2); }
-        const lbl = keyLabel(CODE_BY_IDX[r.idx]);         // key-face character(s), color-contrasted against the fill
+        const lbl = keyLabel(CODE_BY_IDX[r.idx]);         // key-face character(s)
         if (lbl) {
           const c = E.hexToRgb(hex || '#222831'), lum = 0.299*c[0]+0.587*c[1]+0.114*c[2];
-          ctx.fillStyle = hex ? (lum>140 ? '#000' : '#fff') : '#8b949e';   // painted: black/white by luminance; unpainted: muted
-          let fs = Math.min(r.h*0.5, r.w*0.62);
-          ctx.font = '600 '+fs+'px ui-sans-serif, system-ui, "Segoe UI", sans-serif';
+          ctx.fillStyle = hex ? (lum>140 ? '#000' : '#fff') : MUTED;   // painted: black/white by luminance; unpainted: page --muted (= Pick-a-Key)
+          let fs = Math.min(baseFs, r.h*0.52);
+          ctx.font = '600 '+fs+'px '+FONTFAM;
           const maxw = r.w*0.84, tw = ctx.measureText(lbl).width;
-          if (tw > maxw) { fs *= maxw/tw; ctx.font = '600 '+fs+'px ui-sans-serif, system-ui, "Segoe UI", sans-serif'; }
+          if (tw > maxw) { fs *= maxw/tw; ctx.font = '600 '+fs+'px '+FONTFAM; }
           ctx.fillText(lbl, r.x+r.w/2, r.y+r.h/2);
         }
       }
