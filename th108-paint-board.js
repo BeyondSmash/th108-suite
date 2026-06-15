@@ -88,6 +88,7 @@
     function erase(idx) { opts.onPaint(idx, null); }              // remove the color
 
     cv.addEventListener('pointerdown', e => {
+      if (e.button !== 0) return;   // only the left button paints — right/middle never paint or start a marquee
       e.preventDefault(); cv.setPointerCapture(e.pointerId);
       const p = toCv(e), idx = hit(p);
       const mode = e.altKey ? 'erase' : e.ctrlKey ? 'deselect' : e.shiftKey ? 'add' : 'paint';
