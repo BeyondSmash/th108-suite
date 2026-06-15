@@ -6,12 +6,12 @@
 // It NEVER touches the keymap binder's KBOARD — it only reuses keyCell geometry.
 (function (root) {
   'use strict';
-  const W = 468, H = 135, PAD = 4;   // same canvas proportions as the GIF->key preview (drawKb)
+  const W = 468, H = 135, PAD = 4, SS = 3;   // logical W/H; SS = supersample factor so the board stays crisp when shown large (full Pick-a-Key width)
 
   function mount(host, opts) {
     const E = opts.engine, INDICES = E.INDICES;
     const cv = document.createElement('canvas');
-    cv.width = W; cv.height = H; cv.className = 'pb-canvas'; cv.style.touchAction = 'none';
+    cv.width = W * SS; cv.height = H * SS; cv.className = 'pb-canvas'; cv.style.touchAction = 'none';
     host.innerHTML = ''; host.appendChild(cv);
     const ctx = cv.getContext('2d');
 
@@ -36,6 +36,7 @@
 
     function draw() {
       const keys = opts.getKeys();
+      ctx.setTransform(SS,0,0,SS,0,0);   // render at SS× internal res but draw in logical W/H coords (crisp at any display size); hit-testing/toCv stay in logical coords too
       ctx.fillStyle = '#0d1117'; ctx.fillRect(0,0,W,H);
       for (const r of RECTS) {
         const hex = keys[r.idx];
