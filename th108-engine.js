@@ -45,6 +45,14 @@
   }
   // deterministic per-index hash → 0..1 (stable sparkle/column offsets)
   function patHash(i){ const x=Math.sin(i*127.1+311.7)*43758.5453; return x-Math.floor(x); }
+  // one-pole smoothing toward `target`; rising uses attackMs, falling uses decayMs. dt in ms.
+  // tau=0 snaps. alpha = 1 - exp(-dt/tau) is the standard exponential-smoothing coefficient.
+  function audioEnvelope(prev, target, dtMs, attackMs, decayMs){
+    const tau = target >= prev ? attackMs : decayMs;
+    if(tau <= 0) return target;
+    const a = 1 - Math.exp(-dtMs / tau);
+    return prev + (target - prev) * a;
+  }
   // shared coloriser: map a 0..1 color coordinate `field` + 0..1 `bright` to [r,g,b] 0..255 per colMode.
   function patColorize(mode, field, bright, C1, C2, C3){
     field=field-Math.floor(field);                 // wrap to 0..1
@@ -546,7 +554,7 @@
 
   const TH108Engine = {
     KEYMAP, INDICES, NLED, BOARDW, BOARDH,
-    hexToRgb, hsv2rgb, patHash, patColorize,
+    hexToRgb, hsv2rgb, patHash, patColorize, audioEnvelope,
     keyCell, layerCell,
     PAT_DEFAULTS, patParams, ensureSettings, defaultLayers, createState, applyConfig,
     renderBackground, renderReactive, renderGradient, renderPattern, renderMedia, renderKeys,

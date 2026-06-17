@@ -153,3 +153,14 @@ test('ensureSettings fills audio-layer defaults (bars default, source system)', 
   assert.equal(L.settings.barColorBass, '#ff2200');
   assert.equal(L.settings.barColorTreble, '#22aaff');
 });
+
+test('audioEnvelope rises fast on attack, falls slow on decay', () => {
+  // target above prev → use attack; below → use decay. dt=16ms.
+  const up = E.audioEnvelope(0, 1, 16, 40, 220);     // attacking toward 1
+  const down = E.audioEnvelope(1, 0, 16, 40, 220);   // decaying toward 0
+  assert.ok(up > 0 && up < 1, 'partial rise');
+  assert.ok(down > 0 && down < 1, 'partial fall');
+  assert.ok(up > 1 - down, 'attack (40ms) moves more per frame than decay (220ms)');
+  // a zero time-constant snaps instantly
+  assert.equal(E.audioEnvelope(0.2, 0.9, 16, 0, 0), 0.9);
+});
