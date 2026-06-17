@@ -237,3 +237,22 @@ test('renderWave lights a scrolling line and reacts to band energy', () => {
   let lit=0; for(let i=0;i<La.rgb.length;i++) if(La.rgb[i]>0) lit++;
   assert.ok(lit > 0, 'wave lights keys near the trace');
 });
+
+test('audio duck dims a target layer only while the audio layer is emitting light', () => {
+  const mk=()=>E.createState([
+    {name:'BG',type:'background',enabled:true,opacity:1,blend:'normal',fps:30,settings:{color:'#ffffff',period:1,bgMin:100,bgMax:100}},
+    {name:'Audio',type:'audio',enabled:true,opacity:1,blend:'add',fps:30,settings:{style:'bars',ducks:[{layer:0,dim:0}]}},
+  ]);
+  const sum=f=>{let s=0;for(let o=0;o<f.length;o+=4)s+=f[o+1]+f[o+2]+f[o+3];return s;};
+  // emitting: bass band on → audio layer lights → BG (layer 0) ducked to dim 0
+  const st1=mk(); st1.bri=1; st1.audio.bands.fill(0); st1.audio.bands[0]=1;
+  const ducked=sum(E.composeFrame(st1,100));
+  // silent: no bands → audio layer paints black → NOT emitting → BG must NOT be ducked (full white)
+  const st2=mk(); st2.bri=1; st2.audio.bands.fill(0);
+  const full=sum(E.composeFrame(st2,100));
+  assert.ok(full > ducked*3, 'audio-silent frame is far brighter than the ducked (audio-emitting) frame');
+  // no duck config → emitting audio must leave the target untouched
+  const st3=mk(); st3.bri=1; st3.layers[1].settings.ducks=[]; st3.audio.bands.fill(0); st3.audio.bands[0]=1;
+  const noDuck=sum(E.composeFrame(st3,100));
+  assert.ok(noDuck > ducked*3, 'with no duck config the target stays full even while audio emits');
+});

@@ -511,7 +511,7 @@
     acc.fill(0);
     for(const L of state.layers){
       if(!L.enabled) continue;
-      const a=L.opacity, src=L.rgb, bl=L.blend;
+      const a=L.opacity, src=L.rgb, bl=L.blend, df=(L._duck==null?1:L._duck);   // df = audio-duck dim factor (1 = untouched)
       // ISOLATE (punch-through): a reactive layer carves out the layers below at pressed keys
       if(L.type==='reactive' && L.settings && L.settings.isolate && L._inten){
         for(let k=0;k<NLED;k++){ const m=1-Math.max(0,Math.min(1,L._inten[k])), t=k*3;
@@ -521,12 +521,12 @@
       // below (crossfaded by opacity); fully-black keys are transparent and pass the layers through.
       // The "this layer owns these specific keys" mode (e.g. a song-progress bar on the number row).
       if(bl==='replace'){
-        for(let k=0;k<NLED;k++){ const t=k*3, sr=src[t]/255, sg=src[t+1]/255, sb=src[t+2]/255;
+        for(let k=0;k<NLED;k++){ const t=k*3, sr=src[t]/255*df, sg=src[t+1]/255*df, sb=src[t+2]/255*df;
           if(sr>0||sg>0||sb>0){ acc[t]=acc[t]*(1-a)+sr*a; acc[t+1]=acc[t+1]*(1-a)+sg*a; acc[t+2]=acc[t+2]*(1-a)+sb*a; } }
         continue;
       }
       for(let i=0;i<acc.length;i++){
-        const dst=acc[i], s=src[i]/255; let v;
+        const dst=acc[i], s=src[i]/255*df; let v;
         if(bl==='add')           v=Math.min(1, dst + s*a);
         else if(bl==='screen'){  const sc=1-(1-dst)*(1-s); v=dst*(1-a)+sc*a; }
         else if(bl==='multiply'){ const mu=dst*s;           v=dst*(1-a)+mu*a; }
@@ -543,6 +543,25 @@
   }
 
   function flatEq(a,b){ if(!b||a.length!==b.length) return false; for(let i=0;i<a.length;i++) if(a[i]!==b[i]) return false; return true; }
+
+  // does this layer have ANY lit pixel this frame? (used to gate the audio duck on "actually emitting")
+  function layerEmitting(L){ const r=L.rgb; if(!r) return false; for(let i=0;i<r.length;i++) if(r[i]>0) return true; return false; }
+  // Audio duck: while an enabled audio layer is actually emitting light, dim its configured target layers
+  // to their per-target max-brightness (so the music keys read against a quieter base). Sets a NON-destructive
+  // per-layer `_duck` factor that composite() multiplies the source by — reset every frame so it can't compound.
+  // settings.ducks = [{layer:<index into state.layers>, dim:<0..100 max-brightness %>}]. Daemon-safe: with no
+  // audio feed the audio layer renders black → not emitting → nothing is dimmed.
+  function applyAudioDuck(state){
+    for(const L of state.layers) L._duck = 1;
+    const audio = state.layers.find(L => L.enabled && L.type==='audio' && layerEmitting(L));
+    if(!audio) return;
+    const ducks = audio.settings && audio.settings.ducks;
+    if(!Array.isArray(ducks)) return;
+    for(const d of ducks){
+      const tgt = state.layers[d && d.layer];
+      if(tgt && tgt!==audio && tgt.enabled) tgt._duck = Math.max(0, Math.min(1, (d.dim==null?100:d.dim)/100));
+    }
+  }
 
   // ===== state model =====
   // ensure a layer's settings object has the fields its current type needs (verbatim from controller)
@@ -564,6 +583,7 @@
         barColorBass:'#ff2200', barColorTreble:'#22aaff',
         pulseColor:'#19b6ff', bloomColor:'#ff5a00', waveColor:'#00e0ff' };
       Object.keys(ad).forEach(k=>{ if(s[k]===undefined)s[k]=ad[k]; });
+      if(!Array.isArray(s.ducks)) s.ducks=[];   // [{layer:<index>, dim:<0..100 max-brightness %>}] — dim these while the audio layer emits
     }
     // common per-layer adjust fields — backfilled for EVERY layer type
     const cd={ bri:100, sat:100, con:100, gam:100, rot:0, spd:100, frozen:false };
@@ -626,6 +646,7 @@
         L.lastTick = now;
       }
     }
+    applyAudioDuck(state);   // audio-reactive dim: quiet the configured layers while the audio layer emits
     const flat = composite(state);
     // global brightness (the header slider; daemon mirrors it via settings.brightness).
     // composite() allocates a fresh flat each call, so in-place scaling can't compound.
