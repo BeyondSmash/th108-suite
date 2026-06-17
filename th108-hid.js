@@ -48,7 +48,7 @@
           shouldAutoBind = opts.shouldAutoBind || (() => true); // DAEMON-DEFERENCE GATE (async): true only when no daemon is driving OR this page was genuinely driving (running/_wasRunning) and is reclaiming its own session. Stops the wake/replug 'connect' event + rebind poll from silently yanking the board from a daemon the user never asked to displace. Manual connect() bypasses this.
     let device = null, reportId = 0, packLen = 64;
     let _binding = false;   // SINGLE-FLIGHT bind guard: a replug fires one 'connect' event PER interface and the rebind poll runs too — without this they bind concurrently (observed: "operation in progress" + null _inHooked + a board that ACKs but stays dark until a manual Connect). Set synchronously (no await) right after the entry checks so the claim is atomic.
-    let _sendStalls = 0, _ackWaiter = null, _inRpts = 0, _lastWriteAt = 0;
+    let _sendStalls = 0, _ackWaiter = null, _inRpts = 0, _lastWriteAt = 0, _ackOff = -1;
     // minimum gap between writes — the board's real per-chunk drain rate. The board sends UNSOLICITED
     // 0x55 broadcasts (chatty, esp. while an animated onboard effect runs after a factory reset) that
     // FALSELY satisfy the ACK gate; without this floor the 8 chunks/frame fire in a sub-ms burst that
@@ -66,9 +66,15 @@
       _inRpts++;
       const b = new Uint8Array(e.data.buffer);
       if (_inRpts === 1) log('board input reports: id=' + e.reportId + ' first=[' + Array.from(b.slice(0, 8)).map(x => x.toString(16).padStart(2, '0')).join(' ') + '…]', 'dim');
-      if (b[0] === 0x55 && _ackWaiter) { const w = _ackWaiter; _ackWaiter = null; w(true); }
+      // A genuine 0x32 ACK ECHOES the offset of the write it answers (b[3]=off&0xFF, b[4]=off>>8) — confirmed
+      // in the daemon flight recorder (off=56→b[3]=0x38, off=392→b[3]=0x88 b[4]=0x01). The board ALSO emits
+      // unsolicited 0x55 32 reports carrying a STALE offset; gating on bare 0x55 let those false-satisfy a
+      // pending write → over-send → FIFO wedge/mute. Require the echoed offset to match the write we're awaiting.
+      if (b[0] === 0x55 && b[1] === CMD && _ackWaiter && b[3] === (_ackOff & 0xFF) && b[4] === ((_ackOff >> 8) & 0xFF)) {
+        const w = _ackWaiter; _ackWaiter = null; _ackOff = -1; w(true);
+      }
     }
-    function waitAck(ms) { return new Promise(res => { _ackWaiter = res; setTimeout(() => { if (_ackWaiter === res) { _ackWaiter = null; res(false); } }, ms); }); }
+    function waitAck(ms, off) { _ackOff = off; return new Promise(res => { _ackWaiter = res; setTimeout(() => { if (_ackWaiter === res) { _ackWaiter = null; res(false); } }, ms); }); }
     function noteStall() {
       if (++_sendStalls === 1 || _sendStalls % 20 === 0) log('board not keeping up (no ACK) — pacing/dropping to keep the loop alive', 'dim');
       if (_sendStalls >= 15) { log('board unresponsive — stopping.', 'err'); stopHost(); releaseAfterFailure(); }
@@ -97,7 +103,7 @@
         const off = c * room, chunk = flat.slice(off, off + room);
         const since = (typeof performance !== 'undefined' ? performance.now() : Date.now()) - _lastWriteAt;
         if (since < MIN_WRITE_GAP_MS) await _sleep(MIN_WRITE_GAP_MS - since);   // pacing floor: never burst faster than the board can drain (false-ACK guard)
-        const ack = waitAck(800);                         // arm the ACK waiter BEFORE the write so we can't miss it
+        const ack = waitAck(800, off);                    // arm the ACK waiter BEFORE the write so we can't miss it (matched to THIS chunk's offset)
         let timer; const wto = new Promise((_, rej) => { timer = setTimeout(() => rej(new Error('__wstall__')), 800); });
         try {
           await Promise.race([device.sendReport(reportId, buildPkt(CMD, chunk.length, off, chunk, aux, c === n - 1)), wto]);
