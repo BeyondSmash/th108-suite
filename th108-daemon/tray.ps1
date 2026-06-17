@@ -28,8 +28,22 @@ function Invoke-Daemon([string]$path, [string]$method) {
   } catch { return $null }
 }
 function Get-DaemonStatus { return Invoke-Daemon '/status' 'GET' }
+# If /status is silent but something still holds 8123, it is a HUNG daemon (real incident 2026-06-16:
+# a corpse from the day before squatted the port, so every Start silently failed to bind). Force-free
+# the port first - but ONLY if the owner is genuinely our node daemon.js, never a random port holder.
+function Clear-HungDaemon {
+  $owner = (Get-NetTCPConnection -LocalPort 8123 -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1).OwningProcess
+  if (-not $owner) { return }
+  $p = Get-CimInstance Win32_Process -Filter ('ProcessId=' + $owner) -ErrorAction SilentlyContinue
+  if ($p -and $p.Name -eq 'node.exe' -and $p.CommandLine -match 'daemon\.js') {
+    Stop-Process -Id $owner -Force
+    Start-Sleep -Milliseconds 800
+  }
+}
 function Start-Daemon {
-  if (-not (Get-DaemonStatus)) { Start-Process wscript.exe -ArgumentList ('"' + (Join-Path $here 'start-hidden.vbs') + '"') }
+  if (Get-DaemonStatus) { return }   # already healthy - leave it alone
+  Clear-HungDaemon                    # status silent: kill a hung daemon that is squatting the port
+  Start-Process wscript.exe -ArgumentList ('"' + (Join-Path $here 'start-hidden.vbs') + '"')
 }
 
 # tiny keyboard icon, favicon-style: salmon body, white/yellow/blue keys, mint space bar.
