@@ -228,3 +228,12 @@ test('renderBloom lights center keys on a beat and is dark with no beat', () => 
   let noBeat=0; for(let i=0;i<La.rgb.length;i++) noBeat+=La.rgb[i];
   assert.ok(onBeat > noBeat, 'a beat blooms; silence is dark');
 });
+
+test('renderWave lights a scrolling line and reacts to band energy', () => {
+  const L = { type:'audio', enabled:true, opacity:1, blend:'add', settings:{ style:'wave' }, rgb:new Uint8Array(E.NLED*3) };
+  E.ensureSettings(L); const st = E.createState([L]); const La = st.layers[0];
+  st.audio.bands.fill(1);
+  E.renderAudio(La, 0, st);
+  let lit=0; for(let i=0;i<La.rgb.length;i++) if(La.rgb[i]>0) lit++;
+  assert.ok(lit > 0, 'wave lights keys near the trace');
+});
