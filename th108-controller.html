@@ -803,6 +803,7 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
 
 <script src="th108-media-lib.js"></script>
 <script src="th108-engine.js"></script>
+<script src="th108-audio-synth.js"></script>
 <script src="th108-lcd-upload.js"></script>
 <script src="th108-lcd.js"></script>
 <script src="th108-hid.js"></script>
@@ -1056,6 +1057,13 @@ async function layerTick(){
     const now=performance.now();
     if(!layerInFlight){
       layerInFlight=true;
+      // Music layer (Phase 1): drive state.audio from the synthetic generator. Real capture replaces
+      // this in Phase 1b; until then the visualizer runs on a deterministic test signal.
+      const aL=state.layers.find(L=>L.enabled && L.type==='audio');
+      if(aL){
+        if(!window._audSynth) window._audSynth=TH108AudioSynth.createSynth();
+        TH108Engine.applyAudioFeatures(state, window._audSynth.sample(now/1000), aL.settings, now);
+      }
       const flat=TH108Engine.composeFrame(state, now);   // engine renders due layers (≤30fps each) + composites → flat frame
       if(!TH108Engine.flatEq(flat, state.lastFlat) || now-state.lastSent>=1000){   // skip unchanged frames; resend ≥1×/s as a keepalive so firmware doesn't reclaim the board
         if(await HID.sendFrame(flat)){ state.lastFlat=flat; state.lastSent=now; }

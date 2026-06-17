@@ -13,7 +13,7 @@
   else root.TH108LayersUI = factory();
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
-  const TYPES=['background','reactive','gradient','pattern','individual','media'], BLENDS=['normal','add','screen','multiply','max','replace'];
+  const TYPES=['background','reactive','gradient','pattern','individual','audio','media'], BLENDS=['normal','add','screen','multiply','max','replace'];
   const root_PaintBoard = () => (typeof window!=='undefined' && window.TH108PaintBoard) || { mount(){ return { draw(){}, recolorSelection(){}, clearSelection(){}, selectNone(){}, selCount(){return 0;}, destroy(){} }; } };
   // lucide chevrons-down-up (= "collapse") / chevrons-up-down (= "expand") for the card corner toggle
   const SVGA='<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">';
@@ -294,6 +294,42 @@
         c('.s-showkb').addEventListener('click',()=>{ pb?unmountBoard():mountBoard(); });
         c('.s-clearsel').addEventListener('click',()=>{ if(pb){ pb.clearSelection(); } reRender(); scheduleSaveLayers(); });
         c('.s-clearall').addEventListener('click',()=>{ s.keys={}; if(pb){ pb.selectNone(); pb.draw(); } reRender(); scheduleSaveLayers(); });
+      } else if(L.type==='audio'){
+        const style=s.style||'bars', uid=card.dataset.n;
+        const sources=[['system','All system audio'],['app','Specific app'],['tab','This tab'],['mic','Mic / line-in']];
+        const srcBubbles=sources.map(o=>'<label class="sl" style="margin:0 8px 0 0"><input type="radio" name="aud-src-'+uid+'" class="s-source" value="'+o[0]+'"'+(o[0]===(s.source||'system')?' checked':'')+'> '+o[1]+'</label>').join('');
+        const styles=[['bars','Spectrum bars'],['pulse','Beat pulse'],['bloom','Radial bloom'],['wave','Waveform']];
+        const sopt=styles.map(m=>'<option value="'+m[0]+'"'+(m[0]===style?' selected':'')+'>'+m[1]+'</option>').join('');
+        let html='<div class="ctl">'+
+          row('Source','<span style="display:flex;flex-wrap:wrap;align-items:center">'+srcBubbles+'</span><span></span>')+
+          row('Source note','<span class="val" style="opacity:.7">Phase 1: driven by a synthetic test signal — real capture lands next.</span><span></span>')+
+          row('Style','<select class="s-style">'+sopt+'</select><span></span>');
+        if(style==='bars') html+=
+          row('Bass color','<input type="color" class="s-barColorBass" value="'+s.barColorBass+'"><span></span>')+
+          row('Treble color','<input type="color" class="s-barColorTreble" value="'+s.barColorTreble+'"><span></span>');
+        else if(style==='pulse') html+=row('Color','<input type="color" class="s-pulseColor" value="'+s.pulseColor+'"><span></span>');
+        else if(style==='bloom') html+=row('Color','<input type="color" class="s-bloomColor" value="'+s.bloomColor+'"><span></span>');
+        else if(style==='wave')  html+=row('Color','<input type="color" class="s-waveColor" value="'+s.waveColor+'"><span></span>');
+        html+=
+          row('Gain','<input type="range" class="s-gain" min="50" max="300" value="'+Math.round((s.gain||1)*100)+'" title="Boost/cut input sensitivity before it drives the keys"><span class="val s-gainV"></span>')+
+          row('Noise floor','<input type="range" class="s-floor" min="0" max="40" value="'+s.floor+'" title="Gate out quiet hiss below this level so idle keys stay dark"><span class="val s-floorV"></span>')+
+          row('Attack','<input type="range" class="s-attackMs" min="0" max="300" step="5" value="'+s.attackMs+'" title="How fast keys brighten on a rise (ms). Lower = snappier"><span class="val s-attackV"></span>')+
+          row('Decay','<input type="range" class="s-decayMs" min="40" max="800" step="10" value="'+s.decayMs+'" title="How slowly keys fade after a peak (ms). Higher = smoother"><span class="val s-decayV"></span>')+
+          row('Beat sensitivity','<input type="range" class="s-beatSens" min="0" max="100" value="'+s.beatSens+'" title="How strongly kicks/onsets pop in pulse and bloom"><span class="val s-beatSensV"></span>')+
+          row('','<button type="button" class="s-logVals">Log current values</button><span></span>')+
+        '</div>';
+        body.innerHTML=html;
+        const c=q=>body.querySelector(q);
+        body.querySelectorAll('.s-source').forEach(r=>r.addEventListener('change',e=>{ s.source=e.target.value; }));
+        c('.s-style').addEventListener('change',e=>{ s.style=e.target.value; buildLayerBody(card,L); });
+        ['barColorBass','barColorTreble','pulseColor','bloomColor','waveColor'].forEach(key=>{ const el=c('.s-'+key); if(el) el.addEventListener('input',e=>s[key]=e.target.value); });
+        const slider=(cls,key,fmt,xform)=>{ const el=c('.s-'+cls), v=c('.s-'+cls+'V'); if(!el) return; const up=()=>v.textContent=fmt(s[key]); el.addEventListener('input',e=>{ s[key]=xform(+e.target.value); up(); }); up(); };
+        slider('gain','gain',x=>Math.round(x*100)+'%',v=>v/100);
+        slider('floor','floor',x=>x+'%',v=>v);
+        slider('attackMs','attackMs',x=>x+'ms',v=>v);
+        slider('decayMs','decayMs',x=>x+'ms',v=>v);
+        slider('beatSens','beatSens',x=>x+'%',v=>v);
+        c('.s-logVals').addEventListener('click',()=>console.log('[audio layer "'+L.name+'"]', JSON.parse(JSON.stringify(s))));
       } else {   // media — Stage 1 placeholder
         body.innerHTML='<div class="ph">Media layer — port of the GIF engine lands in Stage 2. (Use the GIF → keyboard panel below for now.)</div>';
       }
