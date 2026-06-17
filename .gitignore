@@ -38,3 +38,6 @@ dumped_*.txt
 th108-daemon/daemon.log*
 th108-daemon/settings.json
 th108-daemon/standard-lcd.json
+
+# Brainstorming visual-companion scratch (not source)
+.superpowers/
