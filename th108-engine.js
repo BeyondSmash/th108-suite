@@ -243,6 +243,35 @@
       else { out[o]=out[o+1]=out[o+2]=0; } }
   }
 
+  function renderAudio(L, now, state){
+    const s = L.settings, out = L.rgb, A = state.audio;
+    out.fill(0);
+    const style = s.style || 'bars';
+    if(style==='bars') renderBars(s, out, A);
+    else if(style==='pulse') renderPulse(s, out, A, now);
+    else if(style==='bloom') renderBloom(s, out, A);
+    else if(style==='wave') renderWave(s, out, A, now);
+    else renderBars(s, out, A);
+  }
+  // Bars: column (GRID col 0..GW-1) → frequency band; key lights bottom-up by that band's magnitude.
+  function renderBars(s, out, A){
+    const bass = hexToRgb(s.barColorBass||'#ff2200'), treb = hexToRgb(s.barColorTreble||'#22aaff');
+    for(let k=0;k<NLED;k++){
+      const idx = INDICES[k], cell = GRID[idx]; if(!cell) continue;
+      const col = cell[0], row = cell[1], o = k*3;
+      const fc = GW>1 ? col/(GW-1) : 0;                       // 0 bass … 1 treble
+      const band = Math.min(31, Math.round(fc*31));
+      const mag = A.bands[band];                              // 0..1 (already smoothed/gated)
+      const litRows = mag*GH;                                 // how many rows up this column fills
+      const fromBottom = (GH-1) - row + 1;                    // bottom row = 1 … top row = GH
+      if(fromBottom > litRows){ out[o]=out[o+1]=out[o+2]=0; continue; }
+      const v = 0.45 + 0.55*(fromBottom/GH);                 // brighter toward the tip
+      out[o]   = ((bass[0]+(treb[0]-bass[0])*fc)*v)|0;
+      out[o+1] = ((bass[1]+(treb[1]-bass[1])*fc)*v)|0;
+      out[o+2] = ((bass[2]+(treb[2]-bass[2])*fc)*v)|0;
+    }
+  }
+
   // ----- common per-layer adjust (verbatim): saturation→contrast→gamma→brightness -----
   function applyAdjust(L){
     const s=L.settings; if(!s) return;
@@ -424,6 +453,7 @@
     else if(L.type==='gradient') renderGradient(L,tnow);
     else if(L.type==='pattern') renderPattern(L,tnow);
     else if(L.type==='individual') renderKeys(L);
+    else if(L.type==='audio') renderAudio(L,now,state);
     else renderMedia(L,now);
     applyAdjust(L);   // common color post-process (saturation→contrast→gamma→brightness)
   }
@@ -575,7 +605,7 @@
     hexToRgb, hsv2rgb, patHash, patColorize, audioEnvelope, applyAudioFeatures,
     keyCell, layerCell,
     PAT_DEFAULTS, patParams, ensureSettings, defaultLayers, createState, applyConfig,
-    renderBackground, renderReactive, renderGradient, renderPattern, renderMedia, renderKeys,
+    renderBackground, renderReactive, renderGradient, renderPattern, renderMedia, renderKeys, renderAudio,
     reactEnvelope, applyAdjust, layerNow, renderLayer, composite, flatEq,
     composeFrame, stampKey, releaseKey, SEND_FPS_CAP,
   };

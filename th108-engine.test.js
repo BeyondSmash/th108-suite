@@ -178,3 +178,29 @@ test('applyAudioFeatures gates below floor, applies gain, and smooths into state
   for(let i=0;i<60;i++) E.applyAudioFeatures(st, quiet, s, 16 + (i+1)*16);   // ~16ms/frame, let it decay
   assert.ok(st.audio.level < 0.05, 'quiet level decays below floor');
 });
+
+test('renderBars lights bass columns bottom-up from state.audio.bands', () => {
+  const L = { type:'audio', enabled:true, opacity:1, blend:'add', settings:{}, rgb:new Uint8Array(E.NLED*3) };
+  E.ensureSettings(L);
+  const st = E.createState([L]);
+  const La = st.layers[0];
+  st.audio.bands.fill(0); st.audio.bands[0] = 1;  // full bass
+  E.renderAudio(La, 0, st);
+  // some key in the left/bottom region must be lit (bass column 0, bottom row)
+  let lit = 0; for(let i=0;i<La.rgb.length;i++) if(La.rgb[i]>0) lit++;
+  assert.ok(lit > 0, 'bars lit at least one bass key');
+  // silence → nothing lit
+  st.audio.bands.fill(0); La.rgb.fill(0); E.renderAudio(La, 0, st);
+  let lit2 = 0; for(let i=0;i<La.rgb.length;i++) if(La.rgb[i]>0) lit2++;
+  assert.equal(lit2, 0, 'silence paints black');
+});
+
+test('renderLayer dispatches type audio to renderAudio', () => {
+  const L = { type:'audio', enabled:true, opacity:1, blend:'add', settings:{}, rgb:new Uint8Array(E.NLED*3) };
+  E.ensureSettings(L);
+  const st = E.createState([L]); const La = st.layers[0];
+  st.audio.bands.fill(1);
+  E.renderLayer(La, 0, st);   // must not throw and must light keys
+  let lit=0; for(let i=0;i<La.rgb.length;i++) if(La.rgb[i]>0) lit++;
+  assert.ok(lit > 0);
+});
