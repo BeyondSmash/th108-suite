@@ -80,6 +80,7 @@ window.TH108DaemonClient = (function () {
     // auto-USB-restart wedge-fix toggle (daemon settings.json via /usbreset), quit.
     function mountPanel() {
       const st = document.getElementById('dmnStatus'), auto = document.getElementById('dmnAuto'), quit = document.getElementById('dmnQuit');
+      const restart = document.getElementById('dmnRestart');
       const usb = document.getElementById('dmnUsbFix');
       const np = document.getElementById('lcdNowPlaying');   // lives on the LCD tab, rides the same /status poll
       if (!st || !auto || !quit) return;
@@ -123,7 +124,7 @@ window.TH108DaemonClient = (function () {
           const spTxt = document.getElementById('setupPathTxt'), spWrap = document.getElementById('setupPathWrap');
           if (spTxt && spWrap && s.setupPath) { if (spTxt.textContent !== s.setupPath) spTxt.textContent = s.setupPath; spWrap.style.display = 'inline-flex'; }
           st.textContent = 'daemon: running · ' + (s.paused ? 'yielded to this page' : (s.deviceConnected ? 'driving the keyboard — layer edits here apply LIVE, no Connect needed' : 'waiting for the keyboard'));
-          auto.disabled = false; quit.disabled = false;
+          auto.disabled = false; quit.disabled = false; if (restart) restart.disabled = false;
           // state rides /status; don't fight a click in progress. A daemon built before this setting
           // doesn't report the field — show the toggle disabled (it would 404) instead of a false "off".
           if (usb) {
@@ -206,7 +207,7 @@ window.TH108DaemonClient = (function () {
               } else { feedWrap.style.display = 'none'; }
             }
           }
-        } catch (_) { alive = false; st.textContent = 'daemon: not running — start it with setup.cmd (lighting then survives closing this tab)'; auto.disabled = true; quit.disabled = true; if (usb) usb.disabled = true; if (np) np.disabled = true; }
+        } catch (_) { alive = false; st.textContent = 'daemon: not running — start it with setup.cmd (lighting then survives closing this tab)'; auto.disabled = true; quit.disabled = true; if (restart) restart.disabled = true; if (usb) usb.disabled = true; if (np) np.disabled = true; }
       }
       async function refreshAuto() { if (!alive) return; try { const r = await fetch('/autostart', { cache: 'no-store' }); auto.checked = !!(await r.json()).enabled; } catch (_) {} }
       auto.addEventListener('change', async () => {
@@ -329,6 +330,13 @@ window.TH108DaemonClient = (function () {
         if (!confirm('Quit the background daemon?\n\nAlways-on lighting and reactive-anywhere stop until setup.cmd or your next login starts it again. This page keeps working as-is.')) return;
         try { await fetch('/quit', { method: 'POST' }); log('daemon quit', 'dim'); } catch (_) {}
         setTimeout(refresh, 600);
+      });
+      if (restart) restart.addEventListener('click', async () => {
+        // /restart makes the daemon exit(42); the supervised launcher (start-hidden.vbs) revives it in ~1s.
+        // If the daemon wasn't started via that launcher it simply stops — the Start button then appears.
+        try { await fetch('/restart', { method: 'POST' }); log('daemon restarting…', 'dim'); } catch (_) {}
+        restart.disabled = true;
+        [1200, 2500, 4000].forEach(ms => setTimeout(refresh, ms));   // re-poll across the ~1s downtime so the status catches the revived daemon
       });
       if (/^https?:$/.test(location.protocol)) { refresh().then(refreshAuto); setInterval(() => refresh(), 2500); }   // display-only poll (2.5s so the live-status feed feels responsive); tab-throttling is fine
       else { st.textContent = 'daemon: unavailable on file:// — open via http://localhost:8123'; auto.disabled = true; quit.disabled = true; }

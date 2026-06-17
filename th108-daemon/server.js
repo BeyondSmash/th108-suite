@@ -138,6 +138,12 @@ function createServer({ control, root, port = 8123, watchdogMs = 12000 }) {
         setTimeout(() => control.quit(), 150);   // respond first, then exit
         return;
       }
+      if (req.method === 'POST' && u === '/restart' && typeof control.restart === 'function') {
+        console.log(ts() + ' [api] /restart — exiting non-zero so the supervisor revives us');
+        sendJson(res, 200, { ok: true });
+        setTimeout(() => control.restart(), 150);   // respond first, then exit(42) → start-hidden.vbs respawns
+        return;
+      }
       if (req.method === 'POST' && u === '/heartbeat') {
         lastBeat = Date.now();
         if (!yielded) {   // a beating page believes it holds the device (e.g. WE restarted under it and it won't re-/yield) — honor that instead of opening against it (live repro 2026-06-11 12:52)

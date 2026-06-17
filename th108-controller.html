@@ -408,6 +408,7 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
       <span id="dmnStatus" class="hint" style="margin:0">checking…</span>
       <label class="sl" title="start the daemon hidden at every login (per-user registry entry, no admin)"><input type="checkbox" id="dmnAuto"> Auto-Start on Login</label>
       <label class="sl" title="when the board stops ACKing for 30s, restart its USB device (a software replug — clears the wedge; typing drops ~1-2s). Needs the one-time elevated task: install-usb-restart-task.ps1"><input type="checkbox" id="dmnUsbFix"> Auto-Fix Lighting Wedge (USB Restart)</label>
+      <button id="dmnRestart" title="restart the daemon in place (≈1s) to pick up updated code — the supervised launcher revives it automatically, no Quit→Start needed">↻ Restart Daemon</button>
       <button id="dmnQuit" title="stop the background daemon until setup.cmd or your next login starts it again — this page keeps working">✖ Quit Daemon</button>
       <button id="dmnStart" hidden title="a web page can't launch programs itself — this shows how to start the daemon">▶ Start Daemon…</button>
     </div>
@@ -1585,6 +1586,9 @@ setInterval(()=>{ DC.ping().then(dmnTagSync,dmnTagSync); }, 30000);
 // Quit/Start need a quick tag refresh — the 30s poll made a successful Quit look ignored for ~15s
 document.getElementById('dmnQuit').addEventListener('click',()=>{
   [800,2000,4000].forEach(ms=>setTimeout(()=>DC.ping().then(dmnTagSync,dmnTagSync),ms)); });
+const dmnRestartBtn=document.getElementById('dmnRestart');
+if(dmnRestartBtn) dmnRestartBtn.addEventListener('click',()=>{   // restart blips offline→online; refresh the tag across the ~1s gap
+  [1200,2600,4200].forEach(ms=>setTimeout(()=>DC.ping().then(dmnTagSync,dmnTagSync),ms)); });
 // a web page can't spawn a process — the most a Start button can do is hand over the exact command
 document.getElementById('dmnStart').addEventListener('click',async()=>{
   const cmd='wscript "th108-daemon\\start-hidden.vbs"';

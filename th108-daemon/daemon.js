@@ -513,7 +513,8 @@ const control = {
     };
   },
   setUsbReset(on) { settings.usbReset = !!on; saveSettings(); },
-  quit() { shutdown(); },
+  quit() { shutdown(0); },
+  restart() { shutdown(42); },   // exit non-zero so start-hidden.vbs's supervisor revives us (clean exit 0 would STOP supervision — that's why /quit needs a manual Start)
 };
 module.exports = { control };
 
@@ -524,7 +525,7 @@ server.listening.then(() => console.log(`✓ serving controller + control API on
 
 // ----- clean shutdown: black-out the board, release hook -----
 let stopping = false;
-function shutdown() {
+function shutdown(code = 0) {
   if (stopping) return; stopping = true;
   try { clearInterval(timer); } catch {}
   try {
@@ -536,7 +537,7 @@ function shutdown() {
   } catch {}
   try { if (npHandle) npHandle.stop(); } catch {}   // kill the sidecar — no orphaned powershell
   try { uIOhook.stop(); } catch {}
-  process.exit(0);
+  process.exit(code);
 }
 process.on('SIGINT', shutdown);
 process.on('SIGTERM', shutdown);
