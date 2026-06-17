@@ -455,6 +455,13 @@
     else if(L.type==='pattern'){ const pd={ pattern:'rainbow', color:'#00ffff', color2:'#ff00ff', color3:'#00ff00', colMode:'rainbow', speed:50, scale:10, gap:150, cox:-8, coy:-10 };
       Object.keys(pd).forEach(k=>{ if(s[k]===undefined)s[k]=pd[k]; }); }
     else if(L.type==='individual'){ if(!L.settings.keys || typeof L.settings.keys!=='object') L.settings.keys={}; if(L.settings.current===undefined) L.settings.current='#ff8c00'; }
+    else if(L.type==='audio'){
+      const ad={ style:'bars', source:'system', appId:'', deviceId:'',
+        gain:1, floor:5, attackMs:40, decayMs:220, beatSens:50,
+        barColorBass:'#ff2200', barColorTreble:'#22aaff',
+        pulseColor:'#19b6ff', bloomColor:'#ff5a00', waveColor:'#00e0ff' };
+      Object.keys(ad).forEach(k=>{ if(s[k]===undefined)s[k]=ad[k]; });
+    }
     // common per-layer adjust fields — backfilled for EVERY layer type
     const cd={ bri:100, sat:100, con:100, gam:100, rot:0, spd:100, frozen:false };
     Object.keys(cd).forEach(k=>{ if(s[k]===undefined)s[k]=cd[k]; });
@@ -487,6 +494,7 @@
       layers,
       react: { fg:new Float32Array(256), t:new Float64Array(256).fill(-1e12),
                down:new Uint8Array(256), up:new Float64Array(256).fill(-1e12) },
+      audio: { bands:new Float32Array(32), level:0, beat:0, centroid:0.5, _t:0 },
       lastFlat:null, lastSent:0,
     };
   }

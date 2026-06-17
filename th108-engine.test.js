@@ -130,3 +130,26 @@ test('applyConfig updates settings in place (preserves running animation), rebui
   assert.notEqual(st3, st, 'structure change rebuilds');
   assert.equal(st3.layers.length, 2);
 });
+
+// ===== Music layer (audio) =====
+test('createState seeds an empty state.audio feature buffer', () => {
+  const st = E.createState([{ name:'A', type:'audio', enabled:true, opacity:1, blend:'add', settings:{} }]);
+  assert.equal(st.audio.bands.length, 32);
+  assert.equal(st.audio.level, 0);
+  assert.equal(st.audio.beat, 0);
+  assert.equal(st.audio.centroid, 0.5);
+});
+
+test('ensureSettings fills audio-layer defaults (bars default, source system)', () => {
+  const L = { type:'audio', settings:{} };
+  E.ensureSettings(L);
+  assert.equal(L.settings.style, 'bars');
+  assert.equal(L.settings.source, 'system');
+  assert.equal(L.settings.gain, 1);
+  assert.equal(L.settings.floor, 5);          // % noise gate
+  assert.equal(L.settings.attackMs, 40);
+  assert.equal(L.settings.decayMs, 220);
+  assert.equal(L.settings.beatSens, 50);      // %
+  assert.equal(L.settings.barColorBass, '#ff2200');
+  assert.equal(L.settings.barColorTreble, '#22aaff');
+});
