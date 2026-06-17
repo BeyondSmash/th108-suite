@@ -120,6 +120,18 @@ function closeDevice() {
   device = null; send = null;
 }
 
+// Clear any reactive keys still marked "down". The daemon's one stuck-key path is a uiohook keyup
+// dropped under heavy load (the page's brief-blur path is fixed in b252b20). Fired on every fresh
+// device handle — reconnect / mute-recovery / onboard cycle, all natural recovery points — so a
+// missed keyup can't survive a reopen. Uses releaseKey (a fade-out), NOT rebuildState, so running
+// animations and their timers are untouched. (No clean event covers the pure continuous-drive case;
+// that trigger was already reduced by the media-sidecar leak fix f78d66b — see th108-reactive-stuck-keys.)
+function releaseHeldKeys() {
+  if (!state) return;
+  const d = state.react.down;
+  for (let i = 0; i < d.length; i++) if (d[i]) E.releaseKey(state, i);
+}
+
 // Write a single onboard-effect packet (cmd 0x23, 16-byte allled) on the control interface, then cycle
 // the handle (a live 0x23 leaves the board ACKing-but-IGNORING 0x32 paint). Pauses the 0x32 stream while
 // it writes — same protocol-safety stance as an LCD flash. Returns false if we don't own a healthy board.
@@ -169,6 +181,7 @@ async function openIfPossible() {
     }
     device = d;
     send = T.makeSender(device, { ackTimeoutMs: 800 });
+    releaseHeldKeys();   // fresh handle = a recovery point: drop any key a missed keyup left stuck
     if (!muteLogged) log('✓ device open');   // stay quiet during a mute-retry loop — the MUTE/recovered transition lines tell the story
   } catch { try { if (d) d.close(); } catch {} nextOpenAt = Date.now() + 5000; }
   finally { probing = false; }
