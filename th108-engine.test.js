@@ -204,3 +204,15 @@ test('renderLayer dispatches type audio to renderAudio', () => {
   let lit=0; for(let i=0;i<La.rgb.length;i++) if(La.rgb[i]>0) lit++;
   assert.ok(lit > 0);
 });
+
+test('renderPulse brightens the whole board with level+beat and dims on silence', () => {
+  const L = { type:'audio', enabled:true, opacity:1, blend:'add', settings:{ style:'pulse' }, rgb:new Uint8Array(E.NLED*3) };
+  E.ensureSettings(L); const st = E.createState([L]); const La = st.layers[0];
+  st.audio.level = 1; st.audio.beat = 1; st.audio.centroid = 0.5;
+  E.renderAudio(La, 0, st);
+  let loud=0; for(let i=0;i<La.rgb.length;i++) loud+=La.rgb[i];
+  st.audio.level = 0; st.audio.beat = 0; La.rgb.fill(0);
+  E.renderAudio(La, 0, st);
+  let quiet=0; for(let i=0;i<La.rgb.length;i++) quiet+=La.rgb[i];
+  assert.ok(loud > quiet, 'louder audio = brighter board');
+});

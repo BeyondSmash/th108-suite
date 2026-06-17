@@ -272,6 +272,21 @@
     }
   }
 
+  // Pulse: uniform wash; hue from centroid, brightness from level+beat, faint per-key shimmer.
+  function renderPulse(s, out, A, now){
+    const base = hexToRgb(s.pulseColor||'#19b6ff');
+    const useHue = s.pulseColor ? null : 0.55;   // (color picker drives it; centroid only if unset)
+    const v = Math.max(0, Math.min(1, A.level*0.7 + A.beat*0.7));
+    const t = now/1000;
+    for(let k=0;k<NLED;k++){
+      const o=k*3, sh = 0.9 + 0.1*Math.sin(t*8 + k);
+      let rgb;
+      if(useHue!=null){ rgb = hsv2rgb(0.55 + 0.25*A.centroid, 0.85, Math.max(0.04, v*sh)); }
+      else { const vv = Math.max(0.04, v*sh); rgb = [base[0]*vv, base[1]*vv, base[2]*vv]; }
+      out[o]=rgb[0]|0; out[o+1]=rgb[1]|0; out[o+2]=rgb[2]|0;
+    }
+  }
+
   // ----- common per-layer adjust (verbatim): saturation→contrast→gamma→brightness -----
   function applyAdjust(L){
     const s=L.settings; if(!s) return;
