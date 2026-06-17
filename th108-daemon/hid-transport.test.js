@@ -74,6 +74,15 @@ test('ACK gate stalls (no false hit) when ONLY a foreign-command 0x55 is returne
   assert.equal(await send([0, 1, 2, 3]), false);   // 0x55 23 never satisfies a 0x32 gate → clean stall, not a wedge-inducing false hit
 });
 
+test('flightRecorder captures recent writes + ACKs (the pre-mute trace the daemon dumps)', async () => {
+  const dev = fakeDevice();
+  const send = makeSender(dev, { packLen: 64, cmd: 0x32, ackTimeoutMs: 200 });
+  await send([0, 1, 2, 3, 4, 5, 6, 7]);
+  const dump = send.flightRecorder();
+  assert.match(dump, /out {2}write/, 'records the chunk writes');
+  assert.match(dump, /in {3}ACK/, 'records the matching-cmd ACKs');
+});
+
 // fake device for probeTraffic: lets the test emit unsolicited input reports (= another writer's ACKs)
 function fakeListener() {
   const handlers = {};

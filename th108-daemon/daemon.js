@@ -263,6 +263,7 @@ async function tick() {
         }
         lastOkAt = Date.now();
       } else {                  // stall → drop device, retry after a pause (a wedged board stays mute until replug)
+        const trace = (send && send.flightRecorder) ? send.flightRecorder() : null;   // grab BEFORE closeDevice() nulls send — this is the pre-silence trace
         closeDevice(); nextOpenAt = Date.now() + 5000;
         if (paused) return;                                // the "stall" was our own yield closing the device mid-frame — not a board event, don't log MUTE
         if (!muteLogged) {                                 // one transition line per mute episode (the 5s retries stay silent)
@@ -270,6 +271,7 @@ async function tick() {
           log('⚠ board went MUTE — no ACKs (' + (lastOkAt
             ? 'was streaming ' + Math.round((muteAt - streakStart) / 60000) + ' min, last ACK ' + Math.round((muteAt - lastOkAt) / 1000) + 's ago'
             : 'never ACKed since open') + ') — retrying every 5s; USB restart fires at ' + Math.round(U.THRESHOLD_MS / 1000) + 's');
+          if (trace) log('   ↳ flight recorder (last input reports + writes before silence):\n' + trace);
         }
         // Escalation: a PnP restart of the keyboard's USB node = software replug (proven to clear a true
         // wedge). Loud by design — it drops typing ~1-2s, so the log must say exactly when and why.
