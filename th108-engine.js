@@ -70,6 +70,24 @@
     return [rgb[0]*bright, rgb[1]*bright, rgb[2]*bright];
   }
 
+  // Fold a raw feature frame into state.audio with gain, a noise-floor gate, and attack/decay
+  // smoothing. `now` is ms; dt is derived from state.audio._t. s = the audio layer's settings.
+  function applyAudioFeatures(state, raw, s, now){
+    const A = state.audio;
+    let dt = A._t ? Math.max(1, Math.min(100, now - A._t)) : 16;   // clamp dt (tab-throttle/sleep safe)
+    A._t = now;
+    const gain = s.gain || 1, floor = (s.floor||0)/100;
+    const gate = (v)=>{ v = Math.max(0, Math.min(1, v*gain)); return v < floor ? 0 : v; };
+    const tgtLevel = gate(raw.level||0);
+    A.level = audioEnvelope(A.level, tgtLevel, dt, s.attackMs, s.decayMs);
+    A.centroid = audioEnvelope(A.centroid, (raw.centroid==null?0.5:raw.centroid), dt, s.attackMs, s.decayMs);
+    // beat: instantaneous rise, decay only (so a kick pops then fades); beatSens scales sensitivity
+    const beatTgt = Math.max(0, Math.min(1, (raw.beat||0) * (0.5 + (s.beatSens||50)/100)));
+    A.beat = Math.max(beatTgt, audioEnvelope(A.beat, 0, dt, 0, Math.max(60, s.decayMs)));
+    const rb = raw.bands;
+    for(let i=0;i<32;i++){ const t = rb ? gate(rb[i]||0) : 0; A.bands[i] = audioEnvelope(A.bands[i], t, dt, s.attackMs, s.decayMs); }
+  }
+
   // ===== per-pattern params (verbatim from controller) =====
   const PAT_DEFAULTS={ colMode:'rainbow', color:'#00ffff', color2:'#ff00ff', color3:'#00ff00', speed:50, scale:10, gap:150, cox:-8, coy:-10 };
   function patParams(s){
@@ -554,7 +572,7 @@
 
   const TH108Engine = {
     KEYMAP, INDICES, NLED, BOARDW, BOARDH,
-    hexToRgb, hsv2rgb, patHash, patColorize, audioEnvelope,
+    hexToRgb, hsv2rgb, patHash, patColorize, audioEnvelope, applyAudioFeatures,
     keyCell, layerCell,
     PAT_DEFAULTS, patParams, ensureSettings, defaultLayers, createState, applyConfig,
     renderBackground, renderReactive, renderGradient, renderPattern, renderMedia, renderKeys,

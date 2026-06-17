@@ -164,3 +164,17 @@ test('audioEnvelope rises fast on attack, falls slow on decay', () => {
   // a zero time-constant snaps instantly
   assert.equal(E.audioEnvelope(0.2, 0.9, 16, 0, 0), 0.9);
 });
+
+test('applyAudioFeatures gates below floor, applies gain, and smooths into state.audio', () => {
+  const st = E.createState([{ name:'A', type:'audio', enabled:true, opacity:1, blend:'add', settings:{} }]);
+  const s = st.layers[0].settings;            // ensureSettings already ran in createState
+  const raw = { bands:new Float32Array(32).fill(0.5), level:0.5, beat:1, centroid:0.7 };
+  // first call: dt defaults from state.audio._t=0 → treat as one frame
+  E.applyAudioFeatures(st, raw, s, 16);
+  assert.ok(st.audio.level > 0, 'level moved toward target');
+  assert.ok(st.audio.bands[0] > 0, 'bands moved toward target');
+  // a below-floor band is gated to 0 (floor=5% → 0.05); advance time so the decay actually elapses
+  const quiet = { bands:new Float32Array(32).fill(0.02), level:0.02, beat:0, centroid:0.5 };
+  for(let i=0;i<60;i++) E.applyAudioFeatures(st, quiet, s, 16 + (i+1)*16);   // ~16ms/frame, let it decay
+  assert.ok(st.audio.level < 0.05, 'quiet level decays below floor');
+});
