@@ -287,6 +287,22 @@
     }
   }
 
+  // Bloom: a ring expands from board center as beat decays, gated by audio energy so silence is dark.
+  function renderBloom(s, out, A){
+    const col0 = hexToRgb(s.bloomColor||'#ff5a00');
+    const cx = (GW-1)/2, cy = (GH-1)/2;
+    const energy = Math.max(A.beat, A.level*0.6);   // → 0 on silence so the board goes dark
+    for(let k=0;k<NLED;k++){
+      const idx = INDICES[k], cell = GRID[idx]; if(!cell) continue;
+      const o = k*3;
+      const dx = (cell[0]-cx)/cx, dy = (cell[1]-cy)/cy, d = Math.sqrt(dx*dx+dy*dy);
+      const ring = Math.exp(-Math.pow(d - (1-A.beat)*1.3, 2) * 6);
+      const v = Math.max(0, Math.min(1, ring*energy));
+      if(v < 0.04){ out[o]=out[o+1]=out[o+2]=0; continue; }
+      out[o]=(col0[0]*v)|0; out[o+1]=(col0[1]*v)|0; out[o+2]=(col0[2]*v)|0;
+    }
+  }
+
   // ----- common per-layer adjust (verbatim): saturation→contrast→gamma→brightness -----
   function applyAdjust(L){
     const s=L.settings; if(!s) return;

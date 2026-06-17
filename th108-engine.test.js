@@ -216,3 +216,15 @@ test('renderPulse brightens the whole board with level+beat and dims on silence'
   let quiet=0; for(let i=0;i<La.rgb.length;i++) quiet+=La.rgb[i];
   assert.ok(loud > quiet, 'louder audio = brighter board');
 });
+
+test('renderBloom lights center keys on a beat and is dark with no beat', () => {
+  const L = { type:'audio', enabled:true, opacity:1, blend:'add', settings:{ style:'bloom' }, rgb:new Uint8Array(E.NLED*3) };
+  E.ensureSettings(L); const st = E.createState([L]); const La = st.layers[0];
+  st.audio.beat = 1; st.audio.level = 0.5;
+  E.renderAudio(La, 0, st);
+  let onBeat=0; for(let i=0;i<La.rgb.length;i++) onBeat+=La.rgb[i];
+  st.audio.beat = 0; st.audio.level = 0; La.rgb.fill(0);
+  E.renderAudio(La, 0, st);
+  let noBeat=0; for(let i=0;i<La.rgb.length;i++) noBeat+=La.rgb[i];
+  assert.ok(onBeat > noBeat, 'a beat blooms; silence is dark');
+});
