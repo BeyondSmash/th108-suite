@@ -163,7 +163,17 @@
         if (!picked || !picked.length) { setStatus('connection cancelled', 'dim'); return; }   // respect Cancel — don't silently fall back to a previously-granted device
         const ok = await bindDevice(picked, false);
         if (ok) onConnected();   // tell the daemon's watchdog we're alive & holding the device
-      } catch (e) { setStatus('connect failed: ' + e.message, 'err'); log('connect error: ' + e.message, 'err'); }
+      } catch (e) {
+        setStatus('connect failed: ' + e.message, 'err'); log('connect error: ' + e.message, 'err');
+        try { console.error('[th108 connect] threw AFTER opening the device — full stack:', e); } catch (_) { }   // expandable, source-linked stack in DevTools
+        try { if (e && e.stack) log('  ↳ ' + String(e.stack).split('\n').slice(1, 4).map(s => s.trim()).join('  ◂  '), 'dim'); } catch (_) { }   // and the top frames straight into the on-page Log
+        // A connect that threw mid-setup (e.g. a UI callback in onBound) leaves the control handle OPEN but
+        // with no heartbeat → the daemon's watchdog resumes and the two writers wedge the board. Close cleanly
+        // so a FAILED connect can never wedge; the daemon then keeps driving (watchdog resume / our handback).
+        try { if (device) await device.close(); } catch (_) { }
+        device = null; reportId = 0;
+        try { onDisconnected(); } catch (_) { }
+      }
       finally { _binding = false; }
     }
     async function autoReconnect() {   // on page load: if the keyboard was granted in a past session, reconnect silently (keeps the convenience, without Cancel-means-connect)
