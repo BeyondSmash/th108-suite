@@ -78,6 +78,7 @@
         card.querySelector('.ln').addEventListener('input',e=>{ L.name=e.target.value; });
         card.querySelector('.lt').addEventListener('change',e=>{ L.type=e.target.value; E.ensureSettings(L);
           if(L.type==='individual' && L.blend!=='replace'){ L.blend='replace'; const bl=card.querySelector('.lbl'); if(bl) bl.value='replace'; }   // per-key paint defaults to the replace blend (black keys transparent)
+          if(L.type==='audio'){ L.blend='multiply'; const bl=card.querySelector('.lbl'); if(bl) bl.value='multiply'; L.opacity=0.85; lo.value=85; lon.value=85; }   // audio visualizer reads best multiplied over a base layer at ~85% (the music keys carve into what's below)
           buildLayerBody(card,L); });
         const lo=card.querySelector('.lo'), lon=card.querySelector('.lon');
         const setOpa=(v,reNum)=>{ v=Math.max(0,Math.min(100,Math.round(v||0))); L.opacity=v/100; lo.value=v; if(reNum) lon.value=v; };
@@ -296,8 +297,10 @@
         c('.s-clearall').addEventListener('click',()=>{ s.keys={}; if(pb){ pb.selectNone(); pb.draw(); } reRender(); scheduleSaveLayers(); });
       } else if(L.type==='audio'){
         const style=s.style||'bars', uid=card.dataset.n;
-        const sources=[['system','All system audio'],['app','Specific app'],['tab','This tab'],['mic','Mic / line-in']];
-        const srcBubbles=sources.map(o=>'<label class="sl" style="margin:0 8px 0 0"><input type="radio" name="aud-src-'+uid+'" class="s-source" value="'+o[0]+'"'+(o[0]===(s.source||'system')?' checked':'')+'> '+o[1]+'</label>').join('');
+        // Phase 1 drives a synthetic signal for ALL sources, so only System is wired; App/Tab/Mic are
+        // disabled (greyed) until real per-source capture lands (Plan 1b) — no dead controls that lie.
+        const sources=[['system','All system audio',true],['app','Specific app',false],['tab','This tab',false],['mic','Mic / line-in',false]];
+        const srcBubbles=sources.map(o=>{ const dis=!o[2]; return '<label class="sl" style="margin:0 8px 0 0'+(dis?';opacity:.4':'')+'"'+(dis?' title="real per-source capture lands in the next update (Plan 1b)"':'')+'><input type="radio" name="aud-src-'+uid+'" class="s-source" value="'+o[0]+'"'+((o[0]===(s.source||'system'))?' checked':'')+(dis?' disabled':'')+'> '+o[1]+(dis?' — soon':'')+'</label>'; }).join('');
         const styles=[['bars','Spectrum bars'],['pulse','Beat pulse'],['bloom','Radial bloom'],['wave','Waveform']];
         const sopt=styles.map(m=>'<option value="'+m[0]+'"'+(m[0]===style?' selected':'')+'>'+m[1]+'</option>').join('');
         let html='<div class="ctl">'+
@@ -310,12 +313,24 @@
         else if(style==='pulse') html+=row('Color','<input type="color" class="s-pulseColor" value="'+s.pulseColor+'"><span></span>');
         else if(style==='bloom') html+=row('Color','<input type="color" class="s-bloomColor" value="'+s.bloomColor+'"><span></span>');
         else if(style==='wave')  html+=row('Color','<input type="color" class="s-waveColor" value="'+s.waveColor+'"><span></span>');
+        // Dim-while-active: pick OTHER layers to quiet while this audio layer is emitting, each with its
+        // own max-brightness slider — so the music keys read against a darker base. Stored in s.ducks.
+        if(!Array.isArray(s.ducks)) s.ducks=[];
+        const myIdx=+card.dataset.n, esc=t=>(t||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');
+        const duckOf=i=>s.ducks.find(d=>d&&d.layer===i);
+        const duckRows=state.layers.map((L2,i)=>({L2,i})).filter(o=>o.i!==myIdx).map(o=>{
+          const d=duckOf(o.i), on=!!d, dim=on?d.dim:30;
+          return row('',
+            '<label class="sl" style="margin:0"><input type="checkbox" class="s-duckOn" data-i="'+o.i+'"'+(on?' checked':'')+'> Layer '+(o.i+1)+' · '+esc(o.L2.name)+'</label>'+
+            '<span style="display:flex;gap:6px;align-items:center"><input type="range" class="s-duckDim" data-i="'+o.i+'" min="0" max="100" value="'+dim+'"'+(on?'':' disabled')+' title="Max brightness this layer is allowed while the music is showing"><span class="val s-duckDimV" data-i="'+o.i+'">'+dim+'%</span></span>');
+        }).join('');
         html+=
           row('Gain','<input type="range" class="s-gain" min="50" max="300" value="'+Math.round((s.gain||1)*100)+'" title="Boost/cut input sensitivity before it drives the keys"><span class="val s-gainV"></span>')+
           row('Noise floor','<input type="range" class="s-floor" min="0" max="40" value="'+s.floor+'" title="Gate out quiet hiss below this level so idle keys stay dark"><span class="val s-floorV"></span>')+
           row('Attack','<input type="range" class="s-attackMs" min="0" max="300" step="5" value="'+s.attackMs+'" title="How fast keys brighten on a rise (ms). Lower = snappier"><span class="val s-attackV"></span>')+
           row('Decay','<input type="range" class="s-decayMs" min="40" max="800" step="10" value="'+s.decayMs+'" title="How slowly keys fade after a peak (ms). Higher = smoother"><span class="val s-decayV"></span>')+
           row('Beat sensitivity','<input type="range" class="s-beatSens" min="0" max="100" value="'+s.beatSens+'" title="How strongly kicks/onsets pop in pulse and bloom"><span class="val s-beatSensV"></span>')+
+          (duckRows ? row('Dim while active','<span class="val" style="opacity:.7">quiet these layers while the music shows</span><span></span>')+duckRows : '')+
           row('','<button type="button" class="s-logVals">Log current values</button><span></span>')+
         '</div>';
         body.innerHTML=html;
@@ -329,6 +344,17 @@
         slider('attackMs','attackMs',x=>x+'ms',v=>v);
         slider('decayMs','decayMs',x=>x+'ms',v=>v);
         slider('beatSens','beatSens',x=>x+'%',v=>v);
+        body.querySelectorAll('.s-duckOn').forEach(cb=>cb.addEventListener('change',e=>{
+          const i=+e.target.dataset.i, sl=body.querySelector('.s-duckDim[data-i="'+i+'"]');
+          if(!Array.isArray(s.ducks)) s.ducks=[];
+          if(e.target.checked){ if(!s.ducks.find(d=>d&&d.layer===i)) s.ducks.push({layer:i, dim:sl?+sl.value:30}); if(sl) sl.disabled=false; }
+          else { s.ducks=s.ducks.filter(d=>d&&d.layer!==i); if(sl) sl.disabled=true; }
+        }));
+        body.querySelectorAll('.s-duckDim').forEach(sl=>sl.addEventListener('input',e=>{
+          const i=+e.target.dataset.i, v=+e.target.value, lab=body.querySelector('.s-duckDimV[data-i="'+i+'"]');
+          if(lab) lab.textContent=v+'%';
+          const d=Array.isArray(s.ducks)&&s.ducks.find(x=>x&&x.layer===i); if(d) d.dim=v;   // only persists once the layer is checked on
+        }));
         c('.s-logVals').addEventListener('click',()=>console.log('[audio layer "'+L.name+'"]', JSON.parse(JSON.stringify(s))));
       } else {   // media — Stage 1 placeholder
         body.innerHTML='<div class="ph">Media layer — port of the GIF engine lands in Stage 2. (Use the GIF → keyboard panel below for now.)</div>';
