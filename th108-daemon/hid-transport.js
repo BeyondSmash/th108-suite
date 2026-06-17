@@ -4,6 +4,9 @@
 const HID = require('node-hid');
 const VENDOR = 0x0C45, USAGE_PAGE = 0xFF68, USAGE = 0x61;
 
+const ts = () => new Date().toTimeString().slice(0, 8);
+const hex8 = (b) => Array.from(b.slice(0, 8)).map((x) => x.toString(16).padStart(2, '0')).join(' ');
+
 // Find the path of the writable per-key control interface (NOT the screen iface 0xFF67).
 function findPath() {
   const list = HID.devices();
@@ -24,15 +27,34 @@ function openDevice(path) {
 // Build an ACK-gated sender bound to one open device.
 // Returns async sendFrame(flat) -> true on success, false on stall (never throws, so the loop survives).
 function makeSender(device, { packLen = 64, cmd = 0x32, ackTimeoutMs = 800 } = {}) {
-  let ackWaiter = null, noise = 0;
+  let ackWaiter = null, noise = 0, falseHits = 0, ackSigLogged = false;
   device.on('data', (buf) => {
-    if (buf && buf[0] === 0x55 && ackWaiter) { const w = ackWaiter; ackWaiter = null; w(true); }
-    else if (buf && buf[0] === 0x55) {
-      // 0x55 with NO write pending = firmware broadcast (e.g. 55 23 from the onboard-effect engine).
-      // Dangerous: one of these landing while a write IS pending falsely satisfies the ACK gate →
-      // we outpace the board's FIFO → wedge. Count + log them so the rate shows up in daemon.log.
-      noise++;
-      if (noise === 1 || noise % 50 === 0) console.log(new Date().toTimeString().slice(0, 8) + ` … unsolicited 0x55 ${(buf[1] || 0).toString(16).padStart(2, '0')} broadcast from board (#${noise}) — firmware is chatty; ACK gate may be getting false hits`);
+    if (!buf || buf[0] !== 0x55) return;
+    // A genuine ACK echoes the COMMAND byte we wrote (0x32 lighting → 0x55 32; the SAME filter the
+    // page uses on its reads — see webhid-test.html "0x55 <cmd>, rejects stray broadcasts"). Gating
+    // on the cmd match stops a FOREIGN-command report — e.g. the onboard engine's 0x55 23, chatty
+    // right after a factory reset — from falsely satisfying a 0x32 write's gate, which would let us
+    // outrun the board's FIFO into a wedge. (Confirmed safe: real 0x32 ACKs carry buf[1]=0x32, which
+    // is exactly what the board's unsolicited 0x55 32 reports below show.)
+    if (ackWaiter && buf[1] === cmd) {
+      if (!ackSigLogged) {   // capture the real ACK's full byte signature ONCE per device — the only way to later tell a true 0x32 ACK from a spurious 0x55 32 broadcast (identical in the bytes we gate on) is to diff their payloads
+        ackSigLogged = true;
+        console.log(ts() + ` … real ${cmd.toString(16)} ACK signature: ${hex8(buf)} (diff this against the unsolicited 0x55 ${cmd.toString(16)} broadcasts to find a payload discriminator)`);
+      }
+      const w = ackWaiter; ackWaiter = null; w(true);
+      return;
+    }
+    noise++;
+    if (ackWaiter) {
+      // A 0x55 with a DIFFERENT cmd arrived while we await our ACK — exactly the false hit this guard
+      // now rejects (pre-guard it satisfied the gate → FIFO overrun → wedge). Rare + important → log it.
+      falseHits++;
+      if (falseHits === 1 || falseHits % 10 === 0)
+        console.log(ts() + ` … 0x55 ${hex8(buf)} arrived mid-await for a ${cmd.toString(16)} ACK — REJECTED as a false hit (#${falseHits}); pre-guard this is what outran the FIFO`);
+    } else if (noise === 1 || noise % 50 === 0) {
+      // 0x55 with NO write pending = a genuine firmware broadcast. Harmless on its own; logged with
+      // FULL bytes so a same-cmd (0x55 32) broadcast can be diffed against the real ACK signature above.
+      console.log(ts() + ` … unsolicited 0x55 ${hex8(buf)} broadcast from board (#${noise}) — no write pending; logged to diff against the real ACK signature`);
     }
   });
   const waitAck = () => new Promise((res) => {

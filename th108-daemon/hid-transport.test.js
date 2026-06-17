@@ -44,6 +44,36 @@ test('sendFrame returns false when write() throws', async () => {
   assert.equal(await send([0, 1, 2, 3]), false);
 });
 
+test('ACK gate accepts only a matching-cmd 0x55 — a foreign 0x55 23 mid-await does NOT satisfy it', async () => {
+  // each write emits a foreign 0x55 23 broadcast FIRST, then the real 0x55 32 ACK. The frame must
+  // still complete, proving the foreign report was rejected and only the matching cmd satisfied.
+  const handlers = {};
+  const dev = {
+    on(ev, cb) { (handlers[ev] ||= []).push(cb); },
+    write(arr) {
+      queueMicrotask(() => {
+        (handlers.data || []).forEach(cb => cb(Buffer.from([0x55, 0x23])));            // foreign — must NOT satisfy
+        (handlers.data || []).forEach(cb => cb(Buffer.from([0x55, arr[2] || 0x32]))); // real ACK
+      });
+      return arr.length;
+    },
+    close() {},
+  };
+  const send = makeSender(dev, { packLen: 64, cmd: 0x32, ackTimeoutMs: 200 });
+  assert.equal(await send([0, 1, 2, 3]), true);
+});
+
+test('ACK gate stalls (no false hit) when ONLY a foreign-command 0x55 is returned', async () => {
+  const handlers = {};
+  const dev = {
+    on(ev, cb) { (handlers[ev] ||= []).push(cb); },
+    write(arr) { queueMicrotask(() => (handlers.data || []).forEach(cb => cb(Buffer.from([0x55, 0x23])))); return arr.length; },
+    close() {},
+  };
+  const send = makeSender(dev, { packLen: 64, cmd: 0x32, ackTimeoutMs: 50 });
+  assert.equal(await send([0, 1, 2, 3]), false);   // 0x55 23 never satisfies a 0x32 gate → clean stall, not a wedge-inducing false hit
+});
+
 // fake device for probeTraffic: lets the test emit unsolicited input reports (= another writer's ACKs)
 function fakeListener() {
   const handlers = {};
