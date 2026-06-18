@@ -206,6 +206,11 @@ async function tick() {
   }
   if (device && send && state) {
     const now = performance.now();
+    if (acHandle) {   // fold the latest real-audio frame into state.audio (>250ms stale → null → engine decays to silence)
+      const raw = AC.freshOr(acHandle.latest(), Date.now(), 250);
+      const aL = state.layers.find(L => L.enabled && L.type === 'audio');
+      if (raw && aL) E.applyAudioFeatures(state, raw, aL.settings, now);
+    }
     const flat = E.composeFrame(state, now);
     // throttled-skip feedback: blink the SPACEBAR red TWICE when a media command lands inside the
     // safety window (it's queued until the buffer clears). Overlaid on the live frame — flatEq below
@@ -396,6 +401,18 @@ function syncNowPlaying() {
 }
 syncNowPlaying();
 
+// ----- real audio capture (audio-capture.js: WASAPI loopback sidecar → state.audio) -----
+const AC = require('./audio-capture.js');
+let acHandle = null;
+// the audio sidecar is wanted only when an enabled audio layer exists AND we're driving (not yielded)
+function audioWanted() { return !paused && !!state && state.layers.some(L => L.enabled && L.type === 'audio'); }
+function syncAudioCapture() {
+  const want = audioWanted();
+  if (want && !acHandle) { acHandle = AC.start({ log }); log('♪ audio capture started (system loopback)'); }
+  else if (!want && acHandle) { acHandle.stop(); acHandle = null; log('♪ audio capture stopped'); }
+}
+syncAudioCapture();
+
 // ----- control hooks for the server -----
 const control = {
   // Release the device for the WebHID page. MUST NOT complete while a flash upload is mid-flight:
@@ -403,7 +420,8 @@ const control = {
   // mid-flash-write wedged it hard and cost typing (2026-06-12 incident, "chunk N: no ACK" right
   // after a /yield line). Block the response until the upload finishes (≤ erase window) or 25s.
   async yield() {
-    paused = true;   // stops NEW frames; the in-flight one must COMPLETE before we close —
+    paused = true; syncAudioCapture();   // stop capturing while the page drives (audioWanted()==false when paused)
+    // stops NEW frames; the in-flight one must COMPLETE before we close —
     // closing mid-frame leaves the board's chunk parser waiting for bytes that never come, and
     // the page's first writes then land desynced → no ACKs → onboard fallback (the recurring
     // "refresh + Connect → rainbow" pattern, finally pinned 2026-06-12 17:51)
@@ -416,11 +434,12 @@ const control = {
     if (lcdBusy) console.log(ts() + ' ⚠ yield proceeded with a flash upload still busy after 25s — investigate');
   },
   // Reload config (the page may have saved edits) and resume rendering.
-  resume() { rebuildState(); paused = false; unpausedAt = Date.now(); },
+  resume() { rebuildState(); paused = false; unpausedAt = Date.now(); syncAudioCapture(); },
   // Persist the page's config; refresh live state immediately unless yielded to the page.
   saveConfig(cfg) { fs.writeFileSync(CONFIG_PATH, JSON.stringify(cfg));
     if (!paused) { state = E.applyConfig(state, cfg);   // in-place on a settings edit → no animation reset; rebuilds only on a structural change
-      if (state) state.bri = Math.max(0, Math.min(100, settings.brightness != null ? settings.brightness : 100)) / 100; } },
+      if (state) state.bri = Math.max(0, Math.min(100, settings.brightness != null ? settings.brightness : 100)) / 100; }
+    syncAudioCapture(); },   // an edit that enables/disables the audio layer starts/stops capture live
   status() { return { running: true, paused, deviceConnected: !!device, fps: FPS, setupPath: path.resolve(__dirname, '..', 'setup.cmd'), usbReset: settings.usbReset, nowPlaying: settings.nowPlaying,
                       npTrack: npHandle ? npHandle.current() : null, npQueued: npHandle ? npHandle.queued() : false,
                       npHealth: npHandle ? npHandle.health() : null,
@@ -556,6 +575,7 @@ function shutdown(code = 0) {
     }
   } catch {}
   try { if (npHandle) npHandle.stop(); } catch {}   // kill the sidecar — no orphaned powershell
+  try { if (acHandle) acHandle.stop(); } catch {}   // kill the audio-capture sidecar too
   try { uIOhook.stop(); } catch {}
   process.exit(code);
 }
