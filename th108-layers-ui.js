@@ -78,7 +78,7 @@
         card.querySelector('.ln').addEventListener('input',e=>{ L.name=e.target.value; });
         card.querySelector('.lt').addEventListener('change',e=>{ L.type=e.target.value; E.ensureSettings(L);
           if(L.type==='individual' && L.blend!=='replace'){ L.blend='replace'; const bl=card.querySelector('.lbl'); if(bl) bl.value='replace'; }   // per-key paint defaults to the replace blend (black keys transparent)
-          if(L.type==='audio'){ L.blend='multiply'; const bl=card.querySelector('.lbl'); if(bl) bl.value='multiply'; L.opacity=0.85; lo.value=85; lon.value=85; }   // audio visualizer reads best multiplied over a base layer at ~85% (the music keys carve into what's below)
+          if(L.type==='audio'){ L.blend='add'; const bl=card.querySelector('.lbl'); if(bl) bl.value='add'; L.opacity=0.85; lo.value=85; lon.value=85; }   // audio visualizer = ADD so its keys have their OWN light (multiply has none → dimming the base dims the audio too, and the visualizer is invisible without a bright base). 'add' lets the keys pop and the Dim-while-active contrast actually work.
           buildLayerBody(card,L); });
         const lo=card.querySelector('.lo'), lon=card.querySelector('.lon');
         const setOpa=(v,reNum)=>{ v=Math.max(0,Math.min(100,Math.round(v||0))); L.opacity=v/100; lo.value=v; if(reNum) lon.value=v; };
