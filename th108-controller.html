@@ -963,6 +963,7 @@ function pageActive(){ return document.hasFocus() && !document.hidden; }
 async function handBoardToDaemon(){
   if(_handoffBusy || _awayHandoff) return;
   if(!(DC.present && DC.beating && running && HID.device)) return;   // only while WE actively drive layers (excludes LCD upload / GIF / idle — running=false there)
+  if(webCap.active()) return;                                         // IN-TAB audio capture: the daemon can't do tab/mic audio, and tab-switching to control the music would churn the HID handoff (open/close → wedge). Keep driving from this tab.
   if(window.__npPermit) return;                                       // belt-and-suspenders: never mid now-playing flash upload
   _handoffBusy=true;
   try{
@@ -1055,16 +1056,20 @@ async function startAudioSource(kind){
 // signal) into state.audio whenever an audio layer is enabled — regardless of whether we're driving the
 // board. This is the one place webCap.sample() is called (so the beat/onset state isn't double-advanced),
 // and it keeps state.audio live for BOTH the keyboard composite and the card's Live preview.
+// ONE place samples the live source (in-tab webCap if active, else synth) into state.audio when an audio
+// layer is enabled — so the capture's beat/onset state isn't double-advanced. While DRIVING, layerTick
+// calls this (it's worker-timed → keeps running smoothly even when this tab is backgrounded); when idle,
+// the rAF below calls it so the card's Live preview still updates.
+function feedAudio(now){
+  const aL = state.layers.find(L=>L.enabled && L.type==='audio');
+  if(!aL) return;
+  let raw=null;
+  if(webCap.active()) raw=webCap.sample();
+  if(!raw){ if(!window._audSynth) window._audSynth=TH108AudioSynth.createSynth(); raw=window._audSynth.sample(now/1000); }
+  TH108Engine.applyAudioFeatures(state, raw, aL.settings, now);
+}
 function audioFeedTick(now){
-  try{
-    const aL = state.layers.find(L=>L.enabled && L.type==='audio');
-    if(aL){
-      let raw=null;
-      if(webCap.active()) raw=webCap.sample();
-      if(!raw){ if(!window._audSynth) window._audSynth=TH108AudioSynth.createSynth(); raw=window._audSynth.sample(now/1000); }
-      TH108Engine.applyAudioFeatures(state, raw, aL.settings, now);
-    }
-  }catch(_){ }
+  if(!running){ try{ feedAudio(now); }catch(_){ } }   // driving → layerTick feeds (not throttled when hidden); rAF only fills in while idle (preview)
   requestAnimationFrame(audioFeedTick);
 }
 requestAnimationFrame(audioFeedTick);
@@ -1084,7 +1089,8 @@ async function layerTick(){
     const now=performance.now();
     if(!layerInFlight){
       layerInFlight=true;
-      const flat=TH108Engine.composeFrame(state, now);   // engine renders due layers (≤30fps each) + composites → flat frame; state.audio is fed by audioFeedTick (single source)
+      try{ feedAudio(now); }catch(_){ }                  // refresh state.audio on the worker clock (smooth even when this tab is backgrounded)
+      const flat=TH108Engine.composeFrame(state, now);   // engine renders due layers (≤30fps each) + composites → flat frame
       if(!TH108Engine.flatEq(flat, state.lastFlat) || now-state.lastSent>=1000){   // skip unchanged frames; resend ≥1×/s as a keepalive so firmware doesn't reclaim the board
         if(await HID.sendFrame(flat)){ state.lastFlat=flat; state.lastSent=now; }
       }
