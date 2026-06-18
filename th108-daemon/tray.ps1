@@ -79,15 +79,23 @@ $icon.Text = 'TH108 Lighting'
 $icon.Visible = $true
 
 $menu = New-Object System.Windows.Forms.ContextMenuStrip
-$miOpen  = $menu.Items.Add('Open Controller')
-$miStart = $menu.Items.Add('Start Daemon')
-$miQuit  = $menu.Items.Add('Quit Daemon')
+$miOpen    = $menu.Items.Add('Open Controller')
+$miStart   = $menu.Items.Add('Start Daemon')
+$miRestart = $menu.Items.Add('Restart Daemon')
+$miQuit    = $menu.Items.Add('Quit Daemon')
 [void]$menu.Items.Add('-')
-$miExit  = $menu.Items.Add('Exit Tray')
+$miExit    = $menu.Items.Add('Exit Tray')
 $icon.ContextMenuStrip = $menu
 
 $miOpen.Add_Click({ Start-Process 'http://localhost:8123/' })
 $miStart.Add_Click({ Start-Daemon })
+# Restart: the current daemon exits 42 on /restart and start-hidden.vbs's supervisor revives it (~1s).
+# Fallback for a daemon predating /restart: Quit (clean exit ends supervision), free the port, then Start.
+$miRestart.Add_Click({
+  if (Invoke-Daemon '/restart' 'POST') { return }
+  if (Get-DaemonStatus) { [void](Invoke-Daemon '/quit' 'POST'); Start-Sleep -Milliseconds 1200 }
+  Start-Daemon
+})
 $miQuit.Add_Click({ [void](Invoke-Daemon '/quit' 'POST') })
 $miExit.Add_Click({ $script:icon.Visible = $false; [System.Windows.Forms.Application]::Exit() })
 $icon.Add_DoubleClick({ Start-Process 'http://localhost:8123/' })
