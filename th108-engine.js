@@ -307,12 +307,12 @@
   // nearest the line, amplitude scaled by that column's band energy.
   function renderWave(s, out, A, now){
     const col0 = hexToRgb(s.waveColor||'#00e0ff');
-    const t = now/1000;
+    const t = now/1000, dir = s.waveReverse ? -1 : 1;   // flip the per-column phase to scroll the trace the other way
     for(let k=0;k<NLED;k++){
       const idx = INDICES[k], cell = GRID[idx]; if(!cell) continue;
       const col = cell[0], row = cell[1], o = k*3;
       const band = Math.min(31, Math.round((GW>1?col/(GW-1):0)*31));
-      const samp = 0.5 + 0.45*Math.sin(t*6 + col*0.6) * (0.4 + 0.6*A.bands[band]);
+      const samp = 0.5 + 0.45*Math.sin(t*6 + dir*col*0.6) * (0.4 + 0.6*A.bands[band]);
       const line = samp*(GH-1), v = Math.max(0, 1 - Math.abs(row-line)*0.9);
       if(v < 0.05){ out[o]=out[o+1]=out[o+2]=0; continue; }
       out[o]=(col0[0]*v)|0; out[o+1]=(col0[1]*v)|0; out[o+2]=(col0[2]*v)|0;
@@ -582,7 +582,7 @@
       const ad={ style:'bars', source:'system', appId:'', deviceId:'',
         gain:1, floor:5, attackMs:40, decayMs:220, beatSens:50,
         barColorBass:'#ff2200', barColorTreble:'#22aaff',
-        pulseColor:'#19b6ff', bloomColor:'#ff5a00', waveColor:'#00e0ff' };
+        pulseColor:'#19b6ff', bloomColor:'#ff5a00', waveColor:'#00e0ff', waveReverse:false };
       Object.keys(ad).forEach(k=>{ if(s[k]===undefined)s[k]=ad[k]; });
       if(!Array.isArray(s.ducks)) s.ducks=[];   // [{layer:<index>, dim:<0..100 max-brightness %>}] — dim these while the audio layer emits
     }

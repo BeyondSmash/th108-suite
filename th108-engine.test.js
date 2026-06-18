@@ -273,3 +273,12 @@ test('a non-emitting audio layer is transparent (multiply-black must not dim the
   let anyDim=false; for(let o=0;o<f2.length;o+=4) if(f2[o+1]<250||f2[o+3]<250){ anyDim=true; break; }
   assert.ok(anyDim, 'emitting audio layer composites (multiply changes the board)');
 });
+
+test('renderWave reverse flips the scroll direction (different frame, same instant)', () => {
+  const mkL=rev=>{ const L={type:'audio',enabled:true,opacity:1,blend:'add',settings:{style:'wave',waveReverse:rev},rgb:new Uint8Array(E.NLED*3)}; E.ensureSettings(L); return L; };
+  const Lf=mkL(false), Lr=mkL(true);
+  const st=E.createState([Lf]); st.audio.bands.fill(0.7);
+  E.renderAudio(Lf, 500, st); E.renderAudio(Lr, 500, st);
+  let diff=false; for(let i=0;i<Lf.rgb.length;i++) if(Lf.rgb[i]!==Lr.rgb[i]){ diff=true; break; }
+  assert.ok(diff, 'reverse produces a different waveform than forward at the same instant');
+});
