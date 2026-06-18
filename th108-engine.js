@@ -43,9 +43,9 @@
                  case 3:r=p;g=q;b=v;break; case 4:r=t;g=p;b=v;break; default:r=v;g=p;b=q; }
     return [r*255|0, g*255|0, b*255|0];
   }
-  // VU meter, DISCRETE by row-from-bottom: 1 = green, 2 = yellow, 3+ = red. Fully saturated, high-contrast
-  // (classic 3-zone meter — no lime/orange blends).
-  function vuRow(fb){ return fb<=1 ? [0,255,0] : fb<=2 ? [255,255,0] : [255,0,0]; }
+  // VU meter, DISCRETE by row-from-bottom (6-row board): rows 1-2 green, 3-4 yellow, 5-6 red. Fully
+  // saturated, high-contrast (classic 3-zone meter — no lime/orange blends).
+  function vuRow(fb){ return fb<=2 ? [0,255,0] : fb<=4 ? [255,255,0] : [255,0,0]; }
   // deterministic per-index hash → 0..1 (stable sparkle/column offsets)
   function patHash(i){ const x=Math.sin(i*127.1+311.7)*43758.5453; return x-Math.floor(x); }
   // one-pole smoothing toward `target`; rising uses attackMs, falling uses decayMs. dt in ms.
