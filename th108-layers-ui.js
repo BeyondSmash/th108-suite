@@ -433,7 +433,7 @@
       const adj=document.createElement('div');
       adj.innerHTML=
         '<div class="lbody" style="margin-top:8px"><div class="ph" style="margin-bottom:6px">Adjust</div><div class="ctl">'+
-          ctl('bri')+ctl('sat')+ctl('con')+ctl('gam')+ctl('rot')+
+          ctl('bri')+ctl('sat')+ctl('con')+ctl('gam')+(CFG.rot?ctl('rot'):'')+
           '<label>Static</label><label class="sl" style="margin:0"><input type="checkbox" class="a-frozen"'+(s.frozen?' checked':'')+'> Freeze Animation</label><span></span>'+
         '</div></div>';
       body.appendChild(adj.firstChild);
