@@ -305,7 +305,7 @@
         const sopt=styles.map(m=>'<option value="'+m[0]+'"'+(m[0]===style?' selected':'')+'>'+m[1]+'</option>').join('');
         let html='<div class="ctl">'+
           row('Source','<span style="display:flex;flex-wrap:wrap;align-items:center">'+srcBubbles+'</span><span></span>')+
-          row('Source note','<span class="val" style="opacity:.7">Phase 1: driven by a synthetic test signal — real capture lands next.</span><span></span>')+
+          row('Source note','<span class="val" style="opacity:.7">Real system audio plays through the background daemon (close/blur this tab). While this tab is connected and driving, it falls back to a test signal — per-tab capture is coming.</span><span></span>')+
           row('Style','<select class="s-style">'+sopt+'</select><span></span>')+
           row('Preview','<div style="display:flex;flex-direction:column;gap:5px"><button type="button" class="s-prevToggle" style="align-self:flex-start">'+(s.previewOff?'Show preview':'Hide preview')+'</button><canvas class="s-audioPrev" width="378" height="108" style="width:100%;height:auto;display:'+(s.previewOff?'none':'block')+';background:#0d1117;border-radius:8px"></canvas></div><span></span>');
         if(style==='bars') html+=
