@@ -24,7 +24,7 @@ function shouldFire({ muteAt, now, lastFireAt, thresholdMs = THRESHOLD_MS, coold
 
 // Trigger the elevated task (schtasks /run works unelevated for a task the user owns).
 function fire(log) {
-  execFile('schtasks', ['/run', '/tn', TASK_NAME], (err, _so, se) => {
+  execFile('schtasks', ['/run', '/tn', TASK_NAME], { windowsHide: true }, (err, _so, se) => {
     if (err) log('✗ USB-restart task failed to start: ' + (((se || '').trim()) || err.message) + ' — register it once via install-usb-restart-task.ps1 (run as admin)');
     else log('… USB-restart task triggered — board should re-enumerate in a few seconds');
   });
