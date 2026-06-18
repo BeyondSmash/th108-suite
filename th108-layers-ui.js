@@ -307,7 +307,7 @@
           row('Source','<span style="display:flex;flex-wrap:wrap;align-items:center">'+srcBubbles+'</span><span></span>')+
           row('Source note','<span class="val" style="opacity:.7">Phase 1: driven by a synthetic test signal — real capture lands next.</span><span></span>')+
           row('Style','<select class="s-style">'+sopt+'</select><span></span>')+
-          row('Preview','<canvas class="s-audioPrev" width="378" height="108" style="width:100%;height:auto;display:block;background:#0d1117;border-radius:8px"></canvas><span></span>');
+          row('Preview','<div style="display:flex;flex-direction:column;gap:5px"><button type="button" class="s-prevToggle" style="align-self:flex-start">'+(s.previewOff?'Show preview':'Hide preview')+'</button><canvas class="s-audioPrev" width="378" height="108" style="width:100%;height:auto;display:'+(s.previewOff?'none':'block')+';background:#0d1117;border-radius:8px"></canvas></div><span></span>');
         if(style==='bars') html+=
           row('Bass color','<input type="color" class="s-barColorBass" value="'+s.barColorBass+'"><span></span>')+
           row('Treble color','<input type="color" class="s-barColorTreble" value="'+s.barColorTreble+'"><span></span>');
@@ -359,6 +359,7 @@
           const d=Array.isArray(s.ducks)&&s.ducks.find(x=>x&&x.layer===i); if(d) d.dim=v;   // only persists once the layer is checked on
         }));
         c('.s-logVals').addEventListener('click',()=>console.log('[audio layer "'+L.name+'"]', JSON.parse(JSON.stringify(s))));
+        { const tb=c('.s-prevToggle'), cvp=c('.s-audioPrev'); if(tb&&cvp) tb.addEventListener('click',()=>{ s.previewOff=!s.previewOff; cvp.style.display=s.previewOff?'none':'block'; tb.textContent=s.previewOff?'Show preview':'Hide preview'; }); }
         // Live preview: drive a scratch audio layer off the synthetic feed and paint the keys onto a canvas.
         // Reads s each frame so style/colors/tuning/reverse update live; runs independent of the device.
         (function(){
