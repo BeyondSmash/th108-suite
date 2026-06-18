@@ -326,11 +326,11 @@
             '<span style="display:flex;gap:6px;align-items:center"><input type="range" class="s-duckDim" data-i="'+o.i+'" min="0" max="100" value="'+dim+'"'+(on?'':' disabled')+' title="Max brightness this layer is allowed while the music is showing"><span class="val s-duckDimV" data-i="'+o.i+'">'+dim+'%</span></span>');
         }).join('');
         html+=
-          row('Gain','<input type="range" class="s-gain" min="50" max="300" value="'+Math.round((s.gain||1)*100)+'" title="Boost/cut input sensitivity before it drives the keys"><span class="val s-gainV"></span>')+
-          row('Noise floor','<input type="range" class="s-floor" min="0" max="40" value="'+s.floor+'" title="Gate out quiet hiss below this level so idle keys stay dark"><span class="val s-floorV"></span>')+
-          row('Attack','<input type="range" class="s-attackMs" min="0" max="300" step="5" value="'+s.attackMs+'" title="How fast keys brighten on a rise (ms). Lower = snappier"><span class="val s-attackMsV"></span>')+
-          row('Decay','<input type="range" class="s-decayMs" min="40" max="800" step="10" value="'+s.decayMs+'" title="How slowly keys fade after a peak (ms). Higher = smoother"><span class="val s-decayMsV"></span>')+
-          row('Beat sensitivity','<input type="range" class="s-beatSens" min="0" max="100" value="'+s.beatSens+'" title="How strongly kicks/onsets pop in pulse and bloom"><span class="val s-beatSensV"></span>')+
+          row('Gain','<span class="srange" style="width:100%"><input type="range" class="s-gain" min="50" max="300" value="'+Math.round((s.gain||1)*100)+'" title="Boost/cut input sensitivity before it drives the keys"><i class="tick" style="left:calc(7px + (100% - 14px)*0.2)"></i></span><span class="val s-gainV"></span>')+
+          row('Noise floor','<span class="srange" style="width:100%"><input type="range" class="s-floor" min="0" max="40" value="'+s.floor+'" title="Gate out quiet hiss below this level so idle keys stay dark"><i class="tick" style="left:calc(7px + (100% - 14px)*0.125)"></i></span><span class="val s-floorV"></span>')+
+          row('Attack','<span class="srange" style="width:100%"><input type="range" class="s-attackMs" min="0" max="300" step="5" value="'+s.attackMs+'" title="How fast keys brighten on a rise (ms). Lower = snappier"><i class="tick" style="left:calc(7px + (100% - 14px)*0.133)"></i></span><span class="val s-attackMsV"></span>')+
+          row('Decay','<span class="srange" style="width:100%"><input type="range" class="s-decayMs" min="40" max="800" step="10" value="'+s.decayMs+'" title="How slowly keys fade after a peak (ms). Higher = smoother"><i class="tick" style="left:calc(7px + (100% - 14px)*0.237)"></i></span><span class="val s-decayMsV"></span>')+
+          row('Beat sensitivity','<span class="srange" style="width:100%"><input type="range" class="s-beatSens" min="0" max="100" value="'+s.beatSens+'" title="How strongly kicks/onsets pop in pulse and bloom"><i class="tick" style="left:calc(7px + (100% - 14px)*0.5)"></i></span><span class="val s-beatSensV"></span>')+
           (duckRows ? row('Dim while active','<span class="val" style="opacity:.7">quiet these layers while the music shows</span><span></span>')+duckRows : '')+
           row('','<button type="button" class="s-logVals">Log current values</button><span></span>')+
         '</div>';
@@ -340,12 +340,12 @@
         c('.s-style').addEventListener('change',e=>{ s.style=e.target.value; buildLayerBody(card,L); });
         ['barColorBass','barColorTreble','pulseColor','bloomColor','waveColor'].forEach(key=>{ const el=c('.s-'+key); if(el) el.addEventListener('input',e=>s[key]=e.target.value); });
         { const wr=c('.s-waveReverse'); if(wr) wr.addEventListener('change',e=>s.waveReverse=e.target.checked); }
-        const slider=(cls,key,fmt,xform)=>{ const el=c('.s-'+cls), v=c('.s-'+cls+'V'); if(!el||!v) return; const up=()=>v.textContent=fmt(s[key]); el.addEventListener('input',e=>{ s[key]=xform(+e.target.value); up(); }); up(); };   // guard !v so a class mismatch can't crash buildLayerCards/init
-        slider('gain','gain',x=>Math.round(x*100)+'%',v=>v/100);
-        slider('floor','floor',x=>x+'%',v=>v);
-        slider('attackMs','attackMs',x=>x+'ms',v=>v);
-        slider('decayMs','decayMs',x=>x+'ms',v=>v);
-        slider('beatSens','beatSens',x=>x+'%',v=>v);
+        const slider=(cls,key,fmt,xform,snapTo)=>{ const el=c('.s-'+cls), v=c('.s-'+cls+'V'); if(!el||!v) return; const up=()=>v.textContent=fmt(s[key]); el.addEventListener('input',e=>{ if(snapTo!=null) snap(el,snapTo,4); s[key]=xform(+el.value); up(); }); up(); };   // guard !v so a class mismatch can't crash init; snap to the default tick
+        slider('gain','gain',x=>Math.round(x*100)+'%',v=>v/100,100);
+        slider('floor','floor',x=>x+'%',v=>v,5);
+        slider('attackMs','attackMs',x=>x+'ms',v=>v,40);
+        slider('decayMs','decayMs',x=>x+'ms',v=>v,220);
+        slider('beatSens','beatSens',x=>x+'%',v=>v,50);
         body.querySelectorAll('.s-duckOn').forEach(cb=>cb.addEventListener('change',e=>{
           const i=+e.target.dataset.i, sl=body.querySelector('.s-duckDim[data-i="'+i+'"]');
           if(!Array.isArray(s.ducks)) s.ducks=[];
