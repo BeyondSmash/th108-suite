@@ -308,7 +308,7 @@
           row('Source','<span style="display:flex;flex-wrap:wrap;align-items:center">'+srcBubbles+'</span><span></span>')+
           row('Source note','<span class="val" style="opacity:.7">This tab / Mic = real audio captured right here — pick one and accept the share/mic prompt (for a tab, tick “Share tab audio”). Best for tuning. All system audio runs ambiently through the background daemon (close/blur this tab). App is coming.</span><span></span>')+
           row('Style','<select class="s-style">'+sopt+'</select><span></span>')+
-          row('Preview','<div style="display:flex;flex-direction:column;gap:5px"><button type="button" class="s-prevToggle" style="align-self:flex-start">'+(s.previewOff?'Show preview':'Hide preview')+'</button><canvas class="s-audioPrev" width="378" height="108" style="width:100%;height:auto;display:'+(s.previewOff?'none':'block')+';background:#0d1117;border-radius:8px"></canvas></div><span></span>');
+          row('Preview','<div style="display:flex;flex-direction:column;gap:5px"><button type="button" class="s-prevToggle" style="align-self:flex-start">'+(s.previewOff?'Show previews':'Hide previews')+'</button><div class="audioPrevs"'+(s.previewOff?' style="display:none"':'')+'><div class="val" style="opacity:.65;margin:2px 0">Sample — test signal (design the look)</div><canvas class="s-audioPrev" width="378" height="96" style="width:100%;height:auto;display:block;background:#0d1117;border-radius:8px"></canvas><div class="val" style="opacity:.65;margin:7px 0 2px">Live — real audio (pick This tab / Mic; follows pause)</div><canvas class="s-audioPrevLive" width="378" height="96" style="width:100%;height:auto;display:block;background:#0d1117;border-radius:8px"></canvas></div></div><span></span>');
         if(style==='bars'){ const bt=s.barTip||'off';
           const btOpt=[['off','Off'],['color','Solid color'],['rainbow','Rainbow']].map(o=>'<option value="'+o[0]+'"'+(o[0]===bt?' selected':'')+'>'+o[1]+'</option>').join('');
           html+=
@@ -366,27 +366,28 @@
           const d=Array.isArray(s.ducks)&&s.ducks.find(x=>x&&x.layer===i); if(d) d.dim=v;   // only persists once the layer is checked on
         }));
         c('.s-logVals').addEventListener('click',()=>console.log('[audio layer "'+L.name+'"]', JSON.parse(JSON.stringify(s))));
-        { const tb=c('.s-prevToggle'), cvp=c('.s-audioPrev'); if(tb&&cvp) tb.addEventListener('click',()=>{ s.previewOff=!s.previewOff; cvp.style.display=s.previewOff?'none':'block'; tb.textContent=s.previewOff?'Show preview':'Hide preview'; }); }
-        // Live preview: drive a scratch audio layer off the synthetic feed and paint the keys onto a canvas.
-        // Reads s each frame so style/colors/tuning/reverse update live; runs independent of the device.
+        { const tb=c('.s-prevToggle'), wrap=c('.audioPrevs'); if(tb&&wrap) tb.addEventListener('click',()=>{ s.previewOff=!s.previewOff; wrap.style.display=s.previewOff?'none':'block'; tb.textContent=s.previewOff?'Show previews':'Hide previews'; }); }
+        // Two previews: SAMPLE drives a scratch state from the deterministic synth (design the look any time);
+        // LIVE renders the page's REAL state.audio (fed by audioFeedTick from in-tab capture/synth) so it
+        // mirrors the keys and follows pause. Both read `s` each frame so style/colors/tuning update live.
         (function(){
-          const cv=c('.s-audioPrev'); if(!cv||!cv.getContext) return;
-          const ctx=cv.getContext('2d'), W=cv.width, H=cv.height;
+          const cvS=c('.s-audioPrev'), cvL=c('.s-audioPrevLive'); if(!cvS||!cvS.getContext) return;
+          const ctxS=cvS.getContext('2d'), ctxL=cvL&&cvL.getContext('2d'), W=cvS.width, H=cvS.height;
           const pState={ audio:{ bands:new Float32Array(32), level:0, beat:0, centroid:0.5, _t:0 } };
-          const pL={ type:'audio', settings:s, rgb:new Uint8Array(E.NLED*3) };
+          const sampL={ type:'audio', settings:s, rgb:new Uint8Array(E.NLED*3) };
+          const liveL={ type:'audio', settings:s, rgb:new Uint8Array(E.NLED*3) };
           if(!window._audSynthPrev && window.TH108AudioSynth) window._audSynthPrev=TH108AudioSynth.createSynth();
           const synth=window._audSynthPrev;
+          const paint=(ctx,rgb)=>{ ctx.clearRect(0,0,W,H);
+            for(let k=0;k<E.NLED;k++){ const cell=E.keyCell(E.INDICES[k]); if(!cell) continue;
+              const o=k*3, x=(cell[0]-cell[2]/2)*W, y=(cell[1]-cell[3]/2)*H, w=cell[2]*W, h=cell[3]*H;
+              ctx.fillStyle='rgb('+rgb[o]+','+rgb[o+1]+','+rgb[o+2]+')';
+              ctx.fillRect(x+0.5,y+0.5,Math.max(1,w-1),Math.max(1,h-1)); } };
           function frame(now){
-            if(!document.body.contains(cv)) return;                 // card rebuilt/removed → stop this loop
-            if(cv.offsetParent!==null && synth){                    // skip work while the card is collapsed/hidden
-              E.applyAudioFeatures(pState, synth.sample(now/1000), s, now);
-              E.renderAudio(pL, now, pState);
-              ctx.clearRect(0,0,W,H);
-              for(let k=0;k<E.NLED;k++){ const cell=E.keyCell(E.INDICES[k]); if(!cell) continue;
-                const o=k*3, x=(cell[0]-cell[2]/2)*W, y=(cell[1]-cell[3]/2)*H, w=cell[2]*W, h=cell[3]*H;
-                ctx.fillStyle='rgb('+pL.rgb[o]+','+pL.rgb[o+1]+','+pL.rgb[o+2]+')';
-                ctx.fillRect(x+0.5,y+0.5,Math.max(1,w-1),Math.max(1,h-1));
-              }
+            if(!document.body.contains(cvS)) return;                 // card rebuilt/removed → stop this loop
+            if(cvS.offsetParent!==null){                             // skip work while previews are hidden/collapsed
+              if(synth){ E.applyAudioFeatures(pState, synth.sample(now/1000), s, now); E.renderAudio(sampL, now, pState); paint(ctxS, sampL.rgb); }
+              if(ctxL){ E.renderAudio(liveL, now, state); paint(ctxL, liveL.rgb); }   // LIVE = the real state.audio the page is feeding
             }
             requestAnimationFrame(frame);
           }

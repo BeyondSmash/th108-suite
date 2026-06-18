@@ -1048,9 +1048,26 @@ window.addEventListener('keyup',(e)=>{
 // Web Audio analyser → real {bands,level,beat,centroid} for the music layer. layerTick uses it when active.
 const webCap = TH108WebCapture.createWebCapture((m,c)=>log(m,c));
 async function startAudioSource(kind){
-  if(kind==='tab'||kind==='mic'){ await webCap.start(kind); }   // browser share / mic prompt; on success layerTick switches to it
+  if(kind==='tab'||kind==='mic'){ await webCap.start(kind); }   // browser share / mic prompt; on success the feed switches to it
   else { await webCap.stop(); }                                  // system/app → page falls back to the synth (the daemon does true system audio)
 }
+// SINGLE audio feed: once per frame, fold the live source (in-tab webCap if active, else the synthetic
+// signal) into state.audio whenever an audio layer is enabled — regardless of whether we're driving the
+// board. This is the one place webCap.sample() is called (so the beat/onset state isn't double-advanced),
+// and it keeps state.audio live for BOTH the keyboard composite and the card's Live preview.
+function audioFeedTick(now){
+  try{
+    const aL = state.layers.find(L=>L.enabled && L.type==='audio');
+    if(aL){
+      let raw=null;
+      if(webCap.active()) raw=webCap.sample();
+      if(!raw){ if(!window._audSynth) window._audSynth=TH108AudioSynth.createSynth(); raw=window._audSynth.sample(now/1000); }
+      TH108Engine.applyAudioFeatures(state, raw, aL.settings, now);
+    }
+  }catch(_){ }
+  requestAnimationFrame(audioFeedTick);
+}
+requestAnimationFrame(audioFeedTick);
 
 // ----- master loop (separate worker from the GIF's tickW) -----
 let running=false, layerInFlight=false;   // frame de-dupe / keepalive timing live on state.lastFlat / state.lastSent
@@ -1067,16 +1084,7 @@ async function layerTick(){
     const now=performance.now();
     if(!layerInFlight){
       layerInFlight=true;
-      // Music layer: feed state.audio from REAL in-tab capture if a tab/mic source is live, else the
-      // synthetic test signal. (System-wide ambient audio is the daemon's job; the page does tab/mic.)
-      const aL=state.layers.find(L=>L.enabled && L.type==='audio');
-      if(aL){
-        let raw=null;
-        if(webCap.active()) raw=webCap.sample();
-        if(!raw){ if(!window._audSynth) window._audSynth=TH108AudioSynth.createSynth(); raw=window._audSynth.sample(now/1000); }
-        TH108Engine.applyAudioFeatures(state, raw, aL.settings, now);
-      }
-      const flat=TH108Engine.composeFrame(state, now);   // engine renders due layers (≤30fps each) + composites → flat frame
+      const flat=TH108Engine.composeFrame(state, now);   // engine renders due layers (≤30fps each) + composites → flat frame; state.audio is fed by audioFeedTick (single source)
       if(!TH108Engine.flatEq(flat, state.lastFlat) || now-state.lastSent>=1000){   // skip unchanged frames; resend ≥1×/s as a keepalive so firmware doesn't reclaim the board
         if(await HID.sendFrame(flat)){ state.lastFlat=flat; state.lastSent=now; }
       }
