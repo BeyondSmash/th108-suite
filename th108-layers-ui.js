@@ -423,6 +423,7 @@
       // Individual-keys layers paint EXACT colors; brightness >100% per-channel-boosts and clips → shifts the
       // painted hue. Cap it at 100% (dim-only, never distorts) and pull any already-saved >100 value back down.
       if(L.type==='individual'){ CFG.bri=['Brightness',0,100,0,'%',100]; if(s.bri>100) s.bri=100; }
+      if(L.type==='audio') delete CFG.rot;   // audio styles map to discrete columns/rows — Rotate has no effect, so don't show a dead control
       const disp=(key,raw)=>{ const d=CFG[key][3]; return d?(raw/100).toFixed(d):String(raw); };
       const ctl=key=>{ const c=CFG[key], dec=c[3], frac=(c[5]-c[1])/(c[2]-c[1]);   // tick at the default value
         const nMin=dec?c[1]/100:c[1], nMax=dec?c[2]/100:c[2], nStep=dec?1/Math.pow(10,dec):1;
