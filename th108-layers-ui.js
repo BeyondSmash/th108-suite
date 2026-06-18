@@ -318,7 +318,7 @@
           (bf==='subtract' ? '' :
             row('Bar color','<select class="s-barColor" title="Bass→Treble = horizontal hue across columns; Gradient = your 2 colors bottom→top; VU = green→yellow→orange→red by bar height">'+bcOpt+'</select><span></span>')+
             (bc==='bassTreble' ? row('Bass color','<input type="color" class="s-barColorBass" value="'+s.barColorBass+'"><span></span>')+row('Treble color','<input type="color" class="s-barColorTreble" value="'+s.barColorTreble+'"><span></span>')
-             : bc==='gradient' ? row('Bottom color','<input type="color" class="s-barGradA" value="'+s.barGradA+'"><span></span>')+row('Top color','<input type="color" class="s-barGradB" value="'+s.barGradB+'"><span></span>')
+             : bc==='gradient' ? row('Top color','<input type="color" class="s-barGradB" value="'+s.barGradB+'"><span></span>')+row('Bottom color','<input type="color" class="s-barGradA" value="'+s.barGradA+'"><span></span>')
              : ''))+
           row('Bar tips','<select class="s-barTip" title="outline the top key of each bar so the silhouette stands out">'+btOpt+'</select><span></span>')+
           (bt==='color' ? row('Tip color','<input type="color" class="s-barTipColor" value="'+s.barTipColor+'"><span></span>') : ''); }
