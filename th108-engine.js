@@ -73,19 +73,32 @@
   // Fold a raw feature frame into state.audio with gain, a noise-floor gate, and attack/decay
   // smoothing. `now` is ms; dt is derived from state.audio._t. s = the audio layer's settings.
   function applyAudioFeatures(state, raw, s, now){
-    const A = state.audio;
+    const A = state.audio, p = audioParams(s);   // tuner params are PER-STYLE (gain/floor/attack/decay/beatSens)
     let dt = A._t ? Math.max(1, Math.min(100, now - A._t)) : 16;   // clamp dt (tab-throttle/sleep safe)
     A._t = now;
-    const gain = s.gain || 1, floor = (s.floor||0)/100;
+    const gain = p.gain || 1, floor = (p.floor||0)/100;
     const gate = (v)=>{ v = Math.max(0, Math.min(1, v*gain)); return v < floor ? 0 : v; };
     const tgtLevel = gate(raw.level||0);
-    A.level = audioEnvelope(A.level, tgtLevel, dt, s.attackMs, s.decayMs);
-    A.centroid = audioEnvelope(A.centroid, (raw.centroid==null?0.5:raw.centroid), dt, s.attackMs, s.decayMs);
+    A.level = audioEnvelope(A.level, tgtLevel, dt, p.attackMs, p.decayMs);
+    A.centroid = audioEnvelope(A.centroid, (raw.centroid==null?0.5:raw.centroid), dt, p.attackMs, p.decayMs);
     // beat: instantaneous rise, decay only (so a kick pops then fades); beatSens scales sensitivity
-    const beatTgt = Math.max(0, Math.min(1, (raw.beat||0) * (0.5 + (s.beatSens||50)/100)));
-    A.beat = Math.max(beatTgt, audioEnvelope(A.beat, 0, dt, 0, Math.max(60, s.decayMs)));
+    const beatTgt = Math.max(0, Math.min(1, (raw.beat||0) * (0.5 + (p.beatSens||50)/100)));
+    A.beat = Math.max(beatTgt, audioEnvelope(A.beat, 0, dt, 0, Math.max(60, p.decayMs)));
     const rb = raw.bands;
-    for(let i=0;i<32;i++){ const t = rb ? gate(rb[i]||0) : 0; A.bands[i] = audioEnvelope(A.bands[i], t, dt, s.attackMs, s.decayMs); }
+    for(let i=0;i<32;i++){ const t = rb ? gate(rb[i]||0) : 0; A.bands[i] = audioEnvelope(A.bands[i], t, dt, p.attackMs, p.decayMs); }
+  }
+  // Per-STYLE tuner params (gain/floor/attack/decay/beatSens) so tuning bars doesn't leak into pulse, etc.
+  // Mirrors patParams: one-time migrates the old flat values onto the current style; new styles start at defaults.
+  const AUDIO_TUNE_DEFAULTS = { gain:1, floor:5, attackMs:40, decayMs:220, beatSens:50 };
+  function audioParams(s){
+    const style = s.style || 'bars';
+    if(!s.ap){
+      const seed = { gain:s.gain, floor:s.floor, attackMs:s.attackMs, decayMs:s.decayMs, beatSens:s.beatSens };
+      Object.keys(seed).forEach(k=>{ if(seed[k]==null) delete seed[k]; });
+      s.ap = {}; s.ap[style] = Object.assign({}, AUDIO_TUNE_DEFAULTS, seed);
+    }
+    if(!s.ap[style]) s.ap[style] = Object.assign({}, AUDIO_TUNE_DEFAULTS);
+    return s.ap[style];
   }
 
   // ===== per-pattern params (verbatim from controller) =====
@@ -683,7 +696,7 @@
 
   const TH108Engine = {
     KEYMAP, INDICES, NLED, BOARDW, BOARDH,
-    hexToRgb, hsv2rgb, patHash, patColorize, audioEnvelope, applyAudioFeatures,
+    hexToRgb, hsv2rgb, patHash, patColorize, audioEnvelope, applyAudioFeatures, audioParams,
     keyCell, layerCell,
     PAT_DEFAULTS, patParams, ensureSettings, defaultLayers, createState, applyConfig,
     renderBackground, renderReactive, renderGradient, renderPattern, renderMedia, renderKeys, renderAudio,

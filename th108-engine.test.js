@@ -297,3 +297,12 @@ test('renderBars tip outlines the topmost lit key of a column with the tip color
   assert.ok(greenTip, 'the topmost lit key uses the tip color');
   assert.ok(redBelow, 'lower lit keys keep the bar gradient');
 });
+
+test('audio tuner params are per-style (gain on bars does not leak to pulse)', () => {
+  const L = { type:'audio', settings:{ style:'bars' } }; E.ensureSettings(L);
+  E.audioParams(L.settings).gain = 2.5;                 // tune bars
+  L.settings.style = 'pulse';
+  assert.equal(E.audioParams(L.settings).gain, 1, 'pulse starts at the default gain, not the bars value');
+  L.settings.style = 'bars';
+  assert.equal(E.audioParams(L.settings).gain, 2.5, 'bars keeps its own gain');
+});
