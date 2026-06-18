@@ -308,9 +308,13 @@
           row('Source note','<span class="val" style="opacity:.7">Real system audio plays through the background daemon (close/blur this tab). While this tab is connected and driving, it falls back to a test signal — per-tab capture is coming.</span><span></span>')+
           row('Style','<select class="s-style">'+sopt+'</select><span></span>')+
           row('Preview','<div style="display:flex;flex-direction:column;gap:5px"><button type="button" class="s-prevToggle" style="align-self:flex-start">'+(s.previewOff?'Show preview':'Hide preview')+'</button><canvas class="s-audioPrev" width="378" height="108" style="width:100%;height:auto;display:'+(s.previewOff?'none':'block')+';background:#0d1117;border-radius:8px"></canvas></div><span></span>');
-        if(style==='bars') html+=
+        if(style==='bars'){ const bt=s.barTip||'off';
+          const btOpt=[['off','Off'],['color','Solid color'],['rainbow','Rainbow']].map(o=>'<option value="'+o[0]+'"'+(o[0]===bt?' selected':'')+'>'+o[1]+'</option>').join('');
+          html+=
           row('Bass color','<input type="color" class="s-barColorBass" value="'+s.barColorBass+'"><span></span>')+
-          row('Treble color','<input type="color" class="s-barColorTreble" value="'+s.barColorTreble+'"><span></span>');
+          row('Treble color','<input type="color" class="s-barColorTreble" value="'+s.barColorTreble+'"><span></span>')+
+          row('Bar tips','<select class="s-barTip" title="outline the top key of each bar so the silhouette stands out from the bar color">'+btOpt+'</select><span></span>')+
+          (bt==='color' ? row('Tip color','<input type="color" class="s-barTipColor" value="'+s.barTipColor+'"><span></span>') : ''); }
         else if(style==='pulse') html+=row('Color','<input type="color" class="s-pulseColor" value="'+s.pulseColor+'"><span></span>');
         else if(style==='bloom') html+=row('Color','<input type="color" class="s-bloomColor" value="'+s.bloomColor+'"><span></span>');
         else if(style==='wave')  html+=row('Color','<input type="color" class="s-waveColor" value="'+s.waveColor+'"><span></span>')+
@@ -339,8 +343,9 @@
         const c=q=>body.querySelector(q);
         body.querySelectorAll('.s-source').forEach(r=>r.addEventListener('change',e=>{ s.source=e.target.value; }));
         c('.s-style').addEventListener('change',e=>{ s.style=e.target.value; buildLayerBody(card,L); });
-        ['barColorBass','barColorTreble','pulseColor','bloomColor','waveColor'].forEach(key=>{ const el=c('.s-'+key); if(el) el.addEventListener('input',e=>s[key]=e.target.value); });
+        ['barColorBass','barColorTreble','barTipColor','pulseColor','bloomColor','waveColor'].forEach(key=>{ const el=c('.s-'+key); if(el) el.addEventListener('input',e=>s[key]=e.target.value); });
         { const wr=c('.s-waveReverse'); if(wr) wr.addEventListener('change',e=>s.waveReverse=e.target.checked); }
+        { const bt=c('.s-barTip'); if(bt) bt.addEventListener('change',e=>{ s.barTip=e.target.value; buildLayerBody(card,L); }); }   // rebuild so the tip-color picker shows/hides
         const slider=(cls,key,fmt,xform,snapTo)=>{ const el=c('.s-'+cls), v=c('.s-'+cls+'V'); if(!el||!v) return; const up=()=>v.textContent=fmt(s[key]); el.addEventListener('input',e=>{ if(snapTo!=null) snap(el,snapTo,4); s[key]=xform(+el.value); up(); }); up(); };   // guard !v so a class mismatch can't crash init; snap to the default tick
         slider('gain','gain',x=>Math.round(x*100)+'%',v=>v/100,100);
         slider('floor','floor',x=>x+'%',v=>v,5);
