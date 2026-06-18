@@ -404,10 +404,14 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
   <div class="card s3" id="daemonPanel" data-pages="home">
     <div class="cardbar"><span class="grip">⠿</span><h2>Background Daemon</h2></div>
     <p class="hint" style="margin:4px 0 8px">Runs your layers always-on — reactive typing in any app — and takes over whenever this page is closed.</p>
-    <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
-      <span id="dmnStatus" class="hint" style="margin:0">checking…</span>
+    <!-- status on its OWN line, controls in their own rows, so a longer status string can't reflow the
+         checkboxes/buttons between daemon states (seamless layout) -->
+    <div id="dmnStatus" class="hint" style="margin:0 0 8px">checking…</div>
+    <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:8px">
       <label class="sl" title="start the daemon hidden at every login (per-user registry entry, no admin)"><input type="checkbox" id="dmnAuto"> Auto-Start on Login</label>
       <label class="sl" title="when the board stops ACKing for 30s, restart its USB device (a software replug — clears the wedge; typing drops ~1-2s). Needs the one-time elevated task: install-usb-restart-task.ps1"><input type="checkbox" id="dmnUsbFix"> Auto-Fix Lighting Wedge (USB Restart)</label>
+    </div>
+    <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
       <button id="dmnRestart" title="restart the daemon in place (≈1s) to pick up updated code — the supervised launcher revives it automatically, no Quit→Start needed">↻ Restart Daemon</button>
       <button id="dmnQuit" title="stop the background daemon until setup.cmd or your next login starts it again — this page keeps working">✖ Quit Daemon</button>
       <button id="dmnStart" hidden title="a web page can't launch programs itself — this shows how to start the daemon">▶ Start Daemon…</button>
