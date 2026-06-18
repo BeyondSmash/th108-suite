@@ -16,7 +16,7 @@ if errorlevel 1 (
   exit /b 1
 )
 
-echo [1/5] Installing daemon dependencies...
+echo [1/6] Installing daemon dependencies...
 pushd th108-daemon
 call npm install --no-audit --no-fund
 if errorlevel 1 (
@@ -27,16 +27,22 @@ if errorlevel 1 (
 )
 popd
 
-echo [2/5] Enabling auto-start at login (per-user Run key, no admin)...
+echo [2/6] Enabling auto-start at login (per-user Run key, no admin)...
 reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Run" /v TH108LightingDaemon /t REG_SZ /d "wscript.exe \"%~dp0th108-daemon\start-tray.vbs\"" /f >nul
 
-echo [3/5] Adding the Start-menu shortcut (TH108 Lighting)...
+echo [3/6] Adding the Start-menu shortcut (TH108 Lighting)...
 powershell -NoProfile -Command "$ws = New-Object -ComObject WScript.Shell; $l = $ws.CreateShortcut([Environment]::GetFolderPath('Programs') + '\TH108 Lighting.lnk'); $l.TargetPath = 'wscript.exe'; $l.Arguments = '\"%~dp0th108-daemon\start-tray.vbs\"'; $l.Description = 'TH108 lighting tray + daemon'; $l.Save()" >nul
 
-echo [4/5] Starting the tray (it starts and watches the daemon)...
+echo [4/6] Installing recovery + permission helpers (ONE admin prompt - click No to skip)...
+echo       - Auto-Fix Lighting Wedge: hidden USB-restart recovery task
+echo       - WebHID pre-grant: skips the keyboard picker forever
+echo       Both are OPTIONAL - the suite works fine without them.
+powershell -NoProfile -Command "Start-Process powershell -Verb RunAs -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-File','\"%~dp0th108-daemon\install-admin-extras.ps1\"'" 2>nul
+
+echo [5/6] Starting the tray (it starts and watches the daemon)...
 wscript "%~dp0th108-daemon\start-tray.vbs"
 
-echo [5/5] Opening the controller...
+echo [6/6] Opening the controller...
 timeout /t 3 /nobreak >nul
 start http://localhost:8123/
 
@@ -47,7 +53,10 @@ echo the controller (double-click). Closed it? Start menu ^> TH108 Lighting.
 echo.
 echo One manual step remains: click "Connect Keyboard" and pick your
 echo keyboard once - the browser requires that click (WebHID permission).
-echo OPTIONAL (skips that picker forever, needs admin once):
-echo   powershell -ExecutionPolicy Bypass -File th108-daemon\install-webhid-grant.ps1
+echo (If you accepted the admin prompt above, restart the browser once and
+echo  even that picker is skipped from then on.)
 echo The daemon keeps your lighting running even with the page closed.
+echo.
+echo Skipped the admin prompt and want the helpers later? Run as admin:
+echo   powershell -ExecutionPolicy Bypass -File th108-daemon\install-admin-extras.ps1
 pause

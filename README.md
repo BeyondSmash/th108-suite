@@ -24,6 +24,31 @@ live layers every frame** —
 | **`webhid-test.html`** | Bring-up / diagnostic page, plus a **key-binder**: remap a physical key to a lighting function (the only way to reach the decorative LEDs — see below), with a spacebar focus-overlay mode. |
 | **`th108-daemon/`** | Always-on Node service (`node-hid` + `uiohook-napi`) that runs the reactive lighting as a background process so it works in **any** app, no browser tab required. Includes login-autostart scripts. |
 
+## Setup (Windows)
+
+**Prerequisites:** Windows 10/11 · a Chromium browser (Chrome / Edge / Brave) · [Node.js LTS](https://nodejs.org).
+
+1. **Run `setup.cmd`** (double-click it). It is the one-time installer and does everything:
+   1. installs the daemon's dependencies (`npm install`),
+   2. enables **auto-start at login** (per-user, no admin),
+   3. adds a **Start-menu shortcut** ("TH108 Lighting"),
+   4. installs two **optional admin helpers** behind a *single* UAC prompt — click **Yes** to get them, **No** to skip (the suite works either way):
+      - **Auto-Fix Lighting Wedge** — a hidden recovery task that software-replugs the keyboard if its lighting ever stalls,
+      - **WebHID pre-grant** — skips the browser's keyboard picker permanently,
+   5. starts the **tray app** (which starts and supervises the daemon),
+   6. opens the controller at `http://localhost:8123/`.
+2. In the page, click **Connect Keyboard** once and pick your keyboard — the browser requires this click to grant WebHID (unless you accepted the pre-grant helper above and restarted the browser).
+
+That's it. Lighting now runs in the background in every app, survives closing the tab, and starts at login.
+
+**The tray icon** (salmon keyboard) is the suite's home — right-click for **Open Controller / Start / Restart / Quit Daemon**. Closed the tray? Re-open it from **Start menu → TH108 Lighting**.
+
+**Starting it from the page:** the daemon registers a `th108://` protocol on first run, so the page's **Start Daemon** button (shown only when the daemon is down) can relaunch it via a browser prompt — no command line needed.
+
+**Updating:** after pulling new code, restart the daemon to load it — **tray → Restart Daemon**, or the **↻ Restart Daemon** button on the page. (Skipped the admin helpers and want them later? Run, as admin: `powershell -ExecutionPolicy Bypass -File th108-daemon\install-admin-extras.ps1`.)
+
+**Uninstall:** run `uninstall.cmd` (removes auto-start + the shortcut; leaves your saved layers). The admin helpers, if installed, are removed with their own scripts' `-Remove` flag / `Unregister-ScheduledTask`.
+
 ## Why the stock software can't do this
 
 The TH108's on-board lighting runs **one** effect at a time. A reactive effect can carry a single
