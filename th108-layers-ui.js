@@ -327,8 +327,8 @@
         html+=
           row('Gain','<input type="range" class="s-gain" min="50" max="300" value="'+Math.round((s.gain||1)*100)+'" title="Boost/cut input sensitivity before it drives the keys"><span class="val s-gainV"></span>')+
           row('Noise floor','<input type="range" class="s-floor" min="0" max="40" value="'+s.floor+'" title="Gate out quiet hiss below this level so idle keys stay dark"><span class="val s-floorV"></span>')+
-          row('Attack','<input type="range" class="s-attackMs" min="0" max="300" step="5" value="'+s.attackMs+'" title="How fast keys brighten on a rise (ms). Lower = snappier"><span class="val s-attackV"></span>')+
-          row('Decay','<input type="range" class="s-decayMs" min="40" max="800" step="10" value="'+s.decayMs+'" title="How slowly keys fade after a peak (ms). Higher = smoother"><span class="val s-decayV"></span>')+
+          row('Attack','<input type="range" class="s-attackMs" min="0" max="300" step="5" value="'+s.attackMs+'" title="How fast keys brighten on a rise (ms). Lower = snappier"><span class="val s-attackMsV"></span>')+
+          row('Decay','<input type="range" class="s-decayMs" min="40" max="800" step="10" value="'+s.decayMs+'" title="How slowly keys fade after a peak (ms). Higher = smoother"><span class="val s-decayMsV"></span>')+
           row('Beat sensitivity','<input type="range" class="s-beatSens" min="0" max="100" value="'+s.beatSens+'" title="How strongly kicks/onsets pop in pulse and bloom"><span class="val s-beatSensV"></span>')+
           (duckRows ? row('Dim while active','<span class="val" style="opacity:.7">quiet these layers while the music shows</span><span></span>')+duckRows : '')+
           row('','<button type="button" class="s-logVals">Log current values</button><span></span>')+
@@ -338,7 +338,7 @@
         body.querySelectorAll('.s-source').forEach(r=>r.addEventListener('change',e=>{ s.source=e.target.value; }));
         c('.s-style').addEventListener('change',e=>{ s.style=e.target.value; buildLayerBody(card,L); });
         ['barColorBass','barColorTreble','pulseColor','bloomColor','waveColor'].forEach(key=>{ const el=c('.s-'+key); if(el) el.addEventListener('input',e=>s[key]=e.target.value); });
-        const slider=(cls,key,fmt,xform)=>{ const el=c('.s-'+cls), v=c('.s-'+cls+'V'); if(!el) return; const up=()=>v.textContent=fmt(s[key]); el.addEventListener('input',e=>{ s[key]=xform(+e.target.value); up(); }); up(); };
+        const slider=(cls,key,fmt,xform)=>{ const el=c('.s-'+cls), v=c('.s-'+cls+'V'); if(!el||!v) return; const up=()=>v.textContent=fmt(s[key]); el.addEventListener('input',e=>{ s[key]=xform(+e.target.value); up(); }); up(); };   // guard !v so a class mismatch can't crash buildLayerCards/init
         slider('gain','gain',x=>Math.round(x*100)+'%',v=>v/100);
         slider('floor','floor',x=>x+'%',v=>v);
         slider('attackMs','attackMs',x=>x+'ms',v=>v);
