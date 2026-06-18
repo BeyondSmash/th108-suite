@@ -27,7 +27,7 @@ function openDevice(path) {
 // Build an ACK-gated sender bound to one open device.
 // Returns async sendFrame(flat) -> true on success, false on stall (never throws, so the loop survives).
 function makeSender(device, { packLen = 64, cmd = 0x32, ackTimeoutMs = 800 } = {}) {
-  let ackWaiter = null, noise = 0, falseHits = 0, ackSigLogged = false;
+  let ackWaiter = null, ackOff = -1, noise = 0, falseHits = 0, ackSigLogged = false;
   // Flight recorder: a small ring of the most recent input reports + writes, dumped to daemon.log the
   // instant a mute is detected — so we capture the moments BEFORE the board goes silent (the data the
   // mute investigation has always lacked: was there a false hit, a timing gap, a broadcast?), not just
@@ -36,20 +36,20 @@ function makeSender(device, { packLen = 64, cmd = 0x32, ackTimeoutMs = 800 } = {
   const rec = (e) => { trace.push(e); if (trace.length > 48) trace.shift(); };
   device.on('data', (buf) => {
     if (!buf || buf[0] !== 0x55) return;
-    const pending = !!ackWaiter, isAck = pending && buf[1] === cmd;
+    // A genuine ACK echoes BOTH the command byte (0x55 32) AND the OFFSET of the write it answers
+    // (buf[3]=off&0xFF, buf[4]=off>>8 — confirmed in the flight recorder: off=56→buf[3]=0x38,
+    // off=392→buf[3]=0x88/buf[4]=0x01). The board ALSO emits unsolicited 0x55 32 reports carrying a
+    // STALE offset (byte-identical to a real last-chunk ACK), which the old cmd-only gate accepted →
+    // over-send → FIFO wedge. Requiring the echoed offset to match the chunk we're awaiting rejects
+    // those stale broadcasts. (Mirrors the page gate in th108-hid.js.)
+    const pending = !!ackWaiter, isAck = pending && buf[1] === cmd && buf[3] === (ackOff & 0xFF) && buf[4] === ((ackOff >> 8) & 0xFF);
     rec({ t: Date.now(), dir: 'in', tag: isAck ? 'ACK' : pending ? 'FALSE-HIT' : 'bcast', s: hex8(buf) });
-    // A genuine ACK echoes the COMMAND byte we wrote (0x32 lighting → 0x55 32; the SAME filter the
-    // page uses on its reads — see webhid-test.html "0x55 <cmd>, rejects stray broadcasts"). Gating
-    // on the cmd match stops a FOREIGN-command report — e.g. the onboard engine's 0x55 23, chatty
-    // right after a factory reset — from falsely satisfying a 0x32 write's gate, which would let us
-    // outrun the board's FIFO into a wedge. (Confirmed safe: real 0x32 ACKs carry buf[1]=0x32, which
-    // is exactly what the board's unsolicited 0x55 32 reports below show.)
     if (isAck) {
       if (!ackSigLogged) {   // capture the real ACK's full byte signature ONCE per device — the only way to later tell a true 0x32 ACK from a spurious 0x55 32 broadcast (identical in the bytes we gate on) is to diff their payloads
         ackSigLogged = true;
         console.log(ts() + ` … real ${cmd.toString(16)} ACK signature: ${hex8(buf)} (diff this against the unsolicited 0x55 ${cmd.toString(16)} broadcasts to find a payload discriminator)`);
       }
-      const w = ackWaiter; ackWaiter = null; w(true);
+      const w = ackWaiter; ackWaiter = null; ackOff = -1; w(true);
       return;
     }
     noise++;
@@ -65,8 +65,8 @@ function makeSender(device, { packLen = 64, cmd = 0x32, ackTimeoutMs = 800 } = {
       console.log(ts() + ` … unsolicited 0x55 ${hex8(buf)} broadcast from board (#${noise}) — no write pending; logged to diff against the real ACK signature`);
     }
   });
-  const waitAck = () => new Promise((res) => {
-    ackWaiter = res;
+  const waitAck = (off) => new Promise((res) => {
+    ackWaiter = res; ackOff = off;
     setTimeout(() => { if (ackWaiter === res) { ackWaiter = null; res(false); } }, ackTimeoutMs);
   });
 
@@ -78,7 +78,7 @@ function makeSender(device, { packLen = 64, cmd = 0x32, ackTimeoutMs = 800 } = {
       pkt[0] = 0xAA; pkt[1] = cmd; pkt[2] = chunk.length;
       pkt[3] = off & 0xFF; pkt[4] = (off >> 8) & 0xFF; pkt[5] = 0; pkt[6] = last ? 1 : 0;
       for (let i = 0; i < chunk.length; i++) pkt[8 + i] = chunk[i];
-      const ack = waitAck();                       // arm BEFORE the write so we can't miss the ACK
+      const ack = waitAck(off);                     // arm BEFORE the write so we can't miss the ACK (matched to THIS chunk's offset)
       rec({ t: Date.now(), dir: 'out', off, last: last ? 1 : 0, len: chunk.length });
       try { device.write([0x00, ...pkt]); }        // leading reportId 0 (Windows)
       catch { return false; }

@@ -10,8 +10,9 @@ function fakeDevice() {
     on(ev, cb) { (handlers[ev] ||= []).push(cb); },
     write(arr) {
       this.writes.push(arr);
-      // arr = [reportId(0), 0xAA, cmd, …] → echo a 0x55 <cmd> ACK like the real board
-      queueMicrotask(() => (handlers.data || []).forEach(cb => cb(Buffer.from([0x55, arr[2] || 0x32]))));
+      // arr = [reportId(0), 0xAA, cmd, len, offLo, offHi, 0, last, …] → echo a real-shaped ACK that
+      // ECHOES the offset (buf[3]=offLo=arr[4], buf[4]=offHi=arr[5]), like the board; the gate matches on that.
+      queueMicrotask(() => (handlers.data || []).forEach(cb => cb(Buffer.from([0x55, arr[2] || 0x32, 0x38, arr[4], arr[5], 0, arr[7], 0]))));
       return arr.length;
     },
     close() { this.closed = true; },
@@ -53,7 +54,7 @@ test('ACK gate accepts only a matching-cmd 0x55 — a foreign 0x55 23 mid-await 
     write(arr) {
       queueMicrotask(() => {
         (handlers.data || []).forEach(cb => cb(Buffer.from([0x55, 0x23])));            // foreign — must NOT satisfy
-        (handlers.data || []).forEach(cb => cb(Buffer.from([0x55, arr[2] || 0x32]))); // real ACK
+        (handlers.data || []).forEach(cb => cb(Buffer.from([0x55, arr[2] || 0x32, 0x38, arr[4], arr[5], 0, arr[7], 0]))); // real ACK (echoes offset: arr[4]=offLo, arr[5]=offHi)
       });
       return arr.length;
     },
@@ -72,6 +73,20 @@ test('ACK gate stalls (no false hit) when ONLY a foreign-command 0x55 is returne
   };
   const send = makeSender(dev, { packLen: 64, cmd: 0x32, ackTimeoutMs: 50 });
   assert.equal(await send([0, 1, 2, 3]), false);   // 0x55 23 never satisfies a 0x32 gate → clean stall, not a wedge-inducing false hit
+});
+
+test('ACK gate rejects a same-cmd 0x55 32 carrying a STALE offset (the unsolicited-broadcast wedge)', async () => {
+  // the board emits unsolicited 0x55 32 reports with a STALE offset (byte-identical to a real last-chunk
+  // ACK). Here every write gets ONLY such a broadcast (offset 0x188), never the real ACK for offset 0.
+  // The cmd-only gate would have accepted it (false hit → over-send → wedge); the offset gate rejects it.
+  const handlers = {};
+  const dev = {
+    on(ev, cb) { (handlers[ev] ||= []).push(cb); },
+    write() { queueMicrotask(() => (handlers.data || []).forEach(cb => cb(Buffer.from([0x55, 0x32, 0x18, 0x88, 0x01, 0, 1, 0])))); return 8; },
+    close() {},
+  };
+  const send = makeSender(dev, { packLen: 64, cmd: 0x32, ackTimeoutMs: 50 });
+  assert.equal(await send([0, 1, 2, 3]), false);   // stale-offset 0x55 32 must NOT satisfy a write at offset 0 → clean stall, not a wedge-inducing false hit
 });
 
 test('flightRecorder captures recent writes + ACKs (the pre-mute trace the daemon dumps)', async () => {
