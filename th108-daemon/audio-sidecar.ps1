@@ -83,6 +83,8 @@ public static class Cap {
   static float[] win = new float[N];  // Hann window
   static float[] re = new float[N], im = new float[N];
   static float[] prevMag = new float[N/2];   // for spectral-flux onset
+  static float peakLvl = 1e-4f;              // slow-decaying loudness peak → auto-gain (volume-independent level)
+  static float avgFlux = 1e-6f;              // moving average of bass flux → onset/beat threshold
   static bool winInit = false;
   static void InitWin() { for (int i=0;i<N;i++) win[i]=(float)(0.5-0.5*Math.Cos(2*Math.PI*i/(N-1))); winInit=true; }
 
@@ -113,10 +115,10 @@ public static class Cap {
     FFT();
     int half=N/2;
     float[] mag = new float[half];
-    double centNum=0, centDen=0, flux=0;
+    double centNum=0, centDen=0, bassFlux=0; int bassBins=Math.Max(4, half/8);   // kicks live in the low bins
     for (int i=0;i<half;i++){ float m=(float)Math.Sqrt(re[i]*re[i]+im[i]*im[i]); mag[i]=m;
       centNum += (double)i*m; centDen += m;
-      float d=m-prevMag[i]; if(d>0) flux+=d; prevMag[i]=m;
+      float d=m-prevMag[i]; if(d>0 && i<bassBins) bassFlux+=d; prevMag[i]=m;   // positive bass flux = onset energy
     }
     double minLog=Math.Log(1), maxLog=Math.Log(half);
     for (int b=0;b<32;b++){
@@ -127,9 +129,12 @@ public static class Cap {
       double avg=sum/(hi-lo);
       bands[b]=(float)Math.Min(1.0, Math.Log(1+avg*8)/Math.Log(9));   // log-compress to 0..1
     }
-    double level=Math.Sqrt(rms/N);
-    outLBC[0]=(float)Math.Min(1.0, level*4.0);
-    outLBC[1]=(float)Math.Min(1.0, flux/(half*0.5));                  // onset/beat envelope
+    double rawLvl=Math.Sqrt(rms/N);
+    peakLvl = Math.Max((float)rawLvl, peakLvl*0.999f);               // auto-gain: track the loudest recent level (slow decay)
+    outLBC[0]=(float)Math.Min(1.0, rawLvl/Math.Max(peakLvl,1e-4));   // level normalized to that peak → full 0..1 at any volume
+    avgFlux = avgFlux*0.93f + (float)bassFlux*0.07f;                 // moving average of bass flux
+    double onset=(bassFlux - avgFlux*1.4)/(avgFlux + 1e-4);          // spikes when a kick exceeds ~1.4x the running average
+    outLBC[1]=(float)Math.Max(0, Math.Min(1.0, onset));             // beat 0..1 (sharp on kicks, ~0 between)
     outLBC[2]=(float)(centDen>0 ? Math.Min(1.0,(centNum/centDen)/half*2.0) : 0.5);   // brightness 0..1
     return true;
   }
