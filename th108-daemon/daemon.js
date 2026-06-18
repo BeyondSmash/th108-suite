@@ -302,6 +302,26 @@ function setAutostart(on) {
     // deleting an absent value errors — that's "already off", treat as success
 }
 
+// ----- th108:// URL protocol (HKCU, no admin) — lets the controller page start/restart us via a link.
+// Self-registered on startup so the path self-heals if the folder moves; idempotent (reg add /f). The
+// dispatcher (th108-url.vbs) only honors fixed "start"/"restart" words, so a stray th108:// link is safe. -----
+function registerUrlScheme() {
+  if (process.platform !== 'win32') return;
+  const ROOT = 'HKCU\\Software\\Classes\\th108';
+  const cmd = `wscript.exe "${path.join(__dirname, 'th108-url.vbs')}" "%1"`;
+  const steps = [
+    ['add', ROOT, '/ve', '/d', 'URL:TH108 Lighting Protocol', '/f'],
+    ['add', ROOT, '/v', 'URL Protocol', '/d', '', '/f'],
+    ['add', ROOT + '\\shell\\open\\command', '/ve', '/d', cmd, '/f'],
+  ];
+  let i = 0;
+  const next = () => {
+    if (i >= steps.length) { console.log(ts() + ' ✓ th108:// protocol registered (page Start/Restart links work)'); return; }
+    execFile('reg', steps[i++], { windowsHide: true }, (err) => { if (err) console.log(ts() + ' … th108:// scheme registration step failed (non-fatal): ' + err.message); else next(); });
+  };
+  next();
+}
+
 // ----- standard-GIF mirror: the page pushes its last GIF Screen upload here so now-playing can
 // revert to it after a long pause. Stored as JSON {frames:[{d,b64}]} (≤33 frames ≈ ≤1.4 MB). -----
 const GIF_PATH = path.join(__dirname, 'standard-lcd.json');
@@ -542,4 +562,5 @@ function shutdown(code = 0) {
 process.on('SIGINT', shutdown);
 process.on('SIGTERM', shutdown);
 
+registerUrlScheme();   // make th108://start | th108://restart links work from the controller page
 console.log('▶ TH108 daemon running (config:', loadConfig() ? 'loaded' : 'none yet', ')');

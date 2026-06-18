@@ -1589,11 +1589,19 @@ document.getElementById('dmnQuit').addEventListener('click',()=>{
 const dmnRestartBtn=document.getElementById('dmnRestart');
 if(dmnRestartBtn) dmnRestartBtn.addEventListener('click',()=>{   // restart blips offline→online; refresh the tag across the ~1s gap
   [1200,2600,4200].forEach(ms=>setTimeout(()=>DC.ping().then(dmnTagSync,dmnTagSync),ms)); });
-// a web page can't spawn a process — the most a Start button can do is hand over the exact command
+// Start the daemon via the th108:// protocol handler it registered (browser prompts "Open TH108?" →
+// launches the tray + daemon; a one-time "always allow" makes it one click forever). Falls back to the
+// manual command only if nothing comes up (the handler isn't registered until the daemon's first run).
 document.getElementById('dmnStart').addEventListener('click',async()=>{
-  const cmd='wscript "th108-daemon\\start-hidden.vbs"';
-  try{ await navigator.clipboard.writeText(cmd); }catch(_){ }
-  alert('Browsers can\'t launch programs, so this can\'t be one click.\n\nTo start the daemon:\n• run setup.cmd in the project folder (installs auto-start too), or\n• run th108-daemon\\start-hidden.vbs (command copied to your clipboard), or\n• just log in again — it auto-starts.\n\nThe Online tag updates within ~30 s once it\'s up.');
+  try{ location.href='th108://start'; }catch(_){ }                         // protocol launch (no page navigation on a registered scheme)
+  [1500,3000,5000,8000].forEach(ms=>setTimeout(()=>DC.ping().then(dmnTagSync,dmnTagSync),ms));   // flip the tag as soon as it's up
+  setTimeout(async()=>{
+    try{ await DC.ping(); }catch(_){ }
+    if(DC.present) return;                                                 // it started — don't nag
+    const cmd='wscript "th108-daemon\\start-hidden.vbs"';
+    try{ await navigator.clipboard.writeText(cmd); }catch(_){ }
+    alert('If an "Open TH108?" prompt appeared, click it to start the daemon.\n\nNo prompt? The th108:// handler registers the first time the daemon runs, so start it once manually:\n• run setup.cmd in the project folder (installs auto-start too), or\n• run th108-daemon\\start-hidden.vbs (command copied to your clipboard), or\n• just log in again — it auto-starts.\n\nAfter that first run, this button is one click.');
+  }, 6000);
 });
 // silent boot reconnect — WAITS until this tab is the sole driver (the lock), so it can never
 // auto-grab a board another tab is driving. A queued tab connects only when it becomes driver.
