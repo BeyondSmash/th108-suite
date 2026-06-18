@@ -282,3 +282,18 @@ test('renderWave reverse flips the scroll direction (different frame, same insta
   let diff=false; for(let i=0;i<Lf.rgb.length;i++) if(Lf.rgb[i]!==Lr.rgb[i]){ diff=true; break; }
   assert.ok(diff, 'reverse produces a different waveform than forward at the same instant');
 });
+
+test('renderBars tip outlines the topmost lit key of a column with the tip color', () => {
+  const L = { type:'audio', enabled:true, opacity:1, blend:'add', settings:{ style:'bars', barTip:'color', barTipColor:'#00ff00' }, rgb:new Uint8Array(E.NLED*3) };
+  E.ensureSettings(L); const st=E.createState([L]); const La=st.layers[0];
+  st.audio.bands.fill(0); st.audio.bands[0]=0.5;   // column 0 (band 0) ~half height → tip is the topmost lit row
+  E.renderAudio(La, 0, st);
+  const col0 = [0,16,32,48,64,80].map(idx=>E.INDICES.indexOf(idx));   // column-0 LED indices, bottom→top
+  let greenTip=false, redBelow=false;
+  for(const k of col0){ if(k<0) continue; const o=k*3, r=La.rgb[o], g=La.rgb[o+1], b=La.rgb[o+2];
+    if(g>200 && r<60 && b<60) greenTip=true;   // tip = pure green
+    if(r>60 && g<80) redBelow=true;            // a non-tip lit key shows the bass (red-ish) gradient
+  }
+  assert.ok(greenTip, 'the topmost lit key uses the tip color');
+  assert.ok(redBelow, 'lower lit keys keep the bar gradient');
+});

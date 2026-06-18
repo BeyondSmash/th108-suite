@@ -247,15 +247,18 @@
     const s = L.settings, out = L.rgb, A = state.audio;
     out.fill(0);
     const style = s.style || 'bars';
-    if(style==='bars') renderBars(s, out, A);
+    if(style==='bars') renderBars(s, out, A, now);
     else if(style==='pulse') renderPulse(s, out, A, now);
     else if(style==='bloom') renderBloom(s, out, A);
     else if(style==='wave') renderWave(s, out, A, now);
-    else renderBars(s, out, A);
+    else renderBars(s, out, A, now);
   }
   // Bars: column (GRID col 0..GW-1) → frequency band; key lights bottom-up by that band's magnitude.
-  function renderBars(s, out, A){
+  // The TOPMOST lit key of each column (the bar's tip) can take a contrasting outline color/rainbow
+  // (s.barTip = 'off'|'color'|'rainbow') so the silhouette reads against the bar gradient.
+  function renderBars(s, out, A, now){
     const bass = hexToRgb(s.barColorBass||'#ff2200'), treb = hexToRgb(s.barColorTreble||'#22aaff');
+    const tip = s.barTip || 'off', tipCol = hexToRgb(s.barTipColor||'#ffffff'), t = (now||0)/1000;
     for(let k=0;k<NLED;k++){
       const idx = INDICES[k], cell = GRID[idx]; if(!cell) continue;
       const col = cell[0], row = cell[1], o = k*3;
@@ -265,6 +268,10 @@
       const litRows = mag*GH;                                 // how many rows up this column fills
       const fromBottom = (GH-1) - row + 1;                    // bottom row = 1 … top row = GH
       if(fromBottom > litRows){ out[o]=out[o+1]=out[o+2]=0; continue; }
+      if(tip!=='off' && fromBottom+1 > litRows){             // the topmost lit row in this column = the bar's tip
+        const tc = tip==='rainbow' ? hsv2rgb(fc + t*0.15, 1, 1) : tipCol;   // rainbow drifts across columns
+        out[o]=tc[0]|0; out[o+1]=tc[1]|0; out[o+2]=tc[2]|0; continue;
+      }
       const v = 0.45 + 0.55*(fromBottom/GH);                 // brighter toward the tip
       out[o]   = ((bass[0]+(treb[0]-bass[0])*fc)*v)|0;
       out[o+1] = ((bass[1]+(treb[1]-bass[1])*fc)*v)|0;
@@ -275,15 +282,14 @@
   // Pulse: uniform wash; hue from centroid, brightness from level+beat, faint per-key shimmer.
   function renderPulse(s, out, A, now){
     const base = hexToRgb(s.pulseColor||'#19b6ff');
-    const useHue = s.pulseColor ? null : 0.55;   // (color picker drives it; centroid only if unset)
-    const v = Math.max(0, Math.min(1, A.level*0.7 + A.beat*0.7));
+    // beat-dominant so kicks PUNCH; small level term keeps a body during sustained sound. NO idle floor
+    // → silence goes fully dark (so the board visibly pumps WITH the beat rather than sitting half-lit).
+    const v = Math.max(0, Math.min(1, A.level*0.5 + A.beat*0.95));
     const t = now/1000;
     for(let k=0;k<NLED;k++){
-      const o=k*3, sh = 0.9 + 0.1*Math.sin(t*8 + k);
-      let rgb;
-      if(useHue!=null){ rgb = hsv2rgb(0.55 + 0.25*A.centroid, 0.85, Math.max(0.04, v*sh)); }
-      else { const vv = Math.max(0.04, v*sh); rgb = [base[0]*vv, base[1]*vv, base[2]*vv]; }
-      out[o]=rgb[0]|0; out[o+1]=rgb[1]|0; out[o+2]=rgb[2]|0;
+      const o=k*3, sh = 0.92 + 0.08*Math.sin(t*8 + k);
+      const vv = v*sh;
+      out[o]=(base[0]*vv)|0; out[o+1]=(base[1]*vv)|0; out[o+2]=(base[2]*vv)|0;
     }
   }
 
@@ -291,13 +297,16 @@
   function renderBloom(s, out, A){
     const col0 = hexToRgb(s.bloomColor||'#ff5a00');
     const cx = (GW-1)/2, cy = (GH-1)/2;
-    const energy = Math.max(A.beat, A.level*0.6);   // → 0 on silence so the board goes dark
+    // BEAT-driven: a kick (beat→1) lights the center, then the ring expands outward as beat decays.
+    // energy leans hard on beat (small level body) so it reads as discrete blooms, not a brightness wash.
+    const energy = Math.max(A.beat, A.level*0.3);
+    const radius = (1 - A.beat) * 1.5;              // 0 at the kick → grows out
     for(let k=0;k<NLED;k++){
       const idx = INDICES[k], cell = GRID[idx]; if(!cell) continue;
       const o = k*3;
       const dx = (cell[0]-cx)/cx, dy = (cell[1]-cy)/cy, d = Math.sqrt(dx*dx+dy*dy);
-      const ring = Math.exp(-Math.pow(d - (1-A.beat)*1.3, 2) * 6);
-      const v = Math.max(0, Math.min(1, ring*energy));
+      const ring = Math.exp(-Math.pow(d - radius, 2) * 5);
+      const v = Math.max(0, Math.min(1, ring*energy*1.4));
       if(v < 0.04){ out[o]=out[o+1]=out[o+2]=0; continue; }
       out[o]=(col0[0]*v)|0; out[o+1]=(col0[1]*v)|0; out[o+2]=(col0[2]*v)|0;
     }
@@ -308,12 +317,15 @@
   function renderWave(s, out, A, now){
     const col0 = hexToRgb(s.waveColor||'#00e0ff');
     const t = now/1000, dir = s.waveReverse ? -1 : 1;   // flip the per-column phase to scroll the trace the other way
+    const lvl = Math.max(0, Math.min(1, A.level));
     for(let k=0;k<NLED;k++){
       const idx = INDICES[k], cell = GRID[idx]; if(!cell) continue;
       const col = cell[0], row = cell[1], o = k*3;
       const band = Math.min(31, Math.round((GW>1?col/(GW-1):0)*31));
-      const samp = 0.5 + 0.45*Math.sin(t*6 + dir*col*0.6) * (0.4 + 0.6*A.bands[band]);
-      const line = samp*(GH-1), v = Math.max(0, 1 - Math.abs(row-line)*0.9);
+      // deflection is the column's BAND energy (no constant floor) → loud bands bulge, quiet sit flat;
+      // overall brightness tracks loudness so the trace fades out on silence (follows the song).
+      const samp = 0.5 + 0.48*Math.sin(t*6 + dir*col*0.6) * A.bands[band];
+      const line = samp*(GH-1), v = Math.max(0, 1 - Math.abs(row-line)*0.9) * (0.15 + 0.85*lvl);
       if(v < 0.05){ out[o]=out[o+1]=out[o+2]=0; continue; }
       out[o]=(col0[0]*v)|0; out[o+1]=(col0[1]*v)|0; out[o+2]=(col0[2]*v)|0;
     }
@@ -581,7 +593,7 @@
     else if(L.type==='audio'){
       const ad={ style:'bars', source:'system', appId:'', deviceId:'',
         gain:1, floor:5, attackMs:40, decayMs:220, beatSens:50,
-        barColorBass:'#ff2200', barColorTreble:'#22aaff',
+        barColorBass:'#ff2200', barColorTreble:'#22aaff', barTip:'off', barTipColor:'#ffffff',
         pulseColor:'#19b6ff', bloomColor:'#ff5a00', waveColor:'#00e0ff', waveReverse:false };
       Object.keys(ad).forEach(k=>{ if(s[k]===undefined)s[k]=ad[k]; });
       if(!Array.isArray(s.ducks)) s.ducks=[];   // [{layer:<index>, dim:<0..100 max-brightness %>}] — dim these while the audio layer emits
