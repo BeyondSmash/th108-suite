@@ -347,9 +347,9 @@
         ['barColorBass','barColorTreble','barTipColor','pulseColor','bloomColor','waveColor'].forEach(key=>{ const el=c('.s-'+key); if(el) el.addEventListener('input',e=>s[key]=e.target.value); });
         { const wr=c('.s-waveReverse'); if(wr) wr.addEventListener('change',e=>s.waveReverse=e.target.checked); }
         { const bt=c('.s-barTip'); if(bt) bt.addEventListener('change',e=>{ s.barTip=e.target.value; buildLayerBody(card,L); }); }   // rebuild so the tip-color picker shows/hides
-        const slider=(cls,key,fmt,xform,snapTo)=>{ const el=c('.s-'+cls), v=c('.s-'+cls+'V'); if(!el||!v) return; const up=()=>v.textContent=fmt(ap[key]); el.addEventListener('input',e=>{ if(snapTo!=null) snap(el,snapTo,4); ap[key]=xform(+el.value); up(); }); up(); };   // writes the PER-STYLE param (ap); guard !v so a class mismatch can't crash init
+        const slider=(cls,key,fmt,xform,snapTo,tol)=>{ const el=c('.s-'+cls), v=c('.s-'+cls+'V'); if(!el||!v) return; const up=()=>v.textContent=fmt(ap[key]); el.addEventListener('input',e=>{ if(snapTo!=null) snap(el,snapTo,tol==null?4:tol); ap[key]=xform(+el.value); up(); }); up(); };   // writes the PER-STYLE param (ap); tol = snap approach width (smaller on short-range sliders); guard !v so a class mismatch can't crash init
         slider('gain','gain',x=>Math.round(x*100)+'%',v=>v/100,100);
-        slider('floor','floor',x=>x+'%',v=>v,5);
+        slider('floor','floor',x=>x+'%',v=>v,5,1);   // 0-40 range → tight snap (±1) so the tick isn't sticky
         slider('attackMs','attackMs',x=>x+'ms',v=>v,40);
         slider('decayMs','decayMs',x=>x+'ms',v=>v,220);
         slider('beatSens','beatSens',x=>x+'%',v=>v,50);
