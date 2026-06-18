@@ -77,20 +77,94 @@ public static class Cap {
     }
     return n;
   }
+
+  // ---- analysis ----
+  const int N = 2048;                 // FFT window
+  static float[] win = new float[N];  // Hann window
+  static float[] re = new float[N], im = new float[N];
+  static float[] prevMag = new float[N/2];   // for spectral-flux onset
+  static bool winInit = false;
+  static void InitWin() { for (int i=0;i<N;i++) win[i]=(float)(0.5-0.5*Math.Cos(2*Math.PI*i/(N-1))); winInit=true; }
+
+  // iterative radix-2 Cooley-Tukey FFT in place on re[],im[]
+  static void FFT() {
+    int n=N, j=0;
+    for (int i=1;i<n;i++){ int bit=n>>1; for(; (j&bit)!=0; bit>>=1) j^=bit; j^=bit; if(i<j){ float tr=re[i];re[i]=re[j];re[j]=tr; float ti=im[i];im[i]=im[j];im[j]=ti; } }
+    for (int len=2; len<=n; len<<=1) {
+      double ang=-2*Math.PI/len; float wr=(float)Math.Cos(ang), wi=(float)Math.Sin(ang);
+      for (int i=0;i<n;i+=len){ float cr=1,ci=0;
+        for (int k=0;k<len/2;k++){ int a=i+k,b=i+k+len/2;
+          float xr=re[b]*cr-im[b]*ci, xi=re[b]*ci+im[b]*cr;
+          re[b]=re[a]-xr; im[b]=im[a]-xi; re[a]+=xr; im[a]+=xi;
+          float ncr=cr*wr-ci*wi; ci=cr*wi+ci*wr; cr=ncr;
+        }
+      }
+    }
+  }
+
+  // Fill bands[32] (0..1, log-spaced), and outLBC[0]=level, outLBC[1]=beat, outLBC[2]=centroid.
+  // mono holds the latest samples; we analyze the last N. Returns false if not enough samples yet.
+  public static bool Features(float[] mono, int count, float[] bands, float[] outLBC) {
+    if (count < N) return false;
+    if (!winInit) InitWin();
+    int start = count - N;
+    double rms = 0;
+    for (int i=0;i<N;i++){ float s=mono[start+i]; rms += s*s; re[i]=s*win[i]; im[i]=0; }
+    FFT();
+    int half=N/2;
+    float[] mag = new float[half];
+    double centNum=0, centDen=0, flux=0;
+    for (int i=0;i<half;i++){ float m=(float)Math.Sqrt(re[i]*re[i]+im[i]*im[i]); mag[i]=m;
+      centNum += (double)i*m; centDen += m;
+      float d=m-prevMag[i]; if(d>0) flux+=d; prevMag[i]=m;
+    }
+    double minLog=Math.Log(1), maxLog=Math.Log(half);
+    for (int b=0;b<32;b++){
+      int lo=(int)Math.Exp(minLog+(maxLog-minLog)*b/32.0);
+      int hi=(int)Math.Exp(minLog+(maxLog-minLog)*(b+1)/32.0);
+      if(hi<=lo) hi=lo+1; if(hi>half) hi=half;
+      double sum=0; for(int i=lo;i<hi;i++) sum+=mag[i];
+      double avg=sum/(hi-lo);
+      bands[b]=(float)Math.Min(1.0, Math.Log(1+avg*8)/Math.Log(9));   // log-compress to 0..1
+    }
+    double level=Math.Sqrt(rms/N);
+    outLBC[0]=(float)Math.Min(1.0, level*4.0);
+    outLBC[1]=(float)Math.Min(1.0, flux/(half*0.5));                  // onset/beat envelope
+    outLBC[2]=(float)(centDen>0 ? Math.Min(1.0,(centNum/centDen)/half*2.0) : 0.5);   // brightness 0..1
+    return true;
+  }
 }
 "@
 
 [Cap]::Open()
-$buf = New-Object 'float[]' 8192
-$sw  = [System.Diagnostics.Stopwatch]::StartNew()
+$N = 2048
+$mono  = New-Object 'float[]' ($N * 4)   # rolling buffer
+$bands = New-Object 'float[]' 32
+$lbc   = New-Object 'float[]' 3
+$chunk = New-Object 'float[]' 8192
+$count = 0
+$sw = [System.Diagnostics.Stopwatch]::StartNew()
 while ($true) {
-  $n = [Cap]::Read($buf)
-  $sum = 0.0
-  for ($i = 0; $i -lt $n; $i++) { $sum += $buf[$i] * $buf[$i] }
-  $rms = if ($n -gt 0) { [Math]::Sqrt($sum / $n) } else { 0.0 }
-  $level = [Math]::Min(1.0, $rms * 4.0)   # rough gain so typical music lands mid-range
-  $t = [Math]::Round($sw.Elapsed.TotalMilliseconds, 1)
-  [Console]::Out.WriteLine('{"level":' + [Math]::Round($level,4) + ',"t":' + $t + '}')
-  [Console]::Out.Flush()
-  Start-Sleep -Milliseconds 33   # ~30 Hz
+  $n = [Cap]::Read($chunk)
+  if ($n -gt 0) {
+    if ($count + $n -gt $mono.Length) {            # keep only the last (mono.Length) samples
+      $keep = $mono.Length - $n
+      [Array]::Copy($mono, $count - $keep, $mono, 0, $keep); $count = $keep
+    }
+    [Array]::Copy($chunk, 0, $mono, $count, $n); $count += $n
+  } else { $count = 0 }                            # silence -> let features go to 0
+  if ([Cap]::Features($mono, $count, $bands, $lbc)) {
+    $sb = New-Object System.Text.StringBuilder
+    [void]$sb.Append('{"bands":[')
+    for ($i=0; $i -lt 32; $i++){ if($i){[void]$sb.Append(',')}; [void]$sb.Append([Math]::Round($bands[$i],4)) }
+    [void]$sb.Append('],"level":'); [void]$sb.Append([Math]::Round($lbc[0],4))
+    [void]$sb.Append(',"beat":');   [void]$sb.Append([Math]::Round($lbc[1],4))
+    [void]$sb.Append(',"centroid":'); [void]$sb.Append([Math]::Round($lbc[2],4))
+    [void]$sb.Append(',"t":'); [void]$sb.Append([Math]::Round($sw.Elapsed.TotalMilliseconds,1)); [void]$sb.Append('}')
+    [Console]::Out.WriteLine($sb.ToString()); [Console]::Out.Flush()
+  } else {
+    [Console]::Out.WriteLine('{"bands":[' + (("0,"*31)+"0") + '],"level":0,"beat":0,"centroid":0.5,"t":' + [Math]::Round($sw.Elapsed.TotalMilliseconds,1) + '}')
+    [Console]::Out.Flush()
+  }
+  Start-Sleep -Milliseconds 33
 }
