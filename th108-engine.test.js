@@ -306,3 +306,16 @@ test('audio tuner params are per-style (gain on bars does not leak to pulse)', (
   L.settings.style = 'bars';
   assert.equal(E.audioParams(L.settings).gain, 2.5, 'bars keeps its own gain');
 });
+
+test('renderBars subtract fill carves the layers below into a silhouette (tip still draws)', () => {
+  const st=E.createState([
+    {name:'BG',type:'background',enabled:true,opacity:1,blend:'normal',fps:30,settings:{color:'#ffffff',period:1,bgMin:100,bgMax:100}},
+    {name:'Audio',type:'audio',enabled:true,opacity:1,blend:'add',fps:30,settings:{style:'bars',barFill:'subtract',barTip:'color',barTipColor:'#00ff00'}},
+  ]);
+  st.bri=1; st.audio.bands.fill(0); st.audio.bands[0]=0.5;   // column 0 bar ~3 rows tall
+  const flat=E.composeFrame(st,100);
+  const at=idx=>E.INDICES.indexOf(idx)*4;
+  const ob=at(80);  assert.ok(flat[ob+1]<60 && flat[ob+2]<60 && flat[ob+3]<60, 'bar-body key carved dark');
+  const ow=at(84);  assert.ok(flat[ow+1]>200 && flat[ow+2]>200 && flat[ow+3]>200, 'a key outside the bar keeps the white background');
+  const otp=at(48); assert.ok(flat[otp+2]>200 && flat[otp+1]<90, 'tip key lit green over the carve');
+});

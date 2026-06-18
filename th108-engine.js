@@ -259,19 +259,24 @@
   function renderAudio(L, now, state){
     const s = L.settings, out = L.rgb, A = state.audio;
     out.fill(0);
+    L._carve = null;                          // only bars 'subtract' fill sets a carve mask (cleared each frame)
     const style = s.style || 'bars';
-    if(style==='bars') renderBars(s, out, A, now);
+    if(style==='bars') renderBars(s, out, A, now, L);
     else if(style==='pulse') renderPulse(s, out, A, now);
     else if(style==='bloom') renderBloom(s, out, A);
     else if(style==='wave') renderWave(s, out, A, now);
-    else renderBars(s, out, A, now);
+    else renderBars(s, out, A, now, L);
   }
   // Bars: column (GRID col 0..GW-1) → frequency band; key lights bottom-up by that band's magnitude.
   // The TOPMOST lit key of each column (the bar's tip) can take a contrasting outline color/rainbow
-  // (s.barTip = 'off'|'color'|'rainbow') so the silhouette reads against the bar gradient.
-  function renderBars(s, out, A, now){
+  // (s.barTip = 'off'|'color'|'rainbow'). Fill 'subtract' (s.barFill): the bar BODY stays dark and CARVES
+  // the layers below (a silhouette), while the tips still draw — so you see the spectrum as negative space.
+  function renderBars(s, out, A, now, L){
     const bass = hexToRgb(s.barColorBass||'#ff2200'), treb = hexToRgb(s.barColorTreble||'#22aaff');
     const tip = s.barTip || 'off', tipCol = hexToRgb(s.barTipColor||'#ffffff'), t = (now||0)/1000;
+    const subtract = s.barFill === 'subtract';
+    let cb = null, any = false;
+    if(subtract && L){ cb = L._carveBuf || (L._carveBuf = new Float32Array(NLED)); cb.fill(0); }
     for(let k=0;k<NLED;k++){
       const idx = INDICES[k], cell = GRID[idx]; if(!cell) continue;
       const col = cell[0], row = cell[1], o = k*3;
@@ -281,7 +286,14 @@
       const litRows = mag*GH;                                 // how many rows up this column fills
       const fromBottom = (GH-1) - row + 1;                    // bottom row = 1 … top row = GH
       if(fromBottom > litRows){ out[o]=out[o+1]=out[o+2]=0; continue; }
-      if(tip!=='off' && fromBottom+1 > litRows){             // the topmost lit row in this column = the bar's tip
+      const isTip = tip!=='off' && fromBottom+1 > litRows;    // the topmost lit row in this column = the bar's tip
+      if(subtract){
+        if(cb){ cb[k]=1; any=true; }                          // carve the layers below at every bar-body key
+        if(isTip){ const tc = tip==='rainbow' ? hsv2rgb(fc + t*0.15, 1, 1) : tipCol; out[o]=tc[0]|0; out[o+1]=tc[1]|0; out[o+2]=tc[2]|0; }
+        else { out[o]=out[o+1]=out[o+2]=0; }                  // empty body (the carve makes it read as a dark silhouette)
+        continue;
+      }
+      if(isTip){
         const tc = tip==='rainbow' ? hsv2rgb(fc + t*0.15, 1, 1) : tipCol;   // rainbow drifts across columns
         out[o]=tc[0]|0; out[o+1]=tc[1]|0; out[o+2]=tc[2]|0; continue;
       }
@@ -290,6 +302,7 @@
       out[o+1] = ((bass[1]+(treb[1]-bass[1])*fc)*v)|0;
       out[o+2] = ((bass[2]+(treb[2]-bass[2])*fc)*v)|0;
     }
+    if(L) L._carve = (subtract && any) ? cb : null;
   }
 
   // Pulse: uniform wash; hue from centroid, brightness from level+beat, faint per-key shimmer.
@@ -536,13 +549,16 @@
     acc.fill(0);
     for(const L of state.layers){
       if(!L.enabled) continue;
-      if(L.type==='audio' && !layerEmitting(L)) continue;   // a silent / feedless audio layer is transparent — never let multiply-black drag the board dark (e.g. on the daemon, which has no audio feed)
+      if(L.type==='audio' && !layerEmitting(L) && !L._carve) continue;   // silent/feedless audio = transparent — BUT a 'subtract' bars layer with a carve mask still carves even with no lit tips
       const a=L.opacity, src=L.rgb, bl=L.blend, df=(L._duck==null?1:L._duck);   // df = audio-duck dim factor (1 = untouched)
       // ISOLATE (punch-through): a reactive layer carves out the layers below at pressed keys
       if(L.type==='reactive' && L.settings && L.settings.isolate && L._inten){
         for(let k=0;k<NLED;k++){ const m=1-Math.max(0,Math.min(1,L._inten[k])), t=k*3;
           acc[t]*=m; acc[t+1]*=m; acc[t+2]*=m; }
       }
+      // SUBTRACT (bars 'subtract' fill): carve the layers below dark at the bar-body keys → spectrum silhouette
+      if(L._carve){ const cv=L._carve; for(let k=0;k<NLED;k++){ const m=1-(cv[k]>1?1:cv[k]<0?0:cv[k]), t=k*3;
+        acc[t]*=m; acc[t+1]*=m; acc[t+2]*=m; } }
       // REPLACE: per-KEY overlay — where this layer has ANY colour, those keys REPLACE the layers
       // below (crossfaded by opacity); fully-black keys are transparent and pass the layers through.
       // The "this layer owns these specific keys" mode (e.g. a song-progress bar on the number row).
@@ -606,7 +622,7 @@
     else if(L.type==='audio'){
       const ad={ style:'bars', source:'system', appId:'', deviceId:'',
         gain:1, floor:5, attackMs:40, decayMs:220, beatSens:50,
-        barColorBass:'#ff2200', barColorTreble:'#22aaff', barTip:'off', barTipColor:'#ffffff',
+        barColorBass:'#ff2200', barColorTreble:'#22aaff', barTip:'off', barTipColor:'#ffffff', barFill:'solid',
         pulseColor:'#19b6ff', bloomColor:'#ff5a00', waveColor:'#00e0ff', waveReverse:false };
       Object.keys(ad).forEach(k=>{ if(s[k]===undefined)s[k]=ad[k]; });
       if(!Array.isArray(s.ducks)) s.ducks=[];   // [{layer:<index>, dim:<0..100 max-brightness %>}] — dim these while the audio layer emits
