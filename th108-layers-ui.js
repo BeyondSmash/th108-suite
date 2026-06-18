@@ -39,7 +39,8 @@
           attachHex = opts.attachHex || noop, snap = opts.snap || noop, // page UI helpers (hex box per color picker, slider detent)
           pushConfig = opts.pushConfig || noop,                         // mirror saves to the daemon's config.json
           isRunning = opts.isRunning || (() => false),                  // layer loop live? (reorder warm-renders so the change shows immediately)
-          onPatternPick = opts.onPatternPick || noop;                   // page hook: picking a pattern while a firmware effect shows = "back to layers"
+          onPatternPick = opts.onPatternPick || noop,                   // page hook: picking a pattern while a firmware effect shows = "back to layers"
+          onAudioSource = opts.onAudioSource || noop;                   // page hook: audio-layer source pick → start/stop in-tab Web Audio capture
 
     // ----- persist full layer state (settings survive page refresh) -----
     let _slsT=0;
@@ -299,13 +300,13 @@
         const style=s.style||'bars', uid=card.dataset.n;
         // Phase 1 drives a synthetic signal for ALL sources, so only System is wired; App/Tab/Mic are
         // disabled (greyed) until real per-source capture lands (Plan 1b) — no dead controls that lie.
-        const sources=[['system','All system audio',true],['app','Specific app',false],['tab','This tab',false],['mic','Mic / line-in',false]];
-        const srcBubbles=sources.map(o=>{ const dis=!o[2]; return '<label class="sl" style="margin:0 8px 0 0'+(dis?';opacity:.4':'')+'"'+(dis?' title="real per-source capture lands in the next update (Plan 1b)"':'')+'><input type="radio" name="aud-src-'+uid+'" class="s-source" value="'+o[0]+'"'+((o[0]===(s.source||'system'))?' checked':'')+(dis?' disabled':'')+'> '+o[1]+(dis?' — soon':'')+'</label>'; }).join('');
+        const sources=[['system','All system audio',true],['app','Specific app',false],['tab','This tab',true],['mic','Mic / line-in',true]];   // tab/mic = in-tab Web Audio capture; app (process-loopback) still pending
+        const srcBubbles=sources.map(o=>{ const dis=!o[2]; return '<label class="sl" style="margin:0 8px 0 0'+(dis?';opacity:.4':'')+'"'+(dis?' title="per-app capture (process-loopback) is coming in a later update"':'')+'><input type="radio" name="aud-src-'+uid+'" class="s-source" value="'+o[0]+'"'+((o[0]===(s.source||'system'))?' checked':'')+(dis?' disabled':'')+'> '+o[1]+(dis?' — soon':'')+'</label>'; }).join('');
         const styles=[['bars','Spectrum bars'],['pulse','Beat pulse'],['bloom','Radial bloom'],['wave','Waveform']];
         const sopt=styles.map(m=>'<option value="'+m[0]+'"'+(m[0]===style?' selected':'')+'>'+m[1]+'</option>').join('');
         let html='<div class="ctl">'+
           row('Source','<span style="display:flex;flex-wrap:wrap;align-items:center">'+srcBubbles+'</span><span></span>')+
-          row('Source note','<span class="val" style="opacity:.7">Real system audio plays through the background daemon (close/blur this tab). While this tab is connected and driving, it falls back to a test signal — per-tab capture is coming.</span><span></span>')+
+          row('Source note','<span class="val" style="opacity:.7">This tab / Mic = real audio captured right here — pick one and accept the share/mic prompt (for a tab, tick “Share tab audio”). Best for tuning. All system audio runs ambiently through the background daemon (close/blur this tab). App is coming.</span><span></span>')+
           row('Style','<select class="s-style">'+sopt+'</select><span></span>')+
           row('Preview','<div style="display:flex;flex-direction:column;gap:5px"><button type="button" class="s-prevToggle" style="align-self:flex-start">'+(s.previewOff?'Show preview':'Hide preview')+'</button><canvas class="s-audioPrev" width="378" height="108" style="width:100%;height:auto;display:'+(s.previewOff?'none':'block')+';background:#0d1117;border-radius:8px"></canvas></div><span></span>');
         if(style==='bars'){ const bt=s.barTip||'off';
@@ -342,7 +343,7 @@
         '</div>';
         body.innerHTML=html;
         const c=q=>body.querySelector(q);
-        body.querySelectorAll('.s-source').forEach(r=>r.addEventListener('change',e=>{ s.source=e.target.value; }));
+        body.querySelectorAll('.s-source').forEach(r=>r.addEventListener('change',e=>{ s.source=e.target.value; onAudioSource(e.target.value); }));   // tab/mic start in-tab capture; system/app stop it (fall back to daemon/synth)
         c('.s-style').addEventListener('change',e=>{ s.style=e.target.value; buildLayerBody(card,L); });
         ['barColorBass','barColorTreble','barTipColor','pulseColor','bloomColor','waveColor'].forEach(key=>{ const el=c('.s-'+key); if(el) el.addEventListener('input',e=>s[key]=e.target.value); });
         { const wr=c('.s-waveReverse'); if(wr) wr.addEventListener('change',e=>s.waveReverse=e.target.checked); }

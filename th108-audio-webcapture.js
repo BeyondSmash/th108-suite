@@ -1,0 +1,76 @@
+// th108-audio-webcapture.js — IN-TAB real audio for the music layer (Phase 3, brought forward so the
+// tuner sliders react to actual sound). Captures audio via Web Audio: 'tab' = getDisplayMedia (share a
+// tab/screen WITH audio), 'mic' = getUserMedia, runs an AnalyserNode, and produces the SAME feature
+// contract the sidecar emits: {bands[32],level,beat,centroid,t}. Page-driven only (the page owns the
+// device); system-wide ambient audio is the daemon's job. No device writes — pure analysis.
+(function (root) {
+  'use strict';
+  const NB = 32;
+  function createWebCapture(log) {
+    log = log || function () {};
+    let ctx = null, analyser = null, stream = null, srcNode = null, active = false, kind = null;
+    let freq = null, time = null, prevMag = null, peakLvl = 1e-4, avgFlux = 1e-6;
+
+    async function start(sourceKind) {
+      await stop();
+      try {
+        if (sourceKind === 'mic') stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        else stream = await navigator.mediaDevices.getDisplayMedia({ audio: true, video: true });   // Chrome needs video requested; we use only the audio track
+      } catch (e) { log('audio capture cancelled / denied: ' + (e && e.message || e), 'dim'); return false; }
+      const at = stream.getAudioTracks();
+      if (!at.length) { await stop(); log('no audio track — when sharing, tick "Share tab audio" / "Share system audio"', 'err'); return false; }
+      ctx = new (window.AudioContext || window.webkitAudioContext)();
+      srcNode = ctx.createMediaStreamSource(stream);
+      analyser = ctx.createAnalyser();
+      analyser.fftSize = 2048; analyser.smoothingTimeConstant = 0.5;
+      srcNode.connect(analyser);   // analyser is a sink — do NOT connect to ctx.destination (would echo the audio)
+      const bins = analyser.frequencyBinCount;
+      freq = new Uint8Array(bins); time = new Float32Array(analyser.fftSize); prevMag = new Float32Array(bins);
+      peakLvl = 1e-4; avgFlux = 1e-6; active = true; kind = sourceKind;
+      at[0].addEventListener('ended', () => { stop(); });   // user clicked "Stop sharing"
+      log('in-tab audio capture started (' + sourceKind + ')', 'ok');
+      return true;
+    }
+
+    // Produce one feature frame from the live analyser (same shape/curves as audio-sidecar.ps1).
+    function sample() {
+      if (!active || !analyser) return null;
+      analyser.getByteFrequencyData(freq);          // 0..255, already dB-scaled by the AnalyserNode
+      analyser.getFloatTimeDomainData(time);        // -1..1 PCM, for RMS loudness
+      const bins = freq.length;
+      let rms = 0; for (let i = 0; i < time.length; i++) rms += time[i] * time[i]; rms = Math.sqrt(rms / time.length);
+      peakLvl = Math.max(rms, peakLvl * 0.999);     // auto-gain: normalize to the loudest recent
+      const level = Math.min(1, rms / Math.max(peakLvl, 1e-4));
+      const bands = new Array(NB);
+      let centNum = 0, centDen = 0, bassFlux = 0; const bassBins = Math.max(4, bins >> 3);
+      for (let i = 0; i < bins; i++) { const m = freq[i] / 255; centNum += i * m; centDen += m;
+        const d = m - prevMag[i]; if (d > 0 && i < bassBins) bassFlux += d; prevMag[i] = m; }
+      const minLog = Math.log(1), maxLog = Math.log(bins);
+      for (let b = 0; b < NB; b++) {
+        let lo = Math.floor(Math.exp(minLog + (maxLog - minLog) * b / NB));
+        let hi = Math.floor(Math.exp(minLog + (maxLog - minLog) * (b + 1) / NB));
+        if (hi <= lo) hi = lo + 1; if (hi > bins) hi = bins;
+        let sum = 0; for (let i = lo; i < hi; i++) sum += freq[i] / 255; const avg = sum / (hi - lo);
+        bands[b] = Math.min(1, avg * 1.6);          // byte data is already perceptual → light linear boost
+      }
+      avgFlux = avgFlux * 0.93 + bassFlux * 0.07;
+      const onset = (bassFlux - avgFlux * 1.4) / (avgFlux + 1e-4);
+      const beat = Math.max(0, Math.min(1, onset));
+      const centroid = centDen > 0 ? Math.min(1, (centNum / centDen) / bins * 2) : 0.5;
+      return { bands, level, beat, centroid, t: ctx ? ctx.currentTime * 1000 : 0 };
+    }
+
+    async function stop() {
+      active = false; kind = null;
+      try { if (srcNode) srcNode.disconnect(); } catch (_) {}
+      try { if (stream) stream.getTracks().forEach(t => t.stop()); } catch (_) {}
+      try { if (ctx && ctx.state !== 'closed') await ctx.close(); } catch (_) {}
+      ctx = analyser = stream = srcNode = null;
+    }
+
+    return { start, stop, sample, active: () => active, kind: () => kind };
+  }
+  const api = { createWebCapture };
+  if (typeof module !== 'undefined' && module.exports) module.exports = api;
+  else root.TH108WebCapture = api;
+})(typeof window !== 'undefined' ? window : globalThis);
