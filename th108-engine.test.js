@@ -256,3 +256,20 @@ test('audio duck dims a target layer only while the audio layer is emitting ligh
   const noDuck=sum(E.composeFrame(st3,100));
   assert.ok(noDuck > ducked*3, 'with no duck config the target stays full even while audio emits');
 });
+
+test('a non-emitting audio layer is transparent (multiply-black must not dim the board)', () => {
+  const mk=()=>E.createState([
+    {name:'BG',type:'background',enabled:true,opacity:1,blend:'normal',fps:30,settings:{color:'#ffffff',period:1,bgMin:100,bgMax:100}},
+    {name:'Audio',type:'audio',enabled:true,opacity:0.85,blend:'multiply',fps:30,settings:{style:'bars'}},
+  ]);
+  // silent → audio layer renders black → must be skipped, board stays full white
+  const st1=mk(); st1.bri=1; st1.audio.bands.fill(0);
+  const f1=E.composeFrame(st1,100);
+  let minV=255; for(let o=0;o<f1.length;o+=4) minV=Math.min(minV,f1[o+1]);
+  assert.ok(minV>200, 'silent audio layer is transparent (board stays bright), got '+minV);
+  // emitting → multiply actually applies (board no longer uniformly white)
+  const st2=mk(); st2.bri=1; st2.audio.bands.fill(1);
+  const f2=E.composeFrame(st2,100);
+  let anyDim=false; for(let o=0;o<f2.length;o+=4) if(f2[o+1]<250||f2[o+3]<250){ anyDim=true; break; }
+  assert.ok(anyDim, 'emitting audio layer composites (multiply changes the board)');
+});

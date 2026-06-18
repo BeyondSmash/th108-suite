@@ -511,6 +511,7 @@
     acc.fill(0);
     for(const L of state.layers){
       if(!L.enabled) continue;
+      if(L.type==='audio' && !layerEmitting(L)) continue;   // a silent / feedless audio layer is transparent — never let multiply-black drag the board dark (e.g. on the daemon, which has no audio feed)
       const a=L.opacity, src=L.rgb, bl=L.blend, df=(L._duck==null?1:L._duck);   // df = audio-duck dim factor (1 = untouched)
       // ISOLATE (punch-through): a reactive layer carves out the layers below at pressed keys
       if(L.type==='reactive' && L.settings && L.settings.isolate && L._inten){
