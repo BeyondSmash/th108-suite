@@ -127,7 +127,13 @@ public static class Cap {
       if(hi<=lo) hi=lo+1; if(hi>half) hi=half;
       double sum=0; for(int i=lo;i<hi;i++) sum+=mag[i];
       double avg=sum/(hi-lo);
-      bands[b]=(float)Math.Min(1.0, Math.Log(1+avg*8)/Math.Log(9));   // log-compress to 0..1
+      // Match the page's Web Audio AnalyserNode (getByteFrequencyData) scaling so daemon and tab look
+      // the SAME: normalize the un-normalized FFT magnitude, then map dB [-100,-30] → 0..1 (×1.6 like the
+      // webcapture). Previously this used a raw log-compress on un-normalized magnitudes → bars ran hot/tall.
+      double magNorm = avg/(N*0.5);
+      double dbv = 20.0*Math.Log10(magNorm + 1e-9);
+      double nb = (dbv + 100.0)/70.0;
+      bands[b]=(float)Math.Min(1.0, Math.Max(0.0, nb)*1.6);
     }
     double rawLvl=Math.Sqrt(rms/N);
     peakLvl = Math.Max((float)rawLvl, peakLvl*0.999f);               // auto-gain: track the loudest recent level (slow decay)
