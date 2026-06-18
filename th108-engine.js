@@ -43,14 +43,9 @@
                  case 3:r=p;g=q;b=v;break; case 4:r=t;g=p;b=v;break; default:r=v;g=p;b=q; }
     return [r*255|0, g*255|0, b*255|0];
   }
-  // VU / "temperature" scale 0..1 → green → yellow → orange → red (0..255 rgb). Classic level meter.
-  // Four EVEN segments so yellow and orange each get a clear third of the range (not squeezed out).
-  const VU_STOPS = [[0,210,0],[255,235,0],[255,130,0],[255,0,0]];   // green, yellow, orange, red
-  function vuColor(x){
-    x = x<0?0:(x>1?1:x);
-    const seg = x*3, i = Math.min(2, Math.floor(seg)), f = seg - i, a = VU_STOPS[i], b = VU_STOPS[i+1];
-    return [a[0]+(b[0]-a[0])*f, a[1]+(b[1]-a[1])*f, a[2]+(b[2]-a[2])*f];
-  }
+  // VU meter, DISCRETE by row-from-bottom: 1 = green, 2 = yellow, 3+ = red. Fully saturated, high-contrast
+  // (classic 3-zone meter — no lime/orange blends).
+  function vuRow(fb){ return fb<=1 ? [0,255,0] : fb<=2 ? [255,255,0] : [255,0,0]; }
   // deterministic per-index hash → 0..1 (stable sparkle/column offsets)
   function patHash(i){ const x=Math.sin(i*127.1+311.7)*43758.5453; return x-Math.floor(x); }
   // one-pole smoothing toward `target`; rising uses attackMs, falling uses decayMs. dt in ms.
@@ -287,8 +282,8 @@
     const subtract = s.barFill === 'subtract';
     let cb = null, any = false;
     if(subtract && L){ cb = L._carveBuf || (L._carveBuf = new Float32Array(NLED)); cb.fill(0); }
-    // tip color for a key at the given board height (fc = column for rainbow drift)
-    const tipColorAt = (fc, h) => tip==='rainbow' ? hsv2rgb(fc + t*0.15, 1, 1) : tip==='vu' ? vuColor(h) : tipCol;
+    // tip color for the topmost lit key (fc = column for rainbow drift; fb = its row-from-bottom for VU)
+    const tipColorAt = (fc, fb) => tip==='rainbow' ? hsv2rgb(fc + t*0.15, 1, 1) : tip==='vu' ? vuRow(fb) : tipCol;
     for(let k=0;k<NLED;k++){
       const idx = INDICES[k], cell = GRID[idx]; if(!cell) continue;
       const col = cell[0], row = cell[1], o = k*3;
@@ -303,13 +298,13 @@
       const isTip = tip!=='off' && fromBottom+1 > litRows;    // the topmost lit row in this column = the bar's tip
       if(subtract){
         if(cb){ cb[k]=1; any=true; }                          // carve the layers below at every bar-body key
-        if(isTip){ const tc = tipColorAt(fc, hc); out[o]=tc[0]|0; out[o+1]=tc[1]|0; out[o+2]=tc[2]|0; }
+        if(isTip){ const tc = tipColorAt(fc, fromBottom); out[o]=tc[0]|0; out[o+1]=tc[1]|0; out[o+2]=tc[2]|0; }
         else { out[o]=out[o+1]=out[o+2]=0; }                  // empty body → reads as a dark silhouette via the carve
         continue;
       }
-      if(isTip){ const tc = tipColorAt(fc, hc); out[o]=tc[0]|0; out[o+1]=tc[1]|0; out[o+2]=tc[2]|0; continue; }
+      if(isTip){ const tc = tipColorAt(fc, fromBottom); out[o]=tc[0]|0; out[o+1]=tc[1]|0; out[o+2]=tc[2]|0; continue; }
       let c, v;
-      if(barColor==='vu'){ c = vuColor(hc); v = 1; }                                          // color encodes level → FULL brightness so yellow/orange read true (no olive/brown wash)
+      if(barColor==='vu'){ c = vuRow(fromBottom); v = 1; }                                    // discrete green(1)/yellow(2)/red(3+) by row, full brightness
       else { v = 0.45 + 0.55*h;                                                               // ramp only for the solid/gradient fills
         if(barColor==='gradient') c = [gradA[0]+(gradB[0]-gradA[0])*hc, gradA[1]+(gradB[1]-gradA[1])*hc, gradA[2]+(gradB[2]-gradA[2])*hc];  // bottom→top
         else c = [bass[0]+(treb[0]-bass[0])*fc, bass[1]+(treb[1]-bass[1])*fc, bass[2]+(treb[2]-bass[2])*fc]; }   // bass→treble (per column)
