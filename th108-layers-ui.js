@@ -306,7 +306,8 @@
         let html='<div class="ctl">'+
           row('Source','<span style="display:flex;flex-wrap:wrap;align-items:center">'+srcBubbles+'</span><span></span>')+
           row('Source note','<span class="val" style="opacity:.7">Phase 1: driven by a synthetic test signal — real capture lands next.</span><span></span>')+
-          row('Style','<select class="s-style">'+sopt+'</select><span></span>');
+          row('Style','<select class="s-style">'+sopt+'</select><span></span>')+
+          row('Preview','<canvas class="s-audioPrev" width="378" height="108" style="width:100%;height:auto;display:block;background:#0d1117;border-radius:8px"></canvas><span></span>');
         if(style==='bars') html+=
           row('Bass color','<input type="color" class="s-barColorBass" value="'+s.barColorBass+'"><span></span>')+
           row('Treble color','<input type="color" class="s-barColorTreble" value="'+s.barColorTreble+'"><span></span>');
@@ -358,6 +359,31 @@
           const d=Array.isArray(s.ducks)&&s.ducks.find(x=>x&&x.layer===i); if(d) d.dim=v;   // only persists once the layer is checked on
         }));
         c('.s-logVals').addEventListener('click',()=>console.log('[audio layer "'+L.name+'"]', JSON.parse(JSON.stringify(s))));
+        // Live preview: drive a scratch audio layer off the synthetic feed and paint the keys onto a canvas.
+        // Reads s each frame so style/colors/tuning/reverse update live; runs independent of the device.
+        (function(){
+          const cv=c('.s-audioPrev'); if(!cv||!cv.getContext) return;
+          const ctx=cv.getContext('2d'), W=cv.width, H=cv.height;
+          const pState={ audio:{ bands:new Float32Array(32), level:0, beat:0, centroid:0.5, _t:0 } };
+          const pL={ type:'audio', settings:s, rgb:new Uint8Array(E.NLED*3) };
+          if(!window._audSynthPrev && window.TH108AudioSynth) window._audSynthPrev=TH108AudioSynth.createSynth();
+          const synth=window._audSynthPrev;
+          function frame(now){
+            if(!document.body.contains(cv)) return;                 // card rebuilt/removed → stop this loop
+            if(cv.offsetParent!==null && synth){                    // skip work while the card is collapsed/hidden
+              E.applyAudioFeatures(pState, synth.sample(now/1000), s, now);
+              E.renderAudio(pL, now, pState);
+              ctx.clearRect(0,0,W,H);
+              for(let k=0;k<E.NLED;k++){ const cell=E.keyCell(E.INDICES[k]); if(!cell) continue;
+                const o=k*3, x=(cell[0]-cell[2]/2)*W, y=(cell[1]-cell[3]/2)*H, w=cell[2]*W, h=cell[3]*H;
+                ctx.fillStyle='rgb('+pL.rgb[o]+','+pL.rgb[o+1]+','+pL.rgb[o+2]+')';
+                ctx.fillRect(x+0.5,y+0.5,Math.max(1,w-1),Math.max(1,h-1));
+              }
+            }
+            requestAnimationFrame(frame);
+          }
+          requestAnimationFrame(frame);
+        })();
       } else {   // media — Stage 1 placeholder
         body.innerHTML='<div class="ph">Media layer — port of the GIF engine lands in Stage 2. (Use the GIF → keyboard panel below for now.)</div>';
       }
