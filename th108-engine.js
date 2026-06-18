@@ -44,11 +44,12 @@
     return [r*255|0, g*255|0, b*255|0];
   }
   // VU / "temperature" scale 0..1 → green → yellow → orange → red (0..255 rgb). Classic level meter.
+  // Four EVEN segments so yellow and orange each get a clear third of the range (not squeezed out).
+  const VU_STOPS = [[0,210,0],[255,235,0],[255,130,0],[255,0,0]];   // green, yellow, orange, red
   function vuColor(x){
     x = x<0?0:(x>1?1:x);
-    if(x<0.5){ const f=x/0.5;        return [255*f,        200+55*f,   0]; }   // green(0,200,0) → yellow(255,255,0)
-    if(x<0.8){ const f=(x-0.5)/0.3;  return [255,          255-115*f,  0]; }   // yellow → orange(255,140,0)
-    const f=(x-0.8)/0.2;             return [255,          140-140*f,  0];     // orange → red(255,0,0)
+    const seg = x*3, i = Math.min(2, Math.floor(seg)), f = seg - i, a = VU_STOPS[i], b = VU_STOPS[i+1];
+    return [a[0]+(b[0]-a[0])*f, a[1]+(b[1]-a[1])*f, a[2]+(b[2]-a[2])*f];
   }
   // deterministic per-index hash → 0..1 (stable sparkle/column offsets)
   function patHash(i){ const x=Math.sin(i*127.1+311.7)*43758.5453; return x-Math.floor(x); }
@@ -297,20 +298,21 @@
       const litRows = mag*GH;                                 // how many rows up this column fills
       const fromBottom = (GH-1) - row + 1;                    // bottom row = 1 … top row = GH
       if(fromBottom > litRows){ out[o]=out[o+1]=out[o+2]=0; continue; }
-      const h = fromBottom/GH;                                // 0 bottom … 1 top (board height fraction)
+      const h = fromBottom/GH;                                // brightness-ramp coord (0.167 … 1)
+      const hc = GH>1 ? (fromBottom-1)/(GH-1) : 0;            // COLOR coord, full 0 (bottom) … 1 (top) so the scale spans every row
       const isTip = tip!=='off' && fromBottom+1 > litRows;    // the topmost lit row in this column = the bar's tip
       if(subtract){
         if(cb){ cb[k]=1; any=true; }                          // carve the layers below at every bar-body key
-        if(isTip){ const tc = tipColorAt(fc, h); out[o]=tc[0]|0; out[o+1]=tc[1]|0; out[o+2]=tc[2]|0; }
+        if(isTip){ const tc = tipColorAt(fc, hc); out[o]=tc[0]|0; out[o+1]=tc[1]|0; out[o+2]=tc[2]|0; }
         else { out[o]=out[o+1]=out[o+2]=0; }                  // empty body → reads as a dark silhouette via the carve
         continue;
       }
-      if(isTip){ const tc = tipColorAt(fc, h); out[o]=tc[0]|0; out[o+1]=tc[1]|0; out[o+2]=tc[2]|0; continue; }
-      const v = 0.45 + 0.55*h;                                // brighter toward the tip
-      let c;
-      if(barColor==='vu') c = vuColor(h);                                                     // green→red by height
-      else if(barColor==='gradient') c = [gradA[0]+(gradB[0]-gradA[0])*h, gradA[1]+(gradB[1]-gradA[1])*h, gradA[2]+(gradB[2]-gradA[2])*h];  // bottom→top
-      else c = [bass[0]+(treb[0]-bass[0])*fc, bass[1]+(treb[1]-bass[1])*fc, bass[2]+(treb[2]-bass[2])*fc];   // bass→treble (per column)
+      if(isTip){ const tc = tipColorAt(fc, hc); out[o]=tc[0]|0; out[o+1]=tc[1]|0; out[o+2]=tc[2]|0; continue; }
+      let c, v;
+      if(barColor==='vu'){ c = vuColor(hc); v = 1; }                                          // color encodes level → FULL brightness so yellow/orange read true (no olive/brown wash)
+      else { v = 0.45 + 0.55*h;                                                               // ramp only for the solid/gradient fills
+        if(barColor==='gradient') c = [gradA[0]+(gradB[0]-gradA[0])*hc, gradA[1]+(gradB[1]-gradA[1])*hc, gradA[2]+(gradB[2]-gradA[2])*hc];  // bottom→top
+        else c = [bass[0]+(treb[0]-bass[0])*fc, bass[1]+(treb[1]-bass[1])*fc, bass[2]+(treb[2]-bass[2])*fc]; }   // bass→treble (per column)
       out[o]=(c[0]*v)|0; out[o+1]=(c[1]*v)|0; out[o+2]=(c[2]*v)|0;
     }
     if(L) L._carve = (subtract && any) ? cb : null;
