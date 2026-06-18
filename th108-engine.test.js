@@ -319,3 +319,25 @@ test('renderBars subtract fill carves the layers below into a silhouette (tip st
   const ow=at(84);  assert.ok(flat[ow+1]>200 && flat[ow+2]>200 && flat[ow+3]>200, 'a key outside the bar keeps the white background');
   const otp=at(48); assert.ok(flat[otp+2]>200 && flat[otp+1]<90, 'tip key lit green over the carve');
 });
+
+test('renderBars vu fill colors low keys green and high keys red', () => {
+  const L={type:'audio',enabled:true,opacity:1,blend:'add',settings:{style:'bars',barColor:'vu'},rgb:new Uint8Array(E.NLED*3)};
+  E.ensureSettings(L); const st=E.createState([L]); const La=st.layers[0];
+  st.audio.bands.fill(0); st.audio.bands[0]=1;   // column 0 full height
+  E.renderAudio(La,0,st);
+  const at=idx=>E.INDICES.indexOf(idx)*3;
+  const ob=at(80), ot=at(0);   // col0 bottom (row5) vs top (row0)
+  assert.ok(La.rgb[ob+1] > La.rgb[ob], 'bottom key green-ish (g>r)');
+  assert.ok(La.rgb[ot] > La.rgb[ot+1], 'top key red-ish (r>g)');
+});
+
+test('renderPulse gradient colors bottom vs top differently', () => {
+  const L={type:'audio',enabled:true,opacity:1,blend:'add',settings:{style:'pulse',pulseGrad:true,pulseColor:'#ff0000',pulseColor2:'#0000ff'},rgb:new Uint8Array(E.NLED*3)};
+  E.ensureSettings(L); const st=E.createState([L]); const La=st.layers[0];
+  st.audio.level=1; st.audio.beat=1;
+  E.renderAudio(La,0,st);
+  const at=idx=>E.INDICES.indexOf(idx)*3;
+  const ob=at(80), ot=at(0);
+  assert.ok(La.rgb[ob] > La.rgb[ob+2], 'bottom red-dominant (pulseColor)');
+  assert.ok(La.rgb[ot+2] > La.rgb[ot], 'top blue-dominant (pulseColor2)');
+});

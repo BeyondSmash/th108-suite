@@ -43,6 +43,13 @@
                  case 3:r=p;g=q;b=v;break; case 4:r=t;g=p;b=v;break; default:r=v;g=p;b=q; }
     return [r*255|0, g*255|0, b*255|0];
   }
+  // VU / "temperature" scale 0..1 → green → yellow → orange → red (0..255 rgb). Classic level meter.
+  function vuColor(x){
+    x = x<0?0:(x>1?1:x);
+    if(x<0.5){ const f=x/0.5;        return [255*f,        200+55*f,   0]; }   // green(0,200,0) → yellow(255,255,0)
+    if(x<0.8){ const f=(x-0.5)/0.3;  return [255,          255-115*f,  0]; }   // yellow → orange(255,140,0)
+    const f=(x-0.8)/0.2;             return [255,          140-140*f,  0];     // orange → red(255,0,0)
+  }
   // deterministic per-index hash → 0..1 (stable sparkle/column offsets)
   function patHash(i){ const x=Math.sin(i*127.1+311.7)*43758.5453; return x-Math.floor(x); }
   // one-pole smoothing toward `target`; rising uses attackMs, falling uses decayMs. dt in ms.
@@ -273,10 +280,14 @@
   // the layers below (a silhouette), while the tips still draw — so you see the spectrum as negative space.
   function renderBars(s, out, A, now, L){
     const bass = hexToRgb(s.barColorBass||'#ff2200'), treb = hexToRgb(s.barColorTreble||'#22aaff');
+    const gradA = hexToRgb(s.barGradA||'#00ff66'), gradB = hexToRgb(s.barGradB||'#ff00aa');
     const tip = s.barTip || 'off', tipCol = hexToRgb(s.barTipColor||'#ffffff'), t = (now||0)/1000;
+    const barColor = s.barColor || 'bassTreble';            // bassTreble (horizontal) | gradient (vert 2-color) | vu (green→red by height)
     const subtract = s.barFill === 'subtract';
     let cb = null, any = false;
     if(subtract && L){ cb = L._carveBuf || (L._carveBuf = new Float32Array(NLED)); cb.fill(0); }
+    // tip color for a key at the given board height (fc = column for rainbow drift)
+    const tipColorAt = (fc, h) => tip==='rainbow' ? hsv2rgb(fc + t*0.15, 1, 1) : tip==='vu' ? vuColor(h) : tipCol;
     for(let k=0;k<NLED;k++){
       const idx = INDICES[k], cell = GRID[idx]; if(!cell) continue;
       const col = cell[0], row = cell[1], o = k*3;
@@ -286,28 +297,28 @@
       const litRows = mag*GH;                                 // how many rows up this column fills
       const fromBottom = (GH-1) - row + 1;                    // bottom row = 1 … top row = GH
       if(fromBottom > litRows){ out[o]=out[o+1]=out[o+2]=0; continue; }
+      const h = fromBottom/GH;                                // 0 bottom … 1 top (board height fraction)
       const isTip = tip!=='off' && fromBottom+1 > litRows;    // the topmost lit row in this column = the bar's tip
       if(subtract){
         if(cb){ cb[k]=1; any=true; }                          // carve the layers below at every bar-body key
-        if(isTip){ const tc = tip==='rainbow' ? hsv2rgb(fc + t*0.15, 1, 1) : tipCol; out[o]=tc[0]|0; out[o+1]=tc[1]|0; out[o+2]=tc[2]|0; }
-        else { out[o]=out[o+1]=out[o+2]=0; }                  // empty body (the carve makes it read as a dark silhouette)
+        if(isTip){ const tc = tipColorAt(fc, h); out[o]=tc[0]|0; out[o+1]=tc[1]|0; out[o+2]=tc[2]|0; }
+        else { out[o]=out[o+1]=out[o+2]=0; }                  // empty body → reads as a dark silhouette via the carve
         continue;
       }
-      if(isTip){
-        const tc = tip==='rainbow' ? hsv2rgb(fc + t*0.15, 1, 1) : tipCol;   // rainbow drifts across columns
-        out[o]=tc[0]|0; out[o+1]=tc[1]|0; out[o+2]=tc[2]|0; continue;
-      }
-      const v = 0.45 + 0.55*(fromBottom/GH);                 // brighter toward the tip
-      out[o]   = ((bass[0]+(treb[0]-bass[0])*fc)*v)|0;
-      out[o+1] = ((bass[1]+(treb[1]-bass[1])*fc)*v)|0;
-      out[o+2] = ((bass[2]+(treb[2]-bass[2])*fc)*v)|0;
+      if(isTip){ const tc = tipColorAt(fc, h); out[o]=tc[0]|0; out[o+1]=tc[1]|0; out[o+2]=tc[2]|0; continue; }
+      const v = 0.45 + 0.55*h;                                // brighter toward the tip
+      let c;
+      if(barColor==='vu') c = vuColor(h);                                                     // green→red by height
+      else if(barColor==='gradient') c = [gradA[0]+(gradB[0]-gradA[0])*h, gradA[1]+(gradB[1]-gradA[1])*h, gradA[2]+(gradB[2]-gradA[2])*h];  // bottom→top
+      else c = [bass[0]+(treb[0]-bass[0])*fc, bass[1]+(treb[1]-bass[1])*fc, bass[2]+(treb[2]-bass[2])*fc];   // bass→treble (per column)
+      out[o]=(c[0]*v)|0; out[o+1]=(c[1]*v)|0; out[o+2]=(c[2]*v)|0;
     }
     if(L) L._carve = (subtract && any) ? cb : null;
   }
 
   // Pulse: uniform wash; hue from centroid, brightness from level+beat, faint per-key shimmer.
   function renderPulse(s, out, A, now){
-    const base = hexToRgb(s.pulseColor||'#19b6ff');
+    const base = hexToRgb(s.pulseColor||'#19b6ff'), base2 = hexToRgb(s.pulseColor2||'#ff00aa'), grad = !!s.pulseGrad;
     // beat-dominant so kicks PUNCH; small level term keeps a body during sustained sound. NO idle floor
     // → silence goes fully dark (so the board visibly pumps WITH the beat rather than sitting half-lit).
     const v = Math.max(0, Math.min(1, A.level*0.5 + A.beat*0.95));
@@ -315,13 +326,16 @@
     for(let k=0;k<NLED;k++){
       const o=k*3, sh = 0.92 + 0.08*Math.sin(t*8 + k);
       const vv = v*sh;
-      out[o]=(base[0]*vv)|0; out[o+1]=(base[1]*vv)|0; out[o+2]=(base[2]*vv)|0;
+      let c = base;
+      if(grad){ const cell=GRID[INDICES[k]], h = cell ? ((GH-1)-cell[1])/(GH-1) : 0.5;   // bottom→top
+        c=[base[0]+(base2[0]-base[0])*h, base[1]+(base2[1]-base[1])*h, base[2]+(base2[2]-base[2])*h]; }
+      out[o]=(c[0]*vv)|0; out[o+1]=(c[1]*vv)|0; out[o+2]=(c[2]*vv)|0;
     }
   }
 
   // Bloom: a ring expands from board center as beat decays, gated by audio energy so silence is dark.
   function renderBloom(s, out, A){
-    const col0 = hexToRgb(s.bloomColor||'#ff5a00');
+    const col0 = hexToRgb(s.bloomColor||'#ff5a00'), col2 = hexToRgb(s.bloomColor2||'#ffd000'), grad = !!s.bloomGrad;
     const cx = (GW-1)/2, cy = (GH-1)/2;
     // BEAT-driven: a kick (beat→1) lights the center, then the ring expands outward as beat decays.
     // energy leans hard on beat (small level body) so it reads as discrete blooms, not a brightness wash.
@@ -334,26 +348,30 @@
       const ring = Math.exp(-Math.pow(d - radius, 2) * 5);
       const v = Math.max(0, Math.min(1, ring*energy*1.4));
       if(v < 0.04){ out[o]=out[o+1]=out[o+2]=0; continue; }
-      out[o]=(col0[0]*v)|0; out[o+1]=(col0[1]*v)|0; out[o+2]=(col0[2]*v)|0;
+      let c = col0;
+      if(grad){ const dn = Math.min(1, d/1.41); c=[col0[0]+(col2[0]-col0[0])*dn, col0[1]+(col2[1]-col0[1])*dn, col0[2]+(col2[2]-col0[2])*dn]; }   // center→edge
+      out[o]=(c[0]*v)|0; out[o+1]=(c[1]*v)|0; out[o+2]=(c[2]*v)|0;
     }
   }
 
   // Wave: per-column sample forms an oscilloscope line scrolling across the board; light the key
   // nearest the line, amplitude scaled by that column's band energy.
   function renderWave(s, out, A, now){
-    const col0 = hexToRgb(s.waveColor||'#00e0ff');
+    const col0 = hexToRgb(s.waveColor||'#00e0ff'), col2 = hexToRgb(s.waveColor2||'#ff00aa'), grad = !!s.waveGrad;
     const t = now/1000, dir = s.waveReverse ? -1 : 1;   // flip the per-column phase to scroll the trace the other way
     const lvl = Math.max(0, Math.min(1, A.level));
     for(let k=0;k<NLED;k++){
       const idx = INDICES[k], cell = GRID[idx]; if(!cell) continue;
       const col = cell[0], row = cell[1], o = k*3;
-      const band = Math.min(31, Math.round((GW>1?col/(GW-1):0)*31));
+      const fc = GW>1 ? col/(GW-1) : 0;
+      const band = Math.min(31, Math.round(fc*31));
       // deflection is the column's BAND energy (no constant floor) → loud bands bulge, quiet sit flat;
       // overall brightness tracks loudness so the trace fades out on silence (follows the song).
       const samp = 0.5 + 0.48*Math.sin(t*6 + dir*col*0.6) * A.bands[band];
       const line = samp*(GH-1), v = Math.max(0, 1 - Math.abs(row-line)*0.9) * (0.15 + 0.85*lvl);
       if(v < 0.05){ out[o]=out[o+1]=out[o+2]=0; continue; }
-      out[o]=(col0[0]*v)|0; out[o+1]=(col0[1]*v)|0; out[o+2]=(col0[2]*v)|0;
+      const c = grad ? [col0[0]+(col2[0]-col0[0])*fc, col0[1]+(col2[1]-col0[1])*fc, col0[2]+(col2[2]-col0[2])*fc] : col0;   // start→end (left→right)
+      out[o]=(c[0]*v)|0; out[o+1]=(c[1]*v)|0; out[o+2]=(c[2]*v)|0;
     }
   }
 
@@ -623,7 +641,10 @@
       const ad={ style:'bars', source:'system', appId:'', deviceId:'',
         gain:1, floor:5, attackMs:40, decayMs:220, beatSens:50,
         barColorBass:'#ff2200', barColorTreble:'#22aaff', barTip:'off', barTipColor:'#ffffff', barFill:'solid',
-        pulseColor:'#19b6ff', bloomColor:'#ff5a00', waveColor:'#00e0ff', waveReverse:false };
+        barColor:'bassTreble', barGradA:'#00ff66', barGradB:'#ff00aa',
+        pulseColor:'#19b6ff', pulseColor2:'#ff00aa', pulseGrad:false,
+        bloomColor:'#ff5a00', bloomColor2:'#ffd000', bloomGrad:false,
+        waveColor:'#00e0ff', waveColor2:'#ff00aa', waveGrad:false, waveReverse:false };
       Object.keys(ad).forEach(k=>{ if(s[k]===undefined)s[k]=ad[k]; });
       if(!Array.isArray(s.ducks)) s.ducks=[];   // [{layer:<index>, dim:<0..100 max-brightness %>}] — dim these while the audio layer emits
     }
