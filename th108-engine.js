@@ -252,11 +252,19 @@
   function renderMedia(L,now){ L.rgb.fill(0); }   // media layers are a no-op in the engine (page-only in v1)
   // individual-keys layer: paint explicit per-key colors. settings.keys = {ledIndex:'#rrggbb'};
   // unpainted keys are black, i.e. transparent under the 'replace' blend (painted keys override below).
+  // fill 'subtract' (settings.fill): the painted keys CARVE the layers below dark instead of drawing their
+  // color — the painted shape reads as a negative-space silhouette (same mechanism as bars 'subtract').
   function renderKeys(L){
-    const keys=(L.settings&&L.settings.keys)||{}, out=L.rgb;
+    const s=L.settings||{}, keys=s.keys||{}, out=L.rgb;
+    const subtract = s.fill === 'subtract';
+    let cb=null, any=false;
+    if(subtract){ cb = L._carveBuf || (L._carveBuf = new Float32Array(NLED)); cb.fill(0); }
     for(let k=0;k<NLED;k++){ const o=k*3, hex=keys[INDICES[k]];
-      if(hex){ const c=hexToRgb(hex); out[o]=c[0]; out[o+1]=c[1]; out[o+2]=c[2]; }
+      if(hex){
+        if(subtract){ cb[k]=1; any=true; out[o]=out[o+1]=out[o+2]=0; }   // painted key carves below → dark silhouette
+        else { const c=hexToRgb(hex); out[o]=c[0]; out[o+1]=c[1]; out[o+2]=c[2]; } }
       else { out[o]=out[o+1]=out[o+2]=0; } }
+    L._carve = (subtract && any) ? cb : null;   // clear when solid / nothing painted (else a stale mask keeps carving)
   }
 
   function renderAudio(L, now, state){
@@ -633,7 +641,7 @@
     else if(L.type==='gradient'){ ['colorA','colorB','angle','scroll','phase'].forEach(k=>{ if(s[k]===undefined)s[k]=def[k]; }); }
     else if(L.type==='pattern'){ const pd={ pattern:'rainbow', color:'#00ffff', color2:'#ff00ff', color3:'#00ff00', colMode:'rainbow', speed:50, scale:10, gap:150, cox:-8, coy:-10 };
       Object.keys(pd).forEach(k=>{ if(s[k]===undefined)s[k]=pd[k]; }); }
-    else if(L.type==='individual'){ if(!L.settings.keys || typeof L.settings.keys!=='object') L.settings.keys={}; if(L.settings.current===undefined) L.settings.current='#ff8c00'; }
+    else if(L.type==='individual'){ if(!L.settings.keys || typeof L.settings.keys!=='object') L.settings.keys={}; if(L.settings.current===undefined) L.settings.current='#ff8c00'; if(L.settings.fill===undefined) L.settings.fill='solid'; }
     else if(L.type==='audio'){
       const ad={ style:'bars', source:'system', appId:'', deviceId:'',
         gain:1, floor:5, attackMs:40, decayMs:220, beatSens:50,

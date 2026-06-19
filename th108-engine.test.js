@@ -116,6 +116,22 @@ test('ensureSettings backfills individual fields', () => {
   E.ensureSettings(L);
   assert.deepEqual(L.settings.keys, {});
   assert.equal(L.settings.current, '#ff8c00');
+  assert.equal(L.settings.fill, 'solid');
+});
+
+test('individual subtract fill carves painted keys into a silhouette, passes the rest through', () => {
+  const idxA = E.KEYMAP.KeyA, idxB = E.KEYMAP.KeyB;
+  const st = E.createState([
+    { name:'BG',   enabled:true, type:'background', opacity:1, blend:'normal',  fps:30,
+      settings:{ color:'#ffffff', period:1, bgMin:100, bgMax:100 } },
+    { name:'Keys', enabled:true, type:'individual', opacity:1, blend:'replace', fps:30,
+      settings:{ keys:{ [idxA]:'#ff0000' }, current:'#ff0000', fill:'subtract' } },
+  ]);
+  st.bri = 1;
+  const flat = E.composeFrame(st, 100);
+  const oA = E.INDICES.indexOf(idxA) * 4, oB = E.INDICES.indexOf(idxB) * 4;
+  assert.ok(flat[oA+1] < 60 && flat[oA+2] < 60 && flat[oA+3] < 60, 'painted A carved DARK (silhouette), not drawn red');
+  assert.ok(flat[oB+1] > 200 && flat[oB+2] > 200 && flat[oB+3] > 200, 'unpainted B still reveals the white background');
 });
 
 test('applyConfig updates settings in place (preserves running animation), rebuilds on structure change', () => {

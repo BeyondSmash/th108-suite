@@ -57,11 +57,10 @@
       for(let n=0;n<state.layers.length;n++){
         const L=state.layers[n], card=document.createElement('div');
         card.className='lcard'+(L.enabled?'':' off')+(L.collapsed?' coll':''); card.dataset.n=n;
-        card.draggable=true;
         const opt=(arr,sel)=>arr.map(v=>'<option'+(v===sel?' selected':'')+'>'+v+'</option>').join('');
         card.innerHTML=
           '<div class="lhead">'+
-            '<span class="lgrip" title="drag to change layer level">⠿</span>'+
+            '<span class="lgrip" draggable="true" title="drag to change layer level">⠿</span>'+   // draggable lives on the GRIP, not the card — a draggable card reports dragstart.target as the card (not the grip), so the grip-only guard always failed and no drag ever started
             '<span class="llvl">Layer '+(n+1)+'</span>'+
             '<input type="checkbox" class="le"'+(L.enabled?' checked':'')+' title="enable layer">'+
             '<input type="text" class="ln" value="'+L.name.replace(/"/g,'&quot;')+'">'+
@@ -94,11 +93,11 @@
         lf.addEventListener('input',e=>setFps(+e.target.value,true));
         lfn.addEventListener('input',e=>{ if(e.target.value!=='') setFps(+e.target.value,false); });
         lfn.addEventListener('change',e=>setFps(+e.target.value,true));
-        // layer card drag-to-reorder (grip only)
+        // layer card drag-to-reorder (the grip is the only draggable element; its dragstart bubbles here)
         card.addEventListener('dragstart',e=>{
-          if(!e.target.closest('.lgrip')){ e.preventDefault(); return; }   // only the grip starts a card drag
+          if(!e.target.closest('.lgrip')){ e.preventDefault(); return; }   // belt-and-suspenders: only the grip starts a card drag
           lcardDragging=card; card.classList.add('ldragging');
-          try{ e.dataTransfer.effectAllowed='move'; e.dataTransfer.setData('text/plain','lcard'); }catch(_){ }
+          try{ e.dataTransfer.effectAllowed='move'; e.dataTransfer.setData('text/plain','lcard'); e.dataTransfer.setDragImage(card, 12, 12); }catch(_){ }   // drag the whole card, not the tiny grip glyph
         });
         card.addEventListener('dragend',()=>{ card.classList.remove('ldragging'); lcardDragging=null; });
         buildLayerBody(card,L);
@@ -271,8 +270,12 @@
       } else if(L.type==='individual'){
         if(!s.keys||typeof s.keys!=='object') s.keys={};
         if(s.current===undefined) s.current='#ff8c00';
+        if(s.fill===undefined) s.fill='solid';
+        const fillOpt=[['solid','Solid'],['subtract','Subtract (silhouette)']].map(o=>'<option value="'+o[0]+'"'+(o[0]===s.fill?' selected':'')+'>'+o[1]+'</option>').join('');
+        const sub=s.fill==='subtract';
         body.innerHTML='<div class="ctl">'+
-          row('Paint color','<input type="color" class="s-current" value="'+s.current+'"><span></span>')+
+          row('Fill','<select class="s-fill" title="Solid = paint exact key colors. Subtract = the painted keys carve the layers below into a dark silhouette (negative space) — needs a layer beneath to cut into.">'+fillOpt+'</select><span></span>')+
+          row(sub?'Paint keys':'Paint color','<input type="color" class="s-current" value="'+s.current+'"><span class="val">'+(sub?'(color ignored in Subtract — picks which keys to carve)':'')+'</span>')+
           row('','<button class="s-showkb" type="button">⌨ Show Keyboard</button><span class="val s-selcount" style="margin-left:8px"></span>')+
           row('','<button class="s-clearsel" type="button">Clear selection</button> <button class="s-clearall" type="button">Clear all</button>')+
         '</div>';
@@ -293,6 +296,11 @@
           c('.s-showkb').textContent='⌨ Hide Keyboard'; updCount();
         }
         function unmountBoard(){ if(!pb) return; pb.destroy(); pb=null; if(wrap&&wrap.parentNode) wrap.parentNode.removeChild(wrap); wrap=null; c('.s-showkb').textContent='⌨ Show Keyboard'; updCount(); }
+        c('.s-fill').addEventListener('change',e=>{ s.fill=e.target.value; const sub=s.fill==='subtract';   // update label/hint in place (NOT a rebuild — that would orphan the mounted paint board, which is a card sibling)
+          const cur=c('.s-current'), lbl=cur.previousElementSibling, hint=cur.nextElementSibling;
+          if(lbl&&lbl.tagName==='LABEL') lbl.textContent=sub?'Paint keys':'Paint color';
+          if(hint) hint.textContent=sub?'(color ignored in Subtract — picks which keys to carve)':'';
+          reRender(); scheduleSaveLayers(); });
         c('.s-current').addEventListener('input',e=>{ s.current=e.target.value; if(pb) pb.recolorSelection(); });
         c('.s-showkb').addEventListener('click',()=>{ pb?unmountBoard():mountBoard(); });
         c('.s-clearsel').addEventListener('click',()=>{ if(pb){ pb.clearSelection(); } reRender(); scheduleSaveLayers(); });
@@ -432,6 +440,8 @@
       // painted hue. Cap it at 100% (dim-only, never distorts) and pull any already-saved >100 value back down.
       if(L.type==='individual'){ CFG.bri=['Brightness',0,100,0,'%',100]; if(s.bri>100) s.bri=100; }
       if(L.type==='audio') delete CFG.rot;   // audio styles map to discrete columns/rows — Rotate has no effect, so don't show a dead control
+      if(L.type==='individual') delete CFG.rot;   // per-key paint = explicit positions; rotating would scramble the painted layout — dead control
+      const showStatic = L.type!=='individual';   // individual paints a fixed color set — there's no animation to freeze, so Static is meaningless here
       const disp=(key,raw)=>{ const d=CFG[key][3]; return d?(raw/100).toFixed(d):String(raw); };
       const ctl=key=>{ const c=CFG[key], dec=c[3], frac=(c[5]-c[1])/(c[2]-c[1]);   // tick at the default value
         const nMin=dec?c[1]/100:c[1], nMax=dec?c[2]/100:c[2], nStep=dec?1/Math.pow(10,dec):1;
@@ -442,7 +452,7 @@
       adj.innerHTML=
         '<div class="lbody" style="margin-top:8px"><div class="ph" style="margin-bottom:6px">Adjust</div><div class="ctl">'+
           ctl('bri')+ctl('sat')+ctl('con')+ctl('gam')+(CFG.rot?ctl('rot'):'')+
-          '<label>Static</label><label class="sl" style="margin:0"><input type="checkbox" class="a-frozen"'+(s.frozen?' checked':'')+'> Freeze Animation</label><span></span>'+
+          (showStatic?'<label>Static</label><label class="sl" style="margin:0"><input type="checkbox" class="a-frozen"'+(s.frozen?' checked':'')+'> Freeze Animation</label><span></span>':'')+
         '</div></div>';
       body.appendChild(adj.firstChild);
       Object.keys(CFG).forEach(key=>{ const c=CFG[key], min=c[1], max=c[2], dec=c[3], def=c[5], thr=Math.max(1,Math.round((max-min)*0.03));
@@ -452,7 +462,7 @@
         num.addEventListener('input',e=>{ const v=parseFloat(e.target.value); if(!isNaN(v)) apply(dec?v*100:v); });   // don't reformat while typing
         rng.value=s[key]; num.value=disp(key,s[key]);
       });
-      body.querySelector('.a-frozen').addEventListener('change',e=>{ s.frozen=e.target.checked; });
+      const fz=body.querySelector('.a-frozen'); if(fz) fz.addEventListener('change',e=>{ s.frozen=e.target.checked; });   // individual layers omit Static
     }
 
     function init(){
