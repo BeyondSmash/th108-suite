@@ -316,7 +316,7 @@
         const esc=t=>(t||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');
         let html='<div class="ctl">'+
           row('Source','<span style="display:grid;grid-template-columns:1fr 1fr;gap:5px 14px">'+srcBubbles+'</span><span></span>')+
-          (s.source==='app' ? row('App','<select class="s-appId" style="max-width:200px"></select> <button type="button" class="s-appRefresh" title="rescan currently-playing apps">⟳</button> <span class="val s-appNote" style="opacity:.7"></span>') : '')+
+          (s.source==='app' ? row('App','<span style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;min-width:0"><select class="s-appId" style="max-width:180px"></select><button type="button" class="s-appRefresh" title="rescan currently-playing apps" style="width:28px;flex:none">⟳</button><span class="val s-appNote" style="opacity:.7"></span></span><span></span>') : '')+
           row('Source note','<span class="val" style="opacity:.7">This tab / Mic = real audio captured right here — pick one and accept the share/mic prompt (for a tab, tick “Share tab audio”). All system audio + a Specific app run ambiently through the background daemon (close/blur this tab). Pick an app from the list of what’s currently playing.</span><span></span>')+
           row('Style','<select class="s-style">'+sopt+'</select><span></span>')+
           row('Preview','<div style="display:flex;flex-direction:column;gap:9px">'+
