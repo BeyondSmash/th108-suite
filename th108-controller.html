@@ -55,7 +55,9 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
          -webkit-mask-image:var(--logomask); -webkit-mask-size:100% 100%; }
   /* the tab bar is lifted out of the root view transition (same recipe as the theme toggle) so the
      pill highlight visibly SLIDES between tabs — inside the snapshot crossfade it would just fade */
-  nav.tabs{ position:relative; display:flex; gap:2px; margin:0 auto; padding:5px; border-radius:999px; background:var(--tabbg);
+  /* absolutely center the tab bar to the header (≈ screen) so it stays optically centered no matter how wide
+     the left (logo+brightness) or right (Connect) groups get — flex margin:auto only centers leftover space. */
+  nav.tabs{ position:absolute; left:50%; transform:translateX(-50%); display:flex; gap:2px; padding:5px; border-radius:999px; background:var(--tabbg);
             view-transition-name:tabbar; }
   ::view-transition-image-pair(tabbar){ animation:none; }
   ::view-transition-old(tabbar){ display:none; }
@@ -149,11 +151,11 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
   .ic{ width:15px; height:15px; vertical-align:-2px; fill:none; stroke:currentColor; stroke-width:2;
        stroke-linecap:round; stroke-linejoin:round; flex:none; }
   /* header lighting master switch + global brightness */
-  #lightCtl{ display:flex; align-items:center; gap:10px; }
+  #lightCtl{ display:flex; align-items:center; gap:10px; margin-right:auto; }   /* tabs are absolute-centered; this auto margin pushes the right group (Connect/Online/theme) to the edge */
   #lightBtn{ margin:0; padding:6px 14px; font-weight:800; min-width:52px; }
   #lightBtn.on{ color:var(--mint); }
   #lightBtn.off{ color:var(--err, #e5534b); }
-  #lightCtl .srange{ width:190px; }
+  #lightCtl .srange{ width:120px; }   /* slimmer so the left group leaves room for the centered tab bar */
   #lightCtl .tick.lit{ background:var(--card); }   /* snapped: inverted vs the (--text) handle, peeking above/below it */
   #lightCtl .britick{ position:absolute; top:17px; transform:translateX(-50%); font-size:10.5px; font-weight:700;
                       color:var(--text); background:var(--card); padding:1px 6px; border-radius:6px;
