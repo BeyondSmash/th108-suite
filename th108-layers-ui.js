@@ -275,9 +275,10 @@
         const sub=s.fill==='subtract';
         body.innerHTML='<div class="ctl">'+
           row('Fill','<select class="s-fill" title="Solid = paint exact key colors. Subtract = the painted keys carve the layers below into a dark silhouette (negative space) — needs a layer beneath to cut into.">'+fillOpt+'</select><span></span>')+
-          row(sub?'Paint keys':'Paint color','<input type="color" class="s-current" value="'+s.current+'"><span class="val">'+(sub?'(color ignored in Subtract — picks which keys to carve)':'')+'</span>')+
-          row('','<button class="s-showkb" type="button">⌨ Show Keyboard</button><span class="val s-selcount" style="margin-left:8px"></span>')+
-          row('','<button class="s-clearsel" type="button">Clear selection</button> <button class="s-clearall" type="button">Clear all</button>')+
+          row('Paint color','<input type="color" class="s-current" value="'+s.current+'"><span></span>')+
+          row('','<span class="val s-fillNote" style="opacity:.7">'+(sub?'In Subtract the paint color is ignored — you’re choosing which keys to carve into a silhouette.':'Pick a color, Show Keyboard, then click/drag keys to paint them.')+'</span><span></span>')+
+          row('','<span style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><button class="s-showkb" type="button">⌨ Show Keyboard</button><span class="val s-selcount"></span></span><span></span>')+
+          row('','<span style="display:flex;gap:8px;flex-wrap:wrap"><button class="s-clearsel" type="button">Clear selection</button><button class="s-clearall" type="button">Clear all</button></span><span></span>')+
         '</div>';
         const c=q=>body.querySelector(q);
         let pb=null, wrap=null;
@@ -296,10 +297,10 @@
           c('.s-showkb').textContent='⌨ Hide Keyboard'; updCount();
         }
         function unmountBoard(){ if(!pb) return; pb.destroy(); pb=null; if(wrap&&wrap.parentNode) wrap.parentNode.removeChild(wrap); wrap=null; c('.s-showkb').textContent='⌨ Show Keyboard'; updCount(); }
-        c('.s-fill').addEventListener('change',e=>{ s.fill=e.target.value; const sub=s.fill==='subtract';   // update label/hint in place (NOT a rebuild — that would orphan the mounted paint board, which is a card sibling)
-          const cur=c('.s-current'), lbl=cur.previousElementSibling, hint=cur.nextElementSibling;
-          if(lbl&&lbl.tagName==='LABEL') lbl.textContent=sub?'Paint keys':'Paint color';
-          if(hint) hint.textContent=sub?'(color ignored in Subtract — picks which keys to carve)':'';
+        c('.s-fill').addEventListener('change',e=>{ s.fill=e.target.value;   // update the note in place (no rebuild — that would orphan the mounted paint board, which is a card sibling)
+          const note=c('.s-fillNote'); if(note) note.textContent = s.fill==='subtract'
+            ? 'In Subtract the paint color is ignored — you’re choosing which keys to carve into a silhouette.'
+            : 'Pick a color, Show Keyboard, then click/drag keys to paint them.';
           reRender(); scheduleSaveLayers(); });
         c('.s-current').addEventListener('input',e=>{ s.current=e.target.value; if(pb) pb.recolorSelection(); });
         c('.s-showkb').addEventListener('click',()=>{ pb?unmountBoard():mountBoard(); });
@@ -316,7 +317,7 @@
         const esc=t=>(t||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');
         let html='<div class="ctl">'+
           row('Source','<span style="display:grid;grid-template-columns:1fr 1fr;gap:5px 14px">'+srcBubbles+'</span><span></span>')+
-          (s.source==='app' ? row('App','<span style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;min-width:0"><select class="s-appId" style="max-width:180px"></select><button type="button" class="s-appRefresh" title="rescan currently-playing apps" style="width:28px;flex:none">⟳</button><span class="val s-appNote" style="opacity:.7"></span></span><span></span>') : '')+
+          (s.source==='app' ? row('App','<span style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;min-width:0"><select class="s-appId" style="max-width:180px"></select><button type="button" class="s-appRefresh" title="rescan currently-playing apps" style="flex:none">Refresh</button><span class="val s-appNote" style="opacity:.7"></span></span><span></span>') : '')+
           row('Source note','<span class="val" style="opacity:.7">This tab / Mic = real audio captured right here — pick one and accept the share/mic prompt (for a tab, tick “Share tab audio”). All system audio + a Specific app run ambiently through the background daemon (close/blur this tab). Pick an app from the list of what’s currently playing.</span><span></span>')+
           row('Style','<select class="s-style">'+sopt+'</select><span></span>')+
           row('Preview','<div style="display:flex;flex-direction:column;gap:9px">'+
