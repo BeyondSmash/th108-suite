@@ -41,3 +41,6 @@ th108-daemon/standard-lcd.json
 
 # Brainstorming visual-companion scratch (not source)
 .superpowers/
+
+# Per-app capture exe — built from app-capture.cs at setup time (in-box csc), never committed
+th108-daemon/app-capture.exe
