@@ -465,3 +465,18 @@ test('contrast deepens the dips: a sub-peak band reads lower at high contrast', 
   const linear = run(0), punchy = run(100);
   assert.ok(punchy < linear, 'high contrast pulls a sub-peak band much lower (deeper dips → bottom→top travel)');
 });
+
+test('abstract styles light on sound and go fully dark on silence', () => {
+  for (const style of ['plasma','aurora','sparkle','radial']) {
+    const L = { type:'audio', enabled:true, opacity:1, blend:'add', settings:{ style }, rgb:new Uint8Array(E.NLED*3) };
+    E.ensureSettings(L); const st = E.createState([L]); const La = st.layers[0];
+    st.audio.level = 1; st.audio.beat = 1; st.audio.centroid = 0.6; st.audio.bands.fill(0.8);
+    E.renderAudio(La, 100, st);
+    let lit = 0; for (let i = 0; i < La.rgb.length; i++) if (La.rgb[i] > 0) lit++;
+    assert.ok(lit > 0, style + ' lights on sound');
+    st.audio.level = 0; st.audio.beat = 0; st.audio.bands.fill(0);
+    E.renderAudio(La, 200, st);
+    let sum = 0; for (let i = 0; i < La.rgb.length; i++) sum += La.rgb[i];
+    assert.equal(sum, 0, style + ' dark on silence');
+  }
+});

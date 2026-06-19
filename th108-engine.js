@@ -295,7 +295,54 @@
     else if(style==='pulse') renderPulse(s, out, A, now);
     else if(style==='bloom') renderBloom(s, out, A);
     else if(style==='wave') renderWave(s, out, A, now);
+    else if(style==='plasma') renderPlasma(s, out, A, now);
+    else if(style==='aurora') renderAurora(s, out, A, now);
+    else if(style==='sparkle') renderSparkle(s, out, A, now);
+    else if(style==='radial') renderRadial(s, out, A, now);
     else renderBars(s, out, A, now, L);
+  }
+
+  // ===== abstract / WMP-style visualizers (auto-colored from the spectrum; all fade to dark on silence) =====
+  // Plasma: a flowing sine field; flow speed + brightness ride loudness, hue drifts with spectral brightness.
+  function renderPlasma(s, out, A, now){
+    const t = now/1000 * (0.4 + A.level*1.6);
+    const energy = Math.min(1, A.level*1.5 + A.beat*0.8);            // → dark on silence
+    const amp = 0.5 + A.beat*0.5;
+    for(let k=0;k<NLED;k++){ const cell=GRID[INDICES[k]]; if(!cell) continue; const o=k*3;
+      const x=GW>1?cell[0]/(GW-1):0, y=GH>1?cell[1]/(GH-1):0;
+      const p=(Math.sin(x*3+t)+Math.sin(y*4-t*0.8)+Math.sin((x+y)*3+t*0.6)+Math.sin(Math.hypot(x-0.5,y-0.5)*8-t*1.2))/4;  // -1..1
+      const v=Math.max(0,Math.min(1, amp*(0.45+0.55*(0.5+0.5*Math.sin(p*Math.PI*1.5)))*energy));
+      const c=hsv2rgb(A.centroid*0.6 + p*0.2 + t*0.02, 1, v); out[o]=c[0]|0; out[o+1]=c[1]|0; out[o+2]=c[2]|0; }
+  }
+  // Aurora: soft vertical color curtains that sway with time and lift/brighten with each column's energy.
+  function renderAurora(s, out, A, now){
+    const t = now/1000;
+    for(let k=0;k<NLED;k++){ const cell=GRID[INDICES[k]]; if(!cell) continue; const o=k*3;
+      const x=GW>1?cell[0]/(GW-1):0, y=GH>1?cell[1]/(GH-1):0;
+      const mag=A.bands[Math.min(31,Math.round(x*31))];
+      const centerY = 0.5 - 0.28*Math.sin(t*0.6 + x*4) - mag*0.35;   // y=0 top
+      const v=Math.max(0,Math.min(1, Math.exp(-Math.pow((y-centerY)*2.4,2)) * (0.85*A.level + A.beat*0.4)));   // no idle floor → dark on silence
+      if(v<0.03){ out[o]=out[o+1]=out[o+2]=0; continue; }
+      const c=hsv2rgb(0.45 + A.centroid*0.35 + x*0.12, 0.85, v); out[o]=c[0]|0; out[o+1]=c[1]|0; out[o+2]=c[2]|0; }
+  }
+  // Starfield: per-key twinkle; louder = more stars lit, kicks burst a subset.
+  function renderSparkle(s, out, A, now){
+    const t = now/1000, energy = Math.max(0, Math.min(1, A.level*0.7 + A.beat*0.6));
+    for(let k=0;k<NLED;k++){ const o=k*3, ph=patHash(INDICES[k]);
+      const tw=0.5+0.5*Math.sin(t*(2.5+ph*5) + ph*6.283), thr=1-energy;
+      let v = tw>thr ? (tw-thr)/Math.max(0.02,energy) : 0;
+      v = Math.min(1, v*(0.6+0.4*A.level) + (A.beat>0.5 && ph>0.6 ? A.beat*0.6 : 0));
+      if(v<0.03){ out[o]=out[o+1]=out[o+2]=0; continue; }
+      const c=hsv2rgb(ph + t*0.08, 0.9, v); out[o]=c[0]|0; out[o+1]=c[1]|0; out[o+2]=c[2]|0; }
+  }
+  // Radial spectrum: distance from board center → band (center bass, edge treble); rainbow by angle.
+  function renderRadial(s, out, A, now){
+    const cx=(GW-1)/2, cy=(GH-1)/2, maxd=Math.hypot(cx,cy)||1, t=now/1000;
+    for(let k=0;k<NLED;k++){ const cell=GRID[INDICES[k]]; if(!cell) continue; const o=k*3;
+      const dx=cell[0]-cx, dy=cell[1]-cy, d=Math.hypot(dx,dy)/maxd;
+      const v=Math.max(0,Math.min(1, A.bands[Math.min(31,Math.round(d*31))]*(0.5+A.beat*0.5)));
+      if(v<0.03){ out[o]=out[o+1]=out[o+2]=0; continue; }
+      const c=hsv2rgb(Math.atan2(dy,dx)/(2*Math.PI)+0.5 + t*0.1, 1, v); out[o]=c[0]|0; out[o+1]=c[1]|0; out[o+2]=c[2]|0; }
   }
   // Bars: column (GRID col 0..GW-1) → frequency band; each bar fills by that band's magnitude.
   // s.barLayout picks BOTH the horizontal frequency mapping and the vertical fill direction:
