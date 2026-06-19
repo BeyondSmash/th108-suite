@@ -16,7 +16,7 @@ if errorlevel 1 (
   exit /b 1
 )
 
-echo [1/6] Installing daemon dependencies...
+echo [1/7] Installing daemon dependencies...
 pushd th108-daemon
 call npm install --no-audit --no-fund
 if errorlevel 1 (
@@ -27,22 +27,35 @@ if errorlevel 1 (
 )
 popd
 
-echo [2/6] Enabling auto-start at login (per-user Run key, no admin)...
+echo [2/7] Building the per-app audio capture helper (in-box .NET compiler, no SDK)...
+set "CSC=%WINDIR%\Microsoft.NET\Framework64\v4.0.30319\csc.exe"
+if exist "%CSC%" (
+  "%CSC%" -nologo -optimize -out:"%~dp0th108-daemon\app-capture.exe" "%~dp0th108-daemon\app-capture.cs"
+  if errorlevel 1 (
+    echo     [!] app-capture.exe build failed - "Specific app" audio source will be unavailable ^(the rest works^).
+  ) else (
+    echo     Built app-capture.exe ^(enables the "Specific app" music-layer source^).
+  )
+) else (
+  echo     [!] In-box C# compiler not found - skipping the per-app helper ^("Specific app" source unavailable^).
+)
+
+echo [3/7] Enabling auto-start at login (per-user Run key, no admin)...
 reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Run" /v TH108LightingDaemon /t REG_SZ /d "wscript.exe \"%~dp0th108-daemon\start-tray.vbs\"" /f >nul
 
-echo [3/6] Adding the Start-menu shortcut (TH108 Lighting)...
+echo [4/7] Adding the Start-menu shortcut (TH108 Lighting)...
 powershell -NoProfile -Command "$ws = New-Object -ComObject WScript.Shell; $l = $ws.CreateShortcut([Environment]::GetFolderPath('Programs') + '\TH108 Lighting.lnk'); $l.TargetPath = 'wscript.exe'; $l.Arguments = '\"%~dp0th108-daemon\start-tray.vbs\"'; $l.Description = 'TH108 lighting tray + daemon'; $l.Save()" >nul
 
-echo [4/6] Installing recovery + permission helpers (ONE admin prompt - click No to skip)...
+echo [5/7] Installing recovery + permission helpers (ONE admin prompt - click No to skip)...
 echo       - Auto-Fix Lighting Wedge: hidden USB-restart recovery task
 echo       - WebHID pre-grant: skips the keyboard picker forever
 echo       Both are OPTIONAL - the suite works fine without them.
 powershell -NoProfile -Command "Start-Process powershell -Verb RunAs -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-File','\"%~dp0th108-daemon\install-admin-extras.ps1\"'" 2>nul
 
-echo [5/6] Starting the tray (it starts and watches the daemon)...
+echo [6/7] Starting the tray (it starts and watches the daemon)...
 wscript "%~dp0th108-daemon\start-tray.vbs"
 
-echo [6/6] Opening the controller...
+echo [7/7] Opening the controller...
 timeout /t 3 /nobreak >nul
 start http://localhost:8123/
 

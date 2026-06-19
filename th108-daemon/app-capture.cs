@@ -46,6 +46,35 @@ class AppCapture {
   [Guid("C8ADBD64-E71E-48A0-A4DE-185C395CD317"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
   interface IAudioCaptureClient { int GetBuffer(out IntPtr d, out uint f, out uint fl, out long dp, out long qp); int ReleaseBuffer(uint f); int GetNextPacketSize(out uint f); }
 
+  // ---- audio-session enumeration (for --list and name→PID resolution) ----
+  [ComImport, Guid("BCDE0395-E52F-467C-8E3D-C4579291692E")] class MMDeviceEnumerator { }
+  [Guid("A95664D2-9614-4F35-A746-DE8DB63617E6"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+  interface IMMDeviceEnumerator { int NotImpl1(); int GetDefaultAudioEndpoint(int dataFlow, int role, out IMMDevice ep); }
+  [Guid("D666063F-1587-4E43-81F1-B948E807363F"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+  interface IMMDevice { int Activate(ref Guid iid, int clsctx, IntPtr act, [MarshalAs(UnmanagedType.IUnknown)] out object o); }
+  [Guid("77AA99A0-1BD6-484F-8BC7-2C654C9A9B6F"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+  interface IAudioSessionManager2 {
+    int NotImpl1(); int NotImpl2();
+    int GetSessionEnumerator(out IAudioSessionEnumerator e);
+    // (remaining methods unused)
+  }
+  [Guid("E2F5BB11-0570-40CA-ACDD-3AA01277DEE8"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+  interface IAudioSessionEnumerator { int GetCount(out int c); int GetSession(int i, out IAudioSessionControl2 s); }
+  // IAudioSessionControl2 (extends IAudioSessionControl) — full vtable so GetState + GetProcessId land in the
+  // right slots; only those two are called, the rest are placeholders.
+  [Guid("BFB7FF88-7239-4FC9-8FA2-07C950BE9C6D"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+  interface IAudioSessionControl2 {
+    int GetState(out int state);                                   // 0=inactive 1=active 2=expired
+    int GetDisplayName(out IntPtr p); int SetDisplayName(IntPtr a, IntPtr b);
+    int GetIconPath(out IntPtr p); int SetIconPath(IntPtr a, IntPtr b);
+    int GetGroupingParam(out Guid g); int SetGroupingParam(ref Guid a, IntPtr b);
+    int RegisterAudioSessionNotification(IntPtr n); int UnregisterAudioSessionNotification(IntPtr n);
+    int GetSessionIdentifier(out IntPtr p); int GetSessionInstanceIdentifier(out IntPtr p);
+    int GetProcessId(out uint pid);
+    int IsSystemSoundsSession(); int SetDuckingPreference(bool opt);
+  }
+  static Guid IID_IAudioSessionManager2 = new Guid("77AA99A0-1BD6-484F-8BC7-2C654C9A9B6F");
+
   [StructLayout(LayoutKind.Sequential)]
   struct ActivationParams { public int ActivationType; public uint TargetPid; public int LoopbackMode; }
   const int SHARED = 0, LOOPBACK = 0x00020000, EVENTCALLBACK = 0x00040000;
@@ -177,14 +206,68 @@ class AppCapture {
     return true;
   }
 
+  // ---------- audio-session enumeration (--list and name→PID resolution) ----------
+  struct AppSession { public uint pid; public string name; }
+  static System.Collections.Generic.List<AppSession> Sessions(bool activeOnly) {
+    var list = new System.Collections.Generic.List<AppSession>();
+    var seen = new System.Collections.Generic.HashSet<uint>();
+    try {
+      var enumr = (IMMDeviceEnumerator)(new MMDeviceEnumerator());
+      IMMDevice dev; if (enumr.GetDefaultAudioEndpoint(0, 0, out dev) != 0 || dev == null) return list;   // 0=eRender, 0=eConsole
+      object mgrO; if (dev.Activate(ref IID_IAudioSessionManager2, 1, IntPtr.Zero, out mgrO) != 0) return list;
+      var mgr = (IAudioSessionManager2)mgrO;
+      IAudioSessionEnumerator se; if (mgr.GetSessionEnumerator(out se) != 0) return list;
+      int count; if (se.GetCount(out count) != 0) return list;
+      for (int i = 0; i < count; i++) {
+        IAudioSessionControl2 ctl; if (se.GetSession(i, out ctl) != 0 || ctl == null) continue;
+        int state; if (ctl.GetState(out state) != 0) continue;
+        if (activeOnly && state != 1) continue;            // 1 = AudioSessionStateActive (currently producing audio)
+        uint p; if (ctl.GetProcessId(out p) != 0 || p == 0 || seen.Contains(p)) continue;
+        string nm = null; try { nm = System.Diagnostics.Process.GetProcessById((int)p).ProcessName; } catch { }
+        if (string.IsNullOrEmpty(nm)) continue;
+        seen.Add(p); list.Add(new AppSession { pid = p, name = nm });
+      }
+    } catch { }
+    return list;
+  }
+  static string JsonEsc(string s) { return s.Replace("\\", "\\\\").Replace("\"", "\\\""); }
+  static int DoList() {
+    var sb = new StringBuilder("["); var sessions = Sessions(true);
+    for (int i = 0; i < sessions.Count; i++) { if (i > 0) sb.Append(',');
+      sb.Append("{\"pid\":").Append(sessions[i].pid).Append(",\"name\":\"").Append(JsonEsc(sessions[i].name)).Append("\"}"); }
+    Console.Out.WriteLine(sb.Append(']').ToString()); Console.Out.Flush(); return 0;
+  }
+  // resolve a process NAME (case-insensitive, .exe optional) to a PID with an audio session (any state)
+  static uint ResolvePid(string name) {
+    string want = name.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) ? name.Substring(0, name.Length - 4) : name;
+    foreach (var s in Sessions(false)) if (string.Equals(s.name, want, StringComparison.OrdinalIgnoreCase)) return s.pid;
+    return 0;
+  }
+  static void EmitSilence(System.Diagnostics.Stopwatch sw, StringBuilder sb, CultureInfo ci) {
+    sb.Length = 0; sb.Append("{\"bands\":["); for (int i=0;i<32;i++){ if(i>0)sb.Append(','); sb.Append('0'); }
+    sb.Append("],\"level\":0,\"beat\":0,\"centroid\":0.5,\"t\":").Append(Math.Round(sw.Elapsed.TotalMilliseconds,1).ToString(ci)).Append('}');
+    Console.Out.WriteLine(sb.ToString()); Console.Out.Flush();
+  }
+
   [MTAThread]
   static int Main(string[] args) {
-    if (args.Length < 1) { Console.Error.WriteLine("usage: app-capture.exe <PID>"); return 1; }
-    uint pid; if (!uint.TryParse(args[0], out pid)) { Console.Error.WriteLine("bad PID"); return 1; }
+    CoInitializeEx(IntPtr.Zero, 0);   // MTA — needed for both session enumeration and the activation call
+    if (args.Length < 1) { Console.Error.WriteLine("usage: app-capture.exe <PID|process-name|--list>"); return 1; }
+    if (args[0] == "--list") return DoList();
+    var sw = System.Diagnostics.Stopwatch.StartNew(); var sb = new StringBuilder();
+    var ci = CultureInfo.InvariantCulture;
+    // arg is a numeric PID, or a process name we resolve to a live audio-session PID (survives app restarts /
+    // picking an app that isn't playing yet — we emit silence and keep re-resolving until its session appears).
+    uint pid;
+    if (!uint.TryParse(args[0], out pid)) {
+      pid = ResolvePid(args[0]);
+      int waited = 0;
+      while (pid == 0) { EmitSilence(sw, sb, ci); Thread.Sleep(500); pid = ResolvePid(args[0]);
+        if (++waited == 1) Console.Error.WriteLine("app-capture: waiting for an audio session named '" + args[0] + "'"); }
+    }
     try { Open(pid); } catch (Exception e) { Console.Error.WriteLine("app-capture: " + e.Message); return 2; }
     var mono = new float[N*4]; var bands = new float[32]; var lbc = new float[3]; var chunk = new float[8192];
-    int countF = 0; var sw = System.Diagnostics.Stopwatch.StartNew(); var sb = new StringBuilder();
-    var ci = CultureInfo.InvariantCulture;
+    int countF = 0;
     while (true) {
       WaitForSingleObject(hEvent, 100);
       int n = Read(chunk);

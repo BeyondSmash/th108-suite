@@ -81,6 +81,7 @@ function createServer({ control, root, port = 8123, watchdogMs = 12000 }) {
     try {
       if (req.method === 'GET' && u === '/status') return sendJson(res, 200, control.status());
       if (req.method === 'GET' && u === '/metrics') return sendJson(res, 200, { endpoints: metricsSnapshot(), windowSec: FLOOD_WINDOW_MS / 1000, driver: control.metrics ? control.metrics() : null });
+      if (req.method === 'GET' && u === '/audio/apps') return sendJson(res, 200, { apps: control.listAudioApps ? await control.listAudioApps() : [] });   // currently-playing audio processes for the "Specific app" picker
       if (req.method === 'POST' && u === '/yield') {
         // BACKSTOP for the yield-storm (2026-06-13): if we're already yielded and another /yield
         // lands within 1s, it's a flapping page looping — ACK without re-running control.yield()

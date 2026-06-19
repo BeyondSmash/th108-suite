@@ -409,13 +409,28 @@ syncNowPlaying();
 
 // ----- real audio capture (audio-capture.js: WASAPI loopback sidecar → state.audio) -----
 const AC = require('./audio-capture.js');
-let acHandle = null;
-// the audio sidecar is wanted only when an enabled audio layer exists AND we're driving (not yielded)
-function audioWanted() { return !paused && !!state && state.layers.some(L => L.enabled && L.type === 'audio'); }
+let acHandle = null, acKey = null;
+// What capture does the active config want? null = none; else {key, app?}. The daemon handles 'system'
+// (WASAPI loopback) and 'app' (process-loopback via app-capture.exe <name>); 'tab'/'mic' are page-only, so
+// when the daemon is driving they fall back to system (the ambient board still reacts to system audio).
+function audioCfg() {
+  if (paused || !state) return null;
+  const aL = state.layers.find(L => L.enabled && L.type === 'audio');
+  if (!aL) return null;
+  const s = aL.settings || {};
+  if (s.source === 'app' && s.appId) return { key: 'app:' + s.appId, app: s.appId };
+  return { key: 'system' };
+}
 function syncAudioCapture() {
-  const want = audioWanted();
-  if (want && !acHandle) { acHandle = AC.start({ log }); log('♪ audio capture started (system loopback)'); }
-  else if (!want && acHandle) { acHandle.stop(); acHandle = null; log('♪ audio capture stopped'); }
+  const cfg = audioCfg();
+  if (cfg && acKey !== cfg.key) {                                   // (re)start when the target changes (system↔app, or a new app)
+    if (acHandle) { acHandle.stop(); acHandle = null; }
+    acHandle = AC.start({ log, app: cfg.app });
+    acKey = cfg.key;
+    log('♪ audio capture started (' + (cfg.app ? 'app: ' + cfg.app : 'system loopback') + ')');
+  } else if (!cfg && acHandle) {
+    acHandle.stop(); acHandle = null; acKey = null; log('♪ audio capture stopped');
+  }
 }
 syncAudioCapture();
 
@@ -446,6 +461,8 @@ const control = {
     if (!paused) { state = E.applyConfig(state, cfg);   // in-place on a settings edit → no animation reset; rebuilds only on a structural change
       if (state) state.bri = Math.max(0, Math.min(100, settings.brightness != null ? settings.brightness : 100)) / 100; }
     syncAudioCapture(); },   // an edit that enables/disables the audio layer starts/stops capture live
+  // List currently-playing audio apps for the page's "Specific app" picker (one-shot app-capture.exe --list).
+  listAudioApps() { return new Promise(r => AC.listApps((_e, arr) => r(arr))); },
   status() { return { running: true, paused, deviceConnected: !!device, fps: FPS, setupPath: path.resolve(__dirname, '..', 'setup.cmd'), usbReset: settings.usbReset, nowPlaying: settings.nowPlaying,
                       npTrack: npHandle ? npHandle.current() : null, npQueued: npHandle ? npHandle.queued() : false,
                       npHealth: npHandle ? npHandle.health() : null,

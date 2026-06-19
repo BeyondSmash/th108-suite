@@ -307,15 +307,17 @@
         c('.s-clearall').addEventListener('click',()=>{ s.keys={}; if(pb){ pb.selectNone(); pb.draw(); } reRender(); scheduleSaveLayers(); });
       } else if(L.type==='audio'){
         const style=s.style||'bars', uid=card.dataset.n;
-        // Phase 1 drives a synthetic signal for ALL sources, so only System is wired; App/Tab/Mic are
-        // disabled (greyed) until real per-source capture lands (Plan 1b) — no dead controls that lie.
-        const sources=[['system','All system audio',true],['app','Specific app',false],['tab','This tab',true],['mic','Mic / line-in',true]];   // tab/mic = in-tab Web Audio capture; app (process-loopback) still pending
-        const srcBubbles=sources.map(o=>{ const dis=!o[2]; return '<label class="sl" style="margin:0'+(dis?';opacity:.4':'')+'"'+(dis?' title="per-app capture (process-loopback) is coming in a later update"':'')+'><input type="radio" name="aud-src-'+uid+'" class="s-source" value="'+o[0]+'"'+((o[0]===(s.source||'system'))?' checked':'')+(dis?' disabled':'')+'> '+o[1]+(dis?' — soon':'')+'</label>'; }).join('');
+        // All four sources are live: system + app run through the background daemon (loopback / process-loopback);
+        // tab + mic are captured in-tab via Web Audio. App needs the daemon (it spawns app-capture.exe).
+        const sources=[['system','All system audio',true],['app','Specific app',true],['tab','This tab',true],['mic','Mic / line-in',true]];
+        const srcBubbles=sources.map(o=>{ const dis=!o[2]; return '<label class="sl" style="margin:0'+(dis?';opacity:.4':'')+'"><input type="radio" name="aud-src-'+uid+'" class="s-source" value="'+o[0]+'"'+((o[0]===(s.source||'system'))?' checked':'')+(dis?' disabled':'')+'> '+o[1]+'</label>'; }).join('');
         const styles=[['bars','Spectrum bars'],['pulse','Beat pulse'],['bloom','Radial bloom'],['wave','Waveform']];
         const sopt=styles.map(m=>'<option value="'+m[0]+'"'+(m[0]===style?' selected':'')+'>'+m[1]+'</option>').join('');
+        const esc=t=>(t||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');
         let html='<div class="ctl">'+
           row('Source','<span style="display:grid;grid-template-columns:1fr 1fr;gap:5px 14px">'+srcBubbles+'</span><span></span>')+
-          row('Source note','<span class="val" style="opacity:.7">This tab / Mic = real audio captured right here — pick one and accept the share/mic prompt (for a tab, tick “Share tab audio”). Best for tuning. All system audio runs ambiently through the background daemon (close/blur this tab). App is coming.</span><span></span>')+
+          (s.source==='app' ? row('App','<select class="s-appId" style="max-width:200px"></select> <button type="button" class="s-appRefresh" title="rescan currently-playing apps">⟳</button> <span class="val s-appNote" style="opacity:.7"></span>') : '')+
+          row('Source note','<span class="val" style="opacity:.7">This tab / Mic = real audio captured right here — pick one and accept the share/mic prompt (for a tab, tick “Share tab audio”). All system audio + a Specific app run ambiently through the background daemon (close/blur this tab). Pick an app from the list of what’s currently playing.</span><span></span>')+
           row('Style','<select class="s-style">'+sopt+'</select><span></span>')+
           row('Preview','<div style="display:flex;flex-direction:column;gap:9px">'+
             '<div><div style="display:flex;align-items:center;gap:8px;margin-bottom:3px"><span class="val" style="opacity:.65">Sample — test signal</span><button type="button" class="s-samplePrevToggle">'+(s.samplePrevOff?'Show':'Hide')+'</button></div>'+
@@ -351,7 +353,7 @@
         // Dim-while-active: pick OTHER layers to quiet while this audio layer is emitting, each with its
         // own max-brightness slider — so the music keys read against a darker base. Stored in s.ducks.
         if(!Array.isArray(s.ducks)) s.ducks=[];
-        const myIdx=+card.dataset.n, esc=t=>(t||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');
+        const myIdx=+card.dataset.n;   // esc() defined above (source block)
         const duckOf=i=>s.ducks.find(d=>d&&d.layer===i);
         const duckRows=state.layers.map((L2,i)=>({L2,i})).filter(o=>o.i!==myIdx).map(o=>{
           const d=duckOf(o.i), on=!!d, dim=on?d.dim:30;
@@ -371,7 +373,21 @@
         '</div>';
         body.innerHTML=html;
         const c=q=>body.querySelector(q);
-        body.querySelectorAll('.s-source').forEach(r=>r.addEventListener('change',e=>{ s.source=e.target.value; onAudioSource(e.target.value); }));   // tab/mic start in-tab capture; system/app stop it (fall back to daemon/synth)
+        body.querySelectorAll('.s-source').forEach(r=>r.addEventListener('change',e=>{ s.source=e.target.value; onAudioSource(e.target.value); buildLayerBody(card,L); }));   // tab/mic start in-tab capture; system/app stop it (daemon-driven); rebuild so the App picker shows/hides
+        // "Specific app" picker — populated from the daemon's list of currently-playing audio apps; the saved
+        // pick persists even when that app isn't playing (so it reattaches when it resumes). Stored in s.appId.
+        if(s.source==='app'){ const sel=c('.s-appId'), note=c('.s-appNote'), rf=c('.s-appRefresh');
+          const fill=(apps)=>{ if(!sel) return; const cur=s.appId||''; let has=false;
+            const optsHtml=['<option value="">— pick a playing app —</option>'];
+            (apps||[]).forEach(a=>{ if(!a||!a.name) return; if(a.name===cur) has=true; optsHtml.push('<option value="'+esc(a.name)+'"'+(a.name===cur?' selected':'')+'>'+esc(a.name)+'</option>'); });
+            if(cur && !has) optsHtml.push('<option value="'+esc(cur)+'" selected>'+esc(cur)+' (not playing now)</option>');   // keep the saved pick visible
+            sel.innerHTML=optsHtml.join('');
+            if(note) note.textContent=(apps&&apps.length)?'':'nothing playing — start audio, then ⟳'; };
+          const load=()=>{ if(note) note.textContent='scanning…'; Promise.resolve(opts.listAudioApps && opts.listAudioApps()).then(a=>fill(a||[])).catch(()=>{ if(note) note.textContent='(daemon not running — start it to list apps)'; fill([]); }); };
+          if(sel) sel.addEventListener('change',e=>{ s.appId=e.target.value; });   // panel 'change' listener pushes config → daemon (re)starts app capture
+          if(rf) rf.addEventListener('click',load);
+          load();
+        }
         c('.s-style').addEventListener('change',e=>{ s.style=e.target.value; buildLayerBody(card,L); });
         ['barColorBass','barColorTreble','barTipColor','barGradA','barGradB','pulseColor','pulseColor2','bloomColor','bloomColor2','waveColor','waveColor2'].forEach(key=>{ const el=c('.s-'+key); if(el) el.addEventListener('input',e=>s[key]=e.target.value); });
         { const wr=c('.s-waveReverse'); if(wr) wr.addEventListener('change',e=>s.waveReverse=e.target.checked); }

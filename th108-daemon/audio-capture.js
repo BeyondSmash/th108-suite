@@ -24,16 +24,40 @@ function freshOr(frame, nowMs, maxAgeMs) {
 }
 
 const SILENT_RESTART_MS = 8000;   // no line for this long while running = the sidecar hung → recycle
+const fs = require('fs');
+const APP_EXE = path.join(__dirname, 'app-capture.exe');
 
+// One-shot: list currently-playing audio apps via `app-capture.exe --list` → [{pid,name}] (or [] on any error).
+function listApps(cb) {
+  if (!fs.existsSync(APP_EXE)) return cb(new Error('app-capture.exe not built (run setup.cmd)'), []);
+  let out = ''; let done = false;
+  const finish = (err, arr) => { if (done) return; done = true; cb(err, arr || []); };
+  let p;
+  try { p = spawn(APP_EXE, ['--list'], { stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true }); }
+  catch (e) { return finish(e, []); }
+  p.stdout.on('data', d => { out += d.toString('utf8'); if (out.length > 65536) { try { p.kill(); } catch (_) {} } });
+  p.on('error', e => finish(e, []));
+  p.on('exit', () => { try { finish(null, JSON.parse(out.trim() || '[]')); } catch (e) { finish(e, []); } });
+  setTimeout(() => { try { p.kill(); } catch (_) {} finish(new Error('list timed out'), []); }, 4000);
+}
+
+// opts.app = a process NAME → capture that app via app-capture.exe; falsy → system loopback via the ps1 sidecar.
 function start(opts) {
   const log = (opts && opts.log) || function () {};
+  const app = opts && opts.app;
   let proc = null, stopped = false, carry = '';
   let frame = null, lastLineAt = 0, restarts = 0, parseErrs = 0;
 
   function spawnSidecar() {
     if (stopped) return;
-    proc = spawn('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', path.join(__dirname, 'audio-sidecar.ps1')],
-      { stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true });
+    if (app) {
+      if (!fs.existsSync(APP_EXE)) { log('✗ per-app capture: app-capture.exe not built — run setup.cmd (falling back to no audio)'); return; }
+      proc = spawn(APP_EXE, [app], { stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true });
+    } else {
+      proc = spawn('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', path.join(__dirname, 'audio-sidecar.ps1')],
+        { stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true });
+    }
+    proc.on('error', e => { log('✗ audio capture spawn failed: ' + e.message); });
     carry = '';
     proc.stdout.on('data', (d) => {
       carry += d.toString('utf8');
@@ -65,4 +89,4 @@ function start(opts) {
   };
 }
 
-module.exports = { parseLine, freshOr, start };
+module.exports = { parseLine, freshOr, start, listApps };

@@ -1239,7 +1239,8 @@ const LUI=TH108LayersUI.create({
   isRunning: ()=>running,                                    // reorder warm-renders the new stack only while the loop is live
   onPatternPick: ()=>{ if(obActive && HID.device && !running && !GIF.playing) start(); },   // picking a pattern while a firmware effect is showing = "back to layers", no extra click
   onAudioSource: startAudioSource,                           // audio-layer source pick → start/stop in-tab Web Audio capture
-  liveAudioActive: ()=>webCap.active()                       // true only when real in-tab capture is running → Live preview shows real audio (else blank)
+  liveAudioActive: ()=>webCap.active(),                      // true only when real in-tab capture is running → Live preview shows real audio (else blank)
+  listAudioApps: ()=>fetch('/audio/apps',{cache:'no-store'}).then(r=>r.json()).then(d=>d.apps||[])   // "Specific app" picker → daemon's currently-playing apps (app-capture.exe --list)
 });
 LUI.init();   // restore saved layers → ensureSettings backfill → build cards → persist-on-edit listeners on #layersPanel
 attachHex(document.getElementById('gifPanel'));   // typeable hex box on the GIF bar-color picker
