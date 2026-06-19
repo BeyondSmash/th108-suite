@@ -323,7 +323,6 @@
           sec('Source')+
           full('<span style="display:grid;grid-template-columns:1fr 1fr;gap:5px 14px;flex:1 1 100%">'+srcBubbles+'</span>')+
           (s.source==='app' ? sub('Specific app')+full('<select class="s-appId" style="max-width:180px"></select><button type="button" class="s-appRefresh" title="rescan currently-playing apps" style="flex:none">Refresh</button><span class="val s-appNote" style="opacity:.7"></span>') : '')+
-          full('<span class="val" style="opacity:.7;flex:1 1 100%">This tab / Mic = real audio captured right here — pick one and accept the share/mic prompt (for a tab, tick “Share tab audio”). All system audio + a Specific app run ambiently through the background daemon (close/blur this tab). Pick an app from the list of what’s currently playing.</span>')+
           sec('Style')+ full('<select class="s-style">'+sopt+'</select>')+
           sec('Preview')+ full('<div style="display:flex;flex-direction:column;gap:9px;flex:1 1 100%">'+
             '<div><div style="display:flex;align-items:center;gap:8px;margin-bottom:3px"><span class="val" style="opacity:.65">Sample — test signal</span><button type="button" class="s-samplePrevToggle">'+(s.samplePrevOff?'Show':'Hide')+'</button></div>'+
@@ -388,7 +387,7 @@
           const fill=(apps)=>{ if(!sel) return; const cur=s.appId||''; let has=false;
             const optsHtml=['<option value="">— pick a playing app —</option>'];
             (apps||[]).forEach(a=>{ if(!a||!a.name) return; if(a.name===cur) has=true; optsHtml.push('<option value="'+esc(a.name)+'"'+(a.name===cur?' selected':'')+'>'+esc(a.name)+'</option>'); });
-            if(cur && !has) optsHtml.push('<option value="'+esc(cur)+'" selected>'+esc(cur)+' (not playing now)</option>');   // keep the saved pick visible
+            if(cur && !has) optsHtml.push('<option value="'+esc(cur)+'" selected>'+esc(cur)+' (idle)</option>');   // keep the saved pick visible
             sel.innerHTML=optsHtml.join('');
             if(note) note.textContent=(apps&&apps.length)?'':'nothing playing — start audio, then ⟳'; };
           const load=()=>{ if(note) note.textContent='scanning…'; Promise.resolve(opts.listAudioApps && opts.listAudioApps()).then(a=>fill(a||[])).catch(()=>{ if(note) note.textContent='(daemon not running — start it to list apps)'; fill([]); }); };
@@ -477,7 +476,7 @@
           '<span style="display:flex;gap:4px;align-items:center"><input type="number" class="numin a-'+key+'N" min="'+nMin+'" max="'+nMax+'" step="'+nStep+'" value="'+disp(key,s[key])+'"><span class="val" style="min-width:10px">'+c[4]+'</span></span>'; };
       const adj=document.createElement('div');
       adj.innerHTML=
-        '<div class="lbody" style="margin-top:8px"><div class="ph" style="margin-bottom:6px;color:var(--text);font-weight:600;font-size:13px">Adjust</div><div class="ctl">'+
+        '<div class="lbody" style="margin-top:8px"><div class="ph" style="margin-bottom:6px;color:var(--text);font-weight:600;font-size:13px;text-align:center">Adjust</div><div class="ctl">'+
           ctl('bri')+ctl('sat')+ctl('con')+ctl('gam')+(CFG.rot?ctl('rot'):'')+
           (showStatic?'<label>Static</label><label class="sl" style="margin:0"><input type="checkbox" class="a-frozen"'+(s.frozen?' checked':'')+'> Freeze Animation</label><span></span>':'')+
         '</div></div>';

@@ -243,10 +243,10 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
   /* section headers inside a layer body: full-width (overhang the label column), rule above. main = full
      rule; sub = a shorter, lighter rule. lfull = a control block that spans the whole grid under a header. */
   .lbody .ctl .lsec, .lbody .ctl .lsub{ grid-column:1/-1; }
-  .lbody .ctl .lsec{ margin:13px 0 1px; padding-top:11px; border-top:1px solid var(--border); color:var(--text); font-size:13px; font-weight:600; letter-spacing:.02em; }
+  .lbody .ctl .lsec{ margin:13px 0 1px; padding-top:11px; border-top:1px solid var(--border); color:var(--text); font-size:13px; font-weight:600; letter-spacing:.02em; text-align:center; }
   .lbody .ctl .lsec:first-child{ margin-top:0; padding-top:2px; border-top:0; }
-  .lbody .ctl .lsub{ position:relative; margin:9px 0 0; padding-top:8px; color:var(--muted); font-size:12px; }
-  .lbody .ctl .lsub::before{ content:""; position:absolute; top:0; left:0; width:150px; max-width:55%; height:1px; background:var(--border); opacity:.8; }
+  .lbody .ctl .lsub{ position:relative; margin:9px 0 0; padding-top:8px; color:var(--muted); font-size:12px; text-align:center; }
+  .lbody .ctl .lsub::before{ content:""; position:absolute; top:0; left:50%; transform:translateX(-50%); width:150px; max-width:55%; height:1px; background:var(--border); opacity:.8; }
   .lbody .ctl .lfull{ grid-column:1/-1; display:flex; flex-wrap:wrap; align-items:center; gap:8px 14px; }
   .lhead .lgrip{ cursor:grab; color:var(--muted); font-size:15px; user-select:none; padding:0 2px; }
   .lhead .lgrip:active{ cursor:grabbing; }
@@ -1075,10 +1075,10 @@ async function startAudioSource(kind){
 function feedAudio(now){
   const aL = state.layers.find(L=>L.enabled && L.type==='audio');
   if(!aL) return;
-  let raw=null;
-  if(webCap.active()) raw=webCap.sample();
-  if(!raw){ if(!window._audSynth) window._audSynth=TH108AudioSynth.createSynth(); raw=window._audSynth.sample(now/1000); }
-  TH108Engine.applyAudioFeatures(state, raw, aL.settings, now);
+  // tab/mic = real in-tab capture; system/app are the daemon's job (blur the tab) → in-tab they read SILENT,
+  // not the synth, so paused audio = dark keys. The synth lives only in the card's Sample preview canvas.
+  const raw = webCap.active() ? webCap.sample() : null;
+  TH108Engine.applyAudioFeatures(state, raw || {}, aL.settings, now);
 }
 function audioFeedTick(now){
   if(!running){ try{ feedAudio(now); }catch(_){ } }   // driving → layerTick feeds (not throttled when hidden); rAF only fills in while idle (preview)
