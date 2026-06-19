@@ -20,7 +20,11 @@
         const beat = Math.exp(-ph*7);                            // sharp attack, decay
         let level=0; for(let i=0;i<NB;i++) level+=bands[i]; level/=NB;
         const centroid = 0.5 + 0.5*Math.sin(t*0.4);
-        return { bands, level, beat, centroid };
+        // stereo: pan the energy left↔right over ~10s so the 'stereo' bars layout visibly sweeps in the preview
+        const pan = 0.5 + 0.5*Math.sin(t*0.6);                   // 0 = hard left … 1 = hard right
+        const bandsL = new Float32Array(NB), bandsR = new Float32Array(NB);
+        for(let i=0;i<NB;i++){ bandsL[i] = bands[i]*(1 - 0.85*pan); bandsR[i] = bands[i]*(0.15 + 0.85*pan); }
+        return { bands, bandsL, bandsR, level, beat, centroid };
       },
     };
   }

@@ -87,8 +87,16 @@
     // beat: instantaneous rise, decay only (so a kick pops then fades); beatSens scales sensitivity
     const beatTgt = Math.max(0, Math.min(1, (raw.beat||0) * (0.5 + (p.beatSens||50)/100)));
     A.beat = Math.max(beatTgt, audioEnvelope(A.beat, 0, dt, 0, Math.max(60, p.decayMs)));
-    const rb = raw.bands;
-    for(let i=0;i<32;i++){ const t = rb ? gate(rb[i]||0) : 0; A.bands[i] = audioEnvelope(A.bands[i], t, dt, p.attackMs, p.decayMs); }
+    const rb = raw.bands, rbL = raw.bandsL, rbR = raw.bandsR;
+    // L/R channels feed the 'stereo' bars layout; when the source is mono (no bandsL/R) both fall back to
+    // the mono band so the stereo layout still shows something (just symmetric) instead of going dark.
+    if(!A.bandsL) A.bandsL = new Float32Array(32);
+    if(!A.bandsR) A.bandsR = new Float32Array(32);
+    for(let i=0;i<32;i++){
+      const t = rb ? gate(rb[i]||0) : 0; A.bands[i] = audioEnvelope(A.bands[i], t, dt, p.attackMs, p.decayMs);
+      const tL = rbL ? gate(rbL[i]||0) : t; A.bandsL[i] = audioEnvelope(A.bandsL[i], tL, dt, p.attackMs, p.decayMs);
+      const tR = rbR ? gate(rbR[i]||0) : t; A.bandsR[i] = audioEnvelope(A.bandsR[i], tR, dt, p.attackMs, p.decayMs);
+    }
   }
   // Per-STYLE tuner params (gain/floor/attack/decay/beatSens) so tuning bars doesn't leak into pulse, etc.
   // Mirrors patParams: one-time migrates the old flat values onto the current style; new styles start at defaults.
@@ -288,6 +296,8 @@
     const tip = s.barTip || 'off', tipCol = hexToRgb(s.barTipColor||'#ffffff'), t = (now||0)/1000;
     const barColor = s.barColor || 'bassTreble';            // bassTreble (horizontal) | gradient (vert 2-color) | vu (green→red by height)
     const subtract = s.barFill === 'subtract';
+    const layout = s.barLayout || 'standard';               // standard (bass L→treble R) | mirror (bass center) | stereo (L/R split)
+    const ctr = (GW-1)/2;
     let cb = null, any = false;
     if(subtract && L){ cb = L._carveBuf || (L._carveBuf = new Float32Array(NLED)); cb.fill(0); }
     // tip color for the topmost lit key (fc = column for rainbow drift; fb = its row-from-bottom for VU)
@@ -295,9 +305,16 @@
     for(let k=0;k<NLED;k++){
       const idx = INDICES[k], cell = GRID[idx]; if(!cell) continue;
       const col = cell[0], row = cell[1], o = k*3;
-      const fc = GW>1 ? col/(GW-1) : 0;                       // 0 bass … 1 treble
+      // layout picks which band/channel each column reads (fc = 0 bass … 1 treble, also drives coloring)
+      let fc, bandsArr = A.bands;
+      if(layout==='mirror'){ fc = ctr>0 ? Math.abs(col-ctr)/ctr : 0; }                                   // bass in the center, treble at both edges
+      else if(layout==='stereo'){                                                                         // left half = L channel, right half = R channel; bass meets in the middle
+        if(col<=ctr){ bandsArr = A.bandsL||A.bands; fc = ctr>0 ? (ctr-col)/ctr : 0; }                     // left side: center=bass → left edge=treble
+        else { bandsArr = A.bandsR||A.bands; fc = (GW-1-ctr)>0 ? (col-ctr)/(GW-1-ctr) : 0; }              // right side: center=bass → right edge=treble
+      }
+      else { fc = GW>1 ? col/(GW-1) : 0; }                                                                // standard: bass left → treble right
       const band = Math.min(31, Math.round(fc*31));
-      const mag = A.bands[band];                              // 0..1 (already smoothed/gated)
+      const mag = (bandsArr||A.bands)[band];                  // 0..1 (already smoothed/gated)
       const litRows = mag*GH;                                 // how many rows up this column fills
       const fromBottom = (GH-1) - row + 1;                    // bottom row = 1 … top row = GH
       if(fromBottom > litRows){ out[o]=out[o+1]=out[o+2]=0; continue; }
@@ -646,7 +663,7 @@
       const ad={ style:'bars', source:'system', appId:'', deviceId:'',
         gain:1, floor:5, attackMs:40, decayMs:220, beatSens:50,
         barColorBass:'#ff2200', barColorTreble:'#22aaff', barTip:'off', barTipColor:'#ffffff', barFill:'solid',
-        barColor:'bassTreble', barGradA:'#00ff66', barGradB:'#ff00aa',
+        barColor:'bassTreble', barGradA:'#00ff66', barGradB:'#ff00aa', barLayout:'standard',
         pulseColor:'#19b6ff', pulseColor2:'#ff00aa', pulseGrad:false,
         bloomColor:'#ff5a00', bloomColor2:'#ffd000', bloomGrad:false,
         waveColor:'#00e0ff', waveColor2:'#ff00aa', waveGrad:false, waveReverse:false };
@@ -685,7 +702,7 @@
       layers,
       react: { fg:new Float32Array(256), t:new Float64Array(256).fill(-1e12),
                down:new Uint8Array(256), up:new Float64Array(256).fill(-1e12) },
-      audio: { bands:new Float32Array(32), level:0, beat:0, centroid:0.5, _t:0 },
+      audio: { bands:new Float32Array(32), bandsL:new Float32Array(32), bandsR:new Float32Array(32), level:0, beat:0, centroid:0.5, _t:0 },
       lastFlat:null, lastSent:0,
     };
   }
@@ -737,7 +754,7 @@
   }
 
   const TH108Engine = {
-    KEYMAP, INDICES, NLED, BOARDW, BOARDH,
+    KEYMAP, INDICES, NLED, BOARDW, BOARDH, GRID, GW, GH,
     hexToRgb, hsv2rgb, patHash, patColorize, audioEnvelope, applyAudioFeatures, audioParams,
     keyCell, layerCell,
     PAT_DEFAULTS, patParams, ensureSettings, defaultLayers, createState, applyConfig,

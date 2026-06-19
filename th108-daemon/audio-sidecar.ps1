@@ -50,26 +50,28 @@ public static class Cap {
     client.Start();
   }
 
-  // Drain all queued packets into a mono float buffer; returns the count written (0 = silence/no data).
-  public static int Read(float[] outBuf) {
+  // Drain all queued packets into mono + per-channel (left/right) float buffers; returns the count written
+  // (0 = silence/no data). left/right feed the 'stereo' bars layout; a mono source mirrors L into R.
+  public static int Read(float[] mono, float[] left, float[] right) {
     int n = 0; uint avail;
     capture.GetNextPacketSize(out avail);
-    while (avail > 0 && n < outBuf.Length) {
+    while (avail > 0 && n < mono.Length) {
       IntPtr data; uint frames, flags; long dp, qp;
       capture.GetBuffer(out data, out frames, out flags, out dp, out qp);
       if (frames > 0) {
         bool silent = (flags & 0x2) != 0;   // AUDCLNT_BUFFERFLAGS_SILENT
-        for (uint f = 0; f < frames && n < outBuf.Length; f++) {
-          float s = 0f;
+        for (uint f = 0; f < frames && n < mono.Length; f++) {
+          float s = 0f, l = 0f, r = 0f;
           if (!silent && data != IntPtr.Zero) {
-            // mix-format is 32-bit IEEE float, interleaved per channel -> average to mono
+            // mix-format is 32-bit IEEE float, interleaved per channel -> average to mono, keep L/R
             for (int ch = 0; ch < channels; ch++) {
               float v = (float)Marshal.PtrToStructure(data + (int)((f*channels+ch)*4), typeof(float));
-              s += v;
+              s += v; if (ch == 0) l = v; if (ch == 1) r = v;
             }
             s /= channels;
+            if (channels < 2) r = l;   // mono source -> mirror so the stereo layout isn't half-dark
           }
-          outBuf[n++] = s;
+          mono[n] = s; left[n] = l; right[n] = r; n++;
         }
       }
       capture.ReleaseBuffer(frames);
@@ -144,31 +146,76 @@ public static class Cap {
     outLBC[2]=(float)(centDen>0 ? Math.Min(1.0,(centNum/centDen)/half*2.0) : 0.5);   // brightness 0..1
     return true;
   }
+
+  // Bands-only FFT for a single channel (left/right) — no flux/peak/centroid state, so it can't disturb the
+  // mono Features() beat/level tracking. Reuses re[]/im[]/win[] scratch (calls are sequential, single-threaded).
+  public static void Bands(float[] buf, int count, float[] bands) {
+    if (count < N) { for (int b=0;b<32;b++) bands[b]=0; return; }
+    if (!winInit) InitWin();
+    int start = count - N;
+    for (int i=0;i<N;i++){ float s=buf[start+i]; re[i]=s*win[i]; im[i]=0; }
+    FFT();
+    int half=N/2;
+    double minLog=Math.Log(1), maxLog=Math.Log(half);
+    for (int b=0;b<32;b++){
+      int lo=(int)Math.Exp(minLog+(maxLog-minLog)*b/32.0);
+      int hi=(int)Math.Exp(minLog+(maxLog-minLog)*(b+1)/32.0);
+      if(hi<=lo) hi=lo+1; if(hi>half) hi=half;
+      double sum=0; for(int i=lo;i<hi;i++){ float m=(float)Math.Sqrt(re[i]*re[i]+im[i]*im[i]); sum+=m; }
+      double avg=sum/(hi-lo);
+      double magNorm=avg/(N*0.5);
+      double dbv=20.0*Math.Log10(magNorm+1e-9);
+      double nb=(dbv+100.0)/70.0;
+      bands[b]=(float)Math.Min(1.0, Math.Max(0.0, nb)*1.6);
+    }
+  }
 }
 "@
 
 [Cap]::Open()
 $N = 2048
-$mono  = New-Object 'float[]' ($N * 4)   # rolling buffer
+$mono  = New-Object 'float[]' ($N * 4)   # rolling buffers (mono + per-channel for the stereo layout)
+$left  = New-Object 'float[]' ($N * 4)
+$right = New-Object 'float[]' ($N * 4)
 $bands = New-Object 'float[]' 32
+$bandsL= New-Object 'float[]' 32
+$bandsR= New-Object 'float[]' 32
 $lbc   = New-Object 'float[]' 3
-$chunk = New-Object 'float[]' 8192
+$chunkM= New-Object 'float[]' 8192
+$chunkL= New-Object 'float[]' 8192
+$chunkR= New-Object 'float[]' 8192
 $count = 0
+# append a 32-element 0..4-rounded float array as JSON: "key":[..]
+function Append-Bands($sb, $name, $arr){
+  [void]$sb.Append($name); [void]$sb.Append(':[')
+  for ($i=0; $i -lt 32; $i++){ if($i){[void]$sb.Append(',')}; [void]$sb.Append([Math]::Round($arr[$i],4)) }
+  [void]$sb.Append(']')
+}
 $sw = [System.Diagnostics.Stopwatch]::StartNew()
 while ($true) {
-  $n = [Cap]::Read($chunk)
+  $n = [Cap]::Read($chunkM, $chunkL, $chunkR)
   if ($n -gt 0) {
     if ($count + $n -gt $mono.Length) {            # keep only the last (mono.Length) samples
       $keep = $mono.Length - $n
-      [Array]::Copy($mono, $count - $keep, $mono, 0, $keep); $count = $keep
+      [Array]::Copy($mono,  $count - $keep, $mono,  0, $keep)
+      [Array]::Copy($left,  $count - $keep, $left,  0, $keep)
+      [Array]::Copy($right, $count - $keep, $right, 0, $keep)
+      $count = $keep
     }
-    [Array]::Copy($chunk, 0, $mono, $count, $n); $count += $n
+    [Array]::Copy($chunkM, 0, $mono,  $count, $n)
+    [Array]::Copy($chunkL, 0, $left,  $count, $n)
+    [Array]::Copy($chunkR, 0, $right, $count, $n)
+    $count += $n
   } else { $count = 0 }                            # silence -> let features go to 0
   if ([Cap]::Features($mono, $count, $bands, $lbc)) {
+    # per-channel bands are best-effort: a failure here must never kill the sidecar (host falls back to mono)
+    $haveStereo = $false
+    try { [Cap]::Bands($left, $count, $bandsL); [Cap]::Bands($right, $count, $bandsR); $haveStereo = $true } catch { $haveStereo = $false }
     $sb = New-Object System.Text.StringBuilder
-    [void]$sb.Append('{"bands":[')
-    for ($i=0; $i -lt 32; $i++){ if($i){[void]$sb.Append(',')}; [void]$sb.Append([Math]::Round($bands[$i],4)) }
-    [void]$sb.Append('],"level":'); [void]$sb.Append([Math]::Round($lbc[0],4))
+    [void]$sb.Append('{')
+    Append-Bands $sb '"bands"' $bands
+    if ($haveStereo) { [void]$sb.Append(','); Append-Bands $sb '"bandsL"' $bandsL; [void]$sb.Append(','); Append-Bands $sb '"bandsR"' $bandsR }
+    [void]$sb.Append(',"level":'); [void]$sb.Append([Math]::Round($lbc[0],4))
     [void]$sb.Append(',"beat":');   [void]$sb.Append([Math]::Round($lbc[1],4))
     [void]$sb.Append(',"centroid":'); [void]$sb.Append([Math]::Round($lbc[2],4))
     [void]$sb.Append(',"t":'); [void]$sb.Append([Math]::Round($sw.Elapsed.TotalMilliseconds,1)); [void]$sb.Append('}')

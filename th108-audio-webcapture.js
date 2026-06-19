@@ -10,6 +10,20 @@
     log = log || function () {};
     let ctx = null, analyser = null, stream = null, srcNode = null, active = false, kind = null;
     let freq = null, time = null, prevMag = null, peakLvl = 1e-4, avgFlux = 1e-6;
+    let splitter = null, analyserL = null, analyserR = null, freqL = null, freqR = null, stereo = false;   // L/R split for the 'stereo' bars layout
+
+    // log-spaced 32-band map shared by mono + L + R (byte data is already perceptual → light linear boost)
+    function bandsFrom(f){
+      const bins = f.length, out = new Array(NB), minLog = Math.log(1), maxLog = Math.log(bins);
+      for (let b = 0; b < NB; b++) {
+        let lo = Math.floor(Math.exp(minLog + (maxLog - minLog) * b / NB));
+        let hi = Math.floor(Math.exp(minLog + (maxLog - minLog) * (b + 1) / NB));
+        if (hi <= lo) hi = lo + 1; if (hi > bins) hi = bins;
+        let sum = 0; for (let i = lo; i < hi; i++) sum += f[i] / 255;
+        out[b] = Math.min(1, (sum / (hi - lo)) * 1.6);
+      }
+      return out;
+    }
 
     async function start(sourceKind) {
       await stop();
@@ -26,6 +40,19 @@
       srcNode.connect(analyser);   // analyser is a sink — do NOT connect to ctx.destination (would echo the audio)
       const bins = analyser.frequencyBinCount;
       freq = new Uint8Array(bins); time = new Float32Array(analyser.fftSize); prevMag = new Float32Array(bins);
+      // stereo split for the 'stereo' bars layout: a ChannelSplitter feeds one analyser per channel. A mono
+      // source (channelCount 1, e.g. most mics) skips this — applyAudioFeatures then mirrors mono into both.
+      const chCount = (at[0].getSettings && at[0].getSettings().channelCount) || srcNode.channelCount || 2;
+      stereo = chCount >= 2;
+      if (stereo) {
+        splitter = ctx.createChannelSplitter(2);
+        analyserL = ctx.createAnalyser(); analyserR = ctx.createAnalyser();
+        analyserL.fftSize = analyserR.fftSize = 2048;
+        analyserL.smoothingTimeConstant = analyserR.smoothingTimeConstant = 0.5;
+        srcNode.connect(splitter);
+        splitter.connect(analyserL, 0); splitter.connect(analyserR, 1);
+        freqL = new Uint8Array(analyserL.frequencyBinCount); freqR = new Uint8Array(analyserR.frequencyBinCount);
+      }
       peakLvl = 1e-4; avgFlux = 1e-6; active = true; kind = sourceKind;
       at[0].addEventListener('ended', () => { stop(); });   // user clicked "Stop sharing"
       log('in-tab audio capture started (' + sourceKind + ')', 'ok');
@@ -45,27 +72,28 @@
       let centNum = 0, centDen = 0, bassFlux = 0; const bassBins = Math.max(4, bins >> 3);
       for (let i = 0; i < bins; i++) { const m = freq[i] / 255; centNum += i * m; centDen += m;
         const d = m - prevMag[i]; if (d > 0 && i < bassBins) bassFlux += d; prevMag[i] = m; }
-      const minLog = Math.log(1), maxLog = Math.log(bins);
-      for (let b = 0; b < NB; b++) {
-        let lo = Math.floor(Math.exp(minLog + (maxLog - minLog) * b / NB));
-        let hi = Math.floor(Math.exp(minLog + (maxLog - minLog) * (b + 1) / NB));
-        if (hi <= lo) hi = lo + 1; if (hi > bins) hi = bins;
-        let sum = 0; for (let i = lo; i < hi; i++) sum += freq[i] / 255; const avg = sum / (hi - lo);
-        bands[b] = Math.min(1, avg * 1.6);          // byte data is already perceptual → light linear boost
+      const monoBands = bandsFrom(freq);
+      for (let b = 0; b < NB; b++) bands[b] = monoBands[b];
+      let bandsL = null, bandsR = null;
+      if (stereo && analyserL && analyserR) {
+        analyserL.getByteFrequencyData(freqL); analyserR.getByteFrequencyData(freqR);
+        bandsL = bandsFrom(freqL); bandsR = bandsFrom(freqR);
       }
       avgFlux = avgFlux * 0.93 + bassFlux * 0.07;
       const onset = (bassFlux - avgFlux * 1.4) / (avgFlux + 1e-4);
       const beat = Math.max(0, Math.min(1, onset));
       const centroid = centDen > 0 ? Math.min(1, (centNum / centDen) / bins * 2) : 0.5;
-      return { bands, level, beat, centroid, t: ctx ? ctx.currentTime * 1000 : 0 };
+      return { bands, bandsL, bandsR, level, beat, centroid, t: ctx ? ctx.currentTime * 1000 : 0 };
     }
 
     async function stop() {
-      active = false; kind = null;
+      active = false; kind = null; stereo = false;
       try { if (srcNode) srcNode.disconnect(); } catch (_) {}
+      try { if (splitter) splitter.disconnect(); } catch (_) {}
       try { if (stream) stream.getTracks().forEach(t => t.stop()); } catch (_) {}
       try { if (ctx && ctx.state !== 'closed') await ctx.close(); } catch (_) {}
-      ctx = analyser = stream = srcNode = null;
+      ctx = analyser = stream = srcNode = splitter = analyserL = analyserR = null;
+      freqL = freqR = null;
     }
 
     return { start, stop, sample, active: () => active, kind: () => kind };

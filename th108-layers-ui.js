@@ -323,11 +323,13 @@
             '<div><div style="display:flex;align-items:center;gap:8px;margin-bottom:3px"><span class="val" style="opacity:.65">Live — real audio (blank when nothing’s playing)</span><button type="button" class="s-livePrevToggle">'+(s.livePrevOff?'Show':'Hide')+'</button></div>'+
               '<canvas class="s-audioPrevLive" width="378" height="92" style="width:100%;height:auto;display:'+(s.livePrevOff?'none':'block')+';background:#0d1117;border-radius:8px"></canvas></div>'+
           '</div><span></span>');
-        if(style==='bars'){ const bt=s.barTip||'off', bf=s.barFill||'solid', bc=s.barColor||'bassTreble';
+        if(style==='bars'){ const bt=s.barTip||'off', bf=s.barFill||'solid', bc=s.barColor||'bassTreble', blo=s.barLayout||'standard';
           const btOpt=[['off','Off'],['color','Solid color'],['rainbow','Rainbow'],['vu','VU (green→red by level)']].map(o=>'<option value="'+o[0]+'"'+(o[0]===bt?' selected':'')+'>'+o[1]+'</option>').join('');
           const bfOpt=[['solid','Solid'],['subtract','Subtract (silhouette)']].map(o=>'<option value="'+o[0]+'"'+(o[0]===bf?' selected':'')+'>'+o[1]+'</option>').join('');
           const bcOpt=[['bassTreble','Bass → Treble'],['gradient','Gradient (bottom→top)'],['vu','VU (green→red by level)']].map(o=>'<option value="'+o[0]+'"'+(o[0]===bc?' selected':'')+'>'+o[1]+'</option>').join('');
+          const bloOpt=[['standard','Standard (bass L → treble R)'],['mirror','Mirror (bass centered, treble at edges)'],['stereo','Stereo (left half = L channel, right = R)']].map(o=>'<option value="'+o[0]+'"'+(o[0]===blo?' selected':'')+'>'+o[1]+'</option>').join('');
           html+=
+          row('Layout','<select class="s-barLayout" title="How columns map to the spectrum. Standard = bass on the left, treble on the right. Mirror = bass in the center, treble at both edges. Stereo = the left half shows the LEFT audio channel and the right half the RIGHT channel (bass meets in the middle) — needs a stereo source (This tab / system audio).">'+bloOpt+'</select><span></span>')+
           row('Bar fill','<select class="s-barFill" title="Solid = filled bars. Subtract = empty bars that carve the layers below into a spectrum silhouette (the tips still draw).">'+bfOpt+'</select><span></span>')+
           (bf==='subtract' ? '' :
             row('Bar color','<select class="s-barColor" title="Bass→Treble = horizontal hue across columns; Gradient = your 2 colors bottom→top; VU = green→yellow→orange→red by bar height">'+bcOpt+'</select><span></span>')+
@@ -375,6 +377,7 @@
         { const wr=c('.s-waveReverse'); if(wr) wr.addEventListener('change',e=>s.waveReverse=e.target.checked); }
         { const bt=c('.s-barTip'); if(bt) bt.addEventListener('change',e=>{ s.barTip=e.target.value; buildLayerBody(card,L); }); }   // rebuild so the tip-color picker shows/hides
         { const bf=c('.s-barFill'); if(bf) bf.addEventListener('change',e=>{ s.barFill=e.target.value; buildLayerBody(card,L); }); }   // rebuild so the color controls show/hide with solid/subtract
+        { const bl=c('.s-barLayout'); if(bl) bl.addEventListener('change',e=>s.barLayout=e.target.value); }   // no dependent controls — no rebuild needed
         { const bc=c('.s-barColor'); if(bc) bc.addEventListener('change',e=>{ s.barColor=e.target.value; buildLayerBody(card,L); }); }   // rebuild so bass/treble vs gradient vs vu color pickers swap
         ['pulseGrad','bloomGrad','waveGrad'].forEach(key=>{ const el=c('.s-'+key); if(el) el.addEventListener('change',e=>{ s[key]=e.target.checked; buildLayerBody(card,L); }); });   // rebuild so the 2nd-color picker shows/hides
         const slider=(cls,key,fmt,xform,snapTo,tol)=>{ const el=c('.s-'+cls), v=c('.s-'+cls+'V'); if(!el||!v) return; const up=()=>v.textContent=fmt(ap[key]); el.addEventListener('input',e=>{ if(snapTo!=null) snap(el,snapTo,tol==null?4:tol); ap[key]=xform(+el.value); up(); }); up(); };   // writes the PER-STYLE param (ap); tol = snap approach width (smaller on short-range sliders); guard !v so a class mismatch can't crash init

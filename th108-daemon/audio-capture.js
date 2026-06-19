@@ -10,8 +10,12 @@ function parseLine(line) {
   if (!line) return null;
   let o; try { o = JSON.parse(line); } catch (_) { return null; }
   if (!o || !Array.isArray(o.bands) || o.bands.length !== 32) return null;
-  return { bands: o.bands.map(Number), level: +o.level || 0, beat: +o.beat || 0,
-           centroid: o.centroid == null ? 0.5 : +o.centroid, t: +o.t || 0 };
+  const ch = a => (Array.isArray(a) && a.length === 32) ? a.map(Number) : undefined;   // optional L/R channels for the stereo layout
+  const f = { bands: o.bands.map(Number), level: +o.level || 0, beat: +o.beat || 0,
+              centroid: o.centroid == null ? 0.5 : +o.centroid, t: +o.t || 0 };
+  const bL = ch(o.bandsL), bR = ch(o.bandsR);
+  if (bL) f.bandsL = bL; if (bR) f.bandsR = bR;
+  return f;
 }
 // pure: the frame if it's younger than maxAgeMs, else null (so silence/stall → engine decays to 0)
 function freshOr(frame, nowMs, maxAgeMs) {

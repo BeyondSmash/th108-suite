@@ -357,3 +357,47 @@ test('renderPulse gradient colors bottom vs top differently', () => {
   assert.ok(La.rgb[ob] > La.rgb[ob+2], 'bottom red-dominant (pulseColor)');
   assert.ok(La.rgb[ot+2] > La.rgb[ot], 'top blue-dominant (pulseColor2)');
 });
+
+// ---- spectrum-bars layouts (standard / mirror / stereo) + L/R band plumbing ----
+const findK = pred => { for (let k = 0; k < E.NLED; k++) { const c = E.GRID[E.INDICES[k]]; if (c && pred(c)) return k; } return -1; };
+const litSum = (La, k) => La.rgb[k*3] + La.rgb[k*3+1] + La.rgb[k*3+2];
+
+test('bars stereo layout: L channel lights the left half, R channel the right half', () => {
+  const L = { type:'audio', enabled:true, opacity:1, blend:'add', settings:{ style:'bars', barLayout:'stereo' }, rgb:new Uint8Array(E.NLED*3) };
+  E.ensureSettings(L); const st = E.createState([L]); const La = st.layers[0];
+  st.audio.bands.fill(0); st.audio.bandsL.fill(1); st.audio.bandsR.fill(0);   // hard left
+  E.renderAudio(La, 0, st);
+  const kL = findK(c => c[0] <= 3), kR = findK(c => c[0] >= 17);
+  assert.ok(kL >= 0 && kR >= 0, 'found a left + right key');
+  assert.ok(litSum(La, kL) > 0, 'left-half key lit by the L channel');
+  assert.equal(litSum(La, kR), 0, 'right-half key dark (R channel silent)');
+});
+
+test('bars mirror layout: bass in the center, treble at the edges', () => {
+  const L = { type:'audio', enabled:true, opacity:1, blend:'add', settings:{ style:'bars', barLayout:'mirror' }, rgb:new Uint8Array(E.NLED*3) };
+  E.ensureSettings(L); const st = E.createState([L]); const La = st.layers[0];
+  st.audio.bands.fill(0); st.audio.bands[0] = 1;   // pure bass
+  E.renderAudio(La, 0, st);
+  const kC = findK(c => c[0] === 10), kE = findK(c => c[0] <= 1);
+  assert.ok(kC >= 0 && kE >= 0, 'found a center + edge key');
+  assert.ok(litSum(La, kC) > 0, 'center key lit (bass at center)');
+  assert.equal(litSum(La, kE), 0, 'edge key dark (treble there, silent)');
+});
+
+test('applyAudioFeatures mirrors mono into both channels when no L/R provided', () => {
+  const L = { type:'audio', enabled:true, opacity:1, blend:'add', settings:{ style:'bars' }, rgb:new Uint8Array(E.NLED*3) };
+  E.ensureSettings(L); const st = E.createState([L]);
+  const raw = { bands:new Float32Array(32).fill(0.8), level:0.5, beat:0, centroid:0.5 };   // no bandsL/R
+  for (let t = 16; t <= 300; t += 16) E.applyAudioFeatures(st, raw, L.settings, t);
+  assert.ok(st.audio.bandsL[10] > 0.1 && st.audio.bandsR[10] > 0.1, 'mono fed into both channels');
+  assert.ok(Math.abs(st.audio.bandsL[10] - st.audio.bandsR[10]) < 1e-6, 'L and R identical for a mono source');
+});
+
+test('applyAudioFeatures keeps L and R separate when the source is stereo', () => {
+  const L = { type:'audio', enabled:true, opacity:1, blend:'add', settings:{ style:'bars' }, rgb:new Uint8Array(E.NLED*3) };
+  E.ensureSettings(L); const st = E.createState([L]);
+  const raw = { bands:new Float32Array(32).fill(0.4), bandsL:new Float32Array(32).fill(0.9), bandsR:new Float32Array(32).fill(0), level:0.5, beat:0, centroid:0.5 };
+  for (let t = 16; t <= 400; t += 16) E.applyAudioFeatures(st, raw, L.settings, t);
+  assert.ok(st.audio.bandsL[5] > 0.3, 'L channel rose');
+  assert.ok(st.audio.bandsR[5] < 0.05, 'R channel stays ~0');
+});
