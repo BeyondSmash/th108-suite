@@ -1,0 +1,170 @@
+// app-capture.cs — per-application audio capture for the TH108 music layer, via the Win10 2004+
+// process-loopback API (ActivateAudioInterfaceAsync "VAD\Process_Loopback"). Built at setup time by the
+// IN-BOX .NET Framework compiler (csc.exe) — no SDK, no committed binary. A compiled exe (clean process,
+// [MTAThread] + message pump, proper COM CCW) succeeds where the PowerShell Add-Type sidecar hit
+// E_ILLEGAL_METHOD_CALL. Usage:  app-capture.exe <PID>   →  prints {bands[32],level,beat,centroid,t} NDJSON
+// to stdout at ~30 Hz (the SAME contract as audio-sidecar.ps1, so audio-capture.js parses it unchanged).
+using System;
+using System.Runtime.InteropServices;
+using System.Threading;
+using System.Text;
+using System.Globalization;
+
+class AppCapture {
+  // ---------- interop ----------
+  [DllImport("Mmdevapi.dll", CharSet=CharSet.Unicode, ExactSpelling=true)]
+  static extern int ActivateAudioInterfaceAsync(string path, ref Guid riid, IntPtr activationParams,
+    IActivateAudioInterfaceCompletionHandler handler, out IActivateAudioInterfaceAsyncOperation op);
+  [DllImport("user32.dll")] static extern bool PeekMessage(out NativeMsg m, IntPtr h, uint a, uint b, uint c);
+  [DllImport("user32.dll")] static extern bool TranslateMessage(ref NativeMsg m);
+  [DllImport("user32.dll")] static extern IntPtr DispatchMessage(ref NativeMsg m);
+  [DllImport("kernel32.dll")] static extern IntPtr CreateEventW(IntPtr a, bool manual, bool init, string name);
+  [DllImport("kernel32.dll")] static extern uint WaitForSingleObject(IntPtr h, uint ms);
+  [DllImport("ole32.dll")] static extern int CoInitializeEx(IntPtr p, int coInit);   // 2=STA — must init COM before ActivateAudioInterfaceAsync (a flat export, so the CLR hasn't done it yet)
+  [StructLayout(LayoutKind.Sequential)] struct NativeMsg { public IntPtr hwnd; public uint message; public IntPtr w; public IntPtr l; public uint time; public int x; public int y; }
+
+  [Guid("72A22D78-CDE4-431D-B8CC-843A71199B6D"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+  interface IActivateAudioInterfaceAsyncOperation { int GetActivateResult(out int hr, [MarshalAs(UnmanagedType.IUnknown)] out object iface); }
+  [Guid("41D949AB-9862-444A-80F6-C261334DA5EB"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+  interface IActivateAudioInterfaceCompletionHandler { void ActivateCompleted(IActivateAudioInterfaceAsyncOperation op); }
+  [Guid("1CB9AD4C-DBFA-4C32-B178-C2F568A703B2"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+  interface IAudioClient {
+    int Initialize(int shareMode, int streamFlags, long hnsBufDur, long hnsPeriod, IntPtr fmt, IntPtr session);
+    int GetBufferSize(out uint f); int GetStreamLatency(out long l); int GetCurrentPadding(out uint p);
+    int IsFormatSupported(int sm, IntPtr f, IntPtr o); int GetMixFormat(out IntPtr f);
+    int GetDevicePeriod(out long d, out long m); int Start(); int Stop(); int Reset(); int SetEventHandle(IntPtr h);
+    int GetService(ref Guid iid, [MarshalAs(UnmanagedType.IUnknown)] out object o);
+  }
+  [Guid("C8ADBD64-E71E-48A0-A4DE-185C395CD317"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+  interface IAudioCaptureClient { int GetBuffer(out IntPtr d, out uint f, out uint fl, out long dp, out long qp); int ReleaseBuffer(uint f); int GetNextPacketSize(out uint f); }
+
+  [StructLayout(LayoutKind.Sequential)]
+  struct ActivationParams { public int ActivationType; public uint TargetPid; public int LoopbackMode; }
+  const int SHARED = 0, LOOPBACK = 0x00020000, EVENTCALLBACK = 0x00040000;
+  const int ACTTYPE_PROCESS_LOOPBACK = 1, INCLUDE_TREE = 0;
+  const string VAD = "VAD\\Process_Loopback";
+  static Guid IID_IAudioClient = new Guid("1CB9AD4C-DBFA-4C32-B178-C2F568A703B2");
+  static Guid IID_IAudioCaptureClient = new Guid("C8ADBD64-E71E-48A0-A4DE-185C395CD317");
+
+  class Handler : IActivateAudioInterfaceCompletionHandler {
+    public ManualResetEvent done = new ManualResetEvent(false);
+    public void ActivateCompleted(IActivateAudioInterfaceAsyncOperation op) { done.Set(); }
+  }
+
+  static IAudioClient client; static IAudioCaptureClient capture; static IntPtr hEvent;
+  const int channels = 2, sampleRate = 48000;
+
+  static bool PumpWait(WaitHandle ev, int ms) {
+    var sw = System.Diagnostics.Stopwatch.StartNew();
+    while (sw.ElapsedMilliseconds < ms) { if (ev.WaitOne(0)) return true;
+      NativeMsg m; while (PeekMessage(out m, IntPtr.Zero, 0, 0, 1)) { TranslateMessage(ref m); DispatchMessage(ref m); }
+      Thread.Sleep(5); }
+    return ev.WaitOne(0);
+  }
+
+  static void Open(uint pid) {
+    CoInitializeEx(IntPtr.Zero, 0);   // STA — ensure COM is up on this thread before the activation call
+    var ap = new ActivationParams { ActivationType = ACTTYPE_PROCESS_LOOPBACK, TargetPid = pid, LoopbackMode = INCLUDE_TREE };
+    int apSize = Marshal.SizeOf(typeof(ActivationParams));
+    IntPtr apPtr = Marshal.AllocHGlobal(apSize); Marshal.StructureToPtr(ap, apPtr, false);
+    IntPtr pv = Marshal.AllocHGlobal(24); for (int i=0;i<24;i++) Marshal.WriteByte(pv,i,0);
+    Marshal.WriteInt16(pv, 0, 0x0041);          // VT_BLOB
+    Marshal.WriteInt32(pv, 8, apSize);          // BLOB.cbSize
+    Marshal.WriteIntPtr(pv, 16, apPtr);         // BLOB.pBlobData (x64)
+
+    { NativeMsg tmp; PeekMessage(out tmp, IntPtr.Zero, 0, 0, 0); }   // force-create this thread's message queue before the activation call
+    var h = new Handler();
+    IActivateAudioInterfaceAsyncOperation op;
+    int hr = ActivateAudioInterfaceAsync(VAD, ref IID_IAudioClient, pv, h, out op);
+    if (hr != 0) throw new Exception("ActivateAudioInterfaceAsync hr=0x" + hr.ToString("x"));
+    if (!PumpWait(h.done, 5000)) throw new Exception("activation timed out");
+    int actHr; object iface; op.GetActivateResult(out actHr, out iface);
+    if (actHr != 0) throw new Exception("GetActivateResult hr=0x" + actHr.ToString("x"));
+    client = (IAudioClient)iface;
+
+    IntPtr fmt = Marshal.AllocHGlobal(18);
+    Marshal.WriteInt16(fmt, 0, 3);              // WAVE_FORMAT_IEEE_FLOAT
+    Marshal.WriteInt16(fmt, 2, (short)channels);
+    Marshal.WriteInt32(fmt, 4, sampleRate);
+    Marshal.WriteInt32(fmt, 8, sampleRate*channels*4);
+    Marshal.WriteInt16(fmt, 12, (short)(channels*4));
+    Marshal.WriteInt16(fmt, 14, 32);
+    Marshal.WriteInt16(fmt, 16, 0);
+    int ihr = client.Initialize(SHARED, LOOPBACK | EVENTCALLBACK, 2000000, 0, fmt, IntPtr.Zero);
+    if (ihr != 0) throw new Exception("Initialize hr=0x" + ihr.ToString("x"));
+    hEvent = CreateEventW(IntPtr.Zero, false, false, null);
+    client.SetEventHandle(hEvent);
+    object c; client.GetService(ref IID_IAudioCaptureClient, out c); capture = (IAudioCaptureClient)c;
+    client.Start();
+  }
+
+  static int Read(float[] outBuf) {
+    int n = 0; uint avail; capture.GetNextPacketSize(out avail);
+    while (avail > 0 && n < outBuf.Length) {
+      IntPtr data; uint frames, flags; long dp, qp; capture.GetBuffer(out data, out frames, out flags, out dp, out qp);
+      if (frames > 0) { bool silent = (flags & 0x2) != 0;
+        for (uint f = 0; f < frames && n < outBuf.Length; f++) { float s = 0f;
+          if (!silent && data != IntPtr.Zero) { for (int ch=0; ch<channels; ch++) s += (float)Marshal.PtrToStructure(data + (int)((f*channels+ch)*4), typeof(float)); s /= channels; }
+          outBuf[n++] = s; } }
+      capture.ReleaseBuffer(frames); capture.GetNextPacketSize(out avail);
+    }
+    return n;
+  }
+
+  // ---------- analysis (mirrors audio-sidecar.ps1 so app/system/tab look identical) ----------
+  const int N = 2048;
+  static float[] win = new float[N], re = new float[N], im = new float[N], prevMag = new float[N/2];
+  static bool winInit = false; static float peakLvl = 1e-4f, avgFlux = 1e-6f;
+  static void InitWin() { for (int i=0;i<N;i++) win[i]=(float)(0.5-0.5*Math.Cos(2*Math.PI*i/(N-1))); winInit=true; }
+  static void FFT() {
+    int n=N, j=0;
+    for (int i=1;i<n;i++){ int bit=n>>1; for(; (j&bit)!=0; bit>>=1) j^=bit; j^=bit; if(i<j){ float tr=re[i];re[i]=re[j];re[j]=tr; float ti=im[i];im[i]=im[j];im[j]=ti; } }
+    for (int len=2; len<=n; len<<=1) { double ang=-2*Math.PI/len; float wr=(float)Math.Cos(ang), wi=(float)Math.Sin(ang);
+      for (int i=0;i<n;i+=len){ float cr=1,ci=0;
+        for (int k=0;k<len/2;k++){ int a=i+k,b=i+k+len/2;
+          float xr=re[b]*cr-im[b]*ci, xi=re[b]*ci+im[b]*cr; re[b]=re[a]-xr; im[b]=im[a]-xi; re[a]+=xr; im[a]+=xi;
+          float ncr=cr*wr-ci*wi; ci=cr*wi+ci*wr; cr=ncr; } } }
+  }
+  static bool Features(float[] mono, int count, float[] bands, float[] lbc) {
+    if (count < N) return false; if (!winInit) InitWin();
+    int start = count - N; double rms = 0;
+    for (int i=0;i<N;i++){ float s=mono[start+i]; rms += s*s; re[i]=s*win[i]; im[i]=0; }
+    FFT(); int half=N/2; float[] mag = new float[half];
+    double centNum=0, centDen=0, bassFlux=0; int bassBins=Math.Max(4, half/8);
+    for (int i=0;i<half;i++){ float m=(float)Math.Sqrt(re[i]*re[i]+im[i]*im[i]); mag[i]=m;
+      centNum += (double)i*m; centDen += m; float d=m-prevMag[i]; if(d>0 && i<bassBins) bassFlux+=d; prevMag[i]=m; }
+    double minLog=Math.Log(1), maxLog=Math.Log(half);
+    for (int b=0;b<32;b++){ int lo=(int)Math.Exp(minLog+(maxLog-minLog)*b/32.0); int hi=(int)Math.Exp(minLog+(maxLog-minLog)*(b+1)/32.0);
+      if(hi<=lo) hi=lo+1; if(hi>half) hi=half; double sum=0; for(int i=lo;i<hi;i++) sum+=mag[i]; double avg=sum/(hi-lo);
+      double magNorm=avg/(N*0.5); double dbv=20.0*Math.Log10(magNorm+1e-9); double nb=(dbv+100.0)/70.0;
+      bands[b]=(float)Math.Min(1.0, Math.Max(0.0,nb)*1.6); }
+    double rawLvl=Math.Sqrt(rms/N); peakLvl=Math.Max((float)rawLvl, peakLvl*0.999f);
+    lbc[0]=(float)Math.Min(1.0, rawLvl/Math.Max(peakLvl,1e-4));
+    avgFlux=avgFlux*0.93f+(float)bassFlux*0.07f; double onset=(bassFlux-avgFlux*1.4)/(avgFlux+1e-4);
+    lbc[1]=(float)Math.Max(0, Math.Min(1.0, onset));
+    lbc[2]=(float)(centDen>0 ? Math.Min(1.0,(centNum/centDen)/half*2.0) : 0.5);
+    return true;
+  }
+
+  [MTAThread]
+  static int Main(string[] args) {
+    if (args.Length < 1) { Console.Error.WriteLine("usage: app-capture.exe <PID>"); return 1; }
+    uint pid; if (!uint.TryParse(args[0], out pid)) { Console.Error.WriteLine("bad PID"); return 1; }
+    try { Open(pid); } catch (Exception e) { Console.Error.WriteLine("app-capture: " + e.Message); return 2; }
+    var mono = new float[N*4]; var bands = new float[32]; var lbc = new float[3]; var chunk = new float[8192];
+    int countF = 0; var sw = System.Diagnostics.Stopwatch.StartNew(); var sb = new StringBuilder();
+    var ci = CultureInfo.InvariantCulture;
+    while (true) {
+      WaitForSingleObject(hEvent, 100);
+      int n = Read(chunk);
+      if (n > 0) { if (countF + n > mono.Length) { int keep = mono.Length - n; Array.Copy(mono, countF-keep, mono, 0, keep); countF = keep; } Array.Copy(chunk, 0, mono, countF, n); countF += n; }
+      else countF = 0;
+      sb.Length = 0; sb.Append("{\"bands\":[");
+      if (Features(mono, countF, bands, lbc)) { for (int i=0;i<32;i++){ if(i>0)sb.Append(','); sb.Append(Math.Round(bands[i],4).ToString(ci)); }
+        sb.Append("],\"level\":").Append(Math.Round(lbc[0],4).ToString(ci)).Append(",\"beat\":").Append(Math.Round(lbc[1],4).ToString(ci)).Append(",\"centroid\":").Append(Math.Round(lbc[2],4).ToString(ci)); }
+      else { for (int i=0;i<32;i++){ if(i>0)sb.Append(','); sb.Append('0'); } sb.Append("],\"level\":0,\"beat\":0,\"centroid\":0.5"); }
+      sb.Append(",\"t\":").Append(Math.Round(sw.Elapsed.TotalMilliseconds,1).ToString(ci)).Append('}');
+      Console.Out.WriteLine(sb.ToString()); Console.Out.Flush();
+    }
+  }
+}
