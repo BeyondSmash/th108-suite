@@ -371,7 +371,8 @@
         html+=
           sec('Tuning')+
           row('Gain','<span class="srange" style="width:100%"><input type="range" class="s-gain" min="50" max="300" value="'+Math.round((ap.gain||1)*100)+'" title="Boost/cut input sensitivity before it drives the keys (this style only)"><i class="tick" style="left:calc(7px + (100% - 14px)*0.2)"></i></span><span class="val s-gainV"></span>')+
-          row('Noise floor','<span class="srange" style="width:100%"><input type="range" class="s-floor" min="0" max="40" value="'+ap.floor+'" title="Gate out quiet hiss below this level so idle keys stay dark (this style only)"><i class="tick" style="left:calc(7px + (100% - 14px)*0.125)"></i></span><span class="val s-floorV"></span>')+
+          row('Noise floor','<span class="srange" style="width:100%"><input type="range" class="s-floor" min="0" max="40" value="'+ap.floor+'" title="MIN level — gate out quiet hiss below this so idle keys stay dark (this style only)"><i class="tick" style="left:calc(7px + (100% - 14px)*0.125)"></i></span><span class="val s-floorV"></span>')+
+          row('Ceiling','<span class="srange" style="width:100%"><input type="range" class="s-ceil" min="20" max="100" value="'+(ap.ceil==null?100:ap.ceil)+'" title="MAX level — the loudness that fills bars to the TOP. LOWER = bars hit the top more easily / more volatile (it stretches floor→ceiling across the full height). 100 = no boost (this style only)"><i class="tick" style="left:calc(7px + (100% - 14px)*1.0)"></i></span><span class="val s-ceilV"></span>')+
           row('Attack','<span class="srange" style="width:100%"><input type="range" class="s-attackMs" min="0" max="300" step="5" value="'+ap.attackMs+'" title="How fast keys brighten on a rise (ms). Lower = snappier (this style only)"><i class="tick" style="left:calc(7px + (100% - 14px)*0.133)"></i></span><span class="val s-attackMsV"></span>')+
           row('Decay','<span class="srange" style="width:100%"><input type="range" class="s-decayMs" min="40" max="800" step="10" value="'+ap.decayMs+'" title="How slowly keys fade after a peak (ms). Higher = smoother (this style only)"><i class="tick" style="left:calc(7px + (100% - 14px)*0.237)"></i></span><span class="val s-decayMsV"></span>')+
           row('Beat sensitivity','<span class="srange" style="width:100%"><input type="range" class="s-beatSens" min="0" max="100" value="'+ap.beatSens+'" title="How strongly kicks/onsets pop in pulse and bloom (this style only)"><i class="tick" style="left:calc(7px + (100% - 14px)*0.5)"></i></span><span class="val s-beatSensV"></span>')+
@@ -406,6 +407,7 @@
         const slider=(cls,key,fmt,xform,snapTo,tol)=>{ const el=c('.s-'+cls), v=c('.s-'+cls+'V'); if(!el||!v) return; const up=()=>v.textContent=fmt(ap[key]); el.addEventListener('input',e=>{ if(snapTo!=null) snap(el,snapTo,tol==null?4:tol); ap[key]=xform(+el.value); up(); }); up(); };   // writes the PER-STYLE param (ap); tol = snap approach width (smaller on short-range sliders); guard !v so a class mismatch can't crash init
         slider('gain','gain',x=>Math.round(x*100)+'%',v=>v/100,100);
         slider('floor','floor',x=>x+'%',v=>v,5,1);   // 0-40 range → tight snap (±1) so the tick isn't sticky
+        slider('ceil','ceil',x=>x+'%',v=>v,100,1);   // MAX level (100 = no boost; lower = bars peak more easily)
         slider('attackMs','attackMs',x=>x+'ms',v=>v,40);
         slider('decayMs','decayMs',x=>x+'ms',v=>v,220);
         slider('beatSens','beatSens',x=>x+'%',v=>v,50);

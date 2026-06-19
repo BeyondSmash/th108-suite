@@ -79,8 +79,10 @@
     const A = state.audio, p = audioParams(s);   // tuner params are PER-STYLE (gain/floor/attack/decay/beatSens)
     let dt = A._t ? Math.max(1, Math.min(100, now - A._t)) : 16;   // clamp dt (tab-throttle/sleep safe)
     A._t = now;
-    const gain = p.gain || 1, floor = (p.floor||0)/100;
-    const gate = (v)=>{ v = Math.max(0, Math.min(1, v*gain)); return v < floor ? 0 : v; };
+    // Range-expander: map the gained input from [floor..ceil] onto the full [0..1] bar height. floor gates
+    // the quiet bottom; a LOWER ceil makes bars reach the top more easily (more volatile). ceil default 100.
+    const gain = p.gain || 1, lo = (p.floor||0)/100, hi = Math.max(lo + 0.02, (p.ceil==null?100:p.ceil)/100);
+    const gate = (v)=>{ v = v*gain - lo; v = v/(hi-lo); return v<=0 ? 0 : (v>=1 ? 1 : v); };
     const tgtLevel = gate(raw.level||0);
     A.level = audioEnvelope(A.level, tgtLevel, dt, p.attackMs, p.decayMs);
     A.centroid = audioEnvelope(A.centroid, (raw.centroid==null?0.5:raw.centroid), dt, p.attackMs, p.decayMs);
@@ -100,7 +102,7 @@
   }
   // Per-STYLE tuner params (gain/floor/attack/decay/beatSens) so tuning bars doesn't leak into pulse, etc.
   // Mirrors patParams: one-time migrates the old flat values onto the current style; new styles start at defaults.
-  const AUDIO_TUNE_DEFAULTS = { gain:1, floor:5, attackMs:40, decayMs:220, beatSens:50 };
+  const AUDIO_TUNE_DEFAULTS = { gain:1, floor:5, ceil:100, attackMs:40, decayMs:220, beatSens:50 };
   function audioParams(s){
     const style = s.style || 'bars';
     if(!s.ap){
