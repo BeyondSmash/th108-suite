@@ -401,3 +401,38 @@ test('applyAudioFeatures keeps L and R separate when the source is stereo', () =
   assert.ok(st.audio.bandsL[5] > 0.3, 'L channel rose');
   assert.ok(st.audio.bandsR[5] < 0.05, 'R channel stays ~0');
 });
+
+test('bars reverse layout: a bass-only signal lights the right, not the left (mirror of standard)', () => {
+  const L = { type:'audio', enabled:true, opacity:1, blend:'add', settings:{ style:'bars' }, rgb:new Uint8Array(E.NLED*3) };
+  E.ensureSettings(L); const st = E.createState([L]); const La = st.layers[0];
+  const kLeft = findK(c => c[0] === 0);   // far-left column
+  st.audio.bands.fill(0); st.audio.bands[0] = 1;   // pure bass
+  La.settings.barLayout = 'standard'; E.renderAudio(La, 0, st);
+  assert.ok(litSum(La, kLeft) > 0, 'standard: bass lights the LEFT');
+  La.settings.barLayout = 'reverse'; E.renderAudio(La, 0, st);
+  assert.equal(litSum(La, kLeft), 0, 'reverse: bass no longer lights the left (it moved to the right)');
+});
+
+test('bars top-down layout: a short bar lights the TOP row, not the bottom', () => {
+  const L = { type:'audio', enabled:true, opacity:1, blend:'add', settings:{ style:'bars', barLayout:'topdown' }, rgb:new Uint8Array(E.NLED*3) };
+  E.ensureSettings(L); const st = E.createState([L]); const La = st.layers[0];
+  st.audio.bands.fill(0); st.audio.bands[0] = 0.2;   // tiny bar in column 0 (bass, left)
+  E.renderAudio(La, 0, st);
+  const colMin = c => c[0] === 0;
+  const kTop = findK(c => colMin(c) && c[1] === 0), kBot = findK(c => colMin(c) && c[1] === E.GH-1);
+  assert.ok(kTop >= 0 && kBot >= 0, 'found top + bottom of column 0');
+  assert.ok(litSum(La, kTop) > 0, 'top row lit (bar hangs from the top)');
+  assert.equal(litSum(La, kBot), 0, 'bottom row dark');
+});
+
+test('bars center-out layout: a short bar lights the middle rows, not the edges', () => {
+  const L = { type:'audio', enabled:true, opacity:1, blend:'add', settings:{ style:'bars', barLayout:'centerout' }, rgb:new Uint8Array(E.NLED*3) };
+  E.ensureSettings(L); const st = E.createState([L]); const La = st.layers[0];
+  st.audio.bands.fill(0); st.audio.bands[0] = 0.5;   // bar fills the innermost level (mag ≥ 1/3), not the outer edges
+  E.renderAudio(La, 0, st);
+  const colMin = c => c[0] === 0;
+  const kMid = findK(c => colMin(c) && (c[1] === 2 || c[1] === 3)), kEdge = findK(c => colMin(c) && c[1] === 0);
+  assert.ok(kMid >= 0 && kEdge >= 0, 'found middle + edge of column 0');
+  assert.ok(litSum(La, kMid) > 0, 'middle row lit (grows from the center)');
+  assert.equal(litSum(La, kEdge), 0, 'top edge dark');
+});

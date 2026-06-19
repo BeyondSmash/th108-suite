@@ -286,52 +286,62 @@
     else if(style==='wave') renderWave(s, out, A, now);
     else renderBars(s, out, A, now, L);
   }
-  // Bars: column (GRID col 0..GW-1) → frequency band; key lights bottom-up by that band's magnitude.
-  // The TOPMOST lit key of each column (the bar's tip) can take a contrasting outline color/rainbow
-  // (s.barTip = 'off'|'color'|'rainbow'). Fill 'subtract' (s.barFill): the bar BODY stays dark and CARVES
-  // the layers below (a silhouette), while the tips still draw — so you see the spectrum as negative space.
+  // Bars: column (GRID col 0..GW-1) → frequency band; each bar fills by that band's magnitude.
+  // s.barLayout picks BOTH the horizontal frequency mapping and the vertical fill direction:
+  //   standard (bass L→treble R, grow up) | reverse (treble L→bass R, up) | mirror (bass center, up)
+  //   | stereo (left half = L channel, right half = R channel, up) | topdown (bass L→treble R, grow DOWN)
+  //   | centerout (bass L→treble R, grow from the middle row OUTWARD).
+  // The bar's TIP key (s.barTip) can take a contrasting outline; fill 'subtract' (s.barFill) carves the
+  // bar BODY into the layers below (a silhouette) while the tips still draw.
   function renderBars(s, out, A, now, L){
     const bass = hexToRgb(s.barColorBass||'#ff2200'), treb = hexToRgb(s.barColorTreble||'#22aaff');
     const gradA = hexToRgb(s.barGradA||'#00ff66'), gradB = hexToRgb(s.barGradB||'#ff00aa');
     const tip = s.barTip || 'off', tipCol = hexToRgb(s.barTipColor||'#ffffff'), t = (now||0)/1000;
     const barColor = s.barColor || 'bassTreble';            // bassTreble (horizontal) | gradient (vert 2-color) | vu (green→red by height)
     const subtract = s.barFill === 'subtract';
-    const layout = s.barLayout || 'standard';               // standard (bass L→treble R) | mirror (bass center) | stereo (L/R split)
+    const layout = s.barLayout || 'standard';
     const ctr = (GW-1)/2;
+    const vert = layout==='topdown' ? 'down' : layout==='centerout' ? 'center' : 'up';   // vertical fill mode
+    const midRow = (GH-1)/2, halfH = GH/2;
     let cb = null, any = false;
     if(subtract && L){ cb = L._carveBuf || (L._carveBuf = new Float32Array(NLED)); cb.fill(0); }
-    // tip color for the topmost lit key (fc = column for rainbow drift; fb = its row-from-bottom for VU)
-    const tipColorAt = (fc, fb) => tip==='rainbow' ? hsv2rgb(fc + t*0.15, 1, 1) : tip==='vu' ? vuRow(fb) : tipCol;
+    // tip color (fc = column for rainbow drift; vuFb = the fill level scaled to the 6-row VU palette)
+    const tipColorAt = (fc, vuFb) => tip==='rainbow' ? hsv2rgb(fc + t*0.15, 1, 1) : tip==='vu' ? vuRow(vuFb) : tipCol;
     for(let k=0;k<NLED;k++){
       const idx = INDICES[k], cell = GRID[idx]; if(!cell) continue;
       const col = cell[0], row = cell[1], o = k*3;
-      // layout picks which band/channel each column reads (fc = 0 bass … 1 treble, also drives coloring)
+      // --- horizontal: fc (0 bass … 1 treble, also drives coloring) + which band/channel ---
       let fc, bandsArr = A.bands;
       if(layout==='mirror'){ fc = ctr>0 ? Math.abs(col-ctr)/ctr : 0; }                                   // bass in the center, treble at both edges
       else if(layout==='stereo'){                                                                         // left half = L channel, right half = R channel; bass meets in the middle
         if(col<=ctr){ bandsArr = A.bandsL||A.bands; fc = ctr>0 ? (ctr-col)/ctr : 0; }                     // left side: center=bass → left edge=treble
         else { bandsArr = A.bandsR||A.bands; fc = (GW-1-ctr)>0 ? (col-ctr)/(GW-1-ctr) : 0; }              // right side: center=bass → right edge=treble
       }
-      else { fc = GW>1 ? col/(GW-1) : 0; }                                                                // standard: bass left → treble right
+      else if(layout==='reverse'){ fc = GW>1 ? 1 - col/(GW-1) : 0; }                                      // treble left → bass right (mirror of standard)
+      else { fc = GW>1 ? col/(GW-1) : 0; }                                                                // standard / topdown / centerout: bass left → treble right
       const band = Math.min(31, Math.round(fc*31));
       const mag = (bandsArr||A.bands)[band];                  // 0..1 (already smoothed/gated)
-      const litRows = mag*GH;                                 // how many rows up this column fills
-      const fromBottom = (GH-1) - row + 1;                    // bottom row = 1 … top row = GH
-      if(fromBottom > litRows){ out[o]=out[o+1]=out[o+2]=0; continue; }
-      const h = fromBottom/GH;                                // brightness-ramp coord (0.167 … 1)
-      const hc = GH>1 ? (fromBottom-1)/(GH-1) : 0;            // COLOR coord, full 0 (bottom) … 1 (top) so the scale spans every row
-      const isTip = tip!=='off' && fromBottom+1 > litRows;    // the topmost lit row in this column = the bar's tip
+      // --- vertical: fb = fill level from base(1) → tip(steps); litCount = how many levels this bar fills ---
+      let fb, steps;
+      if(vert==='center'){ steps = halfH; fb = Math.ceil(Math.abs(row - midRow)); }   // distance out from the middle row (1=innermost)
+      else { steps = GH; fb = vert==='down' ? (row+1) : ((GH-1) - row + 1); }         // down: base at top; up: base at bottom
+      const litCount = mag*steps;
+      if(fb > litCount){ out[o]=out[o+1]=out[o+2]=0; continue; }
+      const h = fb/steps;                                     // brightness-ramp coord (dimmer at base … brightest at tip)
+      const hc = steps>1 ? (fb-1)/(steps-1) : 0;              // COLOR coord 0 (base) … 1 (tip)
+      const vuFb = vert==='center' ? fb*2 : fb;               // center has only 3 levels/side → scale to the 6-step VU palette
+      const isTip = tip!=='off' && fb+1 > litCount;           // outermost lit level of this bar = its tip
       if(subtract){
         if(cb){ cb[k]=1; any=true; }                          // carve the layers below at every bar-body key
-        if(isTip){ const tc = tipColorAt(fc, fromBottom); out[o]=tc[0]|0; out[o+1]=tc[1]|0; out[o+2]=tc[2]|0; }
+        if(isTip){ const tc = tipColorAt(fc, vuFb); out[o]=tc[0]|0; out[o+1]=tc[1]|0; out[o+2]=tc[2]|0; }
         else { out[o]=out[o+1]=out[o+2]=0; }                  // empty body → reads as a dark silhouette via the carve
         continue;
       }
-      if(isTip){ const tc = tipColorAt(fc, fromBottom); out[o]=tc[0]|0; out[o+1]=tc[1]|0; out[o+2]=tc[2]|0; continue; }
+      if(isTip){ const tc = tipColorAt(fc, vuFb); out[o]=tc[0]|0; out[o+1]=tc[1]|0; out[o+2]=tc[2]|0; continue; }
       let c, v;
-      if(barColor==='vu'){ c = vuRow(fromBottom); v = 1; }                                    // discrete green(1)/yellow(2)/red(3+) by row, full brightness
+      if(barColor==='vu'){ c = vuRow(vuFb); v = 1; }                                          // discrete green→yellow→red by fill level, full brightness
       else { v = 0.45 + 0.55*h;                                                               // ramp only for the solid/gradient fills
-        if(barColor==='gradient') c = [gradA[0]+(gradB[0]-gradA[0])*hc, gradA[1]+(gradB[1]-gradA[1])*hc, gradA[2]+(gradB[2]-gradA[2])*hc];  // bottom→top
+        if(barColor==='gradient') c = [gradA[0]+(gradB[0]-gradA[0])*hc, gradA[1]+(gradB[1]-gradA[1])*hc, gradA[2]+(gradB[2]-gradA[2])*hc];  // base→tip
         else c = [bass[0]+(treb[0]-bass[0])*fc, bass[1]+(treb[1]-bass[1])*fc, bass[2]+(treb[2]-bass[2])*fc]; }   // bass→treble (per column)
       out[o]=(c[0]*v)|0; out[o+1]=(c[1]*v)|0; out[o+2]=(c[2]*v)|0;
     }
