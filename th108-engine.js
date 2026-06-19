@@ -79,11 +79,20 @@
     const A = state.audio, p = audioParams(s);   // tuner params are PER-STYLE (gain/floor/attack/decay/beatSens)
     let dt = A._t ? Math.max(1, Math.min(100, now - A._t)) : 16;   // clamp dt (tab-throttle/sleep safe)
     A._t = now;
-    // Range-expander: map the gained input from [floor..ceil] onto the full [0..1] bar height. floor gates
-    // the quiet bottom; a LOWER ceil makes bars reach the top more easily (more volatile). ceil default 100.
+    // Feature shaping, in order: gain → per-band AUTO-GAIN (normalize to each signal's own ~2s peak, so any
+    // input level uses the full range and quiet→bottom/loud→top) → [floor..ceil] range map → CONTRAST gamma
+    // (expands the swing: capture dB-compresses each band into a narrow range, gamma pulls it bottom→top).
+    // This is what makes the spectrum actually dance instead of flickering the top rows.
     const gain = p.gain || 1, lo = (p.floor||0)/100, hi = Math.max(lo + 0.02, (p.ceil==null?100:p.ceil)/100);
-    const gate = (v)=>{ v = v*gain - lo; v = v/(hi-lo); return v<=0 ? 0 : (v>=1 ? 1 : v); };
-    const tgtLevel = gate(raw.level||0);
+    const gamma = 1 + ((p.contrast==null?50:p.contrast)/100)*4;   // 0→1 (linear) … 100→5 (very punchy)
+    const pdecay = Math.exp(-dt/2000);                            // peak memory ~2s
+    if(!A._peak || A._peak.length!==32) A._peak = new Float32Array(32).fill(0.12);
+    if(A._lpk == null) A._lpk = 0.12;
+    const shape = (v)=>{ v=(v-lo)/(hi-lo); v=v<=0?0:(v>=1?1:v); return gamma!==1 ? Math.pow(v,gamma) : v; };
+    const band   = (v,i)=>{ v=(v||0)*gain; const pk=A._peak[i]=Math.max(v, A._peak[i]*pdecay); return shape(v/Math.max(pk,0.06)); };
+    const bandRO = (v,i)=>{ v=(v||0)*gain; return shape(v/Math.max(A._peak[i],0.06)); };   // L/R reuse the mono peak (keeps the L↔R balance)
+    const lvl    = (v)=>{   v=(v||0)*gain; A._lpk=Math.max(v, A._lpk*pdecay); return shape(v/Math.max(A._lpk,0.06)); };
+    const tgtLevel = lvl(raw.level);
     A.level = audioEnvelope(A.level, tgtLevel, dt, p.attackMs, p.decayMs);
     A.centroid = audioEnvelope(A.centroid, (raw.centroid==null?0.5:raw.centroid), dt, p.attackMs, p.decayMs);
     // beat: instantaneous rise, decay only (so a kick pops then fades); beatSens scales sensitivity
@@ -95,14 +104,14 @@
     if(!A.bandsL) A.bandsL = new Float32Array(32);
     if(!A.bandsR) A.bandsR = new Float32Array(32);
     for(let i=0;i<32;i++){
-      const t = rb ? gate(rb[i]||0) : 0; A.bands[i] = audioEnvelope(A.bands[i], t, dt, p.attackMs, p.decayMs);
-      const tL = rbL ? gate(rbL[i]||0) : t; A.bandsL[i] = audioEnvelope(A.bandsL[i], tL, dt, p.attackMs, p.decayMs);
-      const tR = rbR ? gate(rbR[i]||0) : t; A.bandsR[i] = audioEnvelope(A.bandsR[i], tR, dt, p.attackMs, p.decayMs);
+      const t = rb ? band(rb[i], i) : 0; A.bands[i] = audioEnvelope(A.bands[i], t, dt, p.attackMs, p.decayMs);
+      const tL = rbL ? bandRO(rbL[i], i) : t; A.bandsL[i] = audioEnvelope(A.bandsL[i], tL, dt, p.attackMs, p.decayMs);
+      const tR = rbR ? bandRO(rbR[i], i) : t; A.bandsR[i] = audioEnvelope(A.bandsR[i], tR, dt, p.attackMs, p.decayMs);
     }
   }
   // Per-STYLE tuner params (gain/floor/attack/decay/beatSens) so tuning bars doesn't leak into pulse, etc.
   // Mirrors patParams: one-time migrates the old flat values onto the current style; new styles start at defaults.
-  const AUDIO_TUNE_DEFAULTS = { gain:1, floor:5, ceil:100, attackMs:40, decayMs:220, beatSens:50 };
+  const AUDIO_TUNE_DEFAULTS = { gain:1, floor:5, ceil:100, contrast:50, attackMs:40, decayMs:220, beatSens:50 };
   function audioParams(s){
     const style = s.style || 'bars';
     if(!s.ap){

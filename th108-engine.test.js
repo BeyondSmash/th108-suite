@@ -451,15 +451,17 @@ test('bars sub-row fill: the top partial row brightens continuously with magnitu
   assert.ok(hi > lo, 'same row gets brighter as the bar fills further into it (continuous, not binary)');
 });
 
-test('ceiling expands range: a lower ceiling pushes mid-level audio to full bars', () => {
-  const mk = (ceil) => {
+test('contrast deepens the dips: a sub-peak band reads lower at high contrast', () => {
+  const run = (contrast) => {
     const st = E.createState([{ type:'audio', enabled:true, opacity:1, blend:'add', fps:30, settings:{ style:'bars' } }]);
-    const ap = E.audioParams(st.layers[0].settings); ap.floor = 0; ap.ceil = ceil; ap.gain = 1;
-    const raw = { bands:new Float32Array(32).fill(0.5), level:0.5, beat:0, centroid:0.5 };
-    for (let t = 16; t <= 600; t += 16) E.applyAudioFeatures(st, raw, st.layers[0].settings, t);
-    return st.audio.bands[5];
+    const ap = E.audioParams(st.layers[0].settings);
+    ap.floor = 0; ap.ceil = 100; ap.gain = 1; ap.contrast = contrast; ap.attackMs = 1; ap.decayMs = 1;
+    let raw = { bands:new Float32Array(32).fill(1), level:1, beat:0, centroid:0.5 };   // establish a high per-band peak
+    for (let t = 16; t <= 200; t += 16) E.applyAudioFeatures(st, raw, st.layers[0].settings, t);
+    raw = { bands:new Float32Array(32).fill(0.5), level:0.5, beat:0, centroid:0.5 };   // then sit at ~half the peak
+    let v = 0; for (let t = 216; t <= 420; t += 16){ E.applyAudioFeatures(st, raw, st.layers[0].settings, t); v = st.audio.bands[5]; }
+    return v;
   };
-  const full = mk(100), low = mk(50);
-  assert.ok(low > full, 'lower ceiling → higher mapped level for the same input');
-  assert.ok(low > 0.9, 'ceiling 50 maps a 0.5 input to ~full height');
+  const linear = run(0), punchy = run(100);
+  assert.ok(punchy < linear, 'high contrast pulls a sub-peak band much lower (deeper dips → bottom→top travel)');
 });
