@@ -1072,12 +1072,22 @@ async function startAudioSource(kind){
 // layer is enabled — so the capture's beat/onset state isn't double-advanced. While DRIVING, layerTick
 // calls this (it's worker-timed → keeps running smoothly even when this tab is backgrounded); when idle,
 // the rAF below calls it so the card's Live preview still updates.
+// system/app audio is captured by the daemon; we poll its latest frame (~20Hz) so the page preview + keys
+// react in real time even while this tab drives the device. tab/mic stay in-tab via webCap.
+let _dmnAudio=null, _dmnAudioAt=0;
+setInterval(async ()=>{
+  const aL=state.layers.find(L=>L.enabled && L.type==='audio'), src=aL&&aL.settings.source;
+  if(!aL || (src!=='system' && src!=='app') || !DC.present){ _dmnAudio=null; return; }
+  try{ const j=await (await fetch('/audio/frame',{cache:'no-store'})).json(); _dmnAudio=j.frame||null; if(_dmnAudio) _dmnAudioAt=performance.now(); }
+  catch(_){ _dmnAudio=null; }
+}, 50);
+const dmnAudioFresh = ()=> _dmnAudio && performance.now()-_dmnAudioAt < 500;
 function feedAudio(now){
   const aL = state.layers.find(L=>L.enabled && L.type==='audio');
   if(!aL) return;
-  // tab/mic = real in-tab capture; system/app are the daemon's job (blur the tab) → in-tab they read SILENT,
-  // not the synth, so paused audio = dark keys. The synth lives only in the card's Sample preview canvas.
-  const raw = webCap.active() ? webCap.sample() : null;
+  const src = aL.settings.source;
+  // tab/mic = in-tab webCap; system/app = the daemon's polled frame; else silent (no synth on the real keys).
+  const raw = webCap.active() ? webCap.sample() : ((src==='system'||src==='app') ? _dmnAudio : null);
   TH108Engine.applyAudioFeatures(state, raw || {}, aL.settings, now);
 }
 function audioFeedTick(now){
@@ -1247,7 +1257,7 @@ const LUI=TH108LayersUI.create({
   isRunning: ()=>running,                                    // reorder warm-renders the new stack only while the loop is live
   onPatternPick: ()=>{ if(obActive && HID.device && !running && !GIF.playing) start(); },   // picking a pattern while a firmware effect is showing = "back to layers", no extra click
   onAudioSource: startAudioSource,                           // audio-layer source pick → start/stop in-tab Web Audio capture
-  liveAudioActive: ()=>webCap.active(),                      // true only when real in-tab capture is running → Live preview shows real audio (else blank)
+  liveAudioActive: ()=>webCap.active() || dmnAudioFresh(),   // in-tab capture OR a fresh daemon (system/app) frame → Live preview shows real audio (else blank)
   listAudioApps: ()=>fetch('/audio/apps',{cache:'no-store'}).then(r=>r.json()).then(d=>d.apps||[])   // "Specific app" picker → daemon's currently-playing apps (app-capture.exe --list)
 });
 LUI.init();   // restore saved layers → ensureSettings backfill → build cards → persist-on-edit listeners on #layersPanel

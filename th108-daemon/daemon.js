@@ -411,14 +411,16 @@ syncNowPlaying();
 const AC = require('./audio-capture.js');
 let acHandle = null, acKey = null;
 // What capture does the active config want? null = none; else {key, app?}. The daemon handles 'system'
-// (WASAPI loopback) and 'app' (process-loopback via app-capture.exe <name>); 'tab'/'mic' are page-only, so
-// when the daemon is driving they fall back to system (the ambient board still reacts to system audio).
+// (WASAPI loopback) and 'app' (process-loopback); 'tab'/'mic' are page-only. NOTE: NOT gated on `paused` —
+// audio capture is independent of the HID device, so we keep capturing while the page drives so the page can
+// poll /audio/frame for its preview + to drive the keys with real system/app audio (else it'd be blank/synth).
 function audioCfg() {
-  if (paused || !state) return null;
+  if (!state) return null;
   const aL = state.layers.find(L => L.enabled && L.type === 'audio');
   if (!aL) return null;
   const s = aL.settings || {};
   if (s.source === 'app' && s.appId) return { key: 'app:' + s.appId, app: s.appId };
+  if (s.source === 'tab' || s.source === 'mic') return null;   // page captures these in-tab
   return { key: 'system' };
 }
 function syncAudioCapture() {
@@ -463,6 +465,8 @@ const control = {
     syncAudioCapture(); },   // an edit that enables/disables the audio layer starts/stops capture live
   // List currently-playing audio apps for the page's "Specific app" picker (one-shot app-capture.exe --list).
   listAudioApps() { return new Promise(r => AC.listApps((_e, arr) => r(arr))); },
+  // Latest captured audio frame (system/app) so the open page can preview it + drive the keys in real time.
+  audioFrame() { return acHandle ? AC.freshOr(acHandle.latest(), Date.now(), 300) : null; },
   status() { return { running: true, paused, deviceConnected: !!device, fps: FPS, setupPath: path.resolve(__dirname, '..', 'setup.cmd'), usbReset: settings.usbReset, nowPlaying: settings.nowPlaying,
                       npTrack: npHandle ? npHandle.current() : null, npQueued: npHandle ? npHandle.queued() : false,
                       npHealth: npHandle ? npHandle.health() : null,
