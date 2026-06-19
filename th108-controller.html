@@ -240,6 +240,14 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
   .lbody{ margin-top:10px; padding-top:8px; border-top:1px solid var(--border); }
   .lbody .ctl{ grid-template-columns:84px minmax(30px,1fr) auto; gap:7px 8px; }
   .lbody .ph{ color:var(--muted); font-size:13px; }
+  /* section headers inside a layer body: full-width (overhang the label column), rule above. main = full
+     rule; sub = a shorter, lighter rule. lfull = a control block that spans the whole grid under a header. */
+  .lbody .ctl .lsec, .lbody .ctl .lsub{ grid-column:1/-1; }
+  .lbody .ctl .lsec{ margin:13px 0 1px; padding-top:11px; border-top:1px solid var(--border); color:var(--text); font-size:13px; font-weight:600; letter-spacing:.02em; }
+  .lbody .ctl .lsec:first-child{ margin-top:0; padding-top:2px; border-top:0; }
+  .lbody .ctl .lsub{ position:relative; margin:9px 0 0; padding-top:8px; color:var(--muted); font-size:12px; }
+  .lbody .ctl .lsub::before{ content:""; position:absolute; top:0; left:0; width:150px; max-width:55%; height:1px; background:var(--border); opacity:.8; }
+  .lbody .ctl .lfull{ grid-column:1/-1; display:flex; flex-wrap:wrap; align-items:center; gap:8px 14px; }
   .lhead .lgrip{ cursor:grab; color:var(--muted); font-size:15px; user-select:none; padding:0 2px; }
   .lhead .lgrip:active{ cursor:grabbing; }
   .lcard.ldragging{ opacity:.5; }

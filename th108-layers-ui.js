@@ -135,6 +135,9 @@
     function buildLayerBody(card,L){
       const body=card.querySelector('.lbody'), s=L.settings;
       const row=(label,html)=>'<label>'+label+'</label>'+html;
+      const sec=t=>'<div class="lsec">'+t+'</div>';      // main section header (full-width, rule above)
+      const sub=t=>'<div class="lsub">'+t+'</div>';      // subsection header (full-width, shorter/lighter rule)
+      const full=html=>'<div class="lfull">'+html+'</div>';   // a control block that spans the whole grid under a header
       if(L.type==='background'){
         body.innerHTML='<div class="ctl">'+
           row('Color','<input type="color" class="s-color" value="'+s.color+'"><span></span>')+
@@ -272,13 +275,14 @@
         if(s.current===undefined) s.current='#ff8c00';
         if(s.fill===undefined) s.fill='solid';
         const fillOpt=[['solid','Solid'],['subtract','Subtract (silhouette)']].map(o=>'<option value="'+o[0]+'"'+(o[0]===s.fill?' selected':'')+'>'+o[1]+'</option>').join('');
-        const sub=s.fill==='subtract';
+        const isSub=s.fill==='subtract';
         body.innerHTML='<div class="ctl">'+
-          row('Fill','<select class="s-fill" title="Solid = paint exact key colors. Subtract = the painted keys carve the layers below into a dark silhouette (negative space) — needs a layer beneath to cut into.">'+fillOpt+'</select><span></span>')+
-          row('Paint color','<input type="color" class="s-current" value="'+s.current+'"><span></span>')+
-          row('','<span class="val s-fillNote" style="opacity:.7">'+(sub?'In Subtract the paint color is ignored — you’re choosing which keys to carve into a silhouette.':'Pick a color, Show Keyboard, then click/drag keys to paint them.')+'</span><span></span>')+
-          row('','<span style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><button class="s-showkb" type="button">⌨ Show Keyboard</button><span class="val s-selcount"></span></span><span></span>')+
-          row('','<span style="display:flex;gap:8px;flex-wrap:wrap"><button class="s-clearsel" type="button">Clear selection</button><button class="s-clearall" type="button">Clear all</button></span><span></span>')+
+          sec('Fill')+
+          full('<select class="s-fill" title="Solid = paint exact key colors. Subtract = the painted keys carve the layers below into a dark silhouette (negative space) — needs a layer beneath to cut into.">'+fillOpt+'</select>')+
+          sub('Paint')+
+          full('<input type="color" class="s-current" value="'+s.current+'"><span class="val s-fillNote" style="opacity:.7;flex:1 1 100%">'+(isSub?'In Subtract the paint color is ignored — you’re choosing which keys to carve into a silhouette.':'Pick a color, Show Keyboard, then click/drag keys to paint them.')+'</span>')+
+          full('<button class="s-showkb" type="button">⌨ Show Keyboard</button><span class="val s-selcount"></span>')+
+          full('<button class="s-clearsel" type="button">Clear selection</button><button class="s-clearall" type="button">Clear all</button>')+
         '</div>';
         const c=q=>body.querySelector(q);
         let pb=null, wrap=null;
@@ -316,16 +320,18 @@
         const sopt=styles.map(m=>'<option value="'+m[0]+'"'+(m[0]===style?' selected':'')+'>'+m[1]+'</option>').join('');
         const esc=t=>(t||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');
         let html='<div class="ctl">'+
-          row('Source','<span style="display:grid;grid-template-columns:1fr 1fr;gap:5px 14px">'+srcBubbles+'</span><span></span>')+
-          (s.source==='app' ? row('App','<span style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;min-width:0"><select class="s-appId" style="max-width:180px"></select><button type="button" class="s-appRefresh" title="rescan currently-playing apps" style="flex:none">Refresh</button><span class="val s-appNote" style="opacity:.7"></span></span><span></span>') : '')+
-          row('Source note','<span class="val" style="opacity:.7">This tab / Mic = real audio captured right here — pick one and accept the share/mic prompt (for a tab, tick “Share tab audio”). All system audio + a Specific app run ambiently through the background daemon (close/blur this tab). Pick an app from the list of what’s currently playing.</span><span></span>')+
-          row('Style','<select class="s-style">'+sopt+'</select><span></span>')+
-          row('Preview','<div style="display:flex;flex-direction:column;gap:9px">'+
+          sec('Source')+
+          full('<span style="display:grid;grid-template-columns:1fr 1fr;gap:5px 14px;flex:1 1 100%">'+srcBubbles+'</span>')+
+          (s.source==='app' ? sub('Specific app')+full('<select class="s-appId" style="max-width:180px"></select><button type="button" class="s-appRefresh" title="rescan currently-playing apps" style="flex:none">Refresh</button><span class="val s-appNote" style="opacity:.7"></span>') : '')+
+          full('<span class="val" style="opacity:.7;flex:1 1 100%">This tab / Mic = real audio captured right here — pick one and accept the share/mic prompt (for a tab, tick “Share tab audio”). All system audio + a Specific app run ambiently through the background daemon (close/blur this tab). Pick an app from the list of what’s currently playing.</span>')+
+          sec('Style')+ full('<select class="s-style">'+sopt+'</select>')+
+          sec('Preview')+ full('<div style="display:flex;flex-direction:column;gap:9px;flex:1 1 100%">'+
             '<div><div style="display:flex;align-items:center;gap:8px;margin-bottom:3px"><span class="val" style="opacity:.65">Sample — test signal</span><button type="button" class="s-samplePrevToggle">'+(s.samplePrevOff?'Show':'Hide')+'</button></div>'+
               '<canvas class="s-audioPrev" width="378" height="92" style="width:100%;height:auto;display:'+(s.samplePrevOff?'none':'block')+';background:#0d1117;border-radius:8px"></canvas></div>'+
             '<div><div style="display:flex;align-items:center;gap:8px;margin-bottom:3px"><span class="val" style="opacity:.65">Live — real audio (blank when nothing’s playing)</span><button type="button" class="s-livePrevToggle">'+(s.livePrevOff?'Show':'Hide')+'</button></div>'+
               '<canvas class="s-audioPrevLive" width="378" height="92" style="width:100%;height:auto;display:'+(s.livePrevOff?'none':'block')+';background:#0d1117;border-radius:8px"></canvas></div>'+
-          '</div><span></span>');
+          '</div>')+
+          sub('Appearance');
         if(style==='bars'){ const bt=s.barTip||'off', bf=s.barFill||'solid', bc=s.barColor||'bassTreble', blo=s.barLayout||'standard';
           const btOpt=[['off','Off'],['color','Solid color'],['rainbow','Rainbow'],['vu','VU (green→red by level)']].map(o=>'<option value="'+o[0]+'"'+(o[0]===bt?' selected':'')+'>'+o[1]+'</option>').join('');
           const bfOpt=[['solid','Solid'],['subtract','Subtract (silhouette)']].map(o=>'<option value="'+o[0]+'"'+(o[0]===bf?' selected':'')+'>'+o[1]+'</option>').join('');
@@ -364,12 +370,13 @@
         }).join('');
         const ap=E.audioParams(s);   // tuner sliders are PER-STYLE (gain/floor/attack/decay/beatSens live in s.ap[style])
         html+=
+          sec('Tuning')+
           row('Gain','<span class="srange" style="width:100%"><input type="range" class="s-gain" min="50" max="300" value="'+Math.round((ap.gain||1)*100)+'" title="Boost/cut input sensitivity before it drives the keys (this style only)"><i class="tick" style="left:calc(7px + (100% - 14px)*0.2)"></i></span><span class="val s-gainV"></span>')+
           row('Noise floor','<span class="srange" style="width:100%"><input type="range" class="s-floor" min="0" max="40" value="'+ap.floor+'" title="Gate out quiet hiss below this level so idle keys stay dark (this style only)"><i class="tick" style="left:calc(7px + (100% - 14px)*0.125)"></i></span><span class="val s-floorV"></span>')+
           row('Attack','<span class="srange" style="width:100%"><input type="range" class="s-attackMs" min="0" max="300" step="5" value="'+ap.attackMs+'" title="How fast keys brighten on a rise (ms). Lower = snappier (this style only)"><i class="tick" style="left:calc(7px + (100% - 14px)*0.133)"></i></span><span class="val s-attackMsV"></span>')+
           row('Decay','<span class="srange" style="width:100%"><input type="range" class="s-decayMs" min="40" max="800" step="10" value="'+ap.decayMs+'" title="How slowly keys fade after a peak (ms). Higher = smoother (this style only)"><i class="tick" style="left:calc(7px + (100% - 14px)*0.237)"></i></span><span class="val s-decayMsV"></span>')+
           row('Beat sensitivity','<span class="srange" style="width:100%"><input type="range" class="s-beatSens" min="0" max="100" value="'+ap.beatSens+'" title="How strongly kicks/onsets pop in pulse and bloom (this style only)"><i class="tick" style="left:calc(7px + (100% - 14px)*0.5)"></i></span><span class="val s-beatSensV"></span>')+
-          (duckRows ? row('Dim while active','<span class="val" style="opacity:.7">quiet these layers while the music shows</span><span></span>')+duckRows : '')+
+          (duckRows ? sub('Dim while active')+full('<span class="val" style="opacity:.7;flex:1 1 100%">quiet these layers while the music shows</span>')+duckRows : '')+
           row('','<button type="button" class="s-logVals">Log current values</button><span></span>')+
         '</div>';
         body.innerHTML=html;
@@ -470,7 +477,7 @@
           '<span style="display:flex;gap:4px;align-items:center"><input type="number" class="numin a-'+key+'N" min="'+nMin+'" max="'+nMax+'" step="'+nStep+'" value="'+disp(key,s[key])+'"><span class="val" style="min-width:10px">'+c[4]+'</span></span>'; };
       const adj=document.createElement('div');
       adj.innerHTML=
-        '<div class="lbody" style="margin-top:8px"><div class="ph" style="margin-bottom:6px">Adjust</div><div class="ctl">'+
+        '<div class="lbody" style="margin-top:8px"><div class="ph" style="margin-bottom:6px;color:var(--text);font-weight:600;font-size:13px">Adjust</div><div class="ctl">'+
           ctl('bri')+ctl('sat')+ctl('con')+ctl('gam')+(CFG.rot?ctl('rot'):'')+
           (showStatic?'<label>Static</label><label class="sl" style="margin:0"><input type="checkbox" class="a-frozen"'+(s.frozen?' checked':'')+'> Freeze Animation</label><span></span>':'')+
         '</div></div>';
