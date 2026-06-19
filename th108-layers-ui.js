@@ -40,7 +40,8 @@
           pushConfig = opts.pushConfig || noop,                         // mirror saves to the daemon's config.json
           isRunning = opts.isRunning || (() => false),                  // layer loop live? (reorder warm-renders so the change shows immediately)
           onPatternPick = opts.onPatternPick || noop,                   // page hook: picking a pattern while a firmware effect shows = "back to layers"
-          onAudioSource = opts.onAudioSource || noop;                   // page hook: audio-layer source pick → start/stop in-tab Web Audio capture
+          onAudioSource = opts.onAudioSource || noop,                   // page hook: audio-layer source pick → start/stop in-tab Web Audio capture
+          liveAudioActive = opts.liveAudioActive || (()=>false);        // page hook: is real in-tab capture running? (Live preview blanks when not)
 
     // ----- persist full layer state (settings survive page refresh) -----
     let _slsT=0;
@@ -301,14 +302,19 @@
         // Phase 1 drives a synthetic signal for ALL sources, so only System is wired; App/Tab/Mic are
         // disabled (greyed) until real per-source capture lands (Plan 1b) — no dead controls that lie.
         const sources=[['system','All system audio',true],['app','Specific app',false],['tab','This tab',true],['mic','Mic / line-in',true]];   // tab/mic = in-tab Web Audio capture; app (process-loopback) still pending
-        const srcBubbles=sources.map(o=>{ const dis=!o[2]; return '<label class="sl" style="margin:0 8px 0 0'+(dis?';opacity:.4':'')+'"'+(dis?' title="per-app capture (process-loopback) is coming in a later update"':'')+'><input type="radio" name="aud-src-'+uid+'" class="s-source" value="'+o[0]+'"'+((o[0]===(s.source||'system'))?' checked':'')+(dis?' disabled':'')+'> '+o[1]+(dis?' — soon':'')+'</label>'; }).join('');
+        const srcBubbles=sources.map(o=>{ const dis=!o[2]; return '<label class="sl" style="margin:0'+(dis?';opacity:.4':'')+'"'+(dis?' title="per-app capture (process-loopback) is coming in a later update"':'')+'><input type="radio" name="aud-src-'+uid+'" class="s-source" value="'+o[0]+'"'+((o[0]===(s.source||'system'))?' checked':'')+(dis?' disabled':'')+'> '+o[1]+(dis?' — soon':'')+'</label>'; }).join('');
         const styles=[['bars','Spectrum bars'],['pulse','Beat pulse'],['bloom','Radial bloom'],['wave','Waveform']];
         const sopt=styles.map(m=>'<option value="'+m[0]+'"'+(m[0]===style?' selected':'')+'>'+m[1]+'</option>').join('');
         let html='<div class="ctl">'+
-          row('Source','<span style="display:flex;flex-wrap:wrap;align-items:center">'+srcBubbles+'</span><span></span>')+
+          row('Source','<span style="display:grid;grid-template-columns:1fr 1fr;gap:5px 14px">'+srcBubbles+'</span><span></span>')+
           row('Source note','<span class="val" style="opacity:.7">This tab / Mic = real audio captured right here — pick one and accept the share/mic prompt (for a tab, tick “Share tab audio”). Best for tuning. All system audio runs ambiently through the background daemon (close/blur this tab). App is coming.</span><span></span>')+
           row('Style','<select class="s-style">'+sopt+'</select><span></span>')+
-          row('Preview','<div style="display:flex;flex-direction:column;gap:5px"><button type="button" class="s-prevToggle" style="align-self:flex-start">'+(s.previewOff?'Show previews':'Hide previews')+'</button><div class="audioPrevs"'+(s.previewOff?' style="display:none"':'')+'><div class="val" style="opacity:.65;margin:2px 0">Sample — test signal (design the look)</div><canvas class="s-audioPrev" width="378" height="96" style="width:100%;height:auto;display:block;background:#0d1117;border-radius:8px"></canvas><div class="val" style="opacity:.65;margin:7px 0 2px">Live — real audio (pick This tab / Mic; follows pause)</div><canvas class="s-audioPrevLive" width="378" height="96" style="width:100%;height:auto;display:block;background:#0d1117;border-radius:8px"></canvas></div></div><span></span>');
+          row('Preview','<div style="display:flex;flex-direction:column;gap:9px">'+
+            '<div><div style="display:flex;align-items:center;gap:8px;margin-bottom:3px"><span class="val" style="opacity:.65">Sample — test signal</span><button type="button" class="s-samplePrevToggle">'+(s.samplePrevOff?'Show':'Hide')+'</button></div>'+
+              '<canvas class="s-audioPrev" width="378" height="92" style="width:100%;height:auto;display:'+(s.samplePrevOff?'none':'block')+';background:#0d1117;border-radius:8px"></canvas></div>'+
+            '<div><div style="display:flex;align-items:center;gap:8px;margin-bottom:3px"><span class="val" style="opacity:.65">Live — real audio (blank when nothing’s playing)</span><button type="button" class="s-livePrevToggle">'+(s.livePrevOff?'Show':'Hide')+'</button></div>'+
+              '<canvas class="s-audioPrevLive" width="378" height="92" style="width:100%;height:auto;display:'+(s.livePrevOff?'none':'block')+';background:#0d1117;border-radius:8px"></canvas></div>'+
+          '</div><span></span>');
         if(style==='bars'){ const bt=s.barTip||'off', bf=s.barFill||'solid', bc=s.barColor||'bassTreble';
           const btOpt=[['off','Off'],['color','Solid color'],['rainbow','Rainbow'],['vu','VU (green→red by level)']].map(o=>'<option value="'+o[0]+'"'+(o[0]===bt?' selected':'')+'>'+o[1]+'</option>').join('');
           const bfOpt=[['solid','Solid'],['subtract','Subtract (silhouette)']].map(o=>'<option value="'+o[0]+'"'+(o[0]===bf?' selected':'')+'>'+o[1]+'</option>').join('');
@@ -381,13 +387,14 @@
           const d=Array.isArray(s.ducks)&&s.ducks.find(x=>x&&x.layer===i); if(d) d.dim=v;   // only persists once the layer is checked on
         }));
         c('.s-logVals').addEventListener('click',()=>console.log('[audio layer "'+L.name+'"]', JSON.parse(JSON.stringify(s))));
-        { const tb=c('.s-prevToggle'), wrap=c('.audioPrevs'); if(tb&&wrap) tb.addEventListener('click',()=>{ s.previewOff=!s.previewOff; wrap.style.display=s.previewOff?'none':'block'; tb.textContent=s.previewOff?'Show previews':'Hide previews'; }); }
-        // Two previews: SAMPLE drives a scratch state from the deterministic synth (design the look any time);
-        // LIVE renders the page's REAL state.audio (fed by audioFeedTick from in-tab capture/synth) so it
-        // mirrors the keys and follows pause. Both read `s` each frame so style/colors/tuning update live.
+        { const tb=c('.s-samplePrevToggle'), cv=c('.s-audioPrev'); if(tb&&cv) tb.addEventListener('click',()=>{ s.samplePrevOff=!s.samplePrevOff; cv.style.display=s.samplePrevOff?'none':'block'; tb.textContent=s.samplePrevOff?'Show':'Hide'; }); }
+        { const tb=c('.s-livePrevToggle'),  cv=c('.s-audioPrevLive'); if(tb&&cv) tb.addEventListener('click',()=>{ s.livePrevOff=!s.livePrevOff; cv.style.display=s.livePrevOff?'none':'block'; tb.textContent=s.livePrevOff?'Show':'Hide'; }); }
+        // SAMPLE preview = the deterministic synth (design the look any time, independent of audio).
+        // LIVE preview = the page's REAL state.audio, but ONLY while real capture is running — otherwise it
+        // paints blank keys (it must NOT mimic the synth when nothing's playing). Each toggles independently.
         (function(){
-          const cvS=c('.s-audioPrev'), cvL=c('.s-audioPrevLive'); if(!cvS||!cvS.getContext) return;
-          const ctxS=cvS.getContext('2d'), ctxL=cvL&&cvL.getContext('2d'), W=cvS.width, H=cvS.height;
+          const cvS=c('.s-audioPrev'), cvL=c('.s-audioPrevLive'); if((!cvS||!cvS.getContext)&&(!cvL||!cvL.getContext)) return;
+          const ctxS=cvS&&cvS.getContext('2d'), ctxL=cvL&&cvL.getContext('2d'), W=(cvS||cvL).width, H=(cvS||cvL).height;
           const pState={ audio:{ bands:new Float32Array(32), level:0, beat:0, centroid:0.5, _t:0 } };
           const sampL={ type:'audio', settings:s, rgb:new Uint8Array(E.NLED*3) };
           const liveL={ type:'audio', settings:s, rgb:new Uint8Array(E.NLED*3) };
@@ -399,10 +406,11 @@
               ctx.fillStyle='rgb('+rgb[o]+','+rgb[o+1]+','+rgb[o+2]+')';
               ctx.fillRect(x+0.5,y+0.5,Math.max(1,w-1),Math.max(1,h-1)); } };
           function frame(now){
-            if(!document.body.contains(cvS)) return;                 // card rebuilt/removed → stop this loop
-            if(cvS.offsetParent!==null){                             // skip work while previews are hidden/collapsed
-              if(synth){ E.applyAudioFeatures(pState, synth.sample(now/1000), s, now); E.renderAudio(sampL, now, pState); paint(ctxS, sampL.rgb); }
-              if(ctxL){ E.renderAudio(liveL, now, state); paint(ctxL, liveL.rgb); }   // LIVE = the real state.audio the page is feeding
+            if(!document.body.contains(cvL||cvS)) return;            // card rebuilt/removed → stop this loop
+            if(ctxS && cvS.offsetParent!==null && synth){ E.applyAudioFeatures(pState, synth.sample(now/1000), s, now); E.renderAudio(sampL, now, pState); paint(ctxS, sampL.rgb); }
+            if(ctxL && cvL.offsetParent!==null){
+              if(liveAudioActive()){ E.renderAudio(liveL, now, state); paint(ctxL, liveL.rgb); }   // real capture running → mirror the keys
+              else { liveL.rgb.fill(0); paint(ctxL, liveL.rgb); }                                   // nothing playing → blank (unlit) keys, NOT the synth
             }
             requestAnimationFrame(frame);
           }
