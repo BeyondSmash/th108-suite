@@ -11,7 +11,9 @@
 const { execFile } = require('child_process');
 
 const TASK_NAME = 'TH108 USB Restart';
-const THRESHOLD_MS = 30_000;        // mute must persist this long before we touch USB — vs a 3-5s manual replug, every extra second is just broken lighting
+const THRESHOLD_MS = 30_000;        // mute must persist this long before we touch USB *while you're typing* — a 1-2s dropout mid-sentence is worse than a few more dark seconds
+const IDLE_THRESHOLD_MS = 12_000;   // …but if you've been AFK (see IDLE_AFTER_MS), a dropout costs nothing, so recover the lighting ~18s sooner
+const IDLE_AFTER_MS = 20_000;       // "AFK" = no keypress for this long; under it we assume you're mid-task and hold the conservative threshold
 const COOLDOWN_MS = 10 * 60_000;
 
 // Pure decision: fire only for a real, aged mute, outside the cooldown window.
@@ -30,4 +32,4 @@ function fire(log) {
   });
 }
 
-module.exports = { shouldFire, fire, TASK_NAME, THRESHOLD_MS, COOLDOWN_MS };
+module.exports = { shouldFire, fire, TASK_NAME, THRESHOLD_MS, IDLE_THRESHOLD_MS, IDLE_AFTER_MS, COOLDOWN_MS };

@@ -23,3 +23,11 @@ test('shouldFire: cooldown blocks a second shot, then re-arms', () => {
   assert.equal(U.shouldFire({ muteAt, now: fired + C - 1, lastFireAt: fired }), false);
   assert.equal(U.shouldFire({ muteAt, now: fired + C, lastFireAt: fired }), true);
 });
+
+test('idle threshold: AFK recovers strictly sooner than the typing threshold', () => {
+  assert.ok(U.IDLE_THRESHOLD_MS < U.THRESHOLD_MS, 'AFK threshold must be shorter than the typing one');
+  const muteAt = 1_000_000, mid = muteAt + U.IDLE_THRESHOLD_MS;   // a moment that's past the AFK bar but not the typing bar
+  // AFK (short override) → fires; actively typing (default 30s) → still waiting at the same instant
+  assert.equal(U.shouldFire({ muteAt, now: mid, lastFireAt: 0, thresholdMs: U.IDLE_THRESHOLD_MS }), true);
+  assert.equal(U.shouldFire({ muteAt, now: mid, lastFireAt: 0 }), false);
+});

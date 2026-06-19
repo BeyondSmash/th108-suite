@@ -95,7 +95,7 @@ for (const [name, code] of Object.entries(UIOHOOK_TO_CODE)) {
   const kc = UiohookKey[name], idx = KEYMAP[code];
   if (kc !== undefined && idx !== undefined) UIO2IDX[kc] = idx;
 }
-uIOhook.on('keydown', e => { if (state) { const i = UIO2IDX[e.keycode]; if (i !== undefined) E.stampKey(state, i); } });
+uIOhook.on('keydown', e => { lastKeyAt = Date.now(); if (state) { const i = UIO2IDX[e.keycode]; if (i !== undefined) E.stampKey(state, i); } });
 uIOhook.on('keyup',   e => { if (state) { const i = UIO2IDX[e.keycode]; if (i !== undefined) E.releaseKey(state, i); } });
 // Global recovery hotkey: Ctrl+Alt+End in ANY app = "my lighting broke — fix it" (user request
 // 2026-06-11). Typing keeps flowing through an ACK-mute wedge, so the chord always arrives.
@@ -160,6 +160,7 @@ async function sendOnboard(allled) {
 let probing = false, nextOpenAt = Date.now() + 5000;   // startup grace: a live page's heartbeat needs a beat (≤3s) to park us before we first touch the device
 let lastOkAt = 0, streakStart = 0, muteLogged = false, muteAt = 0;   // mute-episode tracking (transition logging)
 let usbFiredAt = 0, lastTickAt = 0;   // USB-restart escalation state + sleep-gap detection
+let lastKeyAt = Date.now();           // last physical keypress (from the global hook) — drives the idle-aware USB-restart threshold
 let offCleared = false;               // lights-off: the one black frame was sent
 let sendingFrame = false;             // a 0x32 frame is mid-flight — closing the device NOW leaves the board's chunk parser desynced
 async function openIfPossible() {
@@ -275,14 +276,19 @@ async function tick() {
           muteLogged = true; muteAt = Date.now();
           log('⚠ board went MUTE — no ACKs (' + (lastOkAt
             ? 'was streaming ' + Math.round((muteAt - streakStart) / 60000) + ' min, last ACK ' + Math.round((muteAt - lastOkAt) / 1000) + 's ago'
-            : 'never ACKed since open') + ') — retrying every 5s; USB restart fires at ' + Math.round(U.THRESHOLD_MS / 1000) + 's');
+            : 'never ACKed since open') + ') — retrying every 5s; USB restart fires at ' + Math.round(U.IDLE_THRESHOLD_MS / 1000) + 's if AFK, ' + Math.round(U.THRESHOLD_MS / 1000) + 's while typing');
           if (trace) log('   ↳ flight recorder (last input reports + writes before silence):\n' + trace);
         }
         // Escalation: a PnP restart of the keyboard's USB node = software replug (proven to clear a true
         // wedge). Loud by design — it drops typing ~1-2s, so the log must say exactly when and why.
-        if (settings.usbReset && U.shouldFire({ muteAt, now: Date.now(), lastFireAt: usbFiredAt })) {
+        // Idle-aware threshold: a USB restart costs a ~1-2s typing dropout, so wait the full 30s while you're
+        // actively typing — but if you've been AFK (no keypress for IDLE_AFTER_MS) the dropout is free, so
+        // recover the lighting much sooner (IDLE_THRESHOLD_MS). lastKeyAt comes from the global key hook.
+        const afk = Date.now() - lastKeyAt > U.IDLE_AFTER_MS;
+        const thresholdMs = afk ? U.IDLE_THRESHOLD_MS : U.THRESHOLD_MS;
+        if (settings.usbReset && U.shouldFire({ muteAt, now: Date.now(), lastFireAt: usbFiredAt, thresholdMs })) {
           usbFiredAt = Date.now();
-          log('⚡ ESCALATING: mute has lasted ' + Math.round((usbFiredAt - muteAt) / 1000) + 's — PnP-restarting the keyboard USB device (task "' + U.TASK_NAME + '"); typing drops ~1-2s');
+          log('⚡ ESCALATING: mute has lasted ' + Math.round((usbFiredAt - muteAt) / 1000) + 's (' + (afk ? 'AFK — recovering early' : 'actively typing') + ') — PnP-restarting the keyboard USB device (task "' + U.TASK_NAME + '"); typing drops ~1-2s');
           U.fire(log);
         }
       }
