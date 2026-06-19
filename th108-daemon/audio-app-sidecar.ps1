@@ -18,6 +18,16 @@ public static class AppCap {
   [DllImport("Mmdevapi.dll", CharSet=CharSet.Unicode)]
   static extern int ActivateAudioInterfaceAsync(string path, ref Guid riid, IntPtr activationParams,
     IActivateAudioInterfaceCompletionHandler handler, out IActivateAudioInterfaceAsyncOperation op);
+  [DllImport("user32.dll")] static extern bool PeekMessage(out NativeMsg m, IntPtr h, uint a, uint b, uint c);
+  [DllImport("user32.dll")] static extern bool TranslateMessage(ref NativeMsg m);
+  [DllImport("user32.dll")] static extern IntPtr DispatchMessage(ref NativeMsg m);
+  [StructLayout(LayoutKind.Sequential)] struct NativeMsg { public IntPtr hwnd; public uint message; public IntPtr w; public IntPtr l; public uint time; public int x; public int y; }
+  // pump the STA message queue while waiting for the async completion callback (it's delivered via the pump)
+  static bool PumpWait(System.Threading.WaitHandle ev, int ms){
+    var sw=System.Diagnostics.Stopwatch.StartNew();
+    while(sw.ElapsedMilliseconds<ms){ if(ev.WaitOne(0)) return true; NativeMsg m; while(PeekMessage(out m, IntPtr.Zero, 0,0,1)){ TranslateMessage(ref m); DispatchMessage(ref m); } System.Threading.Thread.Sleep(5); }
+    return ev.WaitOne(0);
+  }
 
   [Guid("72A22D78-CDE4-431D-B8CC-843A71199B6D"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
   interface IActivateAudioInterfaceAsyncOperation { int GetActivateResult(out int hr, [MarshalAs(UnmanagedType.IUnknown)] out object iface); }
@@ -52,7 +62,53 @@ public static class AppCap {
   public static int channels = 2, sampleRate = 48000;
   static IAudioClient client; static IAudioCaptureClient capture;
 
+  public static volatile float Level = 0f;
+  static volatile bool running = false;
+  static Exception startErr = null;
+  static System.Threading.ManualResetEvent ready = new System.Threading.ManualResetEvent(false);
+
+  // Run the whole COM lifecycle (activate + capture) on a dedicated MTA thread — ActivateAudioInterfaceAsync
+  // wants MTA, and PowerShell's apartment is unreliable. The capture loop updates Level; PS just polls it.
+  public static void StartMta(uint pid) {
+    var t = new System.Threading.Thread(delegate() {
+      try { Open(pid); } catch (Exception e) { startErr = e; ready.Set(); return; }
+      running = true; ready.Set();
+      var buf = new float[8192];
+      while (running) {
+        int n = Read(buf);
+        if (n > 0) { double s = 0; for (int i=0;i<n;i++) s += buf[i]*buf[i]; Level = (float)Math.Min(1.0, Math.Sqrt(s/n)*4.0); }
+        System.Threading.Thread.Sleep(20);
+      }
+    });
+    t.IsBackground = true;
+    t.SetApartmentState(System.Threading.ApartmentState.MTA);
+    t.Start();
+    ready.WaitOne(6000);
+    if (startErr != null) throw startErr;
+  }
+
+  // STA variant: a FRESH dedicated STA thread with its own message pump (the PS host thread is busy
+  // pumping its own loop → re-entrant E_ILLEGAL_METHOD_CALL; a clean STA+pump may activate cleanly).
+  public static void StartSta(uint pid) {
+    var t = new System.Threading.Thread(delegate() {
+      try { Open(pid); } catch (Exception e) { startErr = e; ready.Set(); return; }
+      running = true; ready.Set();
+      var buf = new float[8192];
+      while (running) {
+        int n = Read(buf);
+        if (n > 0) { double s = 0; for (int i=0;i<n;i++) s += buf[i]*buf[i]; Level = (float)Math.Min(1.0, Math.Sqrt(s/n)*4.0); }
+        System.Threading.Thread.Sleep(20);
+      }
+    });
+    t.IsBackground = true;
+    t.SetApartmentState(System.Threading.ApartmentState.STA);
+    t.Start();
+    ready.WaitOne(8000);
+    if (startErr != null) throw startErr;
+  }
+
   public static void Open(uint pid) {
+    Console.Error.WriteLine("[spike] apartment=" + System.Threading.Thread.CurrentThread.GetApartmentState());
     // PROPVARIANT holding the activation BLOB
     var ap = new ActivationParams { ActivationType = ACTTYPE_PROCESS_LOOPBACK, TargetPid = pid, LoopbackMode = INCLUDE_TREE };
     int apSize = Marshal.SizeOf(typeof(ActivationParams));
@@ -67,7 +123,7 @@ public static class AppCap {
     IActivateAudioInterfaceAsyncOperation op;
     int hr = ActivateAudioInterfaceAsync(VAD_PROCESS_LOOPBACK, ref IID_IAudioClient, pv, h, out op);
     if (hr != 0) throw new Exception("ActivateAudioInterfaceAsync hr=0x" + hr.ToString("x"));
-    if (!h.done.WaitOne(3000)) throw new Exception("activation timed out");
+    if (!PumpWait(h.done, 5000)) throw new Exception("activation timed out");
     int actHr; object iface; op.GetActivateResult(out actHr, out iface);
     if (actHr != 0) throw new Exception("GetActivateResult hr=0x" + actHr.ToString("x"));
     client = (IAudioClient)iface;
@@ -101,14 +157,10 @@ public static class AppCap {
 }
 "@
 
-[AppCap]::Open([uint32]$ProcId)
-$buf = New-Object 'float[]' 8192
+[AppCap]::StartSta([uint32]$ProcId)
 $sw = [System.Diagnostics.Stopwatch]::StartNew()
 while ($true) {
-  $n = [AppCap]::Read($buf); $sum = 0.0
-  for ($i=0; $i -lt $n; $i++) { $sum += $buf[$i]*$buf[$i] }
-  $rms = if ($n -gt 0) { [Math]::Sqrt($sum/$n) } else { 0.0 }
-  [Console]::Out.WriteLine('{"level":' + [Math]::Round([Math]::Min(1.0,$rms*4.0),4) + ',"t":' + [Math]::Round($sw.Elapsed.TotalMilliseconds,1) + '}')
+  [Console]::Out.WriteLine('{"level":' + [Math]::Round([AppCap]::Level,4) + ',"t":' + [Math]::Round($sw.Elapsed.TotalMilliseconds,1) + '}')
   [Console]::Out.Flush()
   Start-Sleep -Milliseconds 33
 }
