@@ -326,21 +326,26 @@
       if(vert==='center'){ steps = halfH; fb = Math.ceil(Math.abs(row - midRow)); }   // distance out from the middle row (1=innermost)
       else { steps = GH; fb = vert==='down' ? (row+1) : ((GH-1) - row + 1); }         // down: base at top; up: base at bottom
       const litCount = mag*steps;
-      if(fb > litCount){ out[o]=out[o+1]=out[o+2]=0; continue; }
+      // Sub-row fill: with only GH=6 rows a band hovering between levels would just toggle the top row on/off
+      // (reads as an "edge flicker", not motion). Light the top partial row at its FRACTIONAL fill so the bar
+      // glides up/down smoothly — the classic analyzer look. partial: >1 full row, 0..1 the top row, <=0 empty.
+      const partial = litCount - (fb - 1);
+      if(partial <= 0){ out[o]=out[o+1]=out[o+2]=0; continue; }
+      const fillF = partial < 1 ? partial : 1;
       const h = fb/steps;                                     // brightness-ramp coord (dimmer at base … brightest at tip)
       const hc = steps>1 ? (fb-1)/(steps-1) : 0;              // COLOR coord 0 (base) … 1 (tip)
       const vuFb = vert==='center' ? fb*2 : fb;               // center has only 3 levels/side → scale to the 6-step VU palette
-      const isTip = tip!=='off' && fb+1 > litCount;           // outermost lit level of this bar = its tip
+      const isTip = tip!=='off' && partial <= 1;              // the topmost (partial) level of this bar = its tip
       if(subtract){
         if(cb){ cb[k]=1; any=true; }                          // carve the layers below at every bar-body key
-        if(isTip){ const tc = tipColorAt(fc, vuFb); out[o]=tc[0]|0; out[o+1]=tc[1]|0; out[o+2]=tc[2]|0; }
+        if(isTip){ const tc = tipColorAt(fc, vuFb); out[o]=(tc[0]*fillF)|0; out[o+1]=(tc[1]*fillF)|0; out[o+2]=(tc[2]*fillF)|0; }
         else { out[o]=out[o+1]=out[o+2]=0; }                  // empty body → reads as a dark silhouette via the carve
         continue;
       }
-      if(isTip){ const tc = tipColorAt(fc, vuFb); out[o]=tc[0]|0; out[o+1]=tc[1]|0; out[o+2]=tc[2]|0; continue; }
+      if(isTip){ const tc = tipColorAt(fc, vuFb); out[o]=(tc[0]*fillF)|0; out[o+1]=(tc[1]*fillF)|0; out[o+2]=(tc[2]*fillF)|0; continue; }
       let c, v;
-      if(barColor==='vu'){ c = vuRow(vuFb); v = 1; }                                          // discrete green→yellow→red by fill level, full brightness
-      else { v = 0.45 + 0.55*h;                                                               // ramp only for the solid/gradient fills
+      if(barColor==='vu'){ c = vuRow(vuFb); v = fillF; }                                      // discrete green→yellow→red by fill level
+      else { v = (0.45 + 0.55*h) * fillF;                                                     // ramp only for the solid/gradient fills
         if(barColor==='gradient') c = [gradA[0]+(gradB[0]-gradA[0])*hc, gradA[1]+(gradB[1]-gradA[1])*hc, gradA[2]+(gradB[2]-gradA[2])*hc];  // base→tip
         else c = [bass[0]+(treb[0]-bass[0])*fc, bass[1]+(treb[1]-bass[1])*fc, bass[2]+(treb[2]-bass[2])*fc]; }   // bass→treble (per column)
       out[o]=(c[0]*v)|0; out[o+1]=(c[1]*v)|0; out[o+2]=(c[2]*v)|0;

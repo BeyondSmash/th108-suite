@@ -436,3 +436,17 @@ test('bars center-out layout: a short bar lights the middle rows, not the edges'
   assert.ok(litSum(La, kMid) > 0, 'middle row lit (grows from the center)');
   assert.equal(litSum(La, kEdge), 0, 'top edge dark');
 });
+
+test('bars sub-row fill: the top partial row brightens continuously with magnitude (smooth, no edge flicker)', () => {
+  const k = findK(c => c[0] === 0 && c[1] === 3);   // column 0, the fb=3 row (lit only as the bar passes ~2..3 of 6)
+  assert.ok(k >= 0, 'found column-0 row-3 key');
+  const sample = (mag) => {
+    const L = { type:'audio', enabled:true, opacity:1, blend:'add', settings:{ style:'bars' }, rgb:new Uint8Array(E.NLED*3) };
+    E.ensureSettings(L); const st = E.createState([L]);
+    st.audio.bands.fill(0); st.audio.bands[0] = mag; E.renderAudio(st.layers[0], 0, st);
+    return litSum(st.layers[0], k);
+  };
+  const lo = sample(0.35), hi = sample(0.4833);   // litCount 2.1 vs 2.9 → same row, fractional fill 0.1 vs 0.9
+  assert.ok(lo > 0, 'partial row is lit, not toggled off');
+  assert.ok(hi > lo, 'same row gets brighter as the bar fills further into it (continuous, not binary)');
+});
