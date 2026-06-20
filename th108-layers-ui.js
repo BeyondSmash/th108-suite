@@ -355,6 +355,7 @@
           row('Auto-gain','<label class="sl" style="margin:0"><input type="checkbox" class="s-agc"'+(ap.agc!==false?' checked':'')+'> Adapt to the song’s loudness (off = use Gain as a fixed sensitivity)</label><span></span>')+
           row('Attack','<span class="srange" style="width:100%"><input type="range" class="s-attackMs" min="0" max="300" step="5" value="'+ap.attackMs+'" title="How fast keys brighten on a rise (ms). Lower = snappier (this style only)"><i class="tick" style="left:calc(7px + (100% - 14px)*0.133)"></i></span><span class="val s-attackMsV"></span>')+
           row('Decay','<span class="srange" style="width:100%"><input type="range" class="s-decayMs" min="40" max="800" step="10" value="'+ap.decayMs+'" title="How slowly keys fade after a peak (ms). Higher = smoother (this style only)"><i class="tick" style="left:calc(7px + (100% - 14px)*0.237)"></i></span><span class="val s-decayMsV"></span>')+
+          row('Pause decay','<span class="srange" style="width:100%"><input type="range" class="s-pauseDecayMs" min="100" max="3000" step="50" value="'+(ap.pauseDecayMs==null?700:ap.pauseDecayMs)+'" title="When the music STOPS (sustained silence), how slowly the bars settle to 0 (ms). Separate from Decay so playback stays snappy but a pause glides down gracefully (this style only)"><i class="tick" style="left:calc(7px + (100% - 14px)*0.207)"></i></span><span class="val s-pauseDecayMsV"></span>')+
           row('Beat sensitivity','<span class="srange" style="width:100%"><input type="range" class="s-beatSens" min="0" max="100" value="'+ap.beatSens+'" title="How strongly kicks/onsets pop in pulse and bloom (this style only)"><i class="tick" style="left:calc(7px + (100% - 14px)*0.5)"></i></span><span class="val s-beatSensV"></span>')+
           (duckRows ? sub('Dim while active')+full('<span class="val" style="opacity:.7;flex:1 1 100%">quiet these layers while the music shows</span>')+duckRows : '')+
           row('','<button type="button" class="s-logVals">Log current values</button><span></span>')+
@@ -394,6 +395,7 @@
         { const ag=c('.s-agc'); if(ag) ag.addEventListener('change',e=>ap.agc=e.target.checked); }   // per-style auto-gain on/off
         slider('attackMs','attackMs',x=>x+'ms',v=>v,40);
         slider('decayMs','decayMs',x=>x+'ms',v=>v,220);
+        slider('pauseDecayMs','pauseDecayMs',x=>x+'ms',v=>v,700);   // settle-to-0 time after the music stops
         slider('beatSens','beatSens',x=>x+'%',v=>v,50);
         body.querySelectorAll('.s-duckOn').forEach(cb=>cb.addEventListener('change',e=>{
           const i=+e.target.dataset.i, sl=body.querySelector('.s-duckDim[data-i="'+i+'"]');

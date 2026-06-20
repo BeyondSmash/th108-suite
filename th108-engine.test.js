@@ -535,3 +535,19 @@ test('audio duck eases in instead of snapping (pause/unpause lerp)', () => {
   const early = frames[0], settled = frames[199];               // first ducked frame vs fully settled
   assert.ok(early > settled*2, 'early ducked frame is much brighter than the settled dim → it eased, did not snap');
 });
+
+test('pause decay: bars settle slower after sustained silence than the per-note decay', () => {
+  const run = (pauseDecayMs) => {
+    const st = E.createState([{ type:'audio', enabled:true, opacity:1, blend:'add', fps:30, settings:{ style:'bars' } }]);
+    const ap = E.audioParams(st.layers[0].settings); ap.floor=0; ap.ceil=100; ap.contrast=0; ap.agc=false; ap.gain=1; ap.attackMs=1; ap.decayMs=60; ap.pauseDecayMs=pauseDecayMs;
+    const s = st.layers[0].settings;
+    const loud = { bands:new Float32Array(32).fill(0.9), level:0.9, beat:0, centroid:0.5 };
+    const silent = { bands:new Float32Array(32), level:0, beat:0, centroid:0.5 };
+    let t = 0;
+    for (; t <= 300; t += 16) E.applyAudioFeatures(st, loud, s, t);   // ramp up + load
+    for (let i = 0; i < 20; i++) { t += 16; E.applyAudioFeatures(st, silent, s, t); }   // ~320ms of silence (past the 200ms pause gate)
+    return st.audio.bands[5];
+  };
+  const fast = run(150), slow = run(2500);
+  assert.ok(slow > fast, 'a longer Pause decay leaves the bars higher after the same silence (settles more gradually)');
+});

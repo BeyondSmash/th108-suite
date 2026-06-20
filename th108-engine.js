@@ -93,8 +93,14 @@
     const band   = (v,i)=>{ v=(v||0)*gain; if(agc){ const pk=A._peak[i]=Math.max(v, A._peak[i]*pdecay); v=v/Math.max(pk,0.06); } return shape(v); };
     const bandRO = (v,i)=>{ v=(v||0)*gain; if(agc) v=v/Math.max(A._peak[i],0.06); return shape(v); };   // L/R reuse the mono peak (keeps the L↔R balance)
     const lvl    = (v)=>{   v=(v||0)*gain; if(agc){ A._lpk=Math.max(v, A._lpk*pdecay); v=v/Math.max(A._lpk,0.06); } return shape(v); };
+    // PAUSE DECAY: once the input has been silent a sustained moment (paused / song ended), fall to 0 with
+    // pauseDecayMs (a graceful settle) instead of the per-note decayMs — brief gaps between notes still bounce.
+    let rawPeak = raw.level || 0; { const _rb = raw.bands; if(_rb) for(let i=0;i<32;i++){ if(_rb[i] > rawPeak) rawPeak = _rb[i]; } }
+    if(A._silentMs == null) A._silentMs = 0;
+    A._silentMs = (rawPeak * gain < 0.02) ? A._silentMs + dt : 0;
+    const decayNow = (A._silentMs > 200) ? (p.pauseDecayMs==null ? 700 : p.pauseDecayMs) : p.decayMs;   // only the FALL is affected (audioEnvelope picks decay when target<prev)
     const tgtLevel = lvl(raw.level);
-    A.level = audioEnvelope(A.level, tgtLevel, dt, p.attackMs, p.decayMs);
+    A.level = audioEnvelope(A.level, tgtLevel, dt, p.attackMs, decayNow);
     A.centroid = audioEnvelope(A.centroid, (raw.centroid==null?0.5:raw.centroid), dt, p.attackMs, p.decayMs);
     // beat: instantaneous rise, decay only (so a kick pops then fades); beatSens scales sensitivity
     const beatTgt = Math.max(0, Math.min(1, (raw.beat||0) * (0.5 + (p.beatSens||50)/100)));
@@ -107,18 +113,18 @@
     if(!A.bandsRaw) { A.bandsRaw = new Float32Array(32); A.bandsRawL = new Float32Array(32); A.bandsRawR = new Float32Array(32); }
     const rawClamp = (v)=>{ v=(v||0); return v<0?0:(v>1?1:v); };   // pre-AGC magnitude (NO peak normalize) — keeps the real bass→treble shape for Spread
     for(let i=0;i<32;i++){
-      const t = rb ? band(rb[i], i) : 0; A.bands[i] = audioEnvelope(A.bands[i], t, dt, p.attackMs, p.decayMs);
-      const tL = rbL ? bandRO(rbL[i], i) : t; A.bandsL[i] = audioEnvelope(A.bandsL[i], tL, dt, p.attackMs, p.decayMs);
-      const tR = rbR ? bandRO(rbR[i], i) : t; A.bandsR[i] = audioEnvelope(A.bandsR[i], tR, dt, p.attackMs, p.decayMs);
+      const t = rb ? band(rb[i], i) : 0; A.bands[i] = audioEnvelope(A.bands[i], t, dt, p.attackMs, decayNow);
+      const tL = rbL ? bandRO(rbL[i], i) : t; A.bandsL[i] = audioEnvelope(A.bandsL[i], tL, dt, p.attackMs, decayNow);
+      const tR = rbR ? bandRO(rbR[i], i) : t; A.bandsR[i] = audioEnvelope(A.bandsR[i], tR, dt, p.attackMs, decayNow);
       const r = rb ? rawClamp(rb[i]) : 0;
-      A.bandsRaw[i]  = audioEnvelope(A.bandsRaw[i],  r, dt, p.attackMs, p.decayMs);
-      A.bandsRawL[i] = audioEnvelope(A.bandsRawL[i], rbL ? rawClamp(rbL[i]) : r, dt, p.attackMs, p.decayMs);
-      A.bandsRawR[i] = audioEnvelope(A.bandsRawR[i], rbR ? rawClamp(rbR[i]) : r, dt, p.attackMs, p.decayMs);
+      A.bandsRaw[i]  = audioEnvelope(A.bandsRaw[i],  r, dt, p.attackMs, decayNow);
+      A.bandsRawL[i] = audioEnvelope(A.bandsRawL[i], rbL ? rawClamp(rbL[i]) : r, dt, p.attackMs, decayNow);
+      A.bandsRawR[i] = audioEnvelope(A.bandsRawR[i], rbR ? rawClamp(rbR[i]) : r, dt, p.attackMs, decayNow);
     }
   }
   // Per-STYLE tuner params (gain/floor/attack/decay/beatSens) so tuning bars doesn't leak into pulse, etc.
   // Mirrors patParams: one-time migrates the old flat values onto the current style; new styles start at defaults.
-  const AUDIO_TUNE_DEFAULTS = { gain:1, floor:5, ceil:100, contrast:50, agc:true, attackMs:40, decayMs:220, beatSens:50 };
+  const AUDIO_TUNE_DEFAULTS = { gain:1, floor:5, ceil:100, contrast:50, agc:true, attackMs:40, decayMs:220, pauseDecayMs:700, beatSens:50 };
   function audioParams(s){
     const style = s.style || 'bars';
     if(!s.ap){
