@@ -712,16 +712,21 @@
   // per-layer `_duck` factor that composite() multiplies the source by — reset every frame so it can't compound.
   // settings.ducks = [{layer:<index into state.layers>, dim:<0..100 max-brightness %>}]. Daemon-safe: with no
   // audio feed the audio layer renders black → not emitting → nothing is dimmed.
-  function applyAudioDuck(state){
-    for(const L of state.layers) L._duck = 1;
+  const DUCK_TAU_MS = 600;   // ponytail: fixed ~600ms ease for the dim engage/release; expose a per-duck setting if anyone wants per-layer timing
+  function applyAudioDuck(state, now){
+    // per-layer TARGET dim factor this frame (1 = full); then ease _duck toward it so the dim engages/releases
+    // smoothly on pause/unpause instead of snapping.
+    for(const L of state.layers) L._duckTgt = 1;
     const audio = state.layers.find(L => L.enabled && L.type==='audio' && layerEmitting(L));
-    if(!audio) return;
-    const ducks = audio.settings && audio.settings.ducks;
-    if(!Array.isArray(ducks)) return;
-    for(const d of ducks){
+    const ducks = audio && audio.settings && audio.settings.ducks;
+    if(Array.isArray(ducks)) for(const d of ducks){
       const tgt = state.layers[d && d.layer];
-      if(tgt && tgt!==audio && tgt.enabled) tgt._duck = Math.max(0, Math.min(1, (d.dim==null?100:d.dim)/100));
+      if(tgt && tgt!==audio && tgt.enabled) tgt._duckTgt = Math.max(0, Math.min(1, (d.dim==null?100:d.dim)/100));
     }
+    const dt = (now!=null && state._duckT) ? Math.max(1, Math.min(200, now - state._duckT)) : 16;
+    if(now!=null) state._duckT = now;
+    for(const L of state.layers){ const cur = L._duck==null ? 1 : L._duck;
+      L._duck = Math.abs(cur - L._duckTgt) < 0.002 ? L._duckTgt : audioEnvelope(cur, L._duckTgt, dt, DUCK_TAU_MS, DUCK_TAU_MS); }
   }
 
   // ===== state model =====
@@ -810,7 +815,7 @@
         L.lastTick = now;
       }
     }
-    applyAudioDuck(state);   // audio-reactive dim: quiet the configured layers while the audio layer emits
+    applyAudioDuck(state, now);   // audio-reactive dim: quiet the configured layers while the audio layer emits (eased on pause/unpause)
     const flat = composite(state);
     // global brightness (the header slider; daemon mirrors it via settings.brightness).
     // composite() allocates a fresh flat each call, so in-place scaling can't compound.

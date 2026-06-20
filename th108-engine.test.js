@@ -260,9 +260,9 @@ test('audio duck dims a target layer only while the audio layer is emitting ligh
     {name:'Audio',type:'audio',enabled:true,opacity:1,blend:'add',fps:30,settings:{style:'bars',ducks:[{layer:0,dim:0}]}},
   ]);
   const sum=f=>{let s=0;for(let o=0;o<f.length;o+=4)s+=f[o+1]+f[o+2]+f[o+3];return s;};
-  // emitting: bass band on → audio layer lights → BG (layer 0) ducked to dim 0
+  // emitting: bass band on → audio layer lights → BG (layer 0) ducks toward dim 0 (eased ~600ms, so settle it)
   const st1=mk(); st1.bri=1; st1.audio.bands.fill(0); st1.audio.bands[0]=1;
-  const ducked=sum(E.composeFrame(st1,100));
+  let ducked; for(let i=0;i<200;i++) ducked=sum(E.composeFrame(st1, 100+i*16));
   // silent: no bands → audio layer paints black → NOT emitting → BG must NOT be ducked (full white)
   const st2=mk(); st2.bri=1; st2.audio.bands.fill(0);
   const full=sum(E.composeFrame(st2,100));
@@ -522,4 +522,16 @@ test('bars Spread shapes volume by the per-column spectrum (column heights diffe
   // compare each column to ITSELF across off/on (avoids physical grid-gap differences between columns):
   assert.ok(on[1] < off[1], 'spread on lowers the silent treble column (no energy there)');
   assert.ok(on[0] >= off[0], 'spread on keeps the bass column (full energy) at least as tall');
+});
+
+test('audio duck eases in instead of snapping (pause/unpause lerp)', () => {
+  const st = E.createState([
+    { name:'BG', type:'background', enabled:true, opacity:1, blend:'normal', fps:30, settings:{ color:'#ffffff', period:1, bgMin:100, bgMax:100 } },
+    { name:'Audio', type:'audio', enabled:true, opacity:1, blend:'add', fps:30, settings:{ style:'bars', ducks:[{ layer:0, dim:0 }] } },
+  ]);
+  st.bri = 1; st.audio.bands.fill(0); st.audio.bands[0] = 1;   // audio emitting → BG should duck toward 0
+  const sum = f => { let s=0; for(let o=0;o<f.length;o+=4) s+=f[o+1]+f[o+2]+f[o+3]; return s; };
+  const frames = []; for(let i=0;i<200;i++) frames.push(sum(E.composeFrame(st, 100 + i*40)));   // 40ms steps so every frame renders
+  const early = frames[0], settled = frames[199];               // first ducked frame vs fully settled
+  assert.ok(early > settled*2, 'early ducked frame is much brighter than the settled dim → it eased, did not snap');
 });
