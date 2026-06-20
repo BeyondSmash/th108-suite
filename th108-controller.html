@@ -261,11 +261,11 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
   .lbody .ctl .lrow:has(> select) > span:last-child{ display:none; }
   /* checkbox rows (Spread, Auto-gain, Isolate, …): checkbox sits in the MIDPOINT of the gap between the label
      and the descriptor, which gets its own column. (cbrow + the descriptor span are added by wrapCheckboxRows.) */
-  .lbody .ctl .lrow.cbrow{ grid-template-columns:84px 1fr; align-items:start; }
-  .lbody .ctl .lrow.cbrow > label:first-child{ grid-column:1; }
-  .lbody .ctl .lrow.cbrow > .sl{ grid-column:2; display:grid; grid-template-columns:1fr 1.6fr; align-items:start; gap:8px; width:auto; }
-  .lbody .ctl .lrow.cbrow > .sl > input{ justify-self:center; margin-top:2px; }
-  .lbody .ctl .lrow.cbrow > .sl > .sl-d{ grid-column:2; }
+  .lbody .ctl .lrow.cbrow{ grid-template-columns:auto 1fr auto 1fr; align-items:center; }   /* label | gap(checkbox) | description | balance — equal 1fr sides center the description; align-items centers the checkbox vertically */
+  .lbody .ctl .lrow.cbrow > label:first-child{ grid-column:1; justify-self:start; }
+  .lbody .ctl .lrow.cbrow > .sl{ display:contents; }                                        /* let the checkbox + description place into the row grid independently (label-click still toggles) */
+  .lbody .ctl .lrow.cbrow > .sl > input{ grid-column:2; justify-self:center; }              /* checkbox at the midpoint (x) of the gap; align-items handles y */
+  .lbody .ctl .lrow.cbrow > .sl > .sl-d{ grid-column:3; max-width:240px; text-align:center; }   /* description optically centered */
   .lbody .ctl .lrow:nth-of-type(even){ background:var(--zebra-bg, transparent); border-radius:8px; }   /* zebra band; --zebra-bg is set live by the Row-shading slider (white tint = brighter rows, black tint = darker rows, 0 = none) */
   .lbody .ctl .lsec, .lbody .ctl .lsub{ grid-column:1/-1; }
   .lbody .ctl .lsec{ margin:13px 0 1px; padding-top:11px; border-top:1px solid var(--border); color:var(--text); font-size:13px; font-weight:600; letter-spacing:.02em; text-align:center; }

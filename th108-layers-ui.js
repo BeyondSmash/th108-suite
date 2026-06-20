@@ -289,7 +289,7 @@
         const style=s.style||'bars', uid=card.dataset.n;
         // All four sources are live: system + app run through the background daemon (loopback / process-loopback);
         // tab + mic are captured in-tab via Web Audio. App needs the daemon (it spawns app-capture.exe).
-        const sources=[['system','All system audio',true],['app','Specific app',true],['tab','This tab',true],['mic','Mic / line-in',true]];
+        const sources=[['system','All System Audio',true],['app','Specific App',true],['tab','This Tab',true],['mic','Mic / Line-in',true]];
         const srcBubbles=sources.map(o=>{ const dis=!o[2]; return '<label class="sl" style="margin:0'+(dis?';opacity:.4':'')+'"><input type="radio" name="aud-src-'+uid+'" class="s-source" value="'+o[0]+'"'+((o[0]===(s.source||'system'))?' checked':'')+(dis?' disabled':'')+'> '+o[1]+'</label>'; }).join('');
         const styles=[['bars','Spectrum bars'],['pulse','Beat pulse'],['bloom','Radial bloom'],['wave','Waveform'],['plasma','Plasma'],['aurora','Aurora'],['sparkle','Starfield'],['radial','Radial spectrum']];
         const sopt=styles.map(m=>'<option value="'+m[0]+'"'+(m[0]===style?' selected':'')+'>'+m[1]+'</option>').join('');
@@ -297,7 +297,7 @@
         let html='<div class="ctl">'+
           sec('Source')+
           full('<span style="display:grid;grid-template-columns:1fr 1fr;gap:5px 14px;flex:1 1 100%">'+srcBubbles+'</span>')+
-          (s.source==='app' ? sub('Specific app')+full('<select class="s-appId" style="max-width:180px"></select><button type="button" class="s-appRefresh" title="rescan currently-playing apps" style="flex:none">Refresh</button><span class="val s-appNote" style="opacity:.7"></span>') : '')+
+          (s.source==='app' ? sub('Specific App')+full('<select class="s-appId" style="max-width:180px"></select><button type="button" class="s-appRefresh" title="rescan currently-playing apps" style="flex:none">Refresh</button><span class="val s-appNote" style="opacity:.7"></span>') : '')+
           sec('Style')+ '<div class="lfull" style="justify-content:center"><select class="s-style">'+sopt+'</select></div>'+   // no left label → center it under the header
           sec('Preview')+ full('<div style="display:flex;flex-direction:column;gap:9px;flex:1 1 100%">'+
             '<div><div style="display:flex;align-items:center;gap:8px;margin-bottom:3px"><span class="val" style="opacity:.65">Sample — test signal</span><button type="button" class="s-samplePrevToggle">'+(s.samplePrevOff?'Show':'Hide')+'</button></div>'+
@@ -357,7 +357,7 @@
           row('Decay','<span class="srange" style="width:100%"><input type="range" class="s-decayMs" min="40" max="800" step="10" value="'+ap.decayMs+'" title="How slowly keys fade after a peak (ms). Higher = smoother (this style only)"><i class="tick" style="left:calc(7px + (100% - 14px)*0.237)"></i></span><span class="val s-decayMsV"></span>')+
           row('Pause decay','<span class="srange" style="width:100%"><input type="range" class="s-pauseDecayMs" min="100" max="3000" step="50" value="'+(ap.pauseDecayMs==null?700:ap.pauseDecayMs)+'" title="When the music STOPS (sustained silence), how slowly the bars settle to 0 (ms). Separate from Decay so playback stays snappy but a pause glides down gracefully (this style only)"><i class="tick" style="left:calc(7px + (100% - 14px)*0.207)"></i></span><span class="val s-pauseDecayMsV"></span>')+
           row('Beat sensitivity','<span class="srange" style="width:100%"><input type="range" class="s-beatSens" min="0" max="100" value="'+ap.beatSens+'" title="How strongly kicks/onsets pop in pulse and bloom (this style only)"><i class="tick" style="left:calc(7px + (100% - 14px)*0.5)"></i></span><span class="val s-beatSensV"></span>')+
-          (duckRows ? sub('Dim while active')+full('<span class="val" style="opacity:.7;flex:1 1 100%">quiet these layers while the music shows</span>')+duckRows : '')+
+          (duckRows ? sub('Dim While Active')+full('<span class="val" style="opacity:.7;flex:1 1 100%;text-align:center">Quiet these layers while the music shows</span>')+duckRows : '')+
         '</div>';
         body.innerHTML=html;
         const c=q=>body.querySelector(q);
