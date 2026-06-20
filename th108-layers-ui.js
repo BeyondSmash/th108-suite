@@ -60,7 +60,7 @@
         const opt=(arr,sel)=>arr.map(v=>'<option'+(v===sel?' selected':'')+'>'+v+'</option>').join('');
         card.innerHTML=
           '<div class="lhead">'+
-            '<span class="lgrip" draggable="true" title="drag to change layer level">⠿</span>'+   // draggable lives on the GRIP, not the card — a draggable card reports dragstart.target as the card (not the grip), so the grip-only guard always failed and no drag ever started
+            '<span class="lgrip" title="drag to change layer level">⠿</span>'+   // drag handle for the page's pointer-based card-drag system (same lift/clone/breach-line as the Home cards)
             '<span class="llvl">Layer '+(n+1)+'</span>'+
             '<input type="checkbox" class="le"'+(L.enabled?' checked':'')+' title="enable layer">'+
             '<input type="text" class="ln" value="'+L.name.replace(/"/g,'&quot;')+'">'+
@@ -93,44 +93,19 @@
         lf.addEventListener('input',e=>setFps(+e.target.value,true));
         lfn.addEventListener('input',e=>{ if(e.target.value!=='') setFps(+e.target.value,false); });
         lfn.addEventListener('change',e=>setFps(+e.target.value,true));
-        // layer card drag-to-reorder (the grip is the only draggable element; its dragstart bubbles here)
-        card.addEventListener('dragstart',e=>{
-          if(!e.target.closest('.lgrip')){ e.preventDefault(); return; }   // belt-and-suspenders: only the grip starts a card drag
-          lcardDragging=card; card.classList.add('ldragging');
-          try{ e.dataTransfer.effectAllowed='move'; e.dataTransfer.setData('text/plain','lcard'); e.dataTransfer.setDragImage(card, 12, 12); }catch(_){ }   // drag the whole card, not the tiny grip glyph
-        });
-        card.addEventListener('dragend',()=>{ card.classList.remove('ldragging'); lcardDragging=null; });
         buildLayerBody(card,L);
       }
     }
-    // ===== layer-card reorder: dragging the grip rearranges the layers array =====
-    let lcardDragging=null;
-    cards.addEventListener('dragover',e=>{
-      if(!lcardDragging) return;   // don't interfere with block-layout drags
-      e.preventDefault();
-      const after=lcardAfter(cards,e.clientY,e.clientX);
-      if(after==null) cards.appendChild(lcardDragging);
-      else if(after!==lcardDragging) cards.insertBefore(lcardDragging,after);
-    });
-    cards.addEventListener('drop',e=>{
-      if(!lcardDragging) return;
-      e.preventDefault();
-      // cards are listed ascending (Layer 1 first); rebuild the layers array straight from DOM order
-      const order=[...cards.querySelectorAll('.lcard')].map(c=>state.layers[+c.dataset.n]);
-      state.layers.length=0; for(let i=0;i<order.length;i++) state.layers.push(order[i]);   // ascending display: DOM order = array order (first card = Layer 1 = bottom of the stack)
-      buildLayerCards();                                  // re-render so labels + dataset.n update
-      saveLayerOrder(); saveLayers();
+    // Rebuild the layers array from the cards' DOM order — called after a grip drag settles by the page's
+    // shared pointer-based card-drag system (same lift/clone/breach-line as the Home cards). Cards list
+    // ascending, so DOM order = array order (first card = Layer 1 = bottom of the stack).
+    function reorderFromDom(){
+      const order=[...cards.querySelectorAll('.lcard')].map(c=>state.layers[+c.dataset.n]).filter(Boolean);
+      if(order.length!==state.layers.length) return;   // safety: never drop a layer if the DOM is mid-rebuild
+      state.layers.length=0; for(let i=0;i<order.length;i++) state.layers.push(order[i]);
+      buildLayerCards();                                // re-render so labels + dataset.n update
+      saveLayerOrder(); saveLayers(); pushConfig();
       if(isRunning()){ const now=performance.now(); for(const L of state.layers){ E.renderLayer(L,now,state); L.lastTick=now; } }
-    });
-    function lcardAfter(host,y,x){
-      // row-major 2D walk — the cards sit in a multi-column grid now, so a pure Y-midpoint test ignores
-      // horizontal drags entirely (same-row moves never reorder). Above a card's row → before it; within
-      // the row and left of its center → before it; otherwise keep walking (= after it).
-      const cardEls=[...host.querySelectorAll('.lcard:not(.ldragging)')];
-      for(const c of cardEls){ const r=c.getBoundingClientRect();
-        if(y < r.top) return c;
-        if(y < r.bottom && x < r.left + r.width/2) return c; }
-      return null;
     }
     function buildLayerBody(card,L){
       const body=card.querySelector('.lbody'), s=L.settings;
@@ -503,7 +478,7 @@
       panel.addEventListener('change', scheduleSaveLayers);
     }
 
-    return { init, buildCards: buildLayerCards, save: saveLayers, scheduleSave: scheduleSaveLayers, restore: restoreLayers };
+    return { init, buildCards: buildLayerCards, save: saveLayers, scheduleSave: scheduleSaveLayers, restore: restoreLayers, reorderFromDom };
   }
 
   return { create, serializeLayers, serializeOrder, overlayLayers, TYPES, BLENDS };

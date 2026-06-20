@@ -133,9 +133,9 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
   /* pointer-drag mechanics (react-grid-layout feel): the grabbed card floats with the cursor at FULL
      opacity with a lift shadow; a faded clone holds its grid slot as the drop shadow and lags behind
      the neighbors' rearrangement (FLIP transitions set inline by the drag code) */
-  .card.lifted{ position:fixed; z-index:120; margin:0; cursor:grabbing; transition:none;
+  .card.lifted, .lcard.lifted{ position:fixed; z-index:120; margin:0; cursor:grabbing; transition:none;
                 transform:scale(1.02); box-shadow:0 18px 48px rgba(13,17,23,.25); }
-  .card.ph-clone{ opacity:.35; pointer-events:none; box-shadow:none; overflow:hidden; position:relative; }
+  .card.ph-clone, .lcard.ph-clone{ opacity:.35; pointer-events:none; box-shadow:none; overflow:hidden; position:relative; }
   .ph-clone .ants{ position:absolute; inset:0; width:100%; height:100%; pointer-events:none; }
   .ph-clone .ants rect{ x:1px; y:1px; width:calc(100% - 2px); height:calc(100% - 2px); rx:27px;
                         fill:none; stroke:var(--muted); stroke-width:1.5; stroke-dasharray:7 7;
@@ -1346,9 +1346,10 @@ const LAYOUT_KEY='th108_layout2';   // ordered card ids (the old colL/colR forma
 const gridEl=document.getElementById('grid');
 let drag=null;   // {card, ph, dx, dy, w, h, sx, sy, live, raf}
 function visibleCards(){ return cardsAll().filter(c=>!c.hidden); }
+function dragCards(){ return [...drag.grid.querySelectorAll(drag.cardSel)].filter(c=>!c.hidden); }   // visible cards of the grid currently being dragged in
 // FLIP: capture → mutate → invert with no transition → one reflow → ease back (the clone gets a small delay)
 function flipReorder(mutate){
-  const els=visibleCards().filter(c=>c!==drag.card);
+  const els=dragCards().filter(c=>c!==drag.card);
   const before=new Map(els.map(el=>[el,el.getBoundingClientRect()]));
   mutate();
   const moved=[];
@@ -1356,7 +1357,7 @@ function flipReorder(mutate){
     const dx=b.left-a.left, dy=b.top-a.top;
     if(dx||dy){ el.style.transition='none'; el.style.transform='translate('+dx+'px,'+dy+'px)'; moved.push(el); } }
   if(!moved.length) return;
-  void gridEl.offsetHeight;   // commit the inverted positions in one reflow
+  void drag.grid.offsetHeight;   // commit the inverted positions in one reflow
   for(const el of moved){
     el.style.transition='transform .28s cubic-bezier(.22,1,.36,1)'+(el===drag.ph?' .06s':'');
     el.style.transform='';
@@ -1390,7 +1391,7 @@ function settledRect(el){
 function breachTarget(){   // the visible card the dragged card overlaps most (≥30×30px before a line appears)
   const a=drag.card.getBoundingClientRect();
   let best=null, bestArea=900;
-  for(const c of visibleCards()){
+  for(const c of dragCards()){
     if(c===drag.card || c===drag.ph) continue;
     const r=settledRect(c);
     const ox=Math.min(a.right,r.right)-Math.max(a.left,r.left);
@@ -1466,22 +1467,28 @@ function updateTarget(x,y){
     if(sideNow>0){                                        // now right of / below the neighbor → card goes AFTER it
       let p=t.nextElementSibling; while(p && p.hidden) p=p.nextElementSibling;
       if(p!==ph){ let nx=p; while(nx && (nx===ph||nx.hidden)) nx=nx.nextElementSibling;
-        flipReorder(()=> nx? gridEl.insertBefore(ph,nx) : gridEl.appendChild(ph)); }
-    } else if(nextVisible(ph)!==t) flipReorder(()=>gridEl.insertBefore(ph,t));
+        flipReorder(()=> nx? drag.grid.insertBefore(ph,nx) : drag.grid.appendChild(ph)); }
+    } else if(nextVisible(ph)!==t) flipReorder(()=>drag.grid.insertBefore(ph,t));
     dlHide();
   }
 }
-cardsAll().forEach(c=>{
-  const bar=c.querySelector('.cardbar'); if(!bar) return;
-  bar.addEventListener('pointerdown',e=>{
+// one delegated handler per grid (layer cards are rebuilt, so per-card listeners would be lost) — drags
+// start only from the handle; reorders commit via the grid's callback. Reused for the bento + layer cards.
+function enableDrag(grid, handleSel, cardSel, commit){
+  if(!grid) return;
+  grid.addEventListener('pointerdown',e=>{
     if(e.button!==0 || drag) return;
-    if(e.target.closest('input,button,select,a,label')) return;   // controls living IN a title bar (e.g. the debug sliders) must stay usable
-    e.preventDefault();                                        // no text selection / native drag — sliders etc. outside the bar are untouched
-    const r=c.getBoundingClientRect();
-    drag={card:c, ph:null, dx:e.clientX-r.left, dy:e.clientY-r.top, w:r.width, h:r.height,
+    if(!e.target.closest(handleSel)) return;                       // only the drag handle (.cardbar / .lgrip) starts a drag
+    if(e.target.closest('input,button,select,a,label,textarea')) return;   // controls living in the handle stay usable
+    const card=e.target.closest(cardSel); if(!card || !grid.contains(card)) return;
+    e.preventDefault();                                            // no text selection / native drag
+    const r=card.getBoundingClientRect();
+    drag={card, grid, cardSel, commit, ph:null, dx:e.clientX-r.left, dy:e.clientY-r.top, w:r.width, h:r.height,
           sx:e.clientX, sy:e.clientY, live:false, raf:0};
   });
-});
+}
+enableDrag(gridEl, '.cardbar', '.card', saveLayout);
+enableDrag(document.getElementById('layerCards'), '.lgrip', '.lcard', ()=>{ try{ LUI.reorderFromDom(); }catch(_){ } });
 window.addEventListener('pointermove',e=>{
   if(!drag) return;
   if(!drag.live){ if(Math.hypot(e.clientX-drag.sx, e.clientY-drag.sy)<5) return; liftCard(e); }
@@ -1495,16 +1502,16 @@ function endDrag(){
   dlHide();                                                    // breach line never outlives the drag
   if(!drag.live){ drag=null; return; }                         // it was just a click on the bar
   if(drag.raf) cancelAnimationFrame(drag.raf);
-  const {card,ph}=drag; drag=null;
+  const {card,ph,grid,cardSel,commit}=drag; drag=null;
   const r=ph.getBoundingClientRect();                          // settle the floating card into the clone's slot
   card.style.transition='left .25s cubic-bezier(.22,1,.36,1), top .25s cubic-bezier(.22,1,.36,1), transform .25s, box-shadow .25s';
   card.style.left=r.left+'px'; card.style.top=r.top+'px'; card.style.transform='none';
   setTimeout(()=>{
-    gridEl.insertBefore(card,ph); ph.remove();
+    grid.insertBefore(card,ph); ph.remove();
     card.classList.remove('lifted'); card.style.cssText='';
-    visibleCards().forEach(c2=>{ c2.style.transition=''; c2.style.transform=''; });   // drop any leftover FLIP inline styles
+    [...grid.querySelectorAll(cardSel)].forEach(c2=>{ c2.style.transition=''; c2.style.transform=''; });   // drop any leftover FLIP inline styles
     document.body.classList.remove('cardDragging');
-    saveLayout();
+    commit();
   },260);
 }
 window.addEventListener('pointerup',endDrag);
