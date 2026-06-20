@@ -247,7 +247,7 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
   .lhead .lfield input[type=range]{ width:90px; }
   .lhead .lfield .lv{ font-family:ui-monospace,monospace; color:var(--num); min-width:34px; text-align:right; }
   .lbody{ margin-top:10px; padding-top:8px; border-top:1px solid var(--border); }
-  .lbody .ctl{ grid-template-columns:84px minmax(30px,1fr) auto; gap:7px 8px; }
+  .lbody .ctl{ grid-template-columns:84px minmax(30px,1fr) 84px; gap:7px 8px; }   /* col1 == col3 → the middle column (sliders/controls) is optically centered in the card under the centered section headers; value right-aligns in its 84px column */
   .lbody .ph{ color:var(--muted); font-size:13px; }
   /* section headers inside a layer body: full-width (overhang the label column), rule above. main = full
      rule; sub = a shorter, lighter rule. lfull = a control block that spans the whole grid under a header. */
@@ -265,7 +265,7 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
   .lbody .ctl .lsec:first-child{ margin-top:0; padding-top:2px; border-top:0; }
   .lbody .ctl .lsub{ position:relative; margin:9px 0 0; padding-top:8px; color:var(--muted); font-size:12px; text-align:center; }
   .lbody .ctl .lsub::before{ content:""; position:absolute; top:0; left:50%; transform:translateX(-50%); width:150px; max-width:55%; height:1px; background:var(--border); opacity:.8; }
-  .lbody .ctl .lfull{ grid-column:1/-1; display:flex; flex-wrap:wrap; align-items:center; gap:8px 14px; }
+  .lbody .ctl .lfull{ grid-column:1/-1; display:flex; flex-wrap:wrap; align-items:center; justify-content:center; gap:8px 14px; }   /* center full-width control blocks (Specific-app picker, individual paint controls, Style) under the centered headers; 100%-width children (Source bubbles, Preview) are unaffected */
   .lhead .lgrip{ cursor:grab; color:var(--muted); font-size:15px; user-select:none; padding:0 2px; }
   .lhead .lgrip:active{ cursor:grabbing; }
   .lcard.ldragging{ opacity:.5; }
@@ -652,7 +652,7 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
   <div class="card s6" id="layersPanel" data-pages="lighting">
     <div class="cardbar"><span class="grip">⠿</span><h2>Layer Compositor</h2>
       <span class="aux">card order = layer stack · last card = top layer</span>
-      <label class="aux" style="margin-left:auto;display:inline-flex;align-items:center;gap:7px;cursor:pointer" title="Contrast of the alternating row shading on every layer card — left darkens the row, right brightens it, center is off">Row shading
+      <label class="aux" style="margin-left:auto;display:inline-flex;align-items:center;gap:7px;cursor:pointer" title="Contrast of the alternating row shading on every layer card — left darkens the row, right brightens it, center is off"><button type="button" id="zebraReset" title="Reset row shading to the default (-60%)" onclick="setZebra(-60)" style="background:none;border:0;color:var(--muted);cursor:pointer;font:inherit;font-size:14px;padding:0;line-height:1">↺</button>Row shading
         <span class="srange" style="width:96px"><input type="range" id="zebraAmt" min="-100" max="100" value="-60" oninput="setZebra(this.value)"><i class="tick" style="left:50%"></i></span>
         <span id="zebraAmtV" class="val" style="min-width:40px">0%</span></label></div>
     <div id="layerCards"></div>
