@@ -1099,6 +1099,30 @@ function audioFeedTick(now){
 }
 requestAnimationFrame(audioFeedTick);
 
+// ----- song-progress bar (keys 1-0): the daemon renders it when IT drives; while THIS tab drives we draw
+// it ourselves from the daemon's media position so the toggle/color/brightness change live on-tab. -----
+const NP_DIGITS=['Digit1','Digit2','Digit3','Digit4','Digit5','Digit6','Digit7','Digit8','Digit9','Digit0']
+  .map(c=>TH108Engine.INDICES.indexOf(TH108Engine.KEYMAP[c])).filter(k=>k>=0);
+let _npPos=null, _npPosAt=0;
+setInterval(async ()=>{
+  const on=document.getElementById('npBar');
+  if(!on||!on.checked||!DC.present){ _npPos=null; return; }
+  try{ const j=await (await fetch('/nowplaying/pos',{cache:'no-store'})).json(); _npPos=j.pos||null; if(_npPos) _npPosAt=performance.now(); }
+  catch(_){ _npPos=null; }
+}, 250);
+function applyNpBar(flat){
+  const on=document.getElementById('npBar'); if(!on||!on.checked) return;
+  const ms=_npPos; if(!ms||!ms.hasMedia || performance.now()-_npPosAt>2000) return;
+  let op=1;   // idle crossfade — mirror the daemon (fade out after npBarIdle seconds paused)
+  if(!ms.playing){ const idleSec=+((document.getElementById('npBarIdle')||{}).value)||3; const over=(ms.idleMs||0)-idleSec*1000; if(over>0) op=Math.max(0,1-over/600); }
+  if(op<=0) return;
+  const [br,bg,bb]=TH108Engine.hexToRgb(((document.getElementById('npBarColor')||{}).value)||'#11ff00');
+  const f=(Math.max(0,Math.min(100, +((document.getElementById('npBarBright')||{}).value)||60))/100)*op;   // bar ignores global brightness, like the daemon
+  const lit=Math.round((ms.progress||0)*NP_DIGITS.length);
+  for(let i=0;i<lit && i<NP_DIGITS.length;i++){ const o=NP_DIGITS[i]*4;
+    flat[o+1]=(flat[o+1]*(1-op)+br*f)|0; flat[o+2]=(flat[o+2]*(1-op)+bg*f)|0; flat[o+3]=(flat[o+3]*(1-op)+bb*f)|0; }
+}
+
 // ----- master loop (separate worker from the GIF's tickW) -----
 let running=false, layerInFlight=false;   // frame de-dupe / keepalive timing live on state.lastFlat / state.lastSent
 let obActive=false;   // a firmware (onboard) effect was applied → clicking a pattern auto-resumes layers, no "↩ Back to layers" needed
@@ -1116,6 +1140,7 @@ async function layerTick(){
       layerInFlight=true;
       try{ feedAudio(now); }catch(_){ }                  // refresh state.audio on the worker clock (smooth even when this tab is backgrounded)
       const flat=TH108Engine.composeFrame(state, now);   // engine renders due layers (≤30fps each) + composites → flat frame
+      applyNpBar(flat);                                  // overlay the daemon's song-progress bar on keys 1-0 while this tab drives
       if(!TH108Engine.flatEq(flat, state.lastFlat) || now-state.lastSent>=1000){   // skip unchanged frames; resend ≥1×/s as a keepalive so firmware doesn't reclaim the board
         if(await HID.sendFrame(flat)){ state.lastFlat=flat; state.lastSent=now; }
       }

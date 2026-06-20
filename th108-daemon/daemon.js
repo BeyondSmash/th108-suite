@@ -494,6 +494,8 @@ const control = {
   listAudioApps() { return new Promise(r => AC.listApps((_e, arr) => r(arr))); },
   // Latest captured audio frame (system/app) so the open page can preview it + drive the keys in real time.
   audioFrame() { return acHandle ? AC.freshOr(acHandle.latest(), Date.now(), 300) : null; },
+  // Current media position so the open page can draw the song-progress bar itself while it drives the device.
+  npPos() { return npHandle ? npHandle.mediaState() : null; },
   status() { return { running: true, paused, deviceConnected: !!device, fps: FPS, setupPath: path.resolve(__dirname, '..', 'setup.cmd'), usbReset: settings.usbReset, dimOnDisplayOff: settings.dimOnDisplayOff, nowPlaying: settings.nowPlaying,
                       npTrack: npHandle ? npHandle.current() : null, npQueued: npHandle ? npHandle.queued() : false,
                       npHealth: npHandle ? npHandle.health() : null,
