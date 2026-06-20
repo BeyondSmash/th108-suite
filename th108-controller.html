@@ -173,11 +173,13 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
   .dmnTag i{ width:8px; height:8px; border-radius:50%; background:var(--mint); }
   .dmnTag.off i{ background:var(--err); }
   .dmnTag.reconnecting{ opacity:1; }
-  .dmnTag.reconnecting i{ background:var(--warn); animation:dpulse 1s ease-in-out infinite; }   /* amber pulse during a restart */
+  .dmnTag.reconnecting i{ background:var(--warn); animation:dpulseA 1s ease-in-out infinite; }   /* amber dot + amber glow during a restart */
   .dmnTag:hover{ opacity:1; }
   .dmnTag:hover i{ animation:dpulse 1.2s ease-in-out infinite; }
+  .dmnTag.reconnecting:hover i{ animation:dpulseA 1s ease-in-out infinite; }   /* keep it amber even while hovered */
   .dmnTag.off:hover i{ animation:none; }
   @keyframes dpulse{ 50%{ box-shadow:0 0 0 5px color-mix(in srgb, var(--mint) 30%, transparent); } }
+  @keyframes dpulseA{ 50%{ box-shadow:0 0 0 5px color-mix(in srgb, var(--warn) 35%, transparent); } }
   /* header Connect — on every tab while this page doesn't hold the keyboard; flashes yellow on connect, then leaves */
   .hdrconnect{ margin:0; padding:7px 14px; font-size:12.5px; transition:opacity .3s ease; }
   .hdrconnect[hidden]{ display:none !important; }
