@@ -441,6 +441,23 @@
       }
       buildAdjustBlock(body,L);   // shared per-layer adjust controls appended to every type
       attachHex(body);            // typeable hex box on every color picker (incl. reactive palette)
+      wrapCheckboxRows(body);     // checkbox in the gap + descriptor in its own column (option-1 layout)
+    }
+    // For a simple checkbox row [label | (checkbox + descriptor) | empty cell], split the descriptor into its
+    // own span and tag the row 'cbrow' so CSS can center the checkbox in the gap and give the text its own
+    // column. Skips rows whose 3rd cell holds a control (e.g. the per-layer "Dim while active" duck sliders).
+    function wrapCheckboxRows(scope){
+      scope.querySelectorAll('.ctl .lrow > .sl').forEach(sl=>{
+        const row = sl.parentElement, last = row.lastElementChild;
+        if(!(last && last.tagName==='SPAN' && last.children.length===0 && !last.textContent.trim())) return;   // 3rd cell must be the empty filler (not a duck slider)
+        if(!sl.querySelector('.sl-d')){
+          const input = sl.querySelector('input'); if(!input) return;
+          const d = document.createElement('span'); d.className='sl-d';
+          let n = input.nextSibling; while(n){ const nx = n.nextSibling; d.appendChild(n); n = nx; }
+          sl.appendChild(d);
+        }
+        row.classList.add('cbrow'); last.remove();
+      });
     }
     // shared "Adjust" block (brightness / saturation / contrast / gamma / rotate / speed + Static) on every card
     function buildAdjustBlock(body,L){
