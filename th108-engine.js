@@ -79,26 +79,33 @@
     const A = state.audio, p = audioParams(s);   // tuner params are PER-STYLE (gain/floor/attack/decay/beatSens)
     let dt = A._t ? Math.max(1, Math.min(100, now - A._t)) : 16;   // clamp dt (tab-throttle/sleep safe)
     A._t = now;
-    // Feature shaping, in order: gain → per-band AUTO-GAIN (normalize to each signal's own ~2s peak, so any
-    // input level uses the full range and quiet→bottom/loud→top) → [floor..ceil] range map → CONTRAST gamma
-    // (expands the swing: capture dB-compresses each band into a narrow range, gamma pulls it bottom→top).
-    // This is what makes the spectrum actually dance instead of flickering the top rows.
+    // Feature shaping, in order: gain → AUTO-GAIN (ONE global divisor that maps the song's recent LOUD PEAK to
+    // the top) → [floor..ceil] range map → CONTRAST gamma. Auto-gain replicates the manual workflow: set things
+    // so the true highs reach the ceiling and typical passages sit mid — automatically, per song. The peak RISES
+    // instantly (catches a real high) and FALLS slowly (~10s) so quiet parts stay LOW instead of being pumped
+    // back up to the top. Crucially it's ONE divisor for the whole spectrum, NOT per-band — the old per-band
+    // AGC normalized every band to its own peak, so every active band rode ~1 and the whole board pegged the top
+    // with no shape and no dynamics. Manual Gain is now a fine trim/headroom on top (×1 = peak→top).
     const gain = p.gain || 1, lo = (p.floor||0)/100, hi = Math.max(lo + 0.02, (p.ceil==null?100:p.ceil)/100);
     const gamma = 1 + ((p.contrast==null?50:p.contrast)/100)*4;   // 0→1 (linear) … 100→5 (very punchy)
-    const pdecay = Math.exp(-dt/2000);                            // peak memory ~2s
-    if(!A._peak || A._peak.length!==32) A._peak = new Float32Array(32).fill(0.12);
-    if(A._lpk == null) A._lpk = 0.12;
-    const agc = p.agc !== false;   // auto-gain ON (default) rides the recent peak — great for quiet/compressed songs, but a loud song pegs full; OFF makes Gain a plain linear sensitivity (turn it down so loud songs don't max out)
+    const agc = p.agc !== false;   // auto-gain ON (default): peak→top per song, no manual re-gain. OFF: Gain is a plain linear sensitivity.
     const shape = (v)=>{ v=(v-lo)/(hi-lo); v=v<=0?0:(v>=1?1:v); return gamma!==1 ? Math.pow(v,gamma) : v; };
-    const band   = (v,i)=>{ v=(v||0)*gain; if(agc){ const pk=A._peak[i]=Math.max(v, A._peak[i]*pdecay); v=v/Math.max(pk,0.06); } return shape(v); };
-    const bandRO = (v,i)=>{ v=(v||0)*gain; if(agc) v=v/Math.max(A._peak[i],0.06); return shape(v); };   // L/R reuse the mono peak (keeps the L↔R balance)
-    const lvl    = (v)=>{   v=(v||0)*gain; if(agc){ A._lpk=Math.max(v, A._lpk*pdecay); v=v/Math.max(A._lpk,0.06); } return shape(v); };
+    const slowFall = Math.exp(-dt/10000);                         // ~10s peak memory — long enough to hold the chorus peak so verses sit lower
+    const TARGET = 1.0;                                           // the recent loud peak maps to the TOP (true highs hit the ceiling, like the manual-gain workflow); typical passages fall below → mid
+    { let fm = 0; const _rb0 = raw.bands; if(_rb0) for(let i=0;i<32;i++){ const v=_rb0[i]||0; if(v>fm) fm=v; }
+      if(A._gpk == null) A._gpk = 0.12;  A._gpk = Math.max(fm,            A._gpk*slowFall);   // global band peak (max across bands)
+      if(A._lpk == null) A._lpk = 0.12;  A._lpk = Math.max(raw.level||0,  A._lpk*slowFall); } // overall level peak
+    const agB = agc ? TARGET/Math.max(A._gpk, 0.05) : 1;          // 0.05 floor → near-silence noise isn't slammed to full
+    const agL = agc ? TARGET/Math.max(A._lpk, 0.05) : 1;
+    const band   = (v,i)=> shape((v||0)*gain*agB);
+    const bandRO = (v,i)=> shape((v||0)*gain*agB);   // L/R reuse the global band divisor (keeps the L↔R balance)
+    const lvl    = (v)  => shape((v||0)*gain*agL);
     // PAUSE DECAY: once the input has been silent a sustained moment (paused / song ended), fall to 0 with
     // pauseDecayMs (a graceful settle) instead of the per-note decayMs — brief gaps between notes still bounce.
     let rawPeak = raw.level || 0; { const _rb = raw.bands; if(_rb) for(let i=0;i<32;i++){ if(_rb[i] > rawPeak) rawPeak = _rb[i]; } }
     if(A._silentMs == null) A._silentMs = 0;
     A._silentMs = (rawPeak * gain < 0.02) ? A._silentMs + dt : 0;
-    const decayNow = (A._silentMs > 200) ? (p.pauseDecayMs==null ? 700 : p.pauseDecayMs) : p.decayMs;   // only the FALL is affected (audioEnvelope picks decay when target<prev)
+    const decayNow = (A._silentMs > 80) ? (p.pauseDecayMs==null ? 700 : p.pauseDecayMs) : p.decayMs;   // 80ms confirm: true digital silence basically never happens MID-song (reverb/ambience sit above the gate), so a short window is safe — and engaging early means the graceful settle starts from the held level instead of after the fast per-note decay already dropped it. Only the FALL is affected (audioEnvelope picks decay when target<prev).
     const tgtLevel = lvl(raw.level);
     A.level = audioEnvelope(A.level, tgtLevel, dt, p.attackMs, decayNow);
     A.centroid = audioEnvelope(A.centroid, (raw.centroid==null?0.5:raw.centroid), dt, p.attackMs, p.decayMs);
