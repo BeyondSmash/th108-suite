@@ -34,7 +34,7 @@ const HOLD_DECAY = 0.75;   // per sidecar frame (~33ms) → ~130ms hold; long en
 function holdPeak(acc, f, decay) {
   const d = decay == null ? HOLD_DECAY : decay;
   if (!acc) return { bands: f.bands.slice(), bandsL: f.bandsL ? f.bandsL.slice() : undefined, bandsR: f.bandsR ? f.bandsR.slice() : undefined,
-                     level: f.level, beat: f.beat, centroid: f.centroid, t: f.t, _at: f._at };
+                     level: f.level, beat: f.beat, centroid: f.centroid, t: f.t, _at: f._at, live: f.level };
   for (let i = 0; i < 32; i++) {
     acc.bands[i] = Math.max(f.bands[i], acc.bands[i] * d);
     if (f.bandsL && acc.bandsL) acc.bandsL[i] = Math.max(f.bandsL[i], acc.bandsL[i] * d);
@@ -45,6 +45,7 @@ function holdPeak(acc, f, decay) {
   acc.level = Math.max(f.level, acc.level * d);
   acc.beat = Math.max(f.beat, acc.beat * d);
   acc.centroid = f.centroid; acc.t = f.t; acc._at = f._at;   // latest (not peak) for position/time
+  acc.live = f.level;   // TRUE current level (not the held peak) → pause/silence detection in the engine
   return acc;
 }
 const APP_EXE = path.join(__dirname, 'app-capture.exe');

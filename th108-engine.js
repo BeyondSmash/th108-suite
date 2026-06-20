@@ -102,9 +102,14 @@
     const lvl    = (v)  => shape((v||0)*gain*agL);
     // PAUSE DECAY: once the input has been silent a sustained moment (paused / song ended), fall to 0 with
     // pauseDecayMs (a graceful settle) instead of the per-note decayMs — brief gaps between notes still bounce.
-    let rawPeak = raw.level || 0; { const _rb = raw.bands; if(_rb) for(let i=0;i<32;i++){ if(_rb[i] > rawPeak) rawPeak = _rb[i]; } }
+    // Use the LIVE input level (raw.live), NOT the held/peak values: the decaying peak-hold (metronome-tick
+    // fix in audio-capture.js) keeps raw.level/bands elevated for ~400ms after playback stops, which masked the
+    // pause so silence was confirmed only after the normal decay had already finished → pauseDecayMs looked
+    // dead. raw.live is the true current-frame level (≈0 the instant playback stops). In-tab webCap has no
+    // hold, so its raw.level is already live → fall back to it.
+    const liveLvl = (raw.live != null ? raw.live : (raw.level || 0));
     if(A._silentMs == null) A._silentMs = 0;
-    A._silentMs = (rawPeak * gain < 0.02) ? A._silentMs + dt : 0;
+    A._silentMs = (liveLvl * gain < 0.02) ? A._silentMs + dt : 0;
     const decayNow = (A._silentMs > 80) ? (p.pauseDecayMs==null ? 700 : p.pauseDecayMs) : p.decayMs;   // 80ms confirm: true digital silence basically never happens MID-song (reverb/ambience sit above the gate), so a short window is safe — and engaging early means the graceful settle starts from the held level instead of after the fast per-note decay already dropped it. Only the FALL is affected (audioEnvelope picks decay when target<prev).
     const tgtLevel = lvl(raw.level);
     A.level = audioEnvelope(A.level, tgtLevel, dt, p.attackMs, decayNow);
@@ -140,7 +145,7 @@
       s.ap = {}; s.ap[style] = Object.assign({}, AUDIO_TUNE_DEFAULTS, seed);
     }
     if(!s.ap[style]) s.ap[style] = Object.assign({}, AUDIO_TUNE_DEFAULTS);
-    else s.ap[style] = Object.assign({}, AUDIO_TUNE_DEFAULTS, s.ap[style]);   // backfill keys added after this layer was first saved (ceil/contrast/pauseDecayMs) → no "undefined%" readout, and pause-decay actually has a value
+    else { const o = s.ap[style]; for(const k in AUDIO_TUNE_DEFAULTS) if(o[k] == null) o[k] = AUDIO_TUNE_DEFAULTS[k]; }   // backfill keys added after this layer was first saved (ceil/contrast/pauseDecayMs) IN-PLACE — must keep the SAME object reference so the panel's `ap` and the render/save path stay in sync (reassigning a fresh object orphaned slider edits → Tuning reset on refresh + live edits ignored)
     return s.ap[style];
   }
 
