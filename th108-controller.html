@@ -420,6 +420,7 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
     <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:8px">
       <label class="sl" title="start the daemon hidden at every login (per-user registry entry, no admin)"><input type="checkbox" id="dmnAuto"> Auto-Start on Login</label>
       <label class="sl" title="when the board stops ACKing for 30s, restart its USB device (a software replug — clears the wedge; typing drops ~1-2s). Needs the one-time elevated task: install-usb-restart-task.ps1"><input type="checkbox" id="dmnUsbFix"> Auto-Fix Lighting Wedge (USB Restart)</label>
+      <label class="sl" title="blank the keyboard while your monitor is off on the Windows display-timeout (not sleep) — restores when it wakes. Daemon-driven; takes effect when this tab is closed/blurred."><input type="checkbox" id="dmnDispOff"> Lights Off When Monitor Off</label>
     </div>
     <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
       <button id="dmnRestart" title="restart the daemon in place (≈1s) to pick up updated code — the supervised launcher revives it automatically, no Quit→Start needed">↻ Restart Daemon</button>

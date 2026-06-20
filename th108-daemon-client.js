@@ -82,6 +82,7 @@ window.TH108DaemonClient = (function () {
       const st = document.getElementById('dmnStatus'), auto = document.getElementById('dmnAuto'), quit = document.getElementById('dmnQuit');
       const restart = document.getElementById('dmnRestart');
       const usb = document.getElementById('dmnUsbFix');
+      const disp = document.getElementById('dmnDispOff');
       const np = document.getElementById('lcdNowPlaying');   // lives on the LCD tab, rides the same /status poll
       if (!st || !auto || !quit) return;
       let alive = false;
@@ -132,6 +133,12 @@ window.TH108DaemonClient = (function () {
             usb.disabled = !knows;
             usb.title = knows ? '' : 'the running daemon predates this setting — restart it (Quit, then setup.cmd or next login) to enable';
             if (knows && document.activeElement !== usb) usb.checked = !!s.usbReset;
+          }
+          if (disp) {
+            const knows = 'dimOnDisplayOff' in s;
+            disp.disabled = !knows;
+            disp.title = knows ? '' : 'the running daemon predates this setting — restart it to enable';
+            if (knows && document.activeElement !== disp) disp.checked = !!s.dimOnDisplayOff;
           }
           if (np) {
             const knowsNp = 'nowPlaying' in s;
@@ -221,6 +228,12 @@ window.TH108DaemonClient = (function () {
           await fetch('/usbreset', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ on: usb.checked }) });
           log('auto USB-restart wedge fix ' + (usb.checked ? 'enabled' : 'disabled'), 'ok');
         } catch (_) { log('USB-restart toggle failed', 'err'); refresh(); }
+      });
+      if (disp) disp.addEventListener('change', async () => {
+        try {
+          await fetch('/displayoff', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ on: disp.checked }) });
+          log('lights-off-when-monitor-off ' + (disp.checked ? 'enabled' : 'disabled'), 'ok');
+        } catch (_) { log('monitor-off toggle failed', 'err'); refresh(); }
       });
       if (np) np.addEventListener('change', async () => {
         // BRICK WARNING: every media change writes the LCD FLASH (cmd 0x50). On this board a flash

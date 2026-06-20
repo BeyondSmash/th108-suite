@@ -108,6 +108,13 @@ function createServer({ control, root, port = 8123, watchdogMs = 12000 }) {
         console.log(ts() + ' [api] /usbreset ' + (on ? 'on' : 'off'));
         return sendJson(res, 200, { ok: true, enabled: on });
       }
+      if (req.method === 'POST' && u === '/displayoff') {   // toggle "blank the board while the monitor is off (idle timeout)"
+        const b = await readBody(req); let on;
+        try { on = !!JSON.parse(b || '{}').on; } catch { return sendJson(res, 400, { error: 'bad json' }); }
+        control.setDimOnDisplayOff(on);
+        console.log(ts() + ' [api] /displayoff ' + (on ? 'on' : 'off'));
+        return sendJson(res, 200, { ok: true, enabled: on });
+      }
       if (req.method === 'POST' && u === '/lighting') {   // master lighting switch + global brightness (header controls)
         const b = await readBody(req); let body;
         try { body = JSON.parse(b || '{}'); } catch { return sendJson(res, 400, { error: 'bad json' }); }

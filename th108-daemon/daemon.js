@@ -73,7 +73,7 @@ let framesSent = 0, framesDeduped = 0;   // HID 0x32 stream stats for /metrics (
 const SETTINGS_PATH = path.join(__dirname, 'settings.json');
 function loadSettings() {
   const DEF = { usbReset: true, nowPlaying: false, npTitle: '#ffffff', npArtist: '#ffd98c', lightsOn: true, brightness: 100, npRevertSec: 0, npAllow: {}, npArtFit: false,
-                npBar: false, npBarColor: '#11ff00', npBarBright: 60, npFlash: true, npFlashColor: '#ffd000', npBarIdleSec: 3, npOnboardMask: false };   // npOnboardMask = set the keyboard's onboard effect to BLACK so the per-update flash is a dark blink, not rainbow   // npBarIdleSec = fade the bar out after this long with nothing playing   // npRevertSec 0 = never revert; npAllow = per-source override (absent → Spotify-only default); npBar = the 1-0 song-progress light-bar (lighting-only, no flash writes), npFlash = yellow track-change blip
+                npBar: false, npBarColor: '#11ff00', npBarBright: 60, npFlash: true, npFlashColor: '#ffd000', npBarIdleSec: 3, npOnboardMask: false, dimOnDisplayOff: false };   // dimOnDisplayOff = blank the board while the monitor is off on the idle timeout   // npOnboardMask = set the keyboard's onboard effect to BLACK so the per-update flash is a dark blink, not rainbow   // npBarIdleSec = fade the bar out after this long with nothing playing   // npRevertSec 0 = never revert; npAllow = per-source override (absent → Spotify-only default); npBar = the 1-0 song-progress light-bar (lighting-only, no flash writes), npFlash = yellow track-change blip
   try { return Object.assign({}, DEF, JSON.parse(fs.readFileSync(SETTINGS_PATH, 'utf8'))); }
   catch { return Object.assign({}, DEF); }   // usbReset default ON — the escalation fails gracefully (one log line) if the task isn't registered
 }
@@ -161,7 +161,8 @@ let probing = false, nextOpenAt = Date.now() + 5000;   // startup grace: a live 
 let lastOkAt = 0, streakStart = 0, muteLogged = false, muteAt = 0;   // mute-episode tracking (transition logging)
 let usbFiredAt = 0, lastTickAt = 0;   // USB-restart escalation state + sleep-gap detection
 let lastKeyAt = Date.now();           // last physical keypress (from the global hook) — drives the idle-aware USB-restart threshold
-let offCleared = false;               // lights-off: the one black frame was sent
+let offCleared = false;               // lights-off / display-off: the one black frame was sent
+let displayOff = false;               // monitor is off on the idle timeout (from display-watch.ps1) → blank the board
 let sendingFrame = false;             // a 0x32 frame is mid-flight — closing the device NOW leaves the board's chunk parser desynced
 async function openIfPossible() {
   if (device || paused || probing) return;
@@ -197,8 +198,9 @@ async function tick() {
   if (lastTickAt && nowWall - lastTickAt > 30_000 && muteLogged) muteAt = nowWall;
   lastTickAt = nowWall;
   await openIfPossible();
-  // master lighting switch (header toggle, mirrored here): clear the board once, then stay quiet
-  if (!settings.lightsOn) {
+  // board goes dark when the master switch is off OR (opt-in) while the monitor is off on the idle timeout:
+  // clear it once, then stay quiet until it should light again.
+  if (!settings.lightsOn || displayOff) {
     if (device && send && !offCleared) {
       const off = []; INDICES.forEach(i => off.push(i, 0, 0, 0));
       if (await send(off)) offCleared = true;
@@ -436,6 +438,31 @@ function syncAudioCapture() {
 }
 syncAudioCapture();
 
+// ----- display-off watcher: blank the board while the monitor is off on the idle timeout (opt-in) -----
+const { spawn: _spawn } = require('child_process');
+let dwProc = null;
+function syncDisplayWatch() {
+  const want = !!settings.dimOnDisplayOff;
+  if (want && !dwProc) {
+    const start = () => {
+      dwProc = _spawn('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', path.join(__dirname, 'display-watch.ps1')],
+        { stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true });
+      let carry = '';
+      dwProc.stdout.on('data', d => { carry += d.toString('utf8'); let i;
+        while ((i = carry.indexOf('\n')) >= 0) { const s = carry.slice(0, i).trim(); carry = carry.slice(i + 1);
+          if (s === 'off' && !displayOff) { displayOff = true; log('🌒 monitor off (idle) — blanking the board'); }
+          else if ((s === 'on' || s === 'dim') && displayOff) { displayOff = false; offCleared = false; if (state) state.lastFlat = null; nextOpenAt = 0; log('🌞 monitor on — restoring lighting'); }
+        } });
+      dwProc.on('exit', () => { dwProc = null; if (settings.dimOnDisplayOff) setTimeout(() => { if (settings.dimOnDisplayOff) start(); }, 3000); });
+    };
+    start();
+  } else if (!want && dwProc) {
+    const p = dwProc; dwProc = null; try { p.kill(); } catch {}
+    if (displayOff) { displayOff = false; offCleared = false; if (state) state.lastFlat = null; }   // turning the feature off un-blanks
+  }
+}
+syncDisplayWatch();
+
 // ----- control hooks for the server -----
 const control = {
   // Release the device for the WebHID page. MUST NOT complete while a flash upload is mid-flight:
@@ -467,7 +494,7 @@ const control = {
   listAudioApps() { return new Promise(r => AC.listApps((_e, arr) => r(arr))); },
   // Latest captured audio frame (system/app) so the open page can preview it + drive the keys in real time.
   audioFrame() { return acHandle ? AC.freshOr(acHandle.latest(), Date.now(), 300) : null; },
-  status() { return { running: true, paused, deviceConnected: !!device, fps: FPS, setupPath: path.resolve(__dirname, '..', 'setup.cmd'), usbReset: settings.usbReset, nowPlaying: settings.nowPlaying,
+  status() { return { running: true, paused, deviceConnected: !!device, fps: FPS, setupPath: path.resolve(__dirname, '..', 'setup.cmd'), usbReset: settings.usbReset, dimOnDisplayOff: settings.dimOnDisplayOff, nowPlaying: settings.nowPlaying,
                       npTrack: npHandle ? npHandle.current() : null, npQueued: npHandle ? npHandle.queued() : false,
                       npHealth: npHandle ? npHandle.health() : null,
                       npLog: npHandle ? npHandle.recent() : [],
@@ -579,6 +606,7 @@ const control = {
     };
   },
   setUsbReset(on) { settings.usbReset = !!on; saveSettings(); },
+  setDimOnDisplayOff(on) { settings.dimOnDisplayOff = !!on; saveSettings(); syncDisplayWatch(); },
   quit() { shutdown(0); },
   restart() { shutdown(42); },   // exit non-zero so start-hidden.vbs's supervisor revives us (clean exit 0 would STOP supervision — that's why /quit needs a manual Start)
 };
@@ -603,6 +631,7 @@ function shutdown(code = 0) {
   } catch {}
   try { if (npHandle) npHandle.stop(); } catch {}   // kill the sidecar — no orphaned powershell
   try { if (acHandle) acHandle.stop(); } catch {}   // kill the audio-capture sidecar too
+  try { if (dwProc) dwProc.kill(); } catch {}       // and the display-off watcher
   try { uIOhook.stop(); } catch {}
   process.exit(code);
 }
