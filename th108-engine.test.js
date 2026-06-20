@@ -514,7 +514,7 @@ test('bars Spread shapes volume by the per-column spectrum (column heights diffe
   const render = (spread) => {
     const L = { type:'audio', enabled:true, opacity:1, blend:'add', settings:{ style:'bars', barDrive:'volume', barSpread:spread }, rgb:new Uint8Array(E.NLED*3) };
     E.ensureSettings(L); const st = E.createState([L]);
-    st.audio.bands.fill(0); st.audio.bands[0] = 1; st.audio.level = 0.9;   // bass-only spectrum, loud
+    st.audio.bands.fill(0); st.audio.bands[0] = 1; st.audio.bandsRaw.fill(0); st.audio.bandsRaw[0] = 1; st.audio.level = 0.9;   // bass-only spectrum, loud
     E.renderAudio(st.layers[0], 0, st);
     return [colHeight(st.layers[0], loCol), colHeight(st.layers[0], hiCol)];
   };

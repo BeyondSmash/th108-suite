@@ -104,10 +104,16 @@
     // the mono band so the stereo layout still shows something (just symmetric) instead of going dark.
     if(!A.bandsL) A.bandsL = new Float32Array(32);
     if(!A.bandsR) A.bandsR = new Float32Array(32);
+    if(!A.bandsRaw) { A.bandsRaw = new Float32Array(32); A.bandsRawL = new Float32Array(32); A.bandsRawR = new Float32Array(32); }
+    const rawClamp = (v)=>{ v=(v||0); return v<0?0:(v>1?1:v); };   // pre-AGC magnitude (NO peak normalize) — keeps the real bass→treble shape for Spread
     for(let i=0;i<32;i++){
       const t = rb ? band(rb[i], i) : 0; A.bands[i] = audioEnvelope(A.bands[i], t, dt, p.attackMs, p.decayMs);
       const tL = rbL ? bandRO(rbL[i], i) : t; A.bandsL[i] = audioEnvelope(A.bandsL[i], tL, dt, p.attackMs, p.decayMs);
       const tR = rbR ? bandRO(rbR[i], i) : t; A.bandsR[i] = audioEnvelope(A.bandsR[i], tR, dt, p.attackMs, p.decayMs);
+      const r = rb ? rawClamp(rb[i]) : 0;
+      A.bandsRaw[i]  = audioEnvelope(A.bandsRaw[i],  r, dt, p.attackMs, p.decayMs);
+      A.bandsRawL[i] = audioEnvelope(A.bandsRawL[i], rbL ? rawClamp(rbL[i]) : r, dt, p.attackMs, p.decayMs);
+      A.bandsRawR[i] = audioEnvelope(A.bandsRawR[i], rbR ? rawClamp(rbR[i]) : r, dt, p.attackMs, p.decayMs);
     }
   }
   // Per-STYLE tuner params (gain/floor/attack/decay/beatSens) so tuning bars doesn't leak into pulse, etc.
@@ -364,6 +370,10 @@
     const ctr = (GW-1)/2;
     const vert = layout==='topdown' ? 'down' : layout==='centerout' ? 'center' : 'up';   // vertical fill mode
     const midRow = (GH-1)/2, halfH = GH/2;
+    // Spread uses the RAW (pre-AGC) spectrum so columns actually differ; normalize to the loudest band this
+    // frame so the shape spans the full range (AGC'd bands all ride ~1 → no shape → "feature does nothing").
+    const useSpread = spread && drive!=='spectrum' && A.bandsRaw;
+    let maxRaw = 0.05; if(useSpread){ for(let i=0;i<32;i++) if(A.bandsRaw[i]>maxRaw) maxRaw=A.bandsRaw[i]; }
     let cb = null, any = false;
     if(subtract && L){ cb = L._carveBuf || (L._carveBuf = new Float32Array(NLED)); cb.fill(0); }
     // tip color (fc = column for rainbow drift; vuFb = the fill level scaled to the 6-row VU palette)
@@ -372,18 +382,18 @@
       const idx = INDICES[k], cell = GRID[idx]; if(!cell) continue;
       const col = cell[0], row = cell[1], o = k*3;
       // --- horizontal: fc (0 bass … 1 treble, also drives coloring) + which band/channel ---
-      let fc, bandsArr = A.bands;
+      let fc, bandsArr = A.bands, rawArr = A.bandsRaw;
       if(layout==='mirror'){ fc = ctr>0 ? Math.abs(col-ctr)/ctr : 0; }                                   // bass in the center, treble at both edges
       else if(layout==='stereo'){                                                                         // left half = L channel, right half = R channel; bass meets in the middle
-        if(col<=ctr){ bandsArr = A.bandsL||A.bands; fc = ctr>0 ? (ctr-col)/ctr : 0; }                     // left side: center=bass → left edge=treble
-        else { bandsArr = A.bandsR||A.bands; fc = (GW-1-ctr)>0 ? (col-ctr)/(GW-1-ctr) : 0; }              // right side: center=bass → right edge=treble
+        if(col<=ctr){ bandsArr = A.bandsL||A.bands; rawArr = A.bandsRawL||A.bandsRaw; fc = ctr>0 ? (ctr-col)/ctr : 0; }                     // left side: center=bass → left edge=treble
+        else { bandsArr = A.bandsR||A.bands; rawArr = A.bandsRawR||A.bandsRaw; fc = (GW-1-ctr)>0 ? (col-ctr)/(GW-1-ctr) : 0; }              // right side: center=bass → right edge=treble
       }
       else if(layout==='reverse'){ fc = GW>1 ? 1 - col/(GW-1) : 0; }                                      // treble left → bass right (mirror of standard)
       else { fc = GW>1 ? col/(GW-1) : 0; }                                                                // standard / topdown / centerout: bass left → treble right
       const band = Math.min(31, Math.round(fc*31));
       const colE = (bandsArr||A.bands)[band];                  // this column's spectrum value (per Layout: stereo = its L/R channel)
       let mag = drive==='volume' ? A.level : drive==='beat' ? A.beat : colE;
-      if(spread && drive!=='spectrum') mag = mag*(0.35 + 1.3*colE);   // shape the volume/beat energy by the per-column spectrum/stereo → columns rise individually
+      if(useSpread){ const sh = (rawArr||A.bandsRaw)[band]/maxRaw; mag = mag*(0.25 + 1.45*(sh>1?1:sh)); }   // shape volume/beat by the RAW per-column spectrum/stereo → columns rise individually
       if(mag>1) mag=1;
       // --- vertical: fb = fill level from base(1) → tip(steps); litCount = how many levels this bar fills ---
       let fb, steps;
@@ -786,7 +796,9 @@
       layers,
       react: { fg:new Float32Array(256), t:new Float64Array(256).fill(-1e12),
                down:new Uint8Array(256), up:new Float64Array(256).fill(-1e12) },
-      audio: { bands:new Float32Array(32), bandsL:new Float32Array(32), bandsR:new Float32Array(32), level:0, beat:0, centroid:0.5, _t:0 },
+      audio: { bands:new Float32Array(32), bandsL:new Float32Array(32), bandsR:new Float32Array(32),
+               bandsRaw:new Float32Array(32), bandsRawL:new Float32Array(32), bandsRawR:new Float32Array(32),   // pre-AGC magnitudes → the Spread spectrum shape
+               level:0, beat:0, centroid:0.5, _t:0 },
       lastFlat:null, lastSent:0,
     };
   }
