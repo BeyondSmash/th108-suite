@@ -81,7 +81,7 @@ public static class Cap {
   }
 
   // ---- analysis ----
-  const int N = 1024;                 // FFT window (~21ms @48k) — short enough that a brief transient (metronome click/hat) fills most of it instead of being diluted in a 43ms window; trades a little bass resolution for catching ticks
+  const int N = 2048;                 // FFT window (~43ms @48k). MUST stay > the ~33ms sample hop so consecutive windows OVERLAP — a shorter window leaves an unanalyzed gap each hop and pure impulses (metronome clicks) fall into it and vanish. The peak-level term (below) catches the impulse's loudness even though the FFT magnitude is diluted across the window.
   static float[] win = new float[N];  // Hann window
   static float[] re = new float[N], im = new float[N];
   static float[] prevMag = new float[N/2];   // for spectral-flux onset
@@ -173,7 +173,7 @@ public static class Cap {
 "@
 
 [Cap]::Open()
-$N = 1024   # must match the C# FFT window above
+$N = 2048   # must match the C# FFT window above
 $mono  = New-Object 'float[]' ($N * 4)   # rolling buffers (mono + per-channel for the stereo layout)
 $left  = New-Object 'float[]' ($N * 4)
 $right = New-Object 'float[]' ($N * 4)

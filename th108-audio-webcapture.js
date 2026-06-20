@@ -36,7 +36,7 @@
       ctx = new (window.AudioContext || window.webkitAudioContext)();
       srcNode = ctx.createMediaStreamSource(stream);
       analyser = ctx.createAnalyser();
-      analyser.fftSize = 1024; analyser.smoothingTimeConstant = 0.3;   // 1024 (~21ms) + low smoothing = snappier transients (metronome clicks / hats) instead of blurred; matches the daemon sidecar
+      analyser.fftSize = 2048; analyser.smoothingTimeConstant = 0.3;   // window must overlap the feed hop so impulses aren't missed; low smoothing keeps transients snappy. Peak-level (below) catches click loudness.
       srcNode.connect(analyser);   // analyser is a sink — do NOT connect to ctx.destination (would echo the audio)
       const bins = analyser.frequencyBinCount;
       freq = new Uint8Array(bins); time = new Float32Array(analyser.fftSize); prevMag = new Float32Array(bins);
@@ -47,7 +47,7 @@
       if (stereo) {
         splitter = ctx.createChannelSplitter(2);
         analyserL = ctx.createAnalyser(); analyserR = ctx.createAnalyser();
-        analyserL.fftSize = analyserR.fftSize = 1024;
+        analyserL.fftSize = analyserR.fftSize = 2048;
         analyserL.smoothingTimeConstant = analyserR.smoothingTimeConstant = 0.3;
         srcNode.connect(splitter);
         splitter.connect(analyserL, 0); splitter.connect(analyserR, 1);

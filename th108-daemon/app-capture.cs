@@ -172,7 +172,7 @@ class AppCapture {
   }
 
   // ---------- analysis (mirrors audio-sidecar.ps1 so app/system/tab look identical) ----------
-  const int N = 1024;   // ~21ms FFT window — short enough to catch brief transients (matches audio-sidecar.ps1)
+  const int N = 2048;   // FFT window must stay > the sample hop so windows overlap (no gap impulses fall into); matches audio-sidecar.ps1
   static float[] win = new float[N], re = new float[N], im = new float[N], prevMag = new float[N/2];
   static bool winInit = false; static float peakLvl = 1e-4f, avgFlux = 1e-6f;
   static void InitWin() { for (int i=0;i<N;i++) win[i]=(float)(0.5-0.5*Math.Cos(2*Math.PI*i/(N-1))); winInit=true; }
