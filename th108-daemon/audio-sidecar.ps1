@@ -81,7 +81,7 @@ public static class Cap {
   }
 
   // ---- analysis ----
-  const int N = 2048;                 // FFT window
+  const int N = 1024;                 // FFT window (~21ms @48k) — short enough that a brief transient (metronome click/hat) fills most of it instead of being diluted in a 43ms window; trades a little bass resolution for catching ticks
   static float[] win = new float[N];  // Hann window
   static float[] re = new float[N], im = new float[N];
   static float[] prevMag = new float[N/2];   // for spectral-flux onset
@@ -173,7 +173,7 @@ public static class Cap {
 "@
 
 [Cap]::Open()
-$N = 2048
+$N = 1024   # must match the C# FFT window above
 $mono  = New-Object 'float[]' ($N * 4)   # rolling buffers (mono + per-channel for the stereo layout)
 $left  = New-Object 'float[]' ($N * 4)
 $right = New-Object 'float[]' ($N * 4)
@@ -224,5 +224,5 @@ while ($true) {
     [Console]::Out.WriteLine('{"bands":[' + (("0,"*31)+"0") + '],"level":0,"beat":0,"centroid":0.5,"t":' + [Math]::Round($sw.Elapsed.TotalMilliseconds,1) + '}')
     [Console]::Out.Flush()
   }
-  Start-Sleep -Milliseconds 33
+  Start-Sleep -Milliseconds 16   # ~30Hz emit (work + ~15ms timer granularity); was 33 — a bit fresher
 }
