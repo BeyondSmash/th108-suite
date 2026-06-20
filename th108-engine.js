@@ -88,10 +88,11 @@
     const pdecay = Math.exp(-dt/2000);                            // peak memory ~2s
     if(!A._peak || A._peak.length!==32) A._peak = new Float32Array(32).fill(0.12);
     if(A._lpk == null) A._lpk = 0.12;
+    const agc = p.agc !== false;   // auto-gain ON (default) rides the recent peak — great for quiet/compressed songs, but a loud song pegs full; OFF makes Gain a plain linear sensitivity (turn it down so loud songs don't max out)
     const shape = (v)=>{ v=(v-lo)/(hi-lo); v=v<=0?0:(v>=1?1:v); return gamma!==1 ? Math.pow(v,gamma) : v; };
-    const band   = (v,i)=>{ v=(v||0)*gain; const pk=A._peak[i]=Math.max(v, A._peak[i]*pdecay); return shape(v/Math.max(pk,0.06)); };
-    const bandRO = (v,i)=>{ v=(v||0)*gain; return shape(v/Math.max(A._peak[i],0.06)); };   // L/R reuse the mono peak (keeps the L↔R balance)
-    const lvl    = (v)=>{   v=(v||0)*gain; A._lpk=Math.max(v, A._lpk*pdecay); return shape(v/Math.max(A._lpk,0.06)); };
+    const band   = (v,i)=>{ v=(v||0)*gain; if(agc){ const pk=A._peak[i]=Math.max(v, A._peak[i]*pdecay); v=v/Math.max(pk,0.06); } return shape(v); };
+    const bandRO = (v,i)=>{ v=(v||0)*gain; if(agc) v=v/Math.max(A._peak[i],0.06); return shape(v); };   // L/R reuse the mono peak (keeps the L↔R balance)
+    const lvl    = (v)=>{   v=(v||0)*gain; if(agc){ A._lpk=Math.max(v, A._lpk*pdecay); v=v/Math.max(A._lpk,0.06); } return shape(v); };
     const tgtLevel = lvl(raw.level);
     A.level = audioEnvelope(A.level, tgtLevel, dt, p.attackMs, p.decayMs);
     A.centroid = audioEnvelope(A.centroid, (raw.centroid==null?0.5:raw.centroid), dt, p.attackMs, p.decayMs);
@@ -111,7 +112,7 @@
   }
   // Per-STYLE tuner params (gain/floor/attack/decay/beatSens) so tuning bars doesn't leak into pulse, etc.
   // Mirrors patParams: one-time migrates the old flat values onto the current style; new styles start at defaults.
-  const AUDIO_TUNE_DEFAULTS = { gain:1, floor:5, ceil:100, contrast:50, attackMs:40, decayMs:220, beatSens:50 };
+  const AUDIO_TUNE_DEFAULTS = { gain:1, floor:5, ceil:100, contrast:50, agc:true, attackMs:40, decayMs:220, beatSens:50 };
   function audioParams(s){
     const style = s.style || 'bars';
     if(!s.ap){
@@ -359,6 +360,7 @@
     const subtract = s.barFill === 'subtract';
     const layout = s.barLayout || 'standard';
     const drive = s.barDrive || 'spectrum';   // what the bar HEIGHT follows: per-column frequency | overall volume | beat
+    const spread = !!s.barSpread;             // volume/beat: shape columns by the per-column spectrum/stereo (per Layout) so they rise individually instead of as one wall
     const ctr = (GW-1)/2;
     const vert = layout==='topdown' ? 'down' : layout==='centerout' ? 'center' : 'up';   // vertical fill mode
     const midRow = (GH-1)/2, halfH = GH/2;
@@ -379,7 +381,10 @@
       else if(layout==='reverse'){ fc = GW>1 ? 1 - col/(GW-1) : 0; }                                      // treble left → bass right (mirror of standard)
       else { fc = GW>1 ? col/(GW-1) : 0; }                                                                // standard / topdown / centerout: bass left → treble right
       const band = Math.min(31, Math.round(fc*31));
-      const mag = drive==='volume' ? A.level : drive==='beat' ? A.beat : (bandsArr||A.bands)[band];   // 0..1 (already smoothed/gated)
+      const colE = (bandsArr||A.bands)[band];                  // this column's spectrum value (per Layout: stereo = its L/R channel)
+      let mag = drive==='volume' ? A.level : drive==='beat' ? A.beat : colE;
+      if(spread && drive!=='spectrum') mag = mag*(0.35 + 1.3*colE);   // shape the volume/beat energy by the per-column spectrum/stereo → columns rise individually
+      if(mag>1) mag=1;
       // --- vertical: fb = fill level from base(1) → tip(steps); litCount = how many levels this bar fills ---
       let fb, steps;
       if(vert==='center'){ steps = halfH; fb = Math.ceil(Math.abs(row - midRow)); }   // distance out from the middle row (1=innermost)
@@ -737,7 +742,7 @@
       const ad={ style:'bars', source:'system', appId:'', deviceId:'',
         gain:1, floor:5, attackMs:40, decayMs:220, beatSens:50,
         barColorBass:'#ff2200', barColorTreble:'#22aaff', barTip:'off', barTipColor:'#ffffff', barFill:'solid',
-        barColor:'bassTreble', barGradA:'#00ff66', barGradB:'#ff00aa', barLayout:'standard', barDrive:'spectrum',
+        barColor:'bassTreble', barGradA:'#00ff66', barGradB:'#ff00aa', barLayout:'standard', barDrive:'spectrum', barSpread:false,
         pulseColor:'#19b6ff', pulseColor2:'#ff00aa', pulseGrad:false,
         bloomColor:'#ff5a00', bloomColor2:'#ffd000', bloomGrad:false,
         waveColor:'#00e0ff', waveColor2:'#ff00aa', waveGrad:false, waveReverse:false };

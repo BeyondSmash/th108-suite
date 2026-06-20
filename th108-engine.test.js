@@ -495,3 +495,31 @@ test('bars Drive: volume lights a treble column that the spectrum drive leaves d
   assert.equal(render('spectrum'), 0, 'spectrum: a treble column with no treble energy is dark');
   assert.ok(render('volume') > 0, 'volume: same column lit because every bar tracks overall loudness');
 });
+
+test('auto-gain off makes Gain a linear sensitivity (loud input no longer pegs full)', () => {
+  const run = (agc, gain) => {
+    const st = E.createState([{ type:'audio', enabled:true, opacity:1, blend:'add', fps:30, settings:{ style:'bars' } }]);
+    const ap = E.audioParams(st.layers[0].settings); ap.floor=0; ap.ceil=100; ap.contrast=0; ap.agc=agc; ap.gain=gain; ap.attackMs=1; ap.decayMs=1;
+    const raw = { bands:new Float32Array(32).fill(0.5), level:0.5, beat:0, centroid:0.5 };
+    for (let t=16;t<=400;t+=16) E.applyAudioFeatures(st, raw, st.layers[0].settings, t);
+    return st.audio.bands[5];
+  };
+  assert.ok(run(true, 1) > 0.95, 'auto-gain on: a steady input rides near full (normalized to its peak)');
+  assert.ok(run(false, 0.5) < 0.6, 'auto-gain off + gain 0.5: same input sits lower (linear sensitivity)');
+});
+
+test('bars Spread shapes volume by the per-column spectrum (column heights differ); off = uniform wall', () => {
+  const loCol = 0, hiCol = (findK(c => c[0] >= 12) >= 0) ? E.GRID[E.INDICES[findK(c => c[0] >= 12)]][0] : 14;
+  const colHeight = (La, col) => { let n=0; for(let k=0;k<E.NLED;k++){ const c=E.GRID[E.INDICES[k]]; if(c && c[0]===col && (La.rgb[k*3]+La.rgb[k*3+1]+La.rgb[k*3+2])>0) n++; } return n; };
+  const render = (spread) => {
+    const L = { type:'audio', enabled:true, opacity:1, blend:'add', settings:{ style:'bars', barDrive:'volume', barSpread:spread }, rgb:new Uint8Array(E.NLED*3) };
+    E.ensureSettings(L); const st = E.createState([L]);
+    st.audio.bands.fill(0); st.audio.bands[0] = 1; st.audio.level = 0.9;   // bass-only spectrum, loud
+    E.renderAudio(st.layers[0], 0, st);
+    return [colHeight(st.layers[0], loCol), colHeight(st.layers[0], hiCol)];
+  };
+  const off = render(false), on = render(true);
+  // compare each column to ITSELF across off/on (avoids physical grid-gap differences between columns):
+  assert.ok(on[1] < off[1], 'spread on lowers the silent treble column (no energy there)');
+  assert.ok(on[0] >= off[0], 'spread on keeps the bass column (full energy) at least as tall');
+});
