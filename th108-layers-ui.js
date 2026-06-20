@@ -109,7 +109,7 @@
     }
     function buildLayerBody(card,L){
       const body=card.querySelector('.lbody'), s=L.settings;
-      const row=(label,html)=>'<label>'+label+'</label>'+html;
+      const row=(label,html)=>'<p class="lrow"><label>'+label+'</label>'+html+'</p>';   // each row a subgrid wrapper → zebra-stripable (CSS .lrow:nth-of-type)
       const sec=t=>'<div class="lsec">'+t+'</div>';      // main section header (full-width, rule above)
       const sub=t=>'<div class="lsub">'+t+'</div>';      // subsection header (full-width, shorter/lighter rule)
       const full=html=>'<div class="lfull">'+html+'</div>';   // a control block that spans the whole grid under a header
@@ -298,7 +298,7 @@
           sec('Source')+
           full('<span style="display:grid;grid-template-columns:1fr 1fr;gap:5px 14px;flex:1 1 100%">'+srcBubbles+'</span>')+
           (s.source==='app' ? sub('Specific app')+full('<select class="s-appId" style="max-width:180px"></select><button type="button" class="s-appRefresh" title="rescan currently-playing apps" style="flex:none">Refresh</button><span class="val s-appNote" style="opacity:.7"></span>') : '')+
-          sec('Style')+ full('<select class="s-style">'+sopt+'</select>')+
+          sec('Style')+ '<div class="lfull" style="justify-content:center"><select class="s-style">'+sopt+'</select></div>'+   // no left label → center it under the header
           sec('Preview')+ full('<div style="display:flex;flex-direction:column;gap:9px;flex:1 1 100%">'+
             '<div><div style="display:flex;align-items:center;gap:8px;margin-bottom:3px"><span class="val" style="opacity:.65">Sample — test signal</span><button type="button" class="s-samplePrevToggle">'+(s.samplePrevOff?'Show':'Hide')+'</button></div>'+
               '<canvas class="s-audioPrev" width="378" height="92" style="width:100%;height:auto;display:'+(s.samplePrevOff?'none':'block')+';background:#0d1117;border-radius:8px"></canvas></div>'+
@@ -358,7 +358,6 @@
           row('Pause decay','<span class="srange" style="width:100%"><input type="range" class="s-pauseDecayMs" min="100" max="3000" step="50" value="'+(ap.pauseDecayMs==null?700:ap.pauseDecayMs)+'" title="When the music STOPS (sustained silence), how slowly the bars settle to 0 (ms). Separate from Decay so playback stays snappy but a pause glides down gracefully (this style only)"><i class="tick" style="left:calc(7px + (100% - 14px)*0.207)"></i></span><span class="val s-pauseDecayMsV"></span>')+
           row('Beat sensitivity','<span class="srange" style="width:100%"><input type="range" class="s-beatSens" min="0" max="100" value="'+ap.beatSens+'" title="How strongly kicks/onsets pop in pulse and bloom (this style only)"><i class="tick" style="left:calc(7px + (100% - 14px)*0.5)"></i></span><span class="val s-beatSensV"></span>')+
           (duckRows ? sub('Dim while active')+full('<span class="val" style="opacity:.7;flex:1 1 100%">quiet these layers while the music shows</span>')+duckRows : '')+
-          row('','<button type="button" class="s-logVals">Log current values</button><span></span>')+
         '</div>';
         body.innerHTML=html;
         const c=q=>body.querySelector(q);
@@ -408,7 +407,6 @@
           if(lab) lab.textContent=v+'%';
           const d=Array.isArray(s.ducks)&&s.ducks.find(x=>x&&x.layer===i); if(d) d.dim=v;   // only persists once the layer is checked on
         }));
-        c('.s-logVals').addEventListener('click',()=>console.log('[audio layer "'+L.name+'"]', JSON.parse(JSON.stringify(s))));
         { const tb=c('.s-samplePrevToggle'), cv=c('.s-audioPrev'); if(tb&&cv) tb.addEventListener('click',()=>{ s.samplePrevOff=!s.samplePrevOff; cv.style.display=s.samplePrevOff?'none':'block'; tb.textContent=s.samplePrevOff?'Show':'Hide'; scheduleSaveLayers(); }); }   // a button click fires no input/change, so persist explicitly (survives refresh)
         { const tb=c('.s-livePrevToggle'),  cv=c('.s-audioPrevLive'); if(tb&&cv) tb.addEventListener('click',()=>{ s.livePrevOff=!s.livePrevOff; cv.style.display=s.livePrevOff?'none':'block'; tb.textContent=s.livePrevOff?'Show':'Hide'; scheduleSaveLayers(); }); }
         // SAMPLE preview = the deterministic synth (design the look any time, independent of audio).

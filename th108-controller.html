@@ -194,7 +194,9 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
   a.btnlink{ display:inline-block; text-decoration:none; font:600 13.5px/1.4 "Plus Jakarta Sans",system-ui,sans-serif;
              background:var(--card); color:var(--text); box-shadow:0 0 0 2px var(--ring); border-radius:999px; padding:9px 16px; }
   a.btnlink:hover{ box-shadow:0 0 0 2px var(--accent); }
-  select{ font:inherit; background:var(--inset); color:var(--text); border:1px solid var(--border); border-radius:10px; padding:4px 8px; }
+  select{ font:inherit; background:var(--bg); color:var(--text); border:1px solid var(--border); border-radius:10px; padding:4px 8px; }   /* --bg is a touch darker than the card → dropdowns contrast (was --inset, which is lighter) */
+  select option{ background:var(--bg); color:var(--text); }
+  select option:nth-child(even){ background:var(--inset); }   /* zebra rows in the open dropdown list (Chrome honors option bg) */
   input[type=text],input[type=number]{ font:inherit; background:var(--inset); color:var(--text); border:1px solid var(--border); border-radius:10px; }
   input[type=checkbox],input[type=radio]{ accent-color:var(--accent); }
   input[type=range]{ accent-color:var(--accent); }
@@ -245,6 +247,9 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
   .lbody .ph{ color:var(--muted); font-size:13px; }
   /* section headers inside a layer body: full-width (overhang the label column), rule above. main = full
      rule; sub = a shorter, lighter rule. lfull = a control block that spans the whole grid under a header. */
+  .lbody .ctl .lrow{ grid-column:1/-1; display:grid; grid-template-columns:subgrid; align-items:center; margin:0; padding:3px 8px; }   /* each control row spans the grid as a subgrid (keeps label/control columns aligned) so it can be zebra-striped */
+  .lbody .ctl .lrow > :nth-child(2){ justify-self:center; }   /* center the control (col 2); label (col 1) stays left, value (col 3) stays right */
+  .lbody .ctl .lrow:nth-of-type(even){ background:color-mix(in srgb, var(--text) var(--zebra,7%), transparent); border-radius:8px; }   /* zebra: subtle text-tinted band, theme-aware; --zebra contrast is live-tunable (slider in the compositor header) */
   .lbody .ctl .lsec, .lbody .ctl .lsub{ grid-column:1/-1; }
   .lbody .ctl .lsec{ margin:13px 0 1px; padding-top:11px; border-top:1px solid var(--border); color:var(--text); font-size:13px; font-weight:600; letter-spacing:.02em; text-align:center; }
   .lbody .ctl .lsec:first-child{ margin-top:0; padding-top:2px; border-top:0; }
@@ -636,7 +641,10 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
   <!-- ========== LIGHTING ========== -->
   <div class="card s6" id="layersPanel" data-pages="lighting">
     <div class="cardbar"><span class="grip">⠿</span><h2>Layer Compositor</h2>
-      <span class="aux">card order = layer stack · last card = top layer</span></div>
+      <span class="aux">card order = layer stack · last card = top layer</span>
+      <label class="aux" style="margin-left:auto;display:inline-flex;align-items:center;gap:7px;cursor:pointer" title="Contrast of the alternating row shading on every layer card">Row shading
+        <input type="range" id="zebraAmt" min="0" max="22" value="7" style="width:90px"
+          oninput="document.documentElement.style.setProperty('--zebra',this.value+'%');try{localStorage.setItem('th108Zebra',this.value)}catch(_){}"></label></div>
     <div id="layerCards"></div>
   </div>
 
@@ -1030,6 +1038,7 @@ window.addEventListener('blur', onAwayChange);
 window.addEventListener('focus', onAwayChange);
 document.addEventListener('visibilitychange', onAwayChange);
 DC.mountPanel();   // Background-daemon panel: status readout, auto-start toggle (HKCU Run key via the daemon), quit
+(function(){ try{ const z=localStorage.getItem('th108Zebra'); if(z!=null){ document.documentElement.style.setProperty('--zebra',z+'%'); const el=document.getElementById('zebraAmt'); if(el) el.value=z; } }catch(_){} })();   // restore saved row-shading contrast
 
 // ===== layer compositor engine =====
 function fpsCap(){ return +document.getElementById('gifFps').value || 60; }   // global output FPS cap (shared with GIF) — lower = less compute
