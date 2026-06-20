@@ -1095,7 +1095,7 @@ setInterval(async ()=>{
   if(!aL || (src!=='system' && src!=='app') || !DC.present){ _dmnAudio=null; return; }
   try{ const j=await (await fetch('/audio/frame',{cache:'no-store'})).json(); _dmnAudio=j.frame||null; if(_dmnAudio) _dmnAudioAt=performance.now(); }
   catch(_){ _dmnAudio=null; }
-}, 50);
+}, 25);   // ~40Hz: a short transient (metronome click) is less likely to fall between polls than at 50ms
 const dmnAudioFresh = ()=> _dmnAudio && performance.now()-_dmnAudioAt < 500;
 function feedAudio(now){
   const aL = state.layers.find(L=>L.enabled && L.type==='audio');

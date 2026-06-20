@@ -36,7 +36,7 @@
       ctx = new (window.AudioContext || window.webkitAudioContext)();
       srcNode = ctx.createMediaStreamSource(stream);
       analyser = ctx.createAnalyser();
-      analyser.fftSize = 2048; analyser.smoothingTimeConstant = 0.5;
+      analyser.fftSize = 2048; analyser.smoothingTimeConstant = 0.3;   // lower = snappier transients (metronome clicks / hats) instead of blurred across frames
       srcNode.connect(analyser);   // analyser is a sink — do NOT connect to ctx.destination (would echo the audio)
       const bins = analyser.frequencyBinCount;
       freq = new Uint8Array(bins); time = new Float32Array(analyser.fftSize); prevMag = new Float32Array(bins);
@@ -48,7 +48,7 @@
         splitter = ctx.createChannelSplitter(2);
         analyserL = ctx.createAnalyser(); analyserR = ctx.createAnalyser();
         analyserL.fftSize = analyserR.fftSize = 2048;
-        analyserL.smoothingTimeConstant = analyserR.smoothingTimeConstant = 0.5;
+        analyserL.smoothingTimeConstant = analyserR.smoothingTimeConstant = 0.3;
         srcNode.connect(splitter);
         splitter.connect(analyserL, 0); splitter.connect(analyserR, 1);
         freqL = new Uint8Array(analyserL.frequencyBinCount); freqR = new Uint8Array(analyserR.frequencyBinCount);
@@ -65,9 +65,13 @@
       analyser.getByteFrequencyData(freq);          // 0..255, already dB-scaled by the AnalyserNode
       analyser.getFloatTimeDomainData(time);        // -1..1 PCM, for RMS loudness
       const bins = freq.length;
-      let rms = 0; for (let i = 0; i < time.length; i++) rms += time[i] * time[i]; rms = Math.sqrt(rms / time.length);
-      peakLvl = Math.max(rms, peakLvl * 0.999);     // auto-gain: normalize to the loudest recent
-      const level = Math.min(1, rms / Math.max(peakLvl, 1e-4));
+      // RMS gives body; PEAK catches short transients (a metronome click / hat is ~10-30ms — RMS over the
+      // ~46ms window averages it away, so identical ticks read as different loudness and some don't light up).
+      let rms = 0, pk = 0; for (let i = 0; i < time.length; i++) { const s = time[i]; rms += s * s; const a = s < 0 ? -s : s; if (a > pk) pk = a; }
+      rms = Math.sqrt(rms / time.length);
+      const inst = Math.max(rms, pk * 0.6);         // blend: transients ride the peak, sustained tone the RMS
+      peakLvl = Math.max(inst, peakLvl * 0.999);    // auto-gain: normalize to the loudest recent
+      const level = Math.min(1, inst / Math.max(peakLvl, 1e-4));
       const bands = new Array(NB);
       let centNum = 0, centDen = 0, bassFlux = 0; const bassBins = Math.max(4, bins >> 3);
       for (let i = 0; i < bins; i++) { const m = freq[i] / 255; centNum += i * m; centDen += m;
