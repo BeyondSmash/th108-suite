@@ -87,9 +87,9 @@
     //     replug first). → go lower.
     function noteStall() {
       if (++_sendStalls === 1 || _sendStalls % 20 === 0) log('board not keeping up (no ACK) — pacing/dropping to keep the loop alive', 'dim');
-      // ~8 no-ACK frames (~7s at 800ms/timeout) before dropping the handle — was 15 (~13s); tightened so a
-      // genuinely muted wired board reaches recovery far sooner (it sat muted ~46s before, longer than a manual replug).
-      if (_sendStalls >= 8) { log('board unresponsive — stopping.', 'err'); stopHost(); releaseAfterFailure(); }
+      // REVERTED to 15 (2026-06-19): 8 fired /usbfix too eagerly → repeated USB re-enumerations dropped typing
+      // ("keys won't type"). 15 lets brief self-healing blips recover before we ever touch USB. See the ladder note.
+      if (_sendStalls >= 15) { log('board unresponsive — stopping.', 'err'); stopHost(); releaseAfterFailure(); }
     }
     // ACK silence with NO disconnect event = the handle may be stale (a hub power blip can reset/re-enumerate
     // the keyboard without Chrome firing 'disconnect' — observed when flipping an audio device on the same bus).
@@ -100,7 +100,7 @@
       if (!device) return;
       try { device.close(); } catch (_) { }
       device = null; reportId = 0;
-      if (++_stallRetries <= 1) { setStatus('board stopped responding — re-binding…', 'dim'); startRebindPoll(); }   // one fresh-handle retry (was 2) before escalating — cuts ~one ~8s cycle off the recovery time
+      if (++_stallRetries <= 2) { setStatus('board stopped responding — re-binding…', 'dim'); startRebindPoll(); }   // REVERTED to 2 (with the 15-stall threshold) — patient recovery so blips don't trigger needless USB restarts
       else {   // a fresh handle didn't help = true wedge; hand it to the recovery hook (daemon USB restart) and keep polling for the re-enumeration it causes
         setStatus('board unresponsive after retries — attempting recovery…', 'err');
         _stallRetries = 0;          // the restart (or a manual replug) starts a fresh episode

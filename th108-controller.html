@@ -177,8 +177,9 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
   .dmnTag.off:hover i{ animation:none; }
   @keyframes dpulse{ 50%{ box-shadow:0 0 0 5px color-mix(in srgb, var(--mint) 30%, transparent); } }
   /* header Connect — on every tab while this page doesn't hold the keyboard; flashes yellow on connect, then leaves */
-  .hdrconnect{ margin:0; padding:7px 14px; font-size:12.5px; }
+  .hdrconnect{ margin:0; padding:7px 14px; font-size:12.5px; transition:opacity .3s ease; }
   .hdrconnect[hidden]{ display:none !important; }
+  .hdrconnect.cfade{ opacity:0; pointer-events:none; }   /* fade the header Connect out (e.g. on the Home tab, where the Keyboard card has its own) before it collapses */
   .hdrconnect.flash{ background:var(--yellow); color:#0d1117; box-shadow:0 0 0 2px var(--yellow); transition:none; }   /* instant — a .1s ease would eat most of the 250ms flash */
 
   /* ===== controls ===== */
@@ -1095,7 +1096,7 @@ setInterval(async ()=>{
   if(!aL || (src!=='system' && src!=='app') || !DC.present){ _dmnAudio=null; return; }
   try{ const j=await (await fetch('/audio/frame',{cache:'no-store'})).json(); _dmnAudio=j.frame||null; if(_dmnAudio) _dmnAudioAt=performance.now(); }
   catch(_){ _dmnAudio=null; }
-}, 25);   // ~40Hz: a short transient (metronome click) is less likely to fall between polls than at 50ms
+}, 60);   // ~16Hz: 25ms (40Hz) hammered localhost and made the tab sluggish; the engine smooths between frames
 const dmnAudioFresh = ()=> _dmnAudio && performance.now()-_dmnAudioAt < 500;
 function feedAudio(now){
   const aL = state.layers.find(L=>L.enabled && L.type==='audio');
@@ -1263,9 +1264,19 @@ function hdrConnSync(){
   if(HID.device){
     if(!b.hidden && !b.classList.contains('flash')){
       b.classList.add('flash');
-      setTimeout(()=>{ b.classList.remove('flash'); if(HID.device) b.hidden=true; },250);   // if the device dropped during the flash, stay visible
+      setTimeout(()=>{ b.classList.remove('flash'); if(HID.device){ b.classList.add('cfade'); b.hidden=true; } },250);   // if the device dropped during the flash, stay visible
     }
-  } else { b.classList.remove('flash'); b.hidden=false; }
+    return;
+  }
+  // page doesn't hold the keyboard: show off-Home, but on Home the Keyboard card already has a Connect
+  // button — fade this one out (then collapse so it leaves no gap), and fade back in when leaving Home.
+  if(curPage==='home'){
+    b.classList.add('cfade');
+    setTimeout(()=>{ if(curPage==='home') b.hidden=true; },320);   // collapse after the fade (home always hides it)
+  } else {
+    b.classList.remove('flash'); b.hidden=false;
+    requestAnimationFrame(()=>b.classList.remove('cfade'));   // UNGUARDED: always reach visible when shown — a guard here got stuck invisible when HID.device flipped during reconnect
+  }
 }
 document.getElementById('connectHdr').addEventListener('click',async()=>{ if(!guardDriver()) return; await HID.connect();
   if(!HID.device && DC.beating){ DC.heartbeatStop(); DC.resume(); } });   // same flow/handback as the Home Connect button
@@ -1334,6 +1345,7 @@ function applyPage(p){
   tabsEl.querySelectorAll('.tab').forEach(t=>t.classList.toggle('on',t.dataset.page===p));
   cardsAll().forEach(c=>{ c.hidden = !(c.dataset.pages||'').split(/\s+/).includes(p); });
   moveHl();
+  try{ hdrConnSync(); }catch(_){ }   // fade the header Connect out on Home (Keyboard card has its own), in elsewhere
   try{ localStorage.setItem(PAGE_KEY,p); }catch(_){ }
 }
 function setPage(p){
