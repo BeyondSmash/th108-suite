@@ -67,6 +67,8 @@ const DIGIT_KS = ['Digit1','Digit2','Digit3','Digit4','Digit5','Digit6','Digit7'
   .map(c => INDICES.indexOf(KEYMAP[c])).filter(k => k >= 0);
 const hexRGB = (h) => { const m = /^#?([0-9a-f]{6})$/i.exec(h || ''); if (!m) return [17, 255, 0]; const n = parseInt(m[1], 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; };
 let unpausedAt = 0;      // when the daemon last took ownership — flash uploads need STABLE ownership
+let resumeTimer = null;  // pending debounced take-over (see control.resume)
+const HANDOFF_SETTLE_MS = 800;   // wait for a handoff burst (restart+refresh, alt-tab) to settle before the daemon re-opens the device — rapid owner-swaps stream 0x32 from alternating owners into the board's chunk parser and wedge it ("never ACKed since open"). 800ms > a refresh's internal burst, short enough to be invisible (board holds its last frame meanwhile, not black).
 let framesSent = 0, framesDeduped = 0;   // HID 0x32 stream stats for /metrics (sent vs deduped — shows how much the dedupe is saving)
 
 // ----- daemon settings (separate from config.json, which is the page's layer array verbatim) -----
@@ -470,6 +472,7 @@ const control = {
   // mid-flash-write wedged it hard and cost typing (2026-06-12 incident, "chunk N: no ACK" right
   // after a /yield line). Block the response until the upload finishes (≤ erase window) or 25s.
   async yield() {
+    if (resumeTimer) { clearTimeout(resumeTimer); resumeTimer = null; }   // a pending take-over is cancelled by a yield — the page wants the device again. This is half of the handoff-burst coalesce: resume→yield nets to nothing here, so a restart/refresh storm never opens-then-closes.
     paused = true; syncAudioCapture();   // stop capturing while the page drives (audioWanted()==false when paused)
     // stops NEW frames; the in-flight one must COMPLETE before we close —
     // closing mid-frame leaves the board's chunk parser waiting for bytes that never come, and
@@ -483,8 +486,17 @@ const control = {
     while (lcdBusy && Date.now() - t0 < 25000) await new Promise(r => setTimeout(r, 100));
     if (lcdBusy) console.log(ts() + ' ⚠ yield proceeded with a flash upload still busy after 25s — investigate');
   },
-  // Reload config (the page may have saved edits) and resume rendering.
-  resume() { rebuildState(); paused = false; unpausedAt = Date.now(); syncAudioCapture(); },
+  // Reload config (the page may have saved edits) and resume rendering — but DEBOUNCED: don't grab the
+  // device until the handoff has been quiet for HANDOFF_SETTLE_MS. A burst of /resume/yield (restart+
+  // refresh, alt-tabbing) thus resolves to ONE clean open instead of a thrash that wedges the board. A
+  // /yield arriving first cancels the pending take-over (see yield()). Idempotent: repeated resumes in a
+  // burst just reset the timer.
+  resume() {
+    if (resumeTimer) clearTimeout(resumeTimer);
+    resumeTimer = setTimeout(() => {
+      resumeTimer = null; rebuildState(); paused = false; unpausedAt = Date.now(); syncAudioCapture();
+    }, HANDOFF_SETTLE_MS);
+  },
   // Persist the page's config; refresh live state immediately unless yielded to the page.
   saveConfig(cfg) { fs.writeFileSync(CONFIG_PATH, JSON.stringify(cfg));
     if (!paused) { state = E.applyConfig(state, cfg);   // in-place on a settings edit → no animation reset; rebuilds only on a structural change
