@@ -197,7 +197,7 @@ function createServer({ control, root, port = 8123, watchdogMs = 12000 }) {
     if (e.code === 'EADDRINUSE') { console.error(`✗ port ${port} in use (stale _serve.js or another daemon?). Stop it and retry.`); process.exit(1); }
   });
 
-  const server = { port, close: () => { clearInterval(wd); srv.close(); } };
+  const server = { port, close: () => { clearInterval(wd); try { srv.closeAllConnections && srv.closeAllConnections(); } catch {} srv.close(); } };   // closeAllConnections drops the page's keep-alive poll so the listener frees the port immediately (a lingering connection could otherwise hold it)
   server.listening = new Promise((resolve) => srv.listen(port, '127.0.0.1', () => { boundPort = server.port = srv.address().port; resolve(); }));
   return server;
 }

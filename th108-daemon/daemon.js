@@ -636,10 +636,17 @@ let stopping = false;
 function shutdown(code = 0) {
   if (stopping) return; stopping = true;
   try { clearInterval(timer); } catch {}
+  // FREE PORT 8123 FIRST. A wedged/muted board can make the HID cleanup below block (node-hid write/close
+  // are synchronous native calls), and if that hangs while the port is still held, the supervisor's revived
+  // instance hits EADDRINUSE and the daemon never comes back — the "Restart did nothing" port-squat
+  // (diagnosed 2026-06-20: a /restart hung after 'now-playing disabled', pid kept :8123). Releasing the
+  // listener up front means even a hung cleanup can't squat the port.
+  try { server.close(); } catch {}
+  setTimeout(() => process.exit(code), 2500).unref();   // backstop force-exit (fires unless a native call has blocked the event loop — but the port is already free regardless)
   try {
     if (device) {
       const off = []; INDICES.forEach(i => off.push(i, 0, 0, 0));
-      if (send) send(off);
+      if (send && !muteLogged) send(off);   // skip the blackout write on a wedged/muted board — it can block, and the revived instance repaints within a tick anyway
       device.close();
     }
   } catch {}
