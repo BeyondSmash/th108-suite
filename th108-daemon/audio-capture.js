@@ -26,21 +26,24 @@ function freshOr(frame, nowMs, maxAgeMs) {
 const SILENT_RESTART_MS = 8000;   // no line for this long while running = the sidecar hung → recycle
 const fs = require('fs');
 
-// Peak-hold merge: fold a frame into the accumulator keeping the MAX of each band/level/beat (latest
-// centroid/time). A consumer polling slower than the sidecar emits then still sees a brief transient
-// (metronome click) that landed between its reads, instead of skipping the single frame it lived in.
-function mergePeak(acc, f) {
+// Decaying peak-hold: fold each new frame into a held frame that keeps max(new, held*DECAY) per band/
+// level/beat. A brief transient (metronome click) lingers ~3-4 frames (~130ms) so EVERY reader catches it —
+// regardless of poll rate AND of multiple readers (daemon tick + page poll). NOT reset on read: resetting
+// let two readers steal each other's peak, so the slower one (the preview) kept missing ticks.
+const HOLD_DECAY = 0.75;   // per sidecar frame (~33ms) → ~130ms hold; long enough for a 60ms poll to never miss
+function holdPeak(acc, f, decay) {
+  const d = decay == null ? HOLD_DECAY : decay;
   if (!acc) return { bands: f.bands.slice(), bandsL: f.bandsL ? f.bandsL.slice() : undefined, bandsR: f.bandsR ? f.bandsR.slice() : undefined,
                      level: f.level, beat: f.beat, centroid: f.centroid, t: f.t, _at: f._at };
   for (let i = 0; i < 32; i++) {
-    if (f.bands[i] > acc.bands[i]) acc.bands[i] = f.bands[i];
-    if (f.bandsL && acc.bandsL && f.bandsL[i] > acc.bandsL[i]) acc.bandsL[i] = f.bandsL[i];
-    if (f.bandsR && acc.bandsR && f.bandsR[i] > acc.bandsR[i]) acc.bandsR[i] = f.bandsR[i];
+    acc.bands[i] = Math.max(f.bands[i], acc.bands[i] * d);
+    if (f.bandsL && acc.bandsL) acc.bandsL[i] = Math.max(f.bandsL[i], acc.bandsL[i] * d);
+    if (f.bandsR && acc.bandsR) acc.bandsR[i] = Math.max(f.bandsR[i], acc.bandsR[i] * d);
   }
   if (f.bandsL && !acc.bandsL) acc.bandsL = f.bandsL.slice();
   if (f.bandsR && !acc.bandsR) acc.bandsR = f.bandsR.slice();
-  if (f.level > acc.level) acc.level = f.level;
-  if (f.beat > acc.beat) acc.beat = f.beat;
+  acc.level = Math.max(f.level, acc.level * d);
+  acc.beat = Math.max(f.beat, acc.beat * d);
   acc.centroid = f.centroid; acc.t = f.t; acc._at = f._at;   // latest (not peak) for position/time
   return acc;
 }
@@ -85,7 +88,7 @@ function start(opts) {
         const line = carry.slice(0, i).trim(); carry = carry.slice(i + 1);
         if (!line) continue;
         const f = parseLine(line);
-        if (f) { f._at = Date.now(); frame = f; peakAcc = mergePeak(peakAcc, f); lastLineAt = f._at; } else { parseErrs++; }
+        if (f) { f._at = Date.now(); frame = f; peakAcc = holdPeak(peakAcc, f); lastLineAt = f._at; } else { parseErrs++; }
       }
       if (carry.length > 65536) carry = '';   // safety: a never-newline stream can't grow unbounded
     });
@@ -102,10 +105,10 @@ function start(opts) {
 
   spawnSidecar();
   return {
-    latest() { const r = peakAcc; peakAcc = null; return r || frame; },   // peak since the last read (then reset) → transients between polls aren't skipped
+    latest() { return peakAcc || frame; },   // decaying peak-hold (NOT reset) → every reader, however slow or many, catches a transient
     stop() { stopped = true; clearInterval(wd); try { if (proc) proc.kill(); } catch (_) {} proc = null; frame = null; peakAcc = null; },
     health() { return { up: !!proc, restarts, parseErrs, lastLineAgoMs: lastLineAt ? Date.now() - lastLineAt : null }; },
   };
 }
 
-module.exports = { parseLine, freshOr, start, listApps, mergePeak };
+module.exports = { parseLine, freshOr, start, listApps, holdPeak };
