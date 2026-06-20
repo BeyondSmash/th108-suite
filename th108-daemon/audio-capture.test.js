@@ -17,3 +17,13 @@ test('freshOr returns the frame while fresh and null once stale', () => {
   assert.equal(AC.freshOr(f, 2000, 500), null);  // 1000ms old > 500ms → stale
   assert.equal(AC.freshOr(null, 2000, 500), null);
 });
+
+test('mergePeak keeps the MAX of bands/level/beat across frames (transient not skipped)', () => {
+  const mk = (lvl, b0) => { const bands = new Array(32).fill(0.1); bands[0] = b0; return { bands, level: lvl, beat: 0.1, centroid: 0.4, t: 1, _at: 1 }; };
+  let acc = AC.mergePeak(null, mk(0.2, 0.2));     // quiet frame
+  acc = AC.mergePeak(acc, mk(0.9, 0.8));          // the impulse frame
+  acc = AC.mergePeak(acc, mk(0.1, 0.1));          // quiet again
+  assert.equal(acc.level, 0.9, 'level holds the impulse peak across the 3 frames');
+  assert.equal(acc.bands[0], 0.8, 'band[0] holds the impulse peak');
+  assert.equal(acc.bands[5], 0.1, 'untouched bands stay at their value');
+});

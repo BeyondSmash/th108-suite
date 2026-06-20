@@ -25,6 +25,25 @@ function freshOr(frame, nowMs, maxAgeMs) {
 
 const SILENT_RESTART_MS = 8000;   // no line for this long while running = the sidecar hung → recycle
 const fs = require('fs');
+
+// Peak-hold merge: fold a frame into the accumulator keeping the MAX of each band/level/beat (latest
+// centroid/time). A consumer polling slower than the sidecar emits then still sees a brief transient
+// (metronome click) that landed between its reads, instead of skipping the single frame it lived in.
+function mergePeak(acc, f) {
+  if (!acc) return { bands: f.bands.slice(), bandsL: f.bandsL ? f.bandsL.slice() : undefined, bandsR: f.bandsR ? f.bandsR.slice() : undefined,
+                     level: f.level, beat: f.beat, centroid: f.centroid, t: f.t, _at: f._at };
+  for (let i = 0; i < 32; i++) {
+    if (f.bands[i] > acc.bands[i]) acc.bands[i] = f.bands[i];
+    if (f.bandsL && acc.bandsL && f.bandsL[i] > acc.bandsL[i]) acc.bandsL[i] = f.bandsL[i];
+    if (f.bandsR && acc.bandsR && f.bandsR[i] > acc.bandsR[i]) acc.bandsR[i] = f.bandsR[i];
+  }
+  if (f.bandsL && !acc.bandsL) acc.bandsL = f.bandsL.slice();
+  if (f.bandsR && !acc.bandsR) acc.bandsR = f.bandsR.slice();
+  if (f.level > acc.level) acc.level = f.level;
+  if (f.beat > acc.beat) acc.beat = f.beat;
+  acc.centroid = f.centroid; acc.t = f.t; acc._at = f._at;   // latest (not peak) for position/time
+  return acc;
+}
 const APP_EXE = path.join(__dirname, 'app-capture.exe');
 
 // One-shot: list currently-playing audio apps via `app-capture.exe --list` → [{pid,name}] (or [] on any error).
@@ -46,7 +65,7 @@ function start(opts) {
   const log = (opts && opts.log) || function () {};
   const app = opts && opts.app;
   let proc = null, stopped = false, carry = '';
-  let frame = null, lastLineAt = 0, restarts = 0, parseErrs = 0;
+  let frame = null, peakAcc = null, lastLineAt = 0, restarts = 0, parseErrs = 0;
 
   function spawnSidecar() {
     if (stopped) return;
@@ -66,7 +85,7 @@ function start(opts) {
         const line = carry.slice(0, i).trim(); carry = carry.slice(i + 1);
         if (!line) continue;
         const f = parseLine(line);
-        if (f) { f._at = Date.now(); frame = f; lastLineAt = f._at; } else { parseErrs++; }
+        if (f) { f._at = Date.now(); frame = f; peakAcc = mergePeak(peakAcc, f); lastLineAt = f._at; } else { parseErrs++; }
       }
       if (carry.length > 65536) carry = '';   // safety: a never-newline stream can't grow unbounded
     });
@@ -83,10 +102,10 @@ function start(opts) {
 
   spawnSidecar();
   return {
-    latest() { return frame; },
-    stop() { stopped = true; clearInterval(wd); try { if (proc) proc.kill(); } catch (_) {} proc = null; frame = null; },
+    latest() { const r = peakAcc; peakAcc = null; return r || frame; },   // peak since the last read (then reset) → transients between polls aren't skipped
+    stop() { stopped = true; clearInterval(wd); try { if (proc) proc.kill(); } catch (_) {} proc = null; frame = null; peakAcc = null; },
     health() { return { up: !!proc, restarts, parseErrs, lastLineAgoMs: lastLineAt ? Date.now() - lastLineAt : null }; },
   };
 }
 
-module.exports = { parseLine, freshOr, start, listApps };
+module.exports = { parseLine, freshOr, start, listApps, mergePeak };
