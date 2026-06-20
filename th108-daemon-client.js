@@ -342,12 +342,14 @@ window.TH108DaemonClient = (function () {
       quit.addEventListener('click', async () => {
         if (!confirm('Quit the background daemon?\n\nAlways-on lighting and reactive-anywhere stop until setup.cmd or your next login starts it again. This page keeps working as-is.')) return;
         try { await fetch('/quit', { method: 'POST' }); log('daemon quit', 'dim'); } catch (_) {}
+        try { window.dispatchEvent(new Event('th108-daemon-transition')); } catch (_) {}   // flip the header Online→Offline tag now
         setTimeout(refresh, 600);
       });
       if (restart) restart.addEventListener('click', async () => {
         // /restart makes the daemon exit(42); the supervised launcher (start-hidden.vbs) revives it in ~1s.
         // If the daemon wasn't started via that launcher it simply stops — the Start button then appears.
         try { await fetch('/restart', { method: 'POST' }); log('daemon restarting…', 'dim'); } catch (_) {}
+        try { window.dispatchEvent(new Event('th108-daemon-transition')); } catch (_) {}   // burst-poll the header Online tag across the ~1s downtime so it visibly dips Offline then back
         restart.disabled = true;
         [1200, 2500, 4000].forEach(ms => setTimeout(refresh, ms));   // re-poll across the ~1s downtime so the status catches the revived daemon
       });

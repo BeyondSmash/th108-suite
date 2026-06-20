@@ -249,7 +249,7 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
      rule; sub = a shorter, lighter rule. lfull = a control block that spans the whole grid under a header. */
   .lbody .ctl .lrow{ grid-column:1/-1; display:grid; grid-template-columns:subgrid; align-items:center; margin:0; padding:3px 8px; }   /* each control row spans the grid as a subgrid (keeps label/control columns aligned) so it can be zebra-striped */
   .lbody .ctl .lrow > :nth-child(2){ justify-self:center; }   /* center the control (col 2); label (col 1) stays left, value (col 3) stays right */
-  .lbody .ctl .lrow:nth-of-type(even){ background:color-mix(in srgb, var(--text) var(--zebra,7%), transparent); border-radius:8px; }   /* zebra: subtle text-tinted band, theme-aware; --zebra contrast is live-tunable (slider in the compositor header) */
+  .lbody .ctl .lrow:nth-of-type(even){ background:var(--zebra-bg, transparent); border-radius:8px; }   /* zebra band; --zebra-bg is set live by the Row-shading slider (white tint = brighter rows, black tint = darker rows, 0 = none) */
   .lbody .ctl .lsec, .lbody .ctl .lsub{ grid-column:1/-1; }
   .lbody .ctl .lsec{ margin:13px 0 1px; padding-top:11px; border-top:1px solid var(--border); color:var(--text); font-size:13px; font-weight:600; letter-spacing:.02em; text-align:center; }
   .lbody .ctl .lsec:first-child{ margin-top:0; padding-top:2px; border-top:0; }
@@ -642,9 +642,9 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
   <div class="card s6" id="layersPanel" data-pages="lighting">
     <div class="cardbar"><span class="grip">⠿</span><h2>Layer Compositor</h2>
       <span class="aux">card order = layer stack · last card = top layer</span>
-      <label class="aux" style="margin-left:auto;display:inline-flex;align-items:center;gap:7px;cursor:pointer" title="Contrast of the alternating row shading on every layer card">Row shading
-        <input type="range" id="zebraAmt" min="0" max="22" value="7" style="width:90px"
-          oninput="document.documentElement.style.setProperty('--zebra',this.value+'%');try{localStorage.setItem('th108Zebra',this.value)}catch(_){}"></label></div>
+      <label class="aux" style="margin-left:auto;display:inline-flex;align-items:center;gap:7px;cursor:pointer" title="Contrast of the alternating row shading on every layer card — left darkens the row, right brightens it, center is off">Row shading
+        <span class="srange" style="width:96px"><input type="range" id="zebraAmt" min="-22" max="22" value="0" oninput="setZebra(this.value)"><i class="tick" style="left:50%"></i></span>
+        <span id="zebraAmtV" class="val" style="min-width:34px">0%</span></label></div>
     <div id="layerCards"></div>
   </div>
 
@@ -1038,7 +1038,20 @@ window.addEventListener('blur', onAwayChange);
 window.addEventListener('focus', onAwayChange);
 document.addEventListener('visibilitychange', onAwayChange);
 DC.mountPanel();   // Background-daemon panel: status readout, auto-start toggle (HKCU Run key via the daemon), quit
-(function(){ try{ const z=localStorage.getItem('th108Zebra'); if(z!=null){ document.documentElement.style.setProperty('--zebra',z+'%'); const el=document.getElementById('zebraAmt'); if(el) el.value=z; } }catch(_){} })();   // restore saved row-shading contrast
+// Row shading: bipolar zebra. <0 darkens even rows (black tint), >0 brightens (white tint), 0 = off.
+// Snaps to the center (0) on approach so you can land exactly on neutral.
+function setZebra(v){
+  const el=document.getElementById('zebraAmt');
+  if(el){ if(v!=null && +el.value!==+v) el.value=v; snap(el,0,2); v=+el.value; }
+  v=+v||0;
+  const bg = v>0 ? 'color-mix(in srgb, #fff '+v+'%, transparent)'
+           : v<0 ? 'color-mix(in srgb, #000 '+(-v)+'%, transparent)'
+           : 'transparent';
+  document.documentElement.style.setProperty('--zebra-bg', bg);
+  const lab=document.getElementById('zebraAmtV'); if(lab) lab.textContent=(v>0?'+':'')+v+'%';
+  try{ localStorage.setItem('th108Zebra', v); }catch(_){}
+}
+(function(){ let z=0; try{ const s=localStorage.getItem('th108Zebra'); if(s!=null) z=+s; }catch(_){} setZebra(z); })();   // restore saved row-shading (default 0 = off)
 
 // ===== layer compositor engine =====
 function fpsCap(){ return +document.getElementById('gifFps').value || 60; }   // global output FPS cap (shared with GIF) — lower = less compute
@@ -1701,6 +1714,9 @@ function dmnTagSync(){
   const sb=document.getElementById('dmnStart'); if(sb) sb.hidden=DC.present;
 }
 setInterval(()=>{ DC.ping().then(dmnTagSync,dmnTagSync); }, 30000);
+// A restart/quit is a ~1s blip the 30s poll almost always misses → burst-poll across the window so the tag
+// visibly flips Online→Offline→Online (the daemon-client dispatches this when you hit Restart/Quit).
+window.addEventListener('th108-daemon-transition', ()=>{ [150,400,700,1000,1400,2000,3000,4500].forEach(ms=>setTimeout(()=>DC.ping().then(dmnTagSync,dmnTagSync), ms)); });
 // Quit/Start need a quick tag refresh — the 30s poll made a successful Quit look ignored for ~15s
 document.getElementById('dmnQuit').addEventListener('click',()=>{
   [800,2000,4000].forEach(ms=>setTimeout(()=>DC.ping().then(dmnTagSync,dmnTagSync),ms)); });
