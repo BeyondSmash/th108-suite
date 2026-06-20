@@ -112,8 +112,8 @@ public static class Cap {
     if (count < N) return false;
     if (!winInit) InitWin();
     int start = count - N;
-    double rms = 0;
-    for (int i=0;i<N;i++){ float s=mono[start+i]; rms += s*s; re[i]=s*win[i]; im[i]=0; }
+    double rms = 0; float pk = 0f;   // pk = peak amplitude — catches short transients (clicks/hats) that RMS averages away
+    for (int i=0;i<N;i++){ float s=mono[start+i]; rms += s*s; float a=(s<0?-s:s); if(a>pk)pk=a; re[i]=s*win[i]; im[i]=0; }
     FFT();
     int half=N/2;
     float[] mag = new float[half];
@@ -137,9 +137,9 @@ public static class Cap {
       double nb = (dbv + 100.0)/70.0;
       bands[b]=(float)Math.Min(1.0, Math.Max(0.0, nb)*1.6);
     }
-    double rawLvl=Math.Sqrt(rms/N);
-    peakLvl = Math.Max((float)rawLvl, peakLvl*0.999f);               // auto-gain: track the loudest recent level (slow decay)
-    outLBC[0]=(float)Math.Min(1.0, rawLvl/Math.Max(peakLvl,1e-4));   // level normalized to that peak → full 0..1 at any volume
+    double inst=Math.Max(Math.Sqrt(rms/N), pk*0.6);                  // RMS = body, PEAK = transients (so a metronome click reads its true loudness, not averaged down by the ~46ms window)
+    peakLvl = Math.Max((float)inst, peakLvl*0.999f);                 // auto-gain: track the loudest recent level (slow decay)
+    outLBC[0]=(float)Math.Min(1.0, inst/Math.Max(peakLvl,1e-4));     // level normalized to that peak → full 0..1 at any volume
     avgFlux = avgFlux*0.93f + (float)bassFlux*0.07f;                 // moving average of bass flux
     double onset=(bassFlux - avgFlux*1.4)/(avgFlux + 1e-4);          // spikes when a kick exceeds ~1.4x the running average
     outLBC[1]=(float)Math.Max(0, Math.Min(1.0, onset));             // beat 0..1 (sharp on kicks, ~0 between)

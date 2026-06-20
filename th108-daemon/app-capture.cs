@@ -187,8 +187,8 @@ class AppCapture {
   }
   static bool Features(float[] mono, int count, float[] bands, float[] lbc) {
     if (count < N) return false; if (!winInit) InitWin();
-    int start = count - N; double rms = 0;
-    for (int i=0;i<N;i++){ float s=mono[start+i]; rms += s*s; re[i]=s*win[i]; im[i]=0; }
+    int start = count - N; double rms = 0; float pk = 0f;   // pk = peak amplitude (catches short transients RMS averages away)
+    for (int i=0;i<N;i++){ float s=mono[start+i]; rms += s*s; float a=(s<0?-s:s); if(a>pk)pk=a; re[i]=s*win[i]; im[i]=0; }
     FFT(); int half=N/2; float[] mag = new float[half];
     double centNum=0, centDen=0, bassFlux=0; int bassBins=Math.Max(4, half/8);
     for (int i=0;i<half;i++){ float m=(float)Math.Sqrt(re[i]*re[i]+im[i]*im[i]); mag[i]=m;
@@ -198,8 +198,8 @@ class AppCapture {
       if(hi<=lo) hi=lo+1; if(hi>half) hi=half; double sum=0; for(int i=lo;i<hi;i++) sum+=mag[i]; double avg=sum/(hi-lo);
       double magNorm=avg/(N*0.5); double dbv=20.0*Math.Log10(magNorm+1e-9); double nb=(dbv+100.0)/70.0;
       bands[b]=(float)Math.Min(1.0, Math.Max(0.0,nb)*1.6); }
-    double rawLvl=Math.Sqrt(rms/N); peakLvl=Math.Max((float)rawLvl, peakLvl*0.999f);
-    lbc[0]=(float)Math.Min(1.0, rawLvl/Math.Max(peakLvl,1e-4));
+    double inst=Math.Max(Math.Sqrt(rms/N), pk*0.6); peakLvl=Math.Max((float)inst, peakLvl*0.999f);   // RMS=body, PEAK=transients
+    lbc[0]=(float)Math.Min(1.0, inst/Math.Max(peakLvl,1e-4));
     avgFlux=avgFlux*0.93f+(float)bassFlux*0.07f; double onset=(bassFlux-avgFlux*1.4)/(avgFlux+1e-4);
     lbc[1]=(float)Math.Max(0, Math.Min(1.0, onset));
     lbc[2]=(float)(centDen>0 ? Math.Min(1.0,(centNum/centDen)/half*2.0) : 0.5);
