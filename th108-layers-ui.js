@@ -407,8 +407,8 @@
           const d=Array.isArray(s.ducks)&&s.ducks.find(x=>x&&x.layer===i); if(d) d.dim=v;   // only persists once the layer is checked on
         }));
         c('.s-logVals').addEventListener('click',()=>console.log('[audio layer "'+L.name+'"]', JSON.parse(JSON.stringify(s))));
-        { const tb=c('.s-samplePrevToggle'), cv=c('.s-audioPrev'); if(tb&&cv) tb.addEventListener('click',()=>{ s.samplePrevOff=!s.samplePrevOff; cv.style.display=s.samplePrevOff?'none':'block'; tb.textContent=s.samplePrevOff?'Show':'Hide'; }); }
-        { const tb=c('.s-livePrevToggle'),  cv=c('.s-audioPrevLive'); if(tb&&cv) tb.addEventListener('click',()=>{ s.livePrevOff=!s.livePrevOff; cv.style.display=s.livePrevOff?'none':'block'; tb.textContent=s.livePrevOff?'Show':'Hide'; }); }
+        { const tb=c('.s-samplePrevToggle'), cv=c('.s-audioPrev'); if(tb&&cv) tb.addEventListener('click',()=>{ s.samplePrevOff=!s.samplePrevOff; cv.style.display=s.samplePrevOff?'none':'block'; tb.textContent=s.samplePrevOff?'Show':'Hide'; scheduleSaveLayers(); }); }   // a button click fires no input/change, so persist explicitly (survives refresh)
+        { const tb=c('.s-livePrevToggle'),  cv=c('.s-audioPrevLive'); if(tb&&cv) tb.addEventListener('click',()=>{ s.livePrevOff=!s.livePrevOff; cv.style.display=s.livePrevOff?'none':'block'; tb.textContent=s.livePrevOff?'Show':'Hide'; scheduleSaveLayers(); }); }
         // SAMPLE preview = the deterministic synth (design the look any time, independent of audio).
         // LIVE preview = the page's REAL state.audio, but ONLY while real capture is running — otherwise it
         // paints blank keys (it must NOT mimic the synth when nothing's playing). Each toggles independently.
