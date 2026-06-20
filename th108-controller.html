@@ -1051,7 +1051,6 @@ function setZebra(v){
   const lab=document.getElementById('zebraAmtV'); if(lab) lab.textContent=(v>0?'+':'')+v+'%';
   try{ localStorage.setItem('th108Zebra', v); }catch(_){}
 }
-(function(){ let z=0; try{ const s=localStorage.getItem('th108Zebra'); if(s!=null) z=+s; }catch(_){} setZebra(z); })();   // restore saved row-shading (default 0 = off)
 
 // ===== layer compositor engine =====
 function fpsCap(){ return +document.getElementById('gifFps').value || 60; }   // global output FPS cap (shared with GIF) — lower = less compute
@@ -1059,6 +1058,7 @@ function fpsCap(){ return +document.getElementById('gifFps').value || 60; }   //
 const flashSnap=el=>{ el.classList.add('snapped'); clearTimeout(el._st); el._st=setTimeout(()=>el.classList.remove('snapped'),250); };   // thumb flashes on snap
 const snap=(el,target,thr)=>{ if(Math.abs((+el.value)-target)<=thr){ if(+el.value!==target) el.value=target; if(!el._sn){ el._sn=true; flashSnap(el); } } else el._sn=false; };
 const snapMul=(el,step,thr)=>{ const v=+el.value, nr=Math.round(v/step)*step; if(Math.abs(v-nr)<=thr){ if(v!==nr) el.value=nr; if(el._sn!==nr){ el._sn=nr; flashSnap(el); } } else el._sn=null; };
+(function(){ let z=0; try{ const s=localStorage.getItem('th108Zebra'); if(s!=null) z=+s; }catch(_){} setZebra(z); })();   // restore saved row-shading (runs AFTER snap is defined — setZebra calls it)
 // add a typeable hex text box next to every <input type=color> within `scope` (idempotent)
 function attachHex(scope){
   if(!scope) return;
