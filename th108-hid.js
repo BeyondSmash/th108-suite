@@ -75,9 +75,21 @@
       }
     }
     function waitAck(ms, off) { _ackOff = off; return new Promise(res => { _ackWaiter = res; setTimeout(() => { if (_ackWaiter === res) { _ackWaiter = null; res(false); } }, ms); }); }
+    // ===== WEDGE-RECOVERY LADDER — tuned 2026-06-19 for faster wired recovery (was ~46s → ~15s). =====
+    // Two knobs: _sendStalls threshold (here, 8) and _stallRetries cap (releaseAfterFailure, 1). They trade
+    // recovery SPEED against false-positive USB-restarts. Going faster (lower numbers) means a board that was
+    // only briefly stalling — a momentary blip that WOULD have self-healed — gets a real USB re-enumeration
+    // (~1-2s typing dropout) it didn't need.
+    //   SYMPTOM of the downside (too aggressive): you notice occasional unprompted ~1-2s typing freezes while
+    //     music plays, and the log shows "⚡ board wedged — asked the daemon to USB-restart" without you having
+    //     actually lost the lighting. → COURSE-CORRECT: raise _sendStalls back toward 12-15 and/or _stallRetries to 2.
+    //   SYMPTOM of too patient (the old behavior): a real mute sits dead for ~30-46s before auto-recovery (or you
+    //     replug first). → go lower.
     function noteStall() {
       if (++_sendStalls === 1 || _sendStalls % 20 === 0) log('board not keeping up (no ACK) — pacing/dropping to keep the loop alive', 'dim');
-      if (_sendStalls >= 15) { log('board unresponsive — stopping.', 'err'); stopHost(); releaseAfterFailure(); }
+      // ~8 no-ACK frames (~7s at 800ms/timeout) before dropping the handle — was 15 (~13s); tightened so a
+      // genuinely muted wired board reaches recovery far sooner (it sat muted ~46s before, longer than a manual replug).
+      if (_sendStalls >= 8) { log('board unresponsive — stopping.', 'err'); stopHost(); releaseAfterFailure(); }
     }
     // ACK silence with NO disconnect event = the handle may be stale (a hub power blip can reset/re-enumerate
     // the keyboard without Chrome firing 'disconnect' — observed when flipping an audio device on the same bus).
@@ -88,8 +100,8 @@
       if (!device) return;
       try { device.close(); } catch (_) { }
       device = null; reportId = 0;
-      if (++_stallRetries <= 2) { setStatus('board stopped responding — re-binding…', 'dim'); startRebindPoll(); }
-      else {   // fresh handles didn't help = true wedge; hand it to the recovery hook (daemon USB restart) and keep polling for the re-enumeration it causes
+      if (++_stallRetries <= 1) { setStatus('board stopped responding — re-binding…', 'dim'); startRebindPoll(); }   // one fresh-handle retry (was 2) before escalating — cuts ~one ~8s cycle off the recovery time
+      else {   // a fresh handle didn't help = true wedge; hand it to the recovery hook (daemon USB restart) and keep polling for the re-enumeration it causes
         setStatus('board unresponsive after retries — attempting recovery…', 'err');
         _stallRetries = 0;          // the restart (or a manual replug) starts a fresh episode
         onWedged();
