@@ -172,6 +172,8 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
   .dmnTag[hidden]{ display:none !important; }   /* display:inline-flex would otherwise beat the UA's [hidden] rule */
   .dmnTag i{ width:8px; height:8px; border-radius:50%; background:var(--mint); }
   .dmnTag.off i{ background:var(--err); }
+  .dmnTag.reconnecting{ opacity:1; }
+  .dmnTag.reconnecting i{ background:var(--warn); animation:dpulse 1s ease-in-out infinite; }   /* amber pulse during a restart */
   .dmnTag:hover{ opacity:1; }
   .dmnTag:hover i{ animation:dpulse 1.2s ease-in-out infinite; }
   .dmnTag.off:hover i{ animation:none; }
@@ -643,7 +645,7 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
     <div class="cardbar"><span class="grip">⠿</span><h2>Layer Compositor</h2>
       <span class="aux">card order = layer stack · last card = top layer</span>
       <label class="aux" style="margin-left:auto;display:inline-flex;align-items:center;gap:7px;cursor:pointer" title="Contrast of the alternating row shading on every layer card — left darkens the row, right brightens it, center is off">Row shading
-        <span class="srange" style="width:96px"><input type="range" id="zebraAmt" min="-22" max="22" value="0" oninput="setZebra(this.value)"><i class="tick" style="left:50%"></i></span>
+        <span class="srange" style="width:96px"><input type="range" id="zebraAmt" min="-22" max="8" value="0" oninput="setZebra(this.value)"><i class="tick" style="left:calc(7px + (100% - 14px)*0.7333)"></i></span>
         <span id="zebraAmtV" class="val" style="min-width:34px">0%</span></label></div>
     <div id="layerCards"></div>
   </div>
@@ -1702,15 +1704,19 @@ document.getElementById('importFile').addEventListener('change',async e=>{
 
 // header daemon tag: green "Online" while /status answers, red "Offline" once it stops (never hides —
 // an absent tag read as ambiguous; user request 2026-06-11). Re-checked every 30s + right after Quit.
+let _dmnReconnectUntil=0;   // after a Restart click, show a "Restarting…" pulse for a beat — the daemon's actual down-window (exit→respawn) is too brief to catch by polling, so without this the tag never visibly changes
 function dmnTagSync(){
   const el=document.getElementById('dmnOnline'); if(!el) return;
   el.hidden=false;
+  const reconnecting = DC.present && performance.now()<_dmnReconnectUntil;   // requested a restart and it's (already) answering → show the transition
   el.classList.toggle('off', !DC.present);
-  document.getElementById('dmnTagTxt').textContent=DC.present?'Online':'Offline';
+  el.classList.toggle('reconnecting', reconnecting);
+  document.getElementById('dmnTagTxt').textContent = !DC.present ? 'Offline' : (reconnecting ? 'Restarting…' : 'Online');
   refreshDriverUI();   // daemon presence may have just changed → keep the driver pill in sync
-  el.title=DC.present
-    ?'Background daemon is running — layer edits apply live, reactive typing works in every app, no Connect needed'
-    :'Background daemon is not running — lighting stops when this tab closes. Start it with setup.cmd (or log in again).';
+  el.title = !DC.present
+    ? 'Background daemon is not running — lighting stops when this tab closes. Start it with setup.cmd (or log in again).'
+    : reconnecting ? 'Daemon is restarting…'
+    : 'Background daemon is running — layer edits apply live, reactive typing works in every app, no Connect needed';
   const sb=document.getElementById('dmnStart'); if(sb) sb.hidden=DC.present;
 }
 setInterval(()=>{ DC.ping().then(dmnTagSync,dmnTagSync); }, 30000);
@@ -1721,8 +1727,9 @@ window.addEventListener('th108-daemon-transition', ()=>{ [150,400,700,1000,1400,
 document.getElementById('dmnQuit').addEventListener('click',()=>{
   [800,2000,4000].forEach(ms=>setTimeout(()=>DC.ping().then(dmnTagSync,dmnTagSync),ms)); });
 const dmnRestartBtn=document.getElementById('dmnRestart');
-if(dmnRestartBtn) dmnRestartBtn.addEventListener('click',()=>{   // restart blips offline→online; refresh the tag across the ~1s gap
-  [1200,2600,4200].forEach(ms=>setTimeout(()=>DC.ping().then(dmnTagSync,dmnTagSync),ms)); });
+if(dmnRestartBtn) dmnRestartBtn.addEventListener('click',()=>{   // show a visible Restarting… pulse, then settle back to Online (the exit→respawn down-window is too brief to catch reliably)
+  _dmnReconnectUntil=performance.now()+1400; dmnTagSync();
+  [150,400,700,1000,1400,1700,2400,3600].forEach(ms=>setTimeout(()=>DC.ping().then(dmnTagSync,dmnTagSync),ms)); });
 // Start the daemon via the th108:// protocol handler it registered (browser prompts "Open TH108?" →
 // launches the tray + daemon; a one-time "always allow" makes it one click forever). Falls back to the
 // manual command only if nothing comes up (the handler isn't registered until the daemon's first run).
