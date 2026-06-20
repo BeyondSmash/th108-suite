@@ -140,6 +140,7 @@
       s.ap = {}; s.ap[style] = Object.assign({}, AUDIO_TUNE_DEFAULTS, seed);
     }
     if(!s.ap[style]) s.ap[style] = Object.assign({}, AUDIO_TUNE_DEFAULTS);
+    else s.ap[style] = Object.assign({}, AUDIO_TUNE_DEFAULTS, s.ap[style]);   // backfill keys added after this layer was first saved (ceil/contrast/pauseDecayMs) → no "undefined%" readout, and pause-decay actually has a value
     return s.ap[style];
   }
 
