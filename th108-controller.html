@@ -647,8 +647,8 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
     <div class="cardbar"><span class="grip">⠿</span><h2>Layer Compositor</h2>
       <span class="aux">card order = layer stack · last card = top layer</span>
       <label class="aux" style="margin-left:auto;display:inline-flex;align-items:center;gap:7px;cursor:pointer" title="Contrast of the alternating row shading on every layer card — left darkens the row, right brightens it, center is off">Row shading
-        <span class="srange" style="width:96px"><input type="range" id="zebraAmt" min="-22" max="8" value="0" oninput="setZebra(this.value)"><i class="tick" style="left:calc(7px + (100% - 14px)*0.7333)"></i></span>
-        <span id="zebraAmtV" class="val" style="min-width:34px">0%</span></label></div>
+        <span class="srange" style="width:96px"><input type="range" id="zebraAmt" min="-100" max="100" value="0" oninput="setZebra(this.value)"><i class="tick" style="left:50%"></i></span>
+        <span id="zebraAmtV" class="val" style="min-width:40px">0%</span></label></div>
     <div id="layerCards"></div>
   </div>
 
@@ -1046,10 +1046,11 @@ DC.mountPanel();   // Background-daemon panel: status readout, auto-start toggle
 // Snaps to the center (0) on approach so you can land exactly on neutral.
 function setZebra(v){
   const el=document.getElementById('zebraAmt');
-  if(el){ if(v!=null && +el.value!==+v) el.value=v; snap(el,0,2); v=+el.value; }
+  if(el){ if(v!=null && +el.value!==+v) el.value=v; snap(el,0,4); v=+el.value; }
   v=+v||0;
-  const bg = v>0 ? 'color-mix(in srgb, #fff '+v+'%, transparent)'
-           : v<0 ? 'color-mix(in srgb, #000 '+(-v)+'%, transparent)'
+  const tint = v>0 ? v/100*8 : v<0 ? v/100*22 : 0;   // slider is a -100..100 scale (full travel = fine control); +100 = 8% white tint, -100 = 22% black tint
+  const bg = tint>0 ? 'color-mix(in srgb, #fff '+tint+'%, transparent)'
+           : tint<0 ? 'color-mix(in srgb, #000 '+(-tint)+'%, transparent)'
            : 'transparent';
   document.documentElement.style.setProperty('--zebra-bg', bg);
   const lab=document.getElementById('zebraAmtV'); if(lab) lab.textContent=(v>0?'+':'')+v+'%';
