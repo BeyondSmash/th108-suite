@@ -480,3 +480,18 @@ test('abstract styles light on sound and go fully dark on silence', () => {
     assert.equal(sum, 0, style + ' dark on silence');
   }
 });
+
+test('bars Drive: volume lights a treble column that the spectrum drive leaves dark', () => {
+  const kHi = findK(c => c[0] >= 12 && c[1] === E.GH-1);   // a high-column, bottom-row key (treble band)
+  assert.ok(kHi >= 0, 'found a high-column bottom key');
+  const render = (drive) => {
+    const L = { type:'audio', enabled:true, opacity:1, blend:'add', settings:{ style:'bars', barDrive:drive }, rgb:new Uint8Array(E.NLED*3) };
+    E.ensureSettings(L); const st = E.createState([L]);
+    st.audio.bands.fill(0); st.audio.bands[0] = 1;   // ONLY the bass band has energy
+    st.audio.level = 0.9;
+    E.renderAudio(st.layers[0], 0, st);
+    return litSum(st.layers[0], kHi);
+  };
+  assert.equal(render('spectrum'), 0, 'spectrum: a treble column with no treble energy is dark');
+  assert.ok(render('volume') > 0, 'volume: same column lit because every bar tracks overall loudness');
+});

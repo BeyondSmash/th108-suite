@@ -358,6 +358,7 @@
     const barColor = s.barColor || 'bassTreble';            // bassTreble (horizontal) | gradient (vert 2-color) | vu (green→red by height)
     const subtract = s.barFill === 'subtract';
     const layout = s.barLayout || 'standard';
+    const drive = s.barDrive || 'spectrum';   // what the bar HEIGHT follows: per-column frequency | overall volume | beat
     const ctr = (GW-1)/2;
     const vert = layout==='topdown' ? 'down' : layout==='centerout' ? 'center' : 'up';   // vertical fill mode
     const midRow = (GH-1)/2, halfH = GH/2;
@@ -378,7 +379,7 @@
       else if(layout==='reverse'){ fc = GW>1 ? 1 - col/(GW-1) : 0; }                                      // treble left → bass right (mirror of standard)
       else { fc = GW>1 ? col/(GW-1) : 0; }                                                                // standard / topdown / centerout: bass left → treble right
       const band = Math.min(31, Math.round(fc*31));
-      const mag = (bandsArr||A.bands)[band];                  // 0..1 (already smoothed/gated)
+      const mag = drive==='volume' ? A.level : drive==='beat' ? A.beat : (bandsArr||A.bands)[band];   // 0..1 (already smoothed/gated)
       // --- vertical: fb = fill level from base(1) → tip(steps); litCount = how many levels this bar fills ---
       let fb, steps;
       if(vert==='center'){ steps = halfH; fb = Math.ceil(Math.abs(row - midRow)); }   // distance out from the middle row (1=innermost)
@@ -736,7 +737,7 @@
       const ad={ style:'bars', source:'system', appId:'', deviceId:'',
         gain:1, floor:5, attackMs:40, decayMs:220, beatSens:50,
         barColorBass:'#ff2200', barColorTreble:'#22aaff', barTip:'off', barTipColor:'#ffffff', barFill:'solid',
-        barColor:'bassTreble', barGradA:'#00ff66', barGradB:'#ff00aa', barLayout:'standard',
+        barColor:'bassTreble', barGradA:'#00ff66', barGradB:'#ff00aa', barLayout:'standard', barDrive:'spectrum',
         pulseColor:'#19b6ff', pulseColor2:'#ff00aa', pulseGrad:false,
         bloomColor:'#ff5a00', bloomColor2:'#ffd000', bloomGrad:false,
         waveColor:'#00e0ff', waveColor2:'#ff00aa', waveGrad:false, waveReverse:false };
