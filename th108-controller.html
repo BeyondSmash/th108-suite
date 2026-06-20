@@ -592,6 +592,18 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
        e.g. daemon Online and driving the keyboard while the page shows "not connected" is the normal resting
        state.</p>
   </div>
+  <div class="card s2 faqcard" id="faq10" data-pages="faq">
+    <div class="cardbar"><span class="grip">⠿</span><span class="tbtag">Troubleshooting</span></div>
+    <h3>Play/Pause controls my browser, not Spotify?</h3>
+    <p>That's Windows, not this suite. The media keys go to the <i>most-recently-active</i> media session, and
+       Chrome/Edge grab it aggressively — so your keyboard's ⏯ hits a browser tab instead of Spotify. The clean
+       fix is to stop the browser from claiming the keys:</p>
+    <p>Chrome: <code>chrome://flags/#hardware-media-key-handling</code> → <b>Disabled</b> → Relaunch.
+       Edge: <code>edge://flags/#hardware-media-key-handling</code> → <b>Disabled</b> → Relaunch.
+       Firefox: <code>about:config</code> → <code>media.hardwaremediakeys.enabled</code> → <b>false</b>.</p>
+    <p>After that the media keys go to Spotify (or whatever non-browser app is playing). Trade-off: that browser
+       then ignores the media keys entirely — which is the point.</p>
+  </div>
   <div class="card s2 faqcard" id="faq6" data-pages="faq">
     <div class="cardbar"><span class="grip">⠿</span></div>
     <h3>Where's the official driver?</h3>
