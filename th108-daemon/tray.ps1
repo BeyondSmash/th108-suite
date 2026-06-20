@@ -11,6 +11,13 @@ $ErrorActionPreference = 'SilentlyContinue'
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 
+# SINGLETON: only one tray icon ever. Every login (Run key), Start, and Restart can launch a tray; without
+# this they pile up (the "3 keyboards in the tray" bug). A named mutex we never release for the life of the
+# process — if another tray already holds it, this instance exits immediately.
+$script:trayMutexCreated = $false
+$script:trayMutex = New-Object System.Threading.Mutex($true, 'TH108LightingTray', [ref]$script:trayMutexCreated)
+if (-not $script:trayMutexCreated) { exit }
+
 $here = Split-Path -Parent $MyInvocation.MyCommand.Path
 
 function Invoke-Daemon([string]$path, [string]$method) {
