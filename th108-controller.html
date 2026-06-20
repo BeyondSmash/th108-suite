@@ -1713,20 +1713,39 @@ document.getElementById('importFile').addEventListener('change',async e=>{
 
 // header daemon tag: green "Online" while /status answers, red "Offline" once it stops (never hides —
 // an absent tag read as ambiguous; user request 2026-06-11). Re-checked every 30s + right after Quit.
-let _dmnReconnectUntil=0;   // after a Restart click, show a "Restarting…" pulse for a beat — the daemon's actual down-window (exit→respawn) is too brief to catch by polling, so without this the tag never visibly changes
+let _dmnRestarting=false, _dmnRestartSeq=0;   // true from a Restart click until the daemon is back AND driving the keyboard (so "Online" doesn't show preemptively while it's still "waiting for the keyboard")
 function dmnTagSync(){
   const el=document.getElementById('dmnOnline'); if(!el) return;
   el.hidden=false;
-  const reconnecting = DC.present && performance.now()<_dmnReconnectUntil;   // requested a restart and it's (already) answering → show the transition
-  el.classList.toggle('off', !DC.present);
+  const reconnecting = _dmnRestarting;
+  el.classList.toggle('off', !DC.present && !reconnecting);
   el.classList.toggle('reconnecting', reconnecting);
-  document.getElementById('dmnTagTxt').textContent = !DC.present ? 'Offline' : (reconnecting ? 'Restarting…' : 'Online');
+  document.getElementById('dmnTagTxt').textContent = reconnecting ? 'Restarting…' : (DC.present ? 'Online' : 'Offline');
   refreshDriverUI();   // daemon presence may have just changed → keep the driver pill in sync
-  el.title = !DC.present
-    ? 'Background daemon is not running — lighting stops when this tab closes. Start it with setup.cmd (or log in again).'
-    : reconnecting ? 'Daemon is restarting…'
+  el.title = reconnecting
+    ? 'Daemon is restarting — waiting for it to drive the keyboard again…'
+    : !DC.present ? 'Background daemon is not running — lighting stops when this tab closes. Start it with setup.cmd (or log in again).'
     : 'Background daemon is running — layer edits apply live, reactive typing works in every app, no Connect needed';
   const sb=document.getElementById('dmnStart'); if(sb) sb.hidden=DC.present;
+}
+// Hold "Restarting…" from the click until the daemon is back AND DRIVING the keyboard (the panel's
+// "waiting for the keyboard" → "driving the keyboard" step). We first wait to SEE it go not-driving (so the
+// still-up pre-exit state can't clear it instantly), then for driving=true. 60s safety cap so a board that
+// never re-connects doesn't pin the tag forever.
+function dmnWatchRestart(){
+  const seq = ++_dmnRestartSeq;   // a newer restart supersedes this watcher
+  _dmnRestarting = true; const startT = performance.now(); let sawNotDriving = false;
+  dmnTagSync();
+  const tick = async () => {
+    if (seq !== _dmnRestartSeq) return;
+    await DC.ping();
+    const driving = DC.present && DC.deviceConnected && !DC.paused;
+    if (!driving) sawNotDriving = true;
+    if ((sawNotDriving && driving) || performance.now()-startT > 60000) _dmnRestarting = false;
+    dmnTagSync();
+    if (_dmnRestarting) setTimeout(tick, 400);
+  };
+  setTimeout(tick, 250);
 }
 setInterval(()=>{ DC.ping().then(dmnTagSync,dmnTagSync); }, 30000);
 // A restart/quit is a ~1s blip the 30s poll almost always misses → burst-poll across the window so the tag
@@ -1736,9 +1755,7 @@ window.addEventListener('th108-daemon-transition', ()=>{ [150,400,700,1000,1400,
 document.getElementById('dmnQuit').addEventListener('click',()=>{
   [800,2000,4000].forEach(ms=>setTimeout(()=>DC.ping().then(dmnTagSync,dmnTagSync),ms)); });
 const dmnRestartBtn=document.getElementById('dmnRestart');
-if(dmnRestartBtn) dmnRestartBtn.addEventListener('click',()=>{   // show a visible Restarting… pulse, then settle back to Online (the exit→respawn down-window is too brief to catch reliably)
-  _dmnReconnectUntil=performance.now()+1400; dmnTagSync();
-  [150,400,700,1000,1400,1700,2400,3600].forEach(ms=>setTimeout(()=>DC.ping().then(dmnTagSync,dmnTagSync),ms)); });
+if(dmnRestartBtn) dmnRestartBtn.addEventListener('click', dmnWatchRestart);   // hold "Restarting…" until the daemon is back AND driving the keyboard
 // Start the daemon via the th108:// protocol handler it registered (browser prompts "Open TH108?" →
 // launches the tray + daemon; a one-time "always allow" makes it one click forever). Falls back to the
 // manual command only if nothing comes up (the handler isn't registered until the daemon's first run).

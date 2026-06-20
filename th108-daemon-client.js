@@ -17,7 +17,7 @@ window.TH108DaemonClient = (function () {
     opts = opts || {};
     const log = opts.log || function () {};
     const getConfig = opts.getConfig || function () { return '[]'; };
-    const D = { present: false, hb: null, yielded: false };
+    const D = { present: false, hb: null, yielded: false, deviceConnected: false, paused: false };
 
     const hbW = (() => { try { return new Worker(URL.createObjectURL(new Blob(['let t=null;onmessage=e=>{clearInterval(t);t=null;if(e.data&&e.data.ms)t=setInterval(()=>postMessage(1),e.data.ms);};'], { type: 'text/javascript' }))); } catch (_) { return null; } })();
     // beats use fetch (not sendBeacon) so the RESPONSE is readable: it carries npWants — the
@@ -33,7 +33,10 @@ window.TH108DaemonClient = (function () {
 
     async function ping() {
       if (!/^https?:$/.test(location.protocol)) { D.present = false; return; }   // file:// page → no daemon server to talk to; skip (avoids a console CORS error)
-      try { const r = await fetch('/status', { cache: 'no-store' }); D.present = r.ok; } catch (_) { D.present = false; }
+      try { const r = await fetch('/status', { cache: 'no-store' }); D.present = r.ok;
+        if (r.ok) { try { const s = await r.json(); D.deviceConnected = !!s.deviceConnected; D.paused = !!s.paused; } catch (_) {} }
+        else { D.deviceConnected = false; }
+      } catch (_) { D.present = false; D.deviceConnected = false; }
     }
     // BUFFERED HANDOFF (2026-06-13): a wedged/flapping board makes the HID layer fire reconnect
     // events in a tight loop, each calling yieldDevice — bursts of 5+/sec stormed the daemon (2149
@@ -360,6 +363,8 @@ window.TH108DaemonClient = (function () {
     return {
       ping, yieldDevice, heartbeatStart, heartbeatStop, pushConfig, resume, mountPanel, usbFix,
       get present() { return D.present; },
+      get deviceConnected() { return D.deviceConnected; },
+      get paused() { return D.paused; },
       get beating() { return !!D.hb; }
     };
   }
