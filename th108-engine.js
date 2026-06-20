@@ -108,9 +108,12 @@
     // dead. raw.live is the true current-frame level (≈0 the instant playback stops). In-tab webCap has no
     // hold, so its raw.level is already live → fall back to it.
     const liveLvl = (raw.live != null ? raw.live : (raw.level || 0));
-    if(A._silentMs == null) A._silentMs = 0;
-    A._silentMs = (liveLvl * gain < 0.02) ? A._silentMs + dt : 0;
-    const decayNow = (A._silentMs > 80) ? (p.pauseDecayMs==null ? 700 : p.pauseDecayMs) : p.decayMs;   // 80ms confirm: true digital silence basically never happens MID-song (reverb/ambience sit above the gate), so a short window is safe — and engaging early means the graceful settle starts from the held level instead of after the fast per-note decay already dropped it. Only the FALL is affected (audioEnvelope picks decay when target<prev).
+    // Engage the graceful settle the INSTANT the input goes silent — no confirm window. A confirm let the fast
+    // per-note decay (decayMs, often <100ms) drop the level most of the way before pause-decay even kicked in,
+    // so the slider looked dead. Mid-song the live level basically never hits this gate (music is continuous),
+    // so true silence ⇒ pause/stop. Only the FALL is affected (audioEnvelope picks decay when target<prev).
+    const silent = (liveLvl * gain < 0.02);
+    const decayNow = silent ? (p.pauseDecayMs==null ? 700 : p.pauseDecayMs) : p.decayMs;
     const tgtLevel = lvl(raw.level);
     A.level = audioEnvelope(A.level, tgtLevel, dt, p.attackMs, decayNow);
     A.centroid = audioEnvelope(A.centroid, (raw.centroid==null?0.5:raw.centroid), dt, p.attackMs, p.decayMs);
