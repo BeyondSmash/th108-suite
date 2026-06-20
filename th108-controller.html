@@ -1259,6 +1259,7 @@ document.getElementById('connect').addEventListener('click',async()=>{
 // header Connect: visible on every tab while this page doesn't hold the keyboard (the daemon may
 // still drive the lighting — this is the page-takeover needed for binding/editing); on connect it
 // flashes yellow for 250ms, then leaves until the device drops again (user-specified behavior).
+let curPage=null;   // declared HERE (above hdrConnSync) — it's read on the boot hdrConnSync() call, so a let-TDZ would throw and halt the whole inline script (= nothing clickable)
 function hdrConnSync(){
   const b=document.getElementById('connectHdr'); if(!b) return;
   if(HID.device){
@@ -1339,7 +1340,6 @@ function moveHl(){
   const on=tabsEl.querySelector('.tab.on'); if(!on) return;
   tabHl.style.left=on.offsetLeft+'px'; tabHl.style.width=on.offsetWidth+'px';
 }
-let curPage=null;
 function applyPage(p){
   curPage=p;
   tabsEl.querySelectorAll('.tab').forEach(t=>t.classList.toggle('on',t.dataset.page===p));
