@@ -441,26 +441,27 @@
           peek.className='s-livePeek';
           peek.style.cssText='position:fixed;z-index:60;display:none;align-items:center;gap:10px;background:var(--inset);border:1px solid var(--border);border-radius:10px;padding:7px 12px;box-shadow:0 8px 26px rgba(0,0,0,.32)';   // display toggles none↔inline-flex (inline-flex shrinks to content → symmetric padding)
           peek.innerHTML='<span class="val" style="opacity:.65;font-size:11px;white-space:nowrap">Live — real audio</span><button type="button" class="s-livePeekBtn" style="margin:0;padding:2px 9px">Show</button>';   // margin:0 overrides the global button margin-right (else the right gap is bigger than the left)
-          const dup=document.createElement('div');     // the DUPLICATE preview, dropped INLINE over the settings column on Show
-          dup.className='s-livePeekDup';
-          dup.style.cssText='position:fixed;z-index:59;display:none;background:var(--inset);border:1px solid var(--border);border-radius:8px;padding:5px;box-shadow:0 10px 28px rgba(0,0,0,.4)';
-          dup.innerHTML='<canvas class="s-livePeekCv" width="'+W+'" height="'+H+'" style="display:block;width:100%;height:auto;background:#0d1117;border-radius:6px"></canvas>';
-          body.appendChild(peek); body.appendChild(dup);
-          const dupCv=dup.querySelector('.s-livePeekCv'), dupCtx=dupCv.getContext('2d'), peekBtn=peek.querySelector('.s-livePeekBtn');
-          // dock the pill HUGGING the card's column edge, in the empty neighbouring column (card on the right of the
-          // grid → pill sits just left of the card; card on the left → just right of it) — not at the display edge.
-          const positionPeek=()=>{ const cr=card.getBoundingClientRect(), gr=card.parentElement.getBoundingClientRect();
-            peek.style.top=Math.round(window.innerHeight*0.30)+'px'; peek.style.right='auto';
-            if((cr.left+cr.width/2) > (gr.left+gr.width/2)){ peek.style.left=Math.round(cr.left-10)+'px'; peek.style.transform='translateX(-100%)'; }   // right column → pill's RIGHT edge 10px left of the card (scrollbar-independent)
-            else { peek.style.left=Math.round(cr.right+10)+'px'; peek.style.transform='none'; } };                                                       // left column → hug the card's RIGHT edge
-          // drop the duplicate INLINE over the settings column, beside the section header nearest the top of the view
-          const positionDup=()=>{ const cr=card.getBoundingClientRect(), pad=14, w=Math.min(360, Math.round(cr.width-2*pad));
-            dup.style.width=w+'px'; dup.style.left=Math.round(cr.left+(cr.width-w)/2)+'px'; dup.style.right='auto';
-            let top=Math.round(window.innerHeight*0.12), best=null, bd=1e9; const aim=window.innerHeight*0.18;
-            card.querySelectorAll('.lsec').forEach(sc=>{ const b=sc.getBoundingClientRect().bottom; if(b>0 && b<window.innerHeight && Math.abs(b-aim)<bd){ bd=Math.abs(b-aim); best=b; } });
-            if(best!=null) top=Math.round(best+6);
-            dup.style.top=Math.min(top, Math.round(window.innerHeight*0.5))+'px'; };
-          peekBtn.addEventListener('click',()=>{ const on=dup.style.display==='none'; if(on){ positionDup(); dup.style.display='block'; peekBtn.textContent='Hide'; } else { dup.style.display='none'; peekBtn.textContent='Show'; } });
+          body.appendChild(peek);
+          const peekBtn=peek.querySelector('.s-livePeekBtn');
+          // the DUPLICATE is a real INLINE block (a grid item inserted after a section header), NOT a floating overlay
+          const dup=document.createElement('div'); dup.className='s-livePeekDup';
+          dup.style.cssText='grid-column:1/-1;margin:5px 0;background:var(--inset);border-radius:8px;padding:5px 0';
+          dup.innerHTML='<div style="display:flex;align-items:center;justify-content:center;gap:8px;margin-bottom:3px"><span class="val" style="opacity:.65">Live — real audio</span></div>'+
+            '<canvas class="s-livePeekCv" width="'+W+'" height="'+H+'" style="display:block;width:100%;height:auto;background:#0d1117;border-radius:6px"></canvas>';
+          const dupCv=dup.querySelector('.s-livePeekCv'), dupCtx=dupCv.getContext('2d');
+          // dock the pill to the OUTER edge of the compositor (the far edge of the empty column OPPOSITE the audio
+          // card), not the column gap right next to the card. The audio card's column → the pill goes to the other side.
+          const positionPeek=()=>{ const gr=card.parentElement.getBoundingClientRect(), cr=card.getBoundingClientRect();
+            peek.style.top=Math.round(window.innerHeight*0.20)+'px'; peek.style.right='auto';
+            if((cr.left+cr.width/2) < (gr.left+gr.width/2)){ peek.style.left=Math.round(gr.right-10)+'px'; peek.style.transform='translateX(-100%)'; }   // audio LEFT col → pill at the grid's RIGHT outer edge
+            else { peek.style.left=Math.round(gr.left+10)+'px'; peek.style.transform='none'; } };                                                          // audio RIGHT col → pill at the grid's LEFT outer edge
+          // insert the duplicate INLINE right after the section header nearest the top of the view (what you're tuning)
+          const showDup=()=>{ const aim=window.innerHeight*0.16; let best=null, bd=1e9;
+            card.querySelectorAll('.lsec').forEach(sc=>{ const t=sc.getBoundingClientRect().top; if(Math.abs(t-aim)<bd){ bd=Math.abs(t-aim); best=sc; } });
+            if(best && best.parentNode) best.insertAdjacentElement('afterend', dup); else body.appendChild(dup);
+            peekBtn.textContent='Hide'; };
+          const hideDup=()=>{ if(dup.parentNode) dup.parentNode.removeChild(dup); peekBtn.textContent='Show'; };
+          peekBtn.addEventListener('click',()=>{ if(dup.parentNode) hideDup(); else showDup(); });
           function frame(now){
             if(!document.body.contains(cvL||cvS)){ [peek,dup].forEach(e=>{ if(e.parentNode) e.parentNode.removeChild(e); }); return; }   // card rebuilt/removed → stop + clean
             if(ctxS && cvS.offsetParent!==null && synth){ E.applyAudioFeatures(pState, synth.sample(now/1000), s, now); E.renderAudio(sampL, now, pState); paint(ctxS, sampL.rgb); }
@@ -473,8 +474,8 @@
               const cardInView=shown && cr.bottom>40 && cr.top<window.innerHeight-40;   // you're still within THIS audio card's controls
               const off=shown && cardInView && r.bottom<4;                              // and the inline preview has scrolled ABOVE the viewport (you're down in the tuner)
               if(off){ if(peek.style.display!=='inline-flex'){ positionPeek(); peek.style.display='inline-flex'; } }   // dock the pill (preserve your Show/Hide choice while you stay in the tuner)
-              else { peek.style.display='none'; if(dup.style.display!=='none'){ dup.style.display='none'; peekBtn.textContent='Show'; } }   // back in view → hide pill + reset duplicate (idempotent → race-proof)
-              dupOn=peek.style.display!=='none' && dup.style.display!=='none';
+              else { peek.style.display='none'; if(dup.parentNode) hideDup(); }   // back in view → hide pill + remove the inline duplicate
+              dupOn=!!dup.parentNode && dup.offsetParent!==null;
             }
             const liveOn=ctxL && cvL.offsetParent!==null;
             if(liveOn || dupOn){
