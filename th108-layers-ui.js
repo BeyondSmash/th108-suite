@@ -306,7 +306,7 @@
           sec('Preview')+ full('<div style="display:flex;flex-direction:column;gap:9px;flex:1 1 100%">'+
             '<div><div style="display:flex;align-items:center;justify-content:center;gap:8px;margin-bottom:3px"><span class="val" style="opacity:.65">Sample — test signal</span><button type="button" class="s-samplePrevToggle">'+(s.samplePrevOff?'Show':'Hide')+'</button></div>'+
               '<canvas class="s-audioPrev" width="378" height="92" style="width:100%;height:auto;display:'+(s.samplePrevOff?'none':'block')+';background:#0d1117;border-radius:8px"></canvas></div>'+
-            '<div style="position:sticky;top:8px;z-index:3;background:var(--inset);border-radius:8px;padding:4px 0">'+   // sticky → the live preview stays in view while you scroll the Appearance/Tuning controls below
+            '<div class="s-liveWrap" style="background:var(--inset);border-radius:8px;padding:4px 0">'+   // scrolls with the controls; once it leaves the viewport the floating side-peek (built below) takes over
               '<div style="display:flex;align-items:center;justify-content:center;gap:8px;margin-bottom:3px"><span class="val" style="opacity:.65">Live — real audio</span><button type="button" class="s-livePrevToggle">'+(s.livePrevOff?'Show':'Hide')+'</button></div>'+
               '<canvas class="s-audioPrevLive" width="378" height="92" style="width:100%;height:auto;display:'+(s.livePrevOff?'none':'block')+';background:#0d1117;border-radius:8px"></canvas></div>'+
           '</div>');
@@ -432,12 +432,42 @@
               const o=k*3, x=(cell[0]-cell[2]/2)*W, y=(cell[1]-cell[3]/2)*H, w=cell[2]*W, h=cell[3]*H;
               ctx.fillStyle='rgb('+rgb[o]+','+rgb[o+1]+','+rgb[o+2]+')';
               ctx.fillRect(x+0.5,y+0.5,Math.max(1,w-1),Math.max(1,h-1)); } };
+          // Floating side-peek: when the inline Live preview scrolls out of view, a small pill docks to whichever
+          // side of the screen this card sits on. Clicking Show reveals a DUPLICATE live preview pinned near where
+          // you're working, so you can watch the keys without scrolling back up; scrolling the inline preview back
+          // into view auto-hides both. (Replaces the old position:sticky preview.)
+          const liveWrap=c('.s-liveWrap');
+          const peek=document.createElement('div');
+          peek.className='s-livePeek';
+          peek.style.cssText='position:fixed;z-index:60;display:none;width:196px;background:var(--inset);border:1px solid var(--border);border-radius:10px;padding:6px;box-shadow:0 8px 26px rgba(0,0,0,.32)';
+          peek.innerHTML='<div style="display:flex;align-items:center;justify-content:space-between;gap:6px;margin-bottom:4px"><span class="val" style="opacity:.65;font-size:11px">Live — real audio</span><button type="button" class="s-livePeekBtn" style="padding:2px 8px">Show</button></div>'+
+            '<canvas class="s-livePeekCv" width="'+W+'" height="'+H+'" style="width:100%;height:auto;display:none;background:#0d1117;border-radius:6px"></canvas>';
+          body.appendChild(peek);
+          const dupCv=peek.querySelector('.s-livePeekCv'), dupCtx=dupCv.getContext('2d'), peekBtn=peek.querySelector('.s-livePeekBtn');
+          const positionPeek=()=>{ const cr=card.getBoundingClientRect();   // dock to the side of the screen the card is on, near where you're looking
+            peek.style.top=Math.round(window.innerHeight*0.36)+'px';
+            if((cr.left+cr.width/2) < window.innerWidth/2){ peek.style.left='12px'; peek.style.right='auto'; } else { peek.style.right='12px'; peek.style.left='auto'; } };
+          peekBtn.addEventListener('click',()=>{ const on=dupCv.style.display==='none'; dupCv.style.display=on?'block':'none'; peekBtn.textContent=on?'Hide':'Show'; positionPeek(); });
           function frame(now){
-            if(!document.body.contains(cvL||cvS)) return;            // card rebuilt/removed → stop this loop
+            if(!document.body.contains(cvL||cvS)){ if(peek.parentNode) peek.parentNode.removeChild(peek); return; }   // card rebuilt/removed → stop this loop + clean the peek
             if(ctxS && cvS.offsetParent!==null && synth){ E.applyAudioFeatures(pState, synth.sample(now/1000), s, now); E.renderAudio(sampL, now, pState); paint(ctxS, sampL.rgb); }
-            if(ctxL && cvL.offsetParent!==null){
-              if(liveAudioActive()){ E.renderAudio(liveL, now, state); paint(ctxL, liveL.rgb); }   // real capture running → mirror the keys
-              else { liveL.rgb.fill(0); paint(ctxL, liveL.rgb); }                                   // nothing playing → blank (unlit) keys, NOT the synth
+            // peek visibility — show the pill only while the inline live preview is genuinely off-screen (and not hidden)
+            let dupOn=false;
+            if(liveWrap){
+              const shown=liveWrap.offsetParent!==null && !s.livePrevOff;   // card expanded/enabled AND the live preview isn't toggled off
+              const r=shown?liveWrap.getBoundingClientRect():null;
+              const cr=shown?card.getBoundingClientRect():null;
+              const cardInView=shown && cr.bottom>40 && cr.top<window.innerHeight-40;   // you're still within THIS audio card's controls
+              const off=shown && cardInView && r.bottom<4;                              // and the inline preview has scrolled ABOVE the viewport (you're down in the tuner)
+              if(off){ if(peek.style.display!=='block'){ positionPeek(); peek.style.display='block'; } }   // in the tuner, preview scrolled off → dock the pill (preserves your Show/Hide choice while you stay here)
+              else { peek.style.display='none'; if(dupCv.style.display!=='none'){ dupCv.style.display='none'; peekBtn.textContent='Show'; } }   // back in view → hide the pill AND reset the duplicate to collapsed (idempotent → race-proof)
+              dupOn=peek.style.display==='block' && dupCv.style.display==='block';
+            }
+            const liveOn=ctxL && cvL.offsetParent!==null;
+            if(liveOn || dupOn){
+              if(liveAudioActive()) E.renderAudio(liveL, now, state); else liveL.rgb.fill(0);   // real capture → mirror the keys; nothing playing → blank
+              if(liveOn) paint(ctxL, liveL.rgb);
+              if(dupOn) paint(dupCtx, liveL.rgb);                                                 // same frame mirrored into the floating duplicate
             }
             requestAnimationFrame(frame);
           }
