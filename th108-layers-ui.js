@@ -352,6 +352,7 @@
         }).join('');
         const ap=E.audioParams(s);   // tuner sliders are PER-STYLE (gain/floor/attack/decay/beatSens live in s.ap[style])
         html+=
+          '</div><div class="ctl s-tuningCtl">'+   // close the colors .ctl and open a separate Tuning .ctl so the shared Adjust block can sit BETWEEN them (under color editing, above Tuning)
           sec('Tuning')+
           row('Gain','<span class="srange" style="width:100%"><input type="range" class="s-gain" min="50" max="300" value="'+Math.round((ap.gain||1)*100)+'" title="Boost/cut input sensitivity before it drives the keys (this style only)"><i class="tick" style="left:calc(7px + (100% - 14px)*0.2)"></i></span><span class="val s-gainV"></span>')+
           row('Noise floor','<span class="srange" style="width:100%"><input type="range" class="s-floor" min="0" max="40" value="'+ap.floor+'" title="MIN level — gate out quiet hiss below this so idle keys stay dark (this style only)"><i class="tick" style="left:calc(7px + (100% - 14px)*0.125)"></i></span><span class="val s-floorV"></span>')+
@@ -451,10 +452,10 @@
           const dupCv=dup.querySelector('.s-livePeekCv'), dupCtx=dupCv.getContext('2d');
           // dock the pill to the OUTER edge of the compositor (the far edge of the empty column OPPOSITE the audio
           // card), not the column gap right next to the card. The audio card's column → the pill goes to the other side.
-          const positionPeek=()=>{ const gr=card.parentElement.getBoundingClientRect(), cr=card.getBoundingClientRect();
-            peek.style.top=Math.round(window.innerHeight*0.20)+'px'; peek.style.right='auto';
-            if((cr.left+cr.width/2) < (gr.left+gr.width/2)){ peek.style.left=Math.round(gr.right-10)+'px'; peek.style.transform='translateX(-100%)'; }   // audio LEFT col → pill at the grid's RIGHT outer edge
-            else { peek.style.left=Math.round(gr.left+10)+'px'; peek.style.transform='none'; } };                                                          // audio RIGHT col → pill at the grid's LEFT outer edge
+          const positionPeek=()=>{ const cr=card.getBoundingClientRect(), gap=12;   // hug the settings panel's OUTER edge on the side with more empty room, CLOSE to it (not the far compositor edge)
+            peek.style.top=Math.round(window.innerHeight*0.30)+'px'; peek.style.right='auto';
+            if(cr.left >= (window.innerWidth - cr.right)){ peek.style.left=Math.round(cr.left-gap)+'px'; peek.style.transform='translateX(-100%)'; }   // more room LEFT → hug the panel's left edge from just outside
+            else { peek.style.left=Math.round(cr.right+gap)+'px'; peek.style.transform='none'; } };                                                     // more room RIGHT → hug the panel's right edge
           // insert the duplicate INLINE right after the section header nearest the top of the view (what you're tuning)
           const showDup=()=>{ const aim=window.innerHeight*0.16; let best=null, bd=1e9;
             card.querySelectorAll('.lsec').forEach(sc=>{ const t=sc.getBoundingClientRect().top; if(Math.abs(t-aim)<bd){ bd=Math.abs(t-aim); best=sc; } });
@@ -534,7 +535,8 @@
           ctl('bri')+ctl('sat')+ctl('con')+ctl('gam')+(CFG.rot?ctl('rot'):'')+
           (showStatic?'<label>Static</label><label class="sl" style="margin:0"><input type="checkbox" class="a-frozen"'+(s.frozen?' checked':'')+'> Freeze Animation</label><span></span>':'')+
         '</div></div>';
-      body.appendChild(adj.firstChild);
+      const tuningCtl=body.querySelector('.s-tuningCtl');   // audio: drop Adjust between the colors and Tuning .ctl blocks; other layers: append at the end
+      if(tuningCtl) body.insertBefore(adj.firstChild, tuningCtl); else body.appendChild(adj.firstChild);
       Object.keys(CFG).forEach(key=>{ const c=CFG[key], min=c[1], max=c[2], dec=c[3], def=c[5], thr=Math.max(1,Math.round((max-min)*0.03));
         const rng=body.querySelector('.a-'+key), num=body.querySelector('.a-'+key+'N');
         const apply=raw=>{ raw=Math.max(min,Math.min(max,Math.round(raw||0))); s[key]=raw; rng.value=raw; return raw; };
