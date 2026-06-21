@@ -58,13 +58,15 @@
         const L=state.layers[n], card=document.createElement('div');
         card.className='lcard'+(L.enabled?'':' off')+(L.collapsed?' coll':''); card.dataset.n=n;
         const opt=(arr,sel)=>arr.map(v=>'<option'+(v===sel?' selected':'')+'>'+v+'</option>').join('');
+        const usedT=new Set(state.layers.filter(o=>o!==L).map(o=>o.type));   // one layer per type → grey out types already taken by another layer
+        const tOpt=TYPES.map(v=>'<option'+(v===L.type?' selected':'')+(usedT.has(v)?' disabled':'')+'>'+v+'</option>').join('');
         card.innerHTML=
           '<div class="lhead">'+
             '<span class="lgrip" title="drag to change layer level">⠿</span>'+   // drag handle for the page's pointer-based card-drag system (same lift/clone/breach-line as the Home cards)
             '<span class="llvl">Layer '+(n+1)+'</span>'+
             '<input type="checkbox" class="le"'+(L.enabled?' checked':'')+' title="enable layer">'+
             '<input type="text" class="ln" value="'+L.name.replace(/"/g,'&quot;')+'">'+
-            '<select class="lt">'+opt(TYPES,L.type)+'</select>'+
+            '<select class="lt">'+tOpt+'</select>'+
             '<span class="lfield">Opacity <input type="range" class="lo" min="0" max="100" value="'+Math.round(L.opacity*100)+'"><input type="number" class="numin lon" min="0" max="100" value="'+Math.round(L.opacity*100)+'"></span>'+
             '<select class="lbl">'+opt(BLENDS,L.blend)+'</select>'+
             '<span class="lfield">FPS <input type="range" class="lf" min="1" max="30" value="'+L.fps+'"><input type="number" class="numin lfn" min="1" max="30" value="'+L.fps+'"></span>'+
@@ -77,7 +79,9 @@
         lc.addEventListener('click',()=>{ L.collapsed=!L.collapsed; card.classList.toggle('coll',L.collapsed); lc.innerHTML=L.collapsed?CHEV_EXPAND:CHEV_COLLAPSE; saveLayers(); });
         card.querySelector('.le').addEventListener('change',e=>{ L.enabled=e.target.checked; card.classList.toggle('off',!L.enabled); });
         card.querySelector('.ln').addEventListener('input',e=>{ L.name=e.target.value; });
-        card.querySelector('.lt').addEventListener('change',e=>{ L.type=e.target.value; E.ensureSettings(L);
+        card.querySelector('.lt').addEventListener('change',e=>{
+          if(e.target.value!==L.type && state.layers.some(o=>o!==L && o.type===e.target.value)){ e.target.value=L.type; return; }   // one layer per type (guard in case a disabled option is forced)
+          L.type=e.target.value; E.ensureSettings(L);
           if(L.type==='individual' && L.blend!=='replace'){ L.blend='replace'; const bl=card.querySelector('.lbl'); if(bl) bl.value='replace'; }   // per-key paint defaults to the replace blend (black keys transparent)
           if(L.type==='audio'){ L.blend='add'; const bl=card.querySelector('.lbl'); if(bl) bl.value='add'; L.opacity=0.85; lo.value=85; lon.value=85; }   // audio visualizer = ADD so its keys have their OWN light (multiply has none → dimming the base dims the audio too, and the visualizer is invisible without a bright base). 'add' lets the keys pop and the Dim-while-active contrast actually work.
           buildLayerBody(card,L); });
@@ -300,9 +304,10 @@
           (s.source==='app' ? sub('Specific App')+full('<select class="s-appId" style="max-width:180px"></select><button type="button" class="s-appRefresh" title="rescan currently-playing apps" style="flex:none">Refresh</button><span class="val s-appNote" style="opacity:.7"></span>') : '')+
           sec('Style')+ '<div class="lfull" style="justify-content:center"><select class="s-style">'+sopt+'</select></div>'+   // no left label → center it under the header
           sec('Preview')+ full('<div style="display:flex;flex-direction:column;gap:9px;flex:1 1 100%">'+
-            '<div><div style="display:flex;align-items:center;gap:8px;margin-bottom:3px"><span class="val" style="opacity:.65">Sample — test signal</span><button type="button" class="s-samplePrevToggle">'+(s.samplePrevOff?'Show':'Hide')+'</button></div>'+
+            '<div><div style="display:flex;align-items:center;justify-content:center;gap:8px;margin-bottom:3px"><span class="val" style="opacity:.65">Sample — test signal</span><button type="button" class="s-samplePrevToggle">'+(s.samplePrevOff?'Show':'Hide')+'</button></div>'+
               '<canvas class="s-audioPrev" width="378" height="92" style="width:100%;height:auto;display:'+(s.samplePrevOff?'none':'block')+';background:#0d1117;border-radius:8px"></canvas></div>'+
-            '<div><div style="display:flex;align-items:center;gap:8px;margin-bottom:3px"><span class="val" style="opacity:.65">Live — real audio (blank when nothing’s playing)</span><button type="button" class="s-livePrevToggle">'+(s.livePrevOff?'Show':'Hide')+'</button></div>'+
+            '<div style="position:sticky;top:8px;z-index:3;background:var(--inset);border-radius:8px;padding:4px 0">'+   // sticky → the live preview stays in view while you scroll the Appearance/Tuning controls below
+              '<div style="display:flex;align-items:center;justify-content:center;gap:8px;margin-bottom:3px"><span class="val" style="opacity:.65">Live — real audio</span><button type="button" class="s-livePrevToggle">'+(s.livePrevOff?'Show':'Hide')+'</button></div>'+
               '<canvas class="s-audioPrevLive" width="378" height="92" style="width:100%;height:auto;display:'+(s.livePrevOff?'none':'block')+';background:#0d1117;border-radius:8px"></canvas></div>'+
           '</div>');
         if(style==='bars'||style==='pulse'||style==='bloom'||style==='wave') html+=sub('Appearance');   // abstract styles (plasma/aurora/sparkle/radial) auto-color → no per-style controls
