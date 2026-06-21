@@ -812,6 +812,15 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
           <span class="hint" id="npBarBrightLbl" style="margin:0;min-width:34px;font-weight:700">60%</span>
         </div>
         <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-top:10px">
+          <label class="hint" style="margin:0;display:flex;align-items:center;gap:6px">Style
+            <select id="npBarGrad" disabled title="how the lit bar is colored">
+              <option value="solid">Solid</option>
+              <option value="toWhite">Gradient → white</option>
+              <option value="fromWhite">White → color</option>
+            </select></label>
+          <label class="sl" style="margin:0;cursor:pointer"><input type="checkbox" id="npBarNumpad" disabled> Mirror onto the numpad (1-0)</label>
+        </div>
+        <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-top:10px">
           <label class="sl" style="margin:0;cursor:pointer"><input type="checkbox" id="npFlash" disabled> Flash keys 1-0 on track change</label>
           <label class="hint" style="margin:0;display:flex;align-items:center;gap:6px">Flash color <input type="color" id="npFlashColor" value="#ffd000" disabled title="the 150ms flash when the song changes"></label>
         </div>
@@ -1156,6 +1165,16 @@ requestAnimationFrame(audioFeedTick);
 // it ourselves from the daemon's media position so the toggle/color/brightness change live on-tab. -----
 const NP_DIGITS=['Digit1','Digit2','Digit3','Digit4','Digit5','Digit6','Digit7','Digit8','Digit9','Digit0']
   .map(c=>TH108Engine.INDICES.indexOf(TH108Engine.KEYMAP[c])).filter(k=>k>=0);
+const NP_NUMPAD=['Numpad1','Numpad2','Numpad3','Numpad4','Numpad5','Numpad6','Numpad7','Numpad8','Numpad9','Numpad0']
+  .map(c=>TH108Engine.INDICES.indexOf(TH108Engine.KEYMAP[c])).filter(k=>k>=0);
+// paint the first `lit` keys as a progress bar over `flat` (mirrors the daemon's paintBar exactly)
+function npPaintBar(flat,keys,lit,op,br,bg,bb,f,grad){
+  for(let i=0;i<lit && i<keys.length;i++){
+    let b=0; if(grad&&grad!=='solid'&&lit>1){ const p=i/(lit-1); b = grad==='fromWhite' ? 1-p : p; }
+    const r=(br+(255-br)*b)*f, g=(bg+(255-bg)*b)*f, bl=(bb+(255-bb)*b)*f, o=keys[i]*4;
+    flat[o+1]=(flat[o+1]*(1-op)+r)|0; flat[o+2]=(flat[o+2]*(1-op)+g)|0; flat[o+3]=(flat[o+3]*(1-op)+bl)|0;
+  }
+}
 let _npPos=null, _npPosAt=0;
 setInterval(async ()=>{
   const on=document.getElementById('npBar');
@@ -1171,9 +1190,11 @@ function applyNpBar(flat){
   if(op<=0) return;
   const [br,bg,bb]=TH108Engine.hexToRgb(((document.getElementById('npBarColor')||{}).value)||'#11ff00');
   const f=(Math.max(0,Math.min(100, +((document.getElementById('npBarBright')||{}).value)||60))/100)*op;   // bar ignores global brightness, like the daemon
+  const grad=((document.getElementById('npBarGrad')||{}).value)||'solid';
+  const numpad=!!((document.getElementById('npBarNumpad')||{}).checked);
   const lit=Math.round((ms.progress||0)*NP_DIGITS.length);
-  for(let i=0;i<lit && i<NP_DIGITS.length;i++){ const o=NP_DIGITS[i]*4;
-    flat[o+1]=(flat[o+1]*(1-op)+br*f)|0; flat[o+2]=(flat[o+2]*(1-op)+bg*f)|0; flat[o+3]=(flat[o+3]*(1-op)+bb*f)|0; }
+  npPaintBar(flat,NP_DIGITS,lit,op,br,bg,bb,f,grad);
+  if(numpad) npPaintBar(flat,NP_NUMPAD,lit,op,br,bg,bb,f,grad);
 }
 
 // ----- master loop (separate worker from the GIF's tickW) -----

@@ -197,6 +197,9 @@ window.TH108DaemonClient = (function () {
               if (fc) { fc.disabled = !on || !(fl && fl.checked); if ('npFlashColor' in s && document.activeElement !== fc) fc.value = s.npFlashColor; }
               const idle = document.getElementById('npBarIdle'), idleLbl = document.getElementById('npBarIdleLbl');
               if (idle) { idle.disabled = !on; if ('npBarIdleSec' in s && document.activeElement !== idle) idle.value = s.npBarIdleSec; if (idleLbl) idleLbl.textContent = (+idle.value) + 's'; }
+              const grad = document.getElementById('npBarGrad'), npd = document.getElementById('npBarNumpad');
+              if (grad) { grad.disabled = !on; if ('npBarGrad' in s && document.activeElement !== grad) grad.value = s.npBarGrad; }
+              if (npd) { npd.disabled = !on; if ('npBarNumpad' in s && document.activeElement !== npd) npd.checked = !!s.npBarNumpad; }
             }
             // Refresh-LCD debug button — only meaningful when LCD now-playing is on
             const rfb = document.getElementById('npRefreshLcd');
@@ -312,6 +315,9 @@ window.TH108DaemonClient = (function () {
       }
       if (npFlashEl) npFlashEl.addEventListener('change', () => postBar({ flash: npFlashEl.checked }, '♪ track-change flash ' + (npFlashEl.checked ? 'on' : 'off')));
       if (npFlashColorEl) npFlashColorEl.addEventListener('change', () => postBar({ flashColor: npFlashColorEl.value }, '♪ track-change flash color → ' + npFlashColorEl.value));
+      const npGradEl = document.getElementById('npBarGrad'), npNumpadEl = document.getElementById('npBarNumpad');
+      if (npGradEl) npGradEl.addEventListener('change', () => postBar({ grad: npGradEl.value }, '♪ progress-bar style → ' + npGradEl.options[npGradEl.selectedIndex].text));
+      if (npNumpadEl) npNumpadEl.addEventListener('change', () => postBar({ numpad: npNumpadEl.checked }, '♪ progress-bar ' + (npNumpadEl.checked ? 'also mirrors onto the numpad' : 'numpad mirror off')));
       const npIdleEl = document.getElementById('npBarIdle'), npIdleLblEl = document.getElementById('npBarIdleLbl');
       if (npIdleEl) {
         npIdleEl.addEventListener('input', () => { if (npIdleLblEl) npIdleLblEl.textContent = (+npIdleEl.value) + 's'; });
