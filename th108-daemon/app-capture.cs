@@ -158,14 +158,18 @@ class AppCapture {
     client.Start();
   }
 
-  static int Read(float[] outBuf) {
+  // Drain all queued packets into mono + per-channel (left/right) buffers; returns the count written.
+  // left/right feed the 'stereo' bars layout; a mono source mirrors L into R (so it isn't half-dark).
+  static int Read(float[] mono, float[] left, float[] right) {
     int n = 0; uint avail; capture.GetNextPacketSize(out avail);
-    while (avail > 0 && n < outBuf.Length) {
+    while (avail > 0 && n < mono.Length) {
       IntPtr data; uint frames, flags; long dp, qp; capture.GetBuffer(out data, out frames, out flags, out dp, out qp);
       if (frames > 0) { bool silent = (flags & 0x2) != 0;
-        for (uint f = 0; f < frames && n < outBuf.Length; f++) { float s = 0f;
-          if (!silent && data != IntPtr.Zero) { for (int ch=0; ch<channels; ch++) s += (float)Marshal.PtrToStructure(data + (int)((f*channels+ch)*4), typeof(float)); s /= channels; }
-          outBuf[n++] = s; } }
+        for (uint f = 0; f < frames && n < mono.Length; f++) { float s = 0f, l = 0f, r = 0f;
+          if (!silent && data != IntPtr.Zero) {
+            for (int ch=0; ch<channels; ch++) { float v = (float)Marshal.PtrToStructure(data + (int)((f*channels+ch)*4), typeof(float)); s += v; if (ch==0) l = v; if (ch==1) r = v; }
+            s /= channels; if (channels < 2) r = l; }
+          mono[n] = s; left[n] = l; right[n] = r; n++; } }
       capture.ReleaseBuffer(frames); capture.GetNextPacketSize(out avail);
     }
     return n;
@@ -174,7 +178,7 @@ class AppCapture {
   // ---------- analysis (mirrors audio-sidecar.ps1 so app/system/tab look identical) ----------
   const int N = 2048;   // FFT window must stay > the sample hop so windows overlap (no gap impulses fall into); matches audio-sidecar.ps1
   static float[] win = new float[N], re = new float[N], im = new float[N], prevMag = new float[N/2];
-  static bool winInit = false; static float peakLvl = 1e-4f, avgFlux = 1e-6f, bandPeak = 1e-4f;
+  static bool winInit = false; static float peakLvl = 1e-4f, avgFlux = 1e-6f, bandPeak = 1e-4f, bandPeak2 = 1e-4f;
   const double BAND_DB_RANGE = 55.0;   // how many dB below the running spectrum peak maps to 0 (tune: smaller = fuller bars). Mirror in audio-sidecar.ps1.
   static void InitWin() { for (int i=0;i<N;i++) win[i]=(float)(0.5-0.5*Math.Cos(2*Math.PI*i/(N-1))); winInit=true; }
   static void FFT() {
@@ -210,6 +214,26 @@ class AppCapture {
     lbc[1]=(float)Math.Max(0, Math.Min(1.0, onset));
     lbc[2]=(float)(centDen>0 ? Math.Min(1.0,(centNum/centDen)/half*2.0) : 0.5);
     return true;
+  }
+
+  // Bands-only FFT for one channel (left/right) — no flux/peak/centroid state so it can't disturb Features().
+  // Reuses re[]/im[]/win[] scratch (calls are sequential, single-threaded; run AFTER Features consumes them).
+  // bandPeak2 is SHARED across the L and R calls each frame, so the louder channel sets the reference and the
+  // L/R balance is preserved (a quiet channel reads quieter) while both stay volume-independent. Mirrors audio-sidecar.ps1.
+  static void Bands(float[] buf, int count, float[] bands) {
+    if (count < N) { for (int b=0;b<32;b++) bands[b]=0; return; }
+    if (!winInit) InitWin();
+    int start = count - N;
+    for (int i=0;i<N;i++){ float s=buf[start+i]; re[i]=s*win[i]; im[i]=0; }
+    FFT(); int half=N/2;
+    double minLog=Math.Log(1), maxLog=Math.Log(half);
+    double frameMax=1e-9; double[] bn=new double[32];
+    for (int b=0;b<32;b++){ int lo=(int)Math.Exp(minLog+(maxLog-minLog)*b/32.0); int hi=(int)Math.Exp(minLog+(maxLog-minLog)*(b+1)/32.0);
+      if(hi<=lo) hi=lo+1; if(hi>half) hi=half; double sum=0; for(int i=lo;i<hi;i++){ float m=(float)Math.Sqrt(re[i]*re[i]+im[i]*im[i]); sum+=m; }
+      double avg=sum/(hi-lo); double magNorm=avg/(N*0.5); bn[b]=magNorm; if(magNorm>frameMax) frameMax=magNorm; }
+    bandPeak2=Math.Max((float)frameMax, bandPeak2*0.9995f);   // *0.9995 (vs .999): called twice/frame for L+R, so halve the per-call decay
+    for (int b=0;b<32;b++){ double dbRel=20.0*Math.Log10(bn[b]/bandPeak2 + 1e-9); double nb=(dbRel+BAND_DB_RANGE)/BAND_DB_RANGE;
+      bands[b]=(float)Math.Min(1.0, Math.Max(0.0, nb)); }
   }
 
   // ---------- audio-session enumeration (--list and name→PID resolution) ----------
@@ -272,16 +296,26 @@ class AppCapture {
         if (++waited == 1) Console.Error.WriteLine("app-capture: waiting for an audio session named '" + args[0] + "'"); }
     }
     try { Open(pid); } catch (Exception e) { Console.Error.WriteLine("app-capture: " + e.Message); return 2; }
-    var mono = new float[N*4]; var bands = new float[32]; var lbc = new float[3]; var chunk = new float[8192];
+    var mono = new float[N*4]; var left = new float[N*4]; var right = new float[N*4];
+    var bands = new float[32]; var bandsL = new float[32]; var bandsR = new float[32];
+    var lbc = new float[3]; var chunk = new float[8192]; var chunkL = new float[8192]; var chunkR = new float[8192];
     int countF = 0;
     while (true) {
       WaitForSingleObject(hEvent, 100);
-      int n = Read(chunk);
-      if (n > 0) { if (countF + n > mono.Length) { int keep = mono.Length - n; Array.Copy(mono, countF-keep, mono, 0, keep); countF = keep; } Array.Copy(chunk, 0, mono, countF, n); countF += n; }
+      int n = Read(chunk, chunkL, chunkR);
+      if (n > 0) { if (countF + n > mono.Length) { int keep = mono.Length - n;
+          Array.Copy(mono, countF-keep, mono, 0, keep); Array.Copy(left, countF-keep, left, 0, keep); Array.Copy(right, countF-keep, right, 0, keep); countF = keep; }
+        Array.Copy(chunk, 0, mono, countF, n); Array.Copy(chunkL, 0, left, countF, n); Array.Copy(chunkR, 0, right, countF, n); countF += n; }
       else countF = 0;
       sb.Length = 0; sb.Append("{\"bands\":[");
       if (Features(mono, countF, bands, lbc)) { for (int i=0;i<32;i++){ if(i>0)sb.Append(','); sb.Append(Math.Round(bands[i],4).ToString(ci)); }
-        sb.Append("],\"level\":").Append(Math.Round(lbc[0],4).ToString(ci)).Append(",\"beat\":").Append(Math.Round(lbc[1],4).ToString(ci)).Append(",\"centroid\":").Append(Math.Round(lbc[2],4).ToString(ci)); }
+        sb.Append(']');
+        // per-channel bands are best-effort: a failure here must never kill the sidecar (host falls back to mono → symmetric)
+        bool haveStereo = false; try { Bands(left, countF, bandsL); Bands(right, countF, bandsR); haveStereo = true; } catch { haveStereo = false; }
+        if (haveStereo) {
+          sb.Append(",\"bandsL\":["); for (int i=0;i<32;i++){ if(i>0)sb.Append(','); sb.Append(Math.Round(bandsL[i],4).ToString(ci)); }
+          sb.Append("],\"bandsR\":["); for (int i=0;i<32;i++){ if(i>0)sb.Append(','); sb.Append(Math.Round(bandsR[i],4).ToString(ci)); } sb.Append(']'); }
+        sb.Append(",\"level\":").Append(Math.Round(lbc[0],4).ToString(ci)).Append(",\"beat\":").Append(Math.Round(lbc[1],4).ToString(ci)).Append(",\"centroid\":").Append(Math.Round(lbc[2],4).ToString(ci)); }
       else { for (int i=0;i<32;i++){ if(i>0)sb.Append(','); sb.Append('0'); } sb.Append("],\"level\":0,\"beat\":0,\"centroid\":0.5"); }
       sb.Append(",\"t\":").Append(Math.Round(sw.Elapsed.TotalMilliseconds,1).ToString(ci)).Append('}');
       Console.Out.WriteLine(sb.ToString()); Console.Out.Flush();
