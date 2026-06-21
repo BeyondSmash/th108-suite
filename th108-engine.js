@@ -92,22 +92,23 @@
     const shape = (v)=>{ v=(v-lo)/(hi-lo); v=v<=0?0:(v>=1?1:v); return gamma!==1 ? Math.pow(v,gamma) : v; };
     const TARGET = 1.0;                                           // the recent loud peak maps to the TOP (true highs hit the ceiling, like the manual-gain workflow); typical passages fall below → mid
     // Peak follower: rises instantly, falls SLOWLY (~10s) to hold the chorus peak so verses sit lower (dynamics).
-    // BUT when the input sits sustained-low (>1s below 30% of the held peak) — a Spotify VOLUME turn-down, not a
-    // musical dip — collapse the peak FAST (~1.5s) so absolute volume drops back out within a couple seconds.
-    // This is what makes Auto-gain volume-independent quickly instead of lagging ~10-30s. (Quick musical dips
-    // never reach 1s sustained, so the slow hold — and the dynamics — are preserved.)
-    const SLOW = Math.exp(-dt/10000), FAST = Math.exp(-dt/1000);   // hold ~10s for dynamics; collapse ~1s once a volume turn-down is confirmed
+    // BUT volume-independence needs it to re-normalize fast when you change Spotify's volume. Detect that with a
+    // SMOOTHED level (sm, ~0.8s) — robust to per-beat jitter, unlike the instantaneous level which bounces and
+    // kept resetting the old detector. When the smoothed level sits well below the held peak (a turn-down or a
+    // sustained-quiet section, not a beat gap), collapse the peak FAST toward the RECENT peak (rp) — so absolute
+    // volume drops out in ~1-2s while real musical dynamics (frequent peaks hold the peak up) are preserved.
+    const SLOW = Math.exp(-dt/10000), FAST = Math.exp(-dt/1000), RP = Math.exp(-dt/1500);
+    const sm = (cur, x)=> cur==null ? x : cur + (x-cur)*(1 - Math.exp(-dt/800));
     { let fm = 0; const _rb0 = raw.bands; if(_rb0) for(let i=0;i<32;i++){ const v=_rb0[i]||0; if(v>fm) fm=v; }
       const lm = raw.level||0;
       if(A._gpk == null) A._gpk = 0.12;
       if(A._lpk == null) A._lpk = 0.12;
-      // Re-normalize LATCH per peak: once the input has sat <40% of the held peak for >1s (a volume turn-down,
-      // not a brief musical dip), collapse the peak FAST until it MEETS the new input level, then resume the slow
-      // hold. Latching past the (shrinking) threshold is what lets it fully re-normalize instead of stalling.
-      if(A._reG){ A._gpk = Math.max(fm, A._gpk*FAST); if(A._gpk <= fm*1.2 + 0.01) A._reG = false; }
-      else { A._gLoMs = (fm < 0.4*A._gpk) ? (A._gLoMs||0)+dt : 0; if(A._gLoMs>1000){ A._reG=true; A._gLoMs=0; } A._gpk = Math.max(fm, A._gpk*SLOW); }
-      if(A._reL){ A._lpk = Math.max(lm, A._lpk*FAST); if(A._lpk <= lm*1.2 + 0.01) A._reL = false; }
-      else { A._lLoMs = (lm < 0.4*A._lpk) ? (A._lLoMs||0)+dt : 0; if(A._lLoMs>1000){ A._reL=true; A._lLoMs=0; } A._lpk = Math.max(lm, A._lpk*SLOW); } }
+      A._sL = sm(A._sL, lm); A._rL = Math.max(lm, (A._rL==null?lm:A._rL)*RP);   // smoothed level + recent peak
+      A._sG = sm(A._sG, fm); A._rG = Math.max(fm, (A._rG==null?fm:A._rG)*RP);
+      if(A._reL || A._sL < 0.35*A._lpk){ A._reL = true; A._lpk = Math.max(lm, A._lpk*FAST); if(A._lpk <= A._rL*1.3 + 0.01) A._reL = false; }
+      else A._lpk = Math.max(lm, A._lpk*SLOW);
+      if(A._reG || A._sG < 0.35*A._gpk){ A._reG = true; A._gpk = Math.max(fm, A._gpk*FAST); if(A._gpk <= A._rG*1.3 + 0.01) A._reG = false; }
+      else A._gpk = Math.max(fm, A._gpk*SLOW); }
     const agB = agc ? TARGET/Math.max(A._gpk, 0.05) : 1;          // 0.05 floor → near-silence noise isn't slammed to full
     const agL = agc ? TARGET/Math.max(A._lpk, 0.05) : 1;
     // Gain multiplies in BOTH modes. With AGC on it's a VOLUME-INDEPENDENT bias (v/peak·gain — the peak scales
