@@ -134,6 +134,15 @@
     // decay ate the bar before pause-decay could engage (the slider barely mattered). Engaging when the input
     // drops below a fraction of its recent peak starts the slow settle while the bar still has height.
     const silent = (liveLvl * gain < 0.02) || (liveLvl < 0.42 * (A._lpk || 0.2));   // relative pause gate — capped ~0.42; higher treats normal sub-peak playback as silent (breaks shaping, see contrast test)
+    // TWINKLE pause style: on sustained silence, FREEZE the last rendered frame and let renderAudio sparkle the
+    // keys out one-by-one (handled per-LED there). Skip the band/level decay entirely so the frame holds; resume
+    // is instant (A.bands are still at their last live values). _twkSeq bumps once per pause so the renderer rolls
+    // a fresh per-key death schedule. Default style ('linear') falls through to the graceful settle below.
+    if(silent && s.pauseStyle==='twinkle'){
+      if(!A._twk){ A._twk=true; A._twkT0=now; A._twkSeq=(A._twkSeq||0)+1; }
+      return;
+    }
+    A._twk=false;
     // PAUSE = a LINEAR glide to 0, not the exponential audioEnvelope. A one-pole decay drops fast then has a long
     // tail, so the tall (upper) rows cleared in ~1s while the base row rode the tail for the rest — looked like
     // "pause-decay only affects the bottom row". Linear = constant descent: every row turns off evenly and the
@@ -343,6 +352,7 @@
 
   function renderAudio(L, now, state){
     const s = L.settings, out = L.rgb, A = state.audio;
+    if(s.pauseStyle==='twinkle' && A._twk){ renderTwinkleOut(L, out, A, now, s); L._carve=null; return; }   // paused: sparkle the frozen frame out
     out.fill(0);
     L._carve = null;                          // only bars 'subtract' fill sets a carve mask (cleared each frame)
     const style = s.style || 'bars';
@@ -355,6 +365,35 @@
     else if(style==='sparkle') renderSparkle(s, out, A, now);
     else if(style==='radial') renderRadial(s, out, A, now);
     else renderBars(s, out, A, now, L);
+    (L._frozen || (L._frozen = new Float32Array(NLED*3))).set(out);   // roll the last live (pre-adjust) frame so a twinkle pause can freeze on it
+  }
+
+  // Twinkle pause-out: freeze the last live frame (L._frozen) and sparkle each LIT key out individually over
+  // pauseDecayMs — a brief brighten ("twinkle") then fade, staggered by a per-key random start. Keys that were
+  // dark stay dark. When all keys are out the layer emits nothing (composited away → board dark). Style-agnostic:
+  // it works on the rendered RGB, so it freezes bars/pulse/plasma/etc. identically.
+  function renderTwinkleOut(L, out, A, now, s){
+    const fr = L._frozen;
+    if(!fr){ out.fill(0); return; }
+    if(L._twkSeq !== A._twkSeq){                          // new pause → roll a fresh per-key death schedule
+      L._twkSeq = A._twkSeq;
+      const r = L._twkR || (L._twkR = new Float32Array(NLED));
+      for(let k=0;k<NLED;k++) r[k]=Math.random();
+    }
+    const dur = Math.max(200, s.pauseDecayMs==null?700:s.pauseDecayMs);   // reuse Pause decay = total twinkle-out time
+    const elapsed = now - (A._twkT0||now);
+    if(elapsed >= dur){ out.fill(0); return; }            // fully dissipated → board dark
+    const STAGGER = 0.6, TWK = 0.4, R = L._twkR;          // deaths spread over the first 60% of dur; each key fades over 40%
+    for(let k=0;k<NLED;k++){
+      const o=k*3, r0=fr[o], g0=fr[o+1], b0=fr[o+2];
+      if(r0<=0 && g0<=0 && b0<=0){ out[o]=out[o+1]=out[o+2]=0; continue; }   // was dark → stays dark
+      const p = (elapsed - R[k]*dur*STAGGER)/(dur*TWK);
+      if(p<=0){ out[o]=r0; out[o+1]=g0; out[o+2]=b0; continue; }             // still frozen at full (steady, no shimmer)
+      if(p>=1){ out[o]=out[o+1]=out[o+2]=0; continue; }                      // gone
+      const bump = p<0.25 ? 1+(p/0.25)*0.9 : 1.9*(1-(p-0.25)/0.75);          // quick sparkle to ~1.9×, then fade to 0
+      const m = bump*(0.7+0.3*Math.sin(now*0.045 + k*1.7));                  // fast per-key shimmer = the twinkle
+      out[o]=r0*m; out[o+1]=g0*m; out[o+2]=b0*m;
+    }
   }
 
   // ===== abstract / WMP-style visualizers (auto-colored from the spectrum; all fade to dark on silence) =====
@@ -804,7 +843,7 @@
       Object.keys(pd).forEach(k=>{ if(s[k]===undefined)s[k]=pd[k]; }); }
     else if(L.type==='individual'){ if(!L.settings.keys || typeof L.settings.keys!=='object') L.settings.keys={}; if(L.settings.current===undefined) L.settings.current='#ff8c00'; if(L.settings.fill===undefined) L.settings.fill='solid'; }
     else if(L.type==='audio'){
-      const ad={ style:'bars', source:'system', appId:'', deviceId:'',
+      const ad={ style:'bars', source:'system', appId:'', deviceId:'', pauseStyle:'linear',
         gain:1, floor:5, attackMs:40, decayMs:220, beatSens:50,
         barColorBass:'#ff2200', barColorTreble:'#22aaff', barTip:'off', barTipColor:'#ffffff', barFill:'solid',
         barColor:'bassTreble', barGradA:'#00ff66', barGradB:'#ff00aa', barLayout:'standard', barDrive:'spectrum', barSpread:false,
