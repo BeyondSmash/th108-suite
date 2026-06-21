@@ -87,6 +87,8 @@ public static class Cap {
   static float[] prevMag = new float[N/2];   // for spectral-flux onset
   static float peakLvl = 1e-4f;              // slow-decaying loudness peak → auto-gain (volume-independent level)
   static float avgFlux = 1e-6f;              // moving average of bass flux → onset/beat threshold
+  static float bandPeak = 1e-4f, bandPeak2 = 1e-4f;   // running spectrum peaks (mono / L+R) → bands are dB RELATIVE to these = volume-independent
+  const double BAND_DB_RANGE = 55.0;         // dB below the running spectrum peak that maps to 0 (mirror app-capture.cs)
   static bool winInit = false;
   static void InitWin() { for (int i=0;i<N;i++) win[i]=(float)(0.5-0.5*Math.Cos(2*Math.PI*i/(N-1))); winInit=true; }
 
@@ -123,20 +125,20 @@ public static class Cap {
       float d=m-prevMag[i]; if(d>0 && i<bassBins) bassFlux+=d; prevMag[i]=m;   // positive bass flux = onset energy
     }
     double minLog=Math.Log(1), maxLog=Math.Log(half);
+    // bands = per-band magnitude in dB RELATIVE to a running spectrum peak → VOLUME-INDEPENDENT (mirrors how outLBC[0] uses peakLvl).
+    // Old absolute-dB ((dbv+100)/70 *1.6) pegged loud bands at high volume and collapsed the shape at low volume — that was the leak.
+    double frameMax=1e-9; double[] bn=new double[32];
     for (int b=0;b<32;b++){
       int lo=(int)Math.Exp(minLog+(maxLog-minLog)*b/32.0);
       int hi=(int)Math.Exp(minLog+(maxLog-minLog)*(b+1)/32.0);
       if(hi<=lo) hi=lo+1; if(hi>half) hi=half;
       double sum=0; for(int i=lo;i<hi;i++) sum+=mag[i];
       double avg=sum/(hi-lo);
-      // Match the page's Web Audio AnalyserNode (getByteFrequencyData) scaling so daemon and tab look
-      // the SAME: normalize the un-normalized FFT magnitude, then map dB [-100,-30] → 0..1 (×1.6 like the
-      // webcapture). Previously this used a raw log-compress on un-normalized magnitudes → bars ran hot/tall.
-      double magNorm = avg/(N*0.5);
-      double dbv = 20.0*Math.Log10(magNorm + 1e-9);
-      double nb = (dbv + 100.0)/70.0;
-      bands[b]=(float)Math.Min(1.0, Math.Max(0.0, nb)*1.6);
+      double magNorm = avg/(N*0.5); bn[b]=magNorm; if(magNorm>frameMax) frameMax=magNorm;
     }
+    bandPeak=Math.Max((float)frameMax, bandPeak*0.999f);   // running spectrum peak: the dB reference tracks volume, so band shape stays put
+    for (int b=0;b<32;b++){ double dbRel=20.0*Math.Log10(bn[b]/bandPeak + 1e-9); double nb=(dbRel+BAND_DB_RANGE)/BAND_DB_RANGE;
+      bands[b]=(float)Math.Min(1.0, Math.Max(0.0, nb)); }
     double inst=Math.Max(Math.Sqrt(rms/N), pk*0.6);                  // RMS = body, PEAK = transients (so a metronome click reads its true loudness, not averaged down by the ~46ms window)
     peakLvl = Math.Max((float)inst, peakLvl*0.999f);                 // auto-gain: track the loudest recent level (slow decay)
     outLBC[0]=(float)Math.Min(1.0, inst/Math.Max(peakLvl,1e-4));     // level normalized to that peak → full 0..1 at any volume
@@ -157,17 +159,20 @@ public static class Cap {
     FFT();
     int half=N/2;
     double minLog=Math.Log(1), maxLog=Math.Log(half);
+    // per-channel (L/R) bands, same volume-independent dB-relative-to-running-peak mapping as Features().
+    // bandPeak2 is SHARED across the L and R calls each frame, so the louder channel sets the reference and the
+    // L/R balance is preserved (a quiet channel reads quieter) while both stay volume-independent.
+    double frameMax=1e-9; double[] bn=new double[32];
     for (int b=0;b<32;b++){
       int lo=(int)Math.Exp(minLog+(maxLog-minLog)*b/32.0);
       int hi=(int)Math.Exp(minLog+(maxLog-minLog)*(b+1)/32.0);
       if(hi<=lo) hi=lo+1; if(hi>half) hi=half;
       double sum=0; for(int i=lo;i<hi;i++){ float m=(float)Math.Sqrt(re[i]*re[i]+im[i]*im[i]); sum+=m; }
-      double avg=sum/(hi-lo);
-      double magNorm=avg/(N*0.5);
-      double dbv=20.0*Math.Log10(magNorm+1e-9);
-      double nb=(dbv+100.0)/70.0;
-      bands[b]=(float)Math.Min(1.0, Math.Max(0.0, nb)*1.6);
+      double avg=sum/(hi-lo); double magNorm=avg/(N*0.5); bn[b]=magNorm; if(magNorm>frameMax) frameMax=magNorm;
     }
+    bandPeak2=Math.Max((float)frameMax, bandPeak2*0.9995f);   // *0.9995 (vs .999): called twice/frame for L+R, so halve the per-call decay
+    for (int b=0;b<32;b++){ double dbRel=20.0*Math.Log10(bn[b]/bandPeak2 + 1e-9); double nb=(dbRel+BAND_DB_RANGE)/BAND_DB_RANGE;
+      bands[b]=(float)Math.Min(1.0, Math.Max(0.0, nb)); }
   }
 }
 "@

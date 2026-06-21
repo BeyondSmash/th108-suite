@@ -420,6 +420,8 @@
     const midRow = (GH-1)/2, halfH = GH/2;
     // Spread uses the RAW (pre-AGC) spectrum so columns actually differ; normalize to the loudest band this
     // frame so the shape spans the full range (AGC'd bands all ride ~1 → no shape → "feature does nothing").
+    // NOTE: true volume-independence of the spread depends on the CAPTURE emitting peak-normalized bands
+    // (app-capture.cs / audio-sidecar.ps1) — absolute-dB bands saturate at high volume and can't be fixed here.
     const useSpread = spread && drive!=='spectrum' && A.bandsRaw;
     let maxRaw = 0.05; if(useSpread){ for(let i=0;i<32;i++) if(A.bandsRaw[i]>maxRaw) maxRaw=A.bandsRaw[i]; }
     let cb = null, any = false;

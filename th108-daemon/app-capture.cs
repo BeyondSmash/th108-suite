@@ -174,7 +174,8 @@ class AppCapture {
   // ---------- analysis (mirrors audio-sidecar.ps1 so app/system/tab look identical) ----------
   const int N = 2048;   // FFT window must stay > the sample hop so windows overlap (no gap impulses fall into); matches audio-sidecar.ps1
   static float[] win = new float[N], re = new float[N], im = new float[N], prevMag = new float[N/2];
-  static bool winInit = false; static float peakLvl = 1e-4f, avgFlux = 1e-6f;
+  static bool winInit = false; static float peakLvl = 1e-4f, avgFlux = 1e-6f, bandPeak = 1e-4f;
+  const double BAND_DB_RANGE = 55.0;   // how many dB below the running spectrum peak maps to 0 (tune: smaller = fuller bars). Mirror in audio-sidecar.ps1.
   static void InitWin() { for (int i=0;i<N;i++) win[i]=(float)(0.5-0.5*Math.Cos(2*Math.PI*i/(N-1))); winInit=true; }
   static void FFT() {
     int n=N, j=0;
@@ -194,10 +195,15 @@ class AppCapture {
     for (int i=0;i<half;i++){ float m=(float)Math.Sqrt(re[i]*re[i]+im[i]*im[i]); mag[i]=m;
       centNum += (double)i*m; centDen += m; float d=m-prevMag[i]; if(d>0 && i<bassBins) bassFlux+=d; prevMag[i]=m; }
     double minLog=Math.Log(1), maxLog=Math.Log(half);
+    // bands = per-band magnitude in dB RELATIVE to a running spectrum peak → VOLUME-INDEPENDENT (mirrors how lbc[0] uses peakLvl).
+    // Absolute dB (old: (dbv+100)/70 *1.6) pegged loud bands at high volume and collapsed the shape at low volume — that was the leak.
+    double frameMax=1e-9; double[] bn=new double[32];
     for (int b=0;b<32;b++){ int lo=(int)Math.Exp(minLog+(maxLog-minLog)*b/32.0); int hi=(int)Math.Exp(minLog+(maxLog-minLog)*(b+1)/32.0);
       if(hi<=lo) hi=lo+1; if(hi>half) hi=half; double sum=0; for(int i=lo;i<hi;i++) sum+=mag[i]; double avg=sum/(hi-lo);
-      double magNorm=avg/(N*0.5); double dbv=20.0*Math.Log10(magNorm+1e-9); double nb=(dbv+100.0)/70.0;
-      bands[b]=(float)Math.Min(1.0, Math.Max(0.0,nb)*1.6); }
+      double magNorm=avg/(N*0.5); bn[b]=magNorm; if(magNorm>frameMax) frameMax=magNorm; }
+    bandPeak=Math.Max((float)frameMax, bandPeak*0.999f);   // running spectrum peak: the dB reference tracks volume, so band shape stays put
+    for (int b=0;b<32;b++){ double dbRel=20.0*Math.Log10(bn[b]/bandPeak + 1e-9); double nb=(dbRel+BAND_DB_RANGE)/BAND_DB_RANGE;
+      bands[b]=(float)Math.Min(1.0, Math.Max(0.0,nb)); }
     double inst=Math.Max(Math.Sqrt(rms/N), pk*0.6); peakLvl=Math.Max((float)inst, peakLvl*0.999f);   // RMS=body, PEAK=transients
     lbc[0]=(float)Math.Min(1.0, inst/Math.Max(peakLvl,1e-4));
     avgFlux=avgFlux*0.93f+(float)bassFlux*0.07f; double onset=(bassFlux-avgFlux*1.4)/(avgFlux+1e-4);
