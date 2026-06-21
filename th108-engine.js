@@ -384,7 +384,8 @@
       const r = L._twkR || (L._twkR = new Float32Array(NLED));
       for(let k=0;k<NLED;k++) r[k]=Math.random();
     }
-    const dur = Math.max(200, s.pauseDecayMs==null?700:s.pauseDecayMs);   // reuse Pause decay = total twinkle-out time
+    const apd = audioParams(s).pauseDecayMs;                              // PER-STYLE (same source the Pause-decay slider writes) — NOT s.pauseDecayMs (always undefined → wrongly 700ms)
+    const dur = Math.max(200, apd==null?700:apd);                         // reuse Pause decay = total twinkle-out time
     const elapsed = now - (A._twkT0||now);
     if(elapsed >= dur){ out.fill(0); return; }            // fully dissipated → board dark
     // Deaths spread across the FULL window (each key starts over the first 75%, then fades over the last 25%)
