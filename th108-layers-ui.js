@@ -437,19 +437,32 @@
           // you're working, so you can watch the keys without scrolling back up; scrolling the inline preview back
           // into view auto-hides both. (Replaces the old position:sticky preview.)
           const liveWrap=c('.s-liveWrap');
-          const peek=document.createElement('div');
+          const peek=document.createElement('div');   // the PILL = label + Show/Hide only; content-sized → symmetric padding
           peek.className='s-livePeek';
-          peek.style.cssText='position:fixed;z-index:60;display:none;width:196px;background:var(--inset);border:1px solid var(--border);border-radius:10px;padding:6px;box-shadow:0 8px 26px rgba(0,0,0,.32)';
-          peek.innerHTML='<div style="display:flex;align-items:center;justify-content:space-between;gap:6px;margin-bottom:4px"><span class="val" style="opacity:.65;font-size:11px">Live — real audio</span><button type="button" class="s-livePeekBtn" style="padding:2px 8px">Show</button></div>'+
-            '<canvas class="s-livePeekCv" width="'+W+'" height="'+H+'" style="width:100%;height:auto;display:none;background:#0d1117;border-radius:6px"></canvas>';
-          body.appendChild(peek);
-          const dupCv=peek.querySelector('.s-livePeekCv'), dupCtx=dupCv.getContext('2d'), peekBtn=peek.querySelector('.s-livePeekBtn');
-          const positionPeek=()=>{ const cr=card.getBoundingClientRect();   // dock to the side of the screen the card is on, near where you're looking
-            peek.style.top=Math.round(window.innerHeight*0.36)+'px';
-            if((cr.left+cr.width/2) < window.innerWidth/2){ peek.style.left='12px'; peek.style.right='auto'; } else { peek.style.right='12px'; peek.style.left='auto'; } };
-          peekBtn.addEventListener('click',()=>{ const on=dupCv.style.display==='none'; dupCv.style.display=on?'block':'none'; peekBtn.textContent=on?'Hide':'Show'; positionPeek(); });
+          peek.style.cssText='position:fixed;z-index:60;display:none;align-items:center;gap:10px;background:var(--inset);border:1px solid var(--border);border-radius:10px;padding:7px 12px;box-shadow:0 8px 26px rgba(0,0,0,.32)';   // display toggles none↔inline-flex (inline-flex shrinks to content → symmetric padding)
+          peek.innerHTML='<span class="val" style="opacity:.65;font-size:11px;white-space:nowrap">Live — real audio</span><button type="button" class="s-livePeekBtn" style="margin:0;padding:2px 9px">Show</button>';   // margin:0 overrides the global button margin-right (else the right gap is bigger than the left)
+          const dup=document.createElement('div');     // the DUPLICATE preview, dropped INLINE over the settings column on Show
+          dup.className='s-livePeekDup';
+          dup.style.cssText='position:fixed;z-index:59;display:none;background:var(--inset);border:1px solid var(--border);border-radius:8px;padding:5px;box-shadow:0 10px 28px rgba(0,0,0,.4)';
+          dup.innerHTML='<canvas class="s-livePeekCv" width="'+W+'" height="'+H+'" style="display:block;width:100%;height:auto;background:#0d1117;border-radius:6px"></canvas>';
+          body.appendChild(peek); body.appendChild(dup);
+          const dupCv=dup.querySelector('.s-livePeekCv'), dupCtx=dupCv.getContext('2d'), peekBtn=peek.querySelector('.s-livePeekBtn');
+          // dock the pill HUGGING the card's column edge, in the empty neighbouring column (card on the right of the
+          // grid → pill sits just left of the card; card on the left → just right of it) — not at the display edge.
+          const positionPeek=()=>{ const cr=card.getBoundingClientRect(), gr=card.parentElement.getBoundingClientRect();
+            peek.style.top=Math.round(window.innerHeight*0.30)+'px'; peek.style.right='auto';
+            if((cr.left+cr.width/2) > (gr.left+gr.width/2)){ peek.style.left=Math.round(cr.left-10)+'px'; peek.style.transform='translateX(-100%)'; }   // right column → pill's RIGHT edge 10px left of the card (scrollbar-independent)
+            else { peek.style.left=Math.round(cr.right+10)+'px'; peek.style.transform='none'; } };                                                       // left column → hug the card's RIGHT edge
+          // drop the duplicate INLINE over the settings column, beside the section header nearest the top of the view
+          const positionDup=()=>{ const cr=card.getBoundingClientRect(), pad=14, w=Math.min(360, Math.round(cr.width-2*pad));
+            dup.style.width=w+'px'; dup.style.left=Math.round(cr.left+(cr.width-w)/2)+'px'; dup.style.right='auto';
+            let top=Math.round(window.innerHeight*0.12), best=null, bd=1e9; const aim=window.innerHeight*0.18;
+            card.querySelectorAll('.lsec').forEach(sc=>{ const b=sc.getBoundingClientRect().bottom; if(b>0 && b<window.innerHeight && Math.abs(b-aim)<bd){ bd=Math.abs(b-aim); best=b; } });
+            if(best!=null) top=Math.round(best+6);
+            dup.style.top=Math.min(top, Math.round(window.innerHeight*0.5))+'px'; };
+          peekBtn.addEventListener('click',()=>{ const on=dup.style.display==='none'; if(on){ positionDup(); dup.style.display='block'; peekBtn.textContent='Hide'; } else { dup.style.display='none'; peekBtn.textContent='Show'; } });
           function frame(now){
-            if(!document.body.contains(cvL||cvS)){ if(peek.parentNode) peek.parentNode.removeChild(peek); return; }   // card rebuilt/removed → stop this loop + clean the peek
+            if(!document.body.contains(cvL||cvS)){ [peek,dup].forEach(e=>{ if(e.parentNode) e.parentNode.removeChild(e); }); return; }   // card rebuilt/removed → stop + clean
             if(ctxS && cvS.offsetParent!==null && synth){ E.applyAudioFeatures(pState, synth.sample(now/1000), s, now); E.renderAudio(sampL, now, pState); paint(ctxS, sampL.rgb); }
             // peek visibility — show the pill only while the inline live preview is genuinely off-screen (and not hidden)
             let dupOn=false;
@@ -459,15 +472,15 @@
               const cr=shown?card.getBoundingClientRect():null;
               const cardInView=shown && cr.bottom>40 && cr.top<window.innerHeight-40;   // you're still within THIS audio card's controls
               const off=shown && cardInView && r.bottom<4;                              // and the inline preview has scrolled ABOVE the viewport (you're down in the tuner)
-              if(off){ if(peek.style.display!=='block'){ positionPeek(); peek.style.display='block'; } }   // in the tuner, preview scrolled off → dock the pill (preserves your Show/Hide choice while you stay here)
-              else { peek.style.display='none'; if(dupCv.style.display!=='none'){ dupCv.style.display='none'; peekBtn.textContent='Show'; } }   // back in view → hide the pill AND reset the duplicate to collapsed (idempotent → race-proof)
-              dupOn=peek.style.display==='block' && dupCv.style.display==='block';
+              if(off){ if(peek.style.display!=='inline-flex'){ positionPeek(); peek.style.display='inline-flex'; } }   // dock the pill (preserve your Show/Hide choice while you stay in the tuner)
+              else { peek.style.display='none'; if(dup.style.display!=='none'){ dup.style.display='none'; peekBtn.textContent='Show'; } }   // back in view → hide pill + reset duplicate (idempotent → race-proof)
+              dupOn=peek.style.display!=='none' && dup.style.display!=='none';
             }
             const liveOn=ctxL && cvL.offsetParent!==null;
             if(liveOn || dupOn){
               if(liveAudioActive()) E.renderAudio(liveL, now, state); else liveL.rgb.fill(0);   // real capture → mirror the keys; nothing playing → blank
               if(liveOn) paint(ctxL, liveL.rgb);
-              if(dupOn) paint(dupCtx, liveL.rgb);                                                 // same frame mirrored into the floating duplicate
+              if(dupOn) paint(dupCtx, liveL.rgb);                                                 // same frame mirrored into the inline duplicate
             }
             requestAnimationFrame(frame);
           }
