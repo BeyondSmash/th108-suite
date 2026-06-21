@@ -365,7 +365,11 @@
     else if(style==='sparkle') renderSparkle(s, out, A, now);
     else if(style==='radial') renderRadial(s, out, A, now);
     else renderBars(s, out, A, now, L);
-    (L._frozen || (L._frozen = new Float32Array(NLED*3))).set(out);   // roll the last live (pre-adjust) frame so a twinkle pause can freeze on it
+    // Roll the snapshot a twinkle pause freezes on — but ONLY while the audio is near its recent peak. A pause
+    // (or song end) fades the audio down over ~200ms; snapshotting every frame would capture the faded tail
+    // (just the bottom row) by the time silence is confirmed. Gating on level vs the running peak holds the
+    // snapshot at the last near-full frame, so the whole visualization twinkles out, not only the base row.
+    if(A.level >= 0.6*Math.max(A._lpk||0, 0.05)) (L._frozen || (L._frozen = new Float32Array(NLED*3))).set(out);   // ponytail: simple peak gate; a short frame-history ring would track the pre-fade frame even more exactly if needed
   }
 
   // Twinkle pause-out: freeze the last live frame (L._frozen) and sparkle each LIT key out individually over

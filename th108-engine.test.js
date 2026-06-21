@@ -556,13 +556,13 @@ test('twinkle pause: freezes the last frame, then sparkles every key out by paus
   const L = { type:'audio', enabled:true, opacity:1, blend:'add', settings:{ style:'bars', pauseStyle:'twinkle' }, rgb:new Uint8Array(E.NLED*3) };
   E.ensureSettings(L); const st = E.createState([L]); const La = st.layers[0];
   const sum = ()=>{ let s=0; for(let i=0;i<La.rgb.length;i++) s+=La.rgb[i]; return s; };
-  st.audio.bands.fill(1);                                   // a live frame so the frozen snapshot captures lit keys
+  st.audio.bands.fill(1); st.audio.level = 1;              // a loud live frame so the peak-gated snapshot captures the FULL lit frame (not a faded tail)
   E.renderAudio(La, 0, st);
-  assert.ok(sum() > 0, 'live frame lights keys');
+  const live = sum(); assert.ok(live > 0, 'live frame lights keys');
   E.applyAudioFeatures(st, { bands:new Float32Array(32), level:0, live:0 }, La.settings, 1000);   // sustained silence
   assert.ok(st.audio._twk, 'silence + twinkle style engages the freeze');
   E.renderAudio(La, 1000, st);
-  assert.ok(sum() > 0, 'frame is frozen at pause onset (keys still lit)');
+  assert.equal(sum(), live, 'the WHOLE frame is frozen at pause onset (full bars, not just the bottom row)');
   const dur = E.audioParams(La.settings).pauseDecayMs;       // reuse the Pause-decay window as the twinkle-out time
   E.renderAudio(La, 1000 + dur + 50, st);
   assert.equal(sum(), 0, 'all keys dissipated after pauseDecayMs → board dark');
