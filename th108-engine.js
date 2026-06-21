@@ -97,17 +97,17 @@
     // kept resetting the old detector. When the smoothed level sits well below the held peak (a turn-down or a
     // sustained-quiet section, not a beat gap), collapse the peak FAST toward the RECENT peak (rp) — so absolute
     // volume drops out in ~1-2s while real musical dynamics (frequent peaks hold the peak up) are preserved.
-    const SLOW = Math.exp(-dt/10000), FAST = Math.exp(-dt/1000), RP = Math.exp(-dt/1500);
-    const sm = (cur, x)=> cur==null ? x : cur + (x-cur)*(1 - Math.exp(-dt/800));
+    const SLOW = Math.exp(-dt/10000), FAST = Math.exp(-dt/450), RP = Math.exp(-dt/700);   // FAST/RP only run while re-normalizing a volume change → fast tracking here shrinks the sag during a continuous drag without touching normal-music dynamics (which use SLOW)
+    const sm = (cur, x)=> cur==null ? x : cur + (x-cur)*(1 - Math.exp(-dt/450));
     { let fm = 0; const _rb0 = raw.bands; if(_rb0) for(let i=0;i<32;i++){ const v=_rb0[i]||0; if(v>fm) fm=v; }
       const lm = raw.level||0;
       if(A._gpk == null) A._gpk = 0.12;
       if(A._lpk == null) A._lpk = 0.12;
       A._sL = sm(A._sL, lm); A._rL = Math.max(lm, (A._rL==null?lm:A._rL)*RP);   // smoothed level + recent peak
       A._sG = sm(A._sG, fm); A._rG = Math.max(fm, (A._rG==null?fm:A._rG)*RP);
-      if(A._reL || A._sL < 0.35*A._lpk){ A._reL = true; A._lpk = Math.max(lm, A._lpk*FAST); if(A._lpk <= A._rL*1.3 + 0.01) A._reL = false; }
+      if(A._reL || A._sL < 0.5*A._lpk){ A._reL = true; A._lpk = Math.max(lm, A._lpk*FAST); if(A._lpk <= A._rL*1.3 + 0.01) A._reL = false; }
       else A._lpk = Math.max(lm, A._lpk*SLOW);
-      if(A._reG || A._sG < 0.35*A._gpk){ A._reG = true; A._gpk = Math.max(fm, A._gpk*FAST); if(A._gpk <= A._rG*1.3 + 0.01) A._reG = false; }
+      if(A._reG || A._sG < 0.5*A._gpk){ A._reG = true; A._gpk = Math.max(fm, A._gpk*FAST); if(A._gpk <= A._rG*1.3 + 0.01) A._reG = false; }
       else A._gpk = Math.max(fm, A._gpk*SLOW); }
     const agB = agc ? TARGET/Math.max(A._gpk, 0.05) : 1;          // 0.05 floor → near-silence noise isn't slammed to full
     const agL = agc ? TARGET/Math.max(A._lpk, 0.05) : 1;
