@@ -304,7 +304,13 @@ window.TH108DaemonClient = (function () {
             npBarBrightEl = document.getElementById('npBarBright'), npBarBrightLblEl = document.getElementById('npBarBrightLbl'),
             npFlashEl = document.getElementById('npFlash'), npFlashColorEl = document.getElementById('npFlashColor');
       if (npBarEl) npBarEl.addEventListener('change', () => postBar({ on: npBarEl.checked }, '♪ song-progress bar (keys 1-0) ' + (npBarEl.checked ? 'on — lighting only, safe; needs the daemon running' : 'off')));
-      if (npBarColorEl) npBarColorEl.addEventListener('change', () => postBar({ color: npBarColorEl.value }, '♪ progress-bar color → ' + npBarColorEl.value));
+      if (npBarColorEl) {
+        let _colAt = 0;
+        npBarColorEl.addEventListener('input', () => {   // LIVE on the keyboard while dragging the picker (throttled ~10/s, no log per tick)
+          const now = Date.now(); if (now - _colAt >= 100) { _colAt = now; postBar({ color: npBarColorEl.value }); }
+        });
+        npBarColorEl.addEventListener('change', () => postBar({ color: npBarColorEl.value }, '♪ progress-bar color → ' + npBarColorEl.value));   // final value + one log line on close
+      }
       if (npBarBrightEl) {
         let _briAt = 0;
         npBarBrightEl.addEventListener('input', () => {
