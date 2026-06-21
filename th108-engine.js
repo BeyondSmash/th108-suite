@@ -143,10 +143,12 @@
       return;
     }
     A._twk=false;
-    // SETTLE = a fixed-duration LINEAR glide to 0 over pauseMs, INDEPENDENT of bar height. Snapshot every
-    // band/level the instant silence begins, then lerp them all to 0 over pauseMs. The old `cur - dt/pauseMs`
-    // decremented at a FULL-SCALE rate, so a half-height bar hit 0 in half the time → a mid-song pause read as
-    // ~1s even at a 3s setting. Now the WHOLE settle always takes pauseMs (matching the twinkle style).
+    // SETTLE = a fixed-duration LINEAR glide to 0 over pauseMs, INDEPENDENT of bar height. We lerp a snapshot of
+    // the last LOUD frame down to 0 over pauseMs. The snapshot is PEAK-GATED (refreshed below only while the audio
+    // is near its running peak), NOT taken at silence-onset: a pause fades the input over ~200ms before silence is
+    // confirmed, so an onset snapshot grabs the already-collapsed bars → the glide is invisible and it reads as a
+    // ~200ms drop. Peak-gating settles from the FULL bars (same fix + gate as the twinkle freeze). The old
+    // `cur - dt/pauseMs` also decremented at a full-scale rate, so low bars finished proportionally sooner.
     const pauseMs = (p.pauseDecayMs==null ? 700 : p.pauseDecayMs);
     const rb = raw.bands, rbL = raw.bandsL, rbR = raw.bandsR;
     // L/R channels feed the 'stereo' bars layout; when the source is mono (no bandsL/R) both fall back to
@@ -154,15 +156,12 @@
     if(!A.bandsL) A.bandsL = new Float32Array(32);
     if(!A.bandsR) A.bandsR = new Float32Array(32);
     if(!A.bandsRaw) { A.bandsRaw = new Float32Array(32); A.bandsRawL = new Float32Array(32); A.bandsRawR = new Float32Array(32); }
+    const sn = A._snap || (A._snap = { L:0, b:new Float32Array(32), bL:new Float32Array(32), bR:new Float32Array(32), rb:new Float32Array(32), rbL:new Float32Array(32), rbR:new Float32Array(32) });
     let settleF = 0;
     if(silent){
-      if(!A._settling){ A._settling = true; A._settleT0 = now;   // snapshot the frame at silence onset (bars are still at their pre-pause height here)
-        const sn = A._snap || (A._snap = { L:0, b:new Float32Array(32), bL:new Float32Array(32), bR:new Float32Array(32), rb:new Float32Array(32), rbL:new Float32Array(32), rbR:new Float32Array(32) });
-        sn.L = A.level; sn.b.set(A.bands); sn.bL.set(A.bandsL); sn.bR.set(A.bandsR); sn.rb.set(A.bandsRaw); sn.rbL.set(A.bandsRawL); sn.rbR.set(A.bandsRawR);
-      }
+      if(!A._settling){ A._settling = true; A._settleT0 = now; }   // begin the glide from the held (last-loud) snapshot
       settleF = Math.max(0, 1 - (now - A._settleT0)/Math.max(60, pauseMs));   // 1 at onset → 0 after pauseMs (height-independent)
     } else A._settling = false;
-    const sn = A._snap;
     const tgtLevel = lvl(raw.level);
     A.level = silent ? sn.L*settleF : audioEnvelope(A.level, tgtLevel, dt, p.attackMs, p.decayMs);
     A.centroid = audioEnvelope(A.centroid, (raw.centroid==null?0.5:raw.centroid), dt, p.attackMs, p.decayMs);
@@ -178,6 +177,11 @@
       A.bandsRaw[i]  = silent ? sn.rb[i]*settleF  : audioEnvelope(A.bandsRaw[i],  r, dt, p.attackMs, p.decayMs);
       A.bandsRawL[i] = silent ? sn.rbL[i]*settleF : audioEnvelope(A.bandsRawL[i], rbL ? rawClamp(rbL[i]) : r, dt, p.attackMs, p.decayMs);
       A.bandsRawR[i] = silent ? sn.rbR[i]*settleF : audioEnvelope(A.bandsRawR[i], rbR ? rawClamp(rbR[i]) : r, dt, p.attackMs, p.decayMs);
+    }
+    // refresh the snapshot from THIS frame while the audio is near its running peak → a later pause settles from
+    // the full bars, not the faded tail (gate mirrors the twinkle freeze in renderAudio)
+    if(!silent && A.level >= 0.6*Math.max(A._lpk||0, 0.05)){
+      sn.L = A.level; sn.b.set(A.bands); sn.bL.set(A.bandsL); sn.bR.set(A.bandsR); sn.rb.set(A.bandsRaw); sn.rbL.set(A.bandsRawL); sn.rbR.set(A.bandsRawR);
     }
   }
   // Per-STYLE tuner params (gain/floor/attack/decay/beatSens) so tuning bars doesn't leak into pulse, etc.
