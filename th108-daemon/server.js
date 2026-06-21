@@ -185,7 +185,10 @@ function createServer({ control, root, port = 8123, watchdogMs = 12000 }) {
         const safe = path.normalize(rel).replace(/^(\.\.[/\\])+/, '');
         const file = path.join(root, safe);
         if (file.startsWith(path.resolve(root)) && fs.existsSync(file) && fs.statSync(file).isFile()) {
-          res.writeHead(200, { 'content-type': MIME[path.extname(file)] || 'application/octet-stream' });
+          // no-store: the page assets (controller HTML + th108-engine.js / th108-layers-ui.js / client) change
+          // often during development; without this the browser caches them and a normal refresh keeps STALE code
+          // (e.g. an old audio engine still running while the daemon is fresh) — the classic "my fix isn't live".
+          res.writeHead(200, { 'content-type': MIME[path.extname(file)] || 'application/octet-stream', 'cache-control': 'no-store' });
           return fs.createReadStream(file).pipe(res);
         }
       }
