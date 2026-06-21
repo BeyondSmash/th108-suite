@@ -97,9 +97,10 @@
       if(A._lpk == null) A._lpk = 0.12;  A._lpk = Math.max(raw.level||0,  A._lpk*slowFall); } // overall level peak
     const agB = agc ? TARGET/Math.max(A._gpk, 0.05) : 1;          // 0.05 floor → near-silence noise isn't slammed to full
     const agL = agc ? TARGET/Math.max(A._lpk, 0.05) : 1;
-    const band   = (v,i)=> shape((v||0)*gain*agB);
-    const bandRO = (v,i)=> shape((v||0)*gain*agB);   // L/R reuse the global band divisor (keeps the L↔R balance)
-    const lvl    = (v)  => shape((v||0)*gain*agL);
+    const g = agc ? 1 : gain;   // Auto-gain ON ⇒ the normalizer fully owns the level; manual Gain is IGNORED (set-and-forget, volume-independent). OFF ⇒ Gain is the manual linear sensitivity.
+    const band   = (v,i)=> shape((v||0)*g*agB);
+    const bandRO = (v,i)=> shape((v||0)*g*agB);   // L/R reuse the global band divisor (keeps the L↔R balance)
+    const lvl    = (v)  => shape((v||0)*g*agL);
     // PAUSE DECAY: once the input has been silent a sustained moment (paused / song ended), fall to 0 with
     // pauseDecayMs (a graceful settle) instead of the per-note decayMs — brief gaps between notes still bounce.
     // Use the LIVE input level (raw.live), NOT the held/peak values: the decaying peak-hold (metronome-tick
