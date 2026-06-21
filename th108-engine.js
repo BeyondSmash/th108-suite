@@ -387,15 +387,19 @@
     const dur = Math.max(200, s.pauseDecayMs==null?700:s.pauseDecayMs);   // reuse Pause decay = total twinkle-out time
     const elapsed = now - (A._twkT0||now);
     if(elapsed >= dur){ out.fill(0); return; }            // fully dissipated → board dark
-    const STAGGER = 0.6, TWK = 0.4, R = L._twkR;          // deaths spread over the first 60% of dur; each key fades over 40%
+    // Deaths spread across the FULL window (each key starts over the first 75%, then fades over the last 25%)
+    // so the dissipation visibly uses the whole pauseDecayMs. The per-key fade is an HONEST decline (a small
+    // sparkle, then a steady drop to 0) — NOT a bright bump that exceeds the original, which kept the board lit
+    // until a late plunge and made the whole thing read as ~half its set duration. The sine term is the twinkle.
+    const STAGGER = 0.75, TWK = 0.25, R = L._twkR;
     for(let k=0;k<NLED;k++){
       const o=k*3, r0=fr[o], g0=fr[o+1], b0=fr[o+2];
       if(r0<=0 && g0<=0 && b0<=0){ out[o]=out[o+1]=out[o+2]=0; continue; }   // was dark → stays dark
       const p = (elapsed - R[k]*dur*STAGGER)/(dur*TWK);
-      if(p<=0){ out[o]=r0; out[o+1]=g0; out[o+2]=b0; continue; }             // still frozen at full (steady, no shimmer)
+      if(p<=0){ out[o]=r0; out[o+1]=g0; out[o+2]=b0; continue; }             // not yet started: held at full
       if(p>=1){ out[o]=out[o+1]=out[o+2]=0; continue; }                      // gone
-      const bump = p<0.25 ? 1+(p/0.25)*0.9 : 1.9*(1-(p-0.25)/0.75);          // quick sparkle to ~1.9×, then fade to 0
-      const m = bump*(0.7+0.3*Math.sin(now*0.045 + k*1.7));                  // fast per-key shimmer = the twinkle
+      const spark = p<0.2 ? 1+(p/0.2)*0.25 : 1.25*(1-(p-0.2)/0.8);          // tiny sparkle to ~1.25×, then an honest linear decline to 0
+      const m = spark*(0.7+0.3*Math.sin(now*0.05 + k*1.7));                  // per-key twinkle flicker
       out[o]=r0*m; out[o+1]=g0*m; out[o+2]=b0*m;
     }
   }
