@@ -438,9 +438,10 @@
           // you're working, so you can watch the keys without scrolling back up; scrolling the inline preview back
           // into view auto-hides both. (Replaces the old position:sticky preview.)
           const liveWrap=c('.s-liveWrap');
+          let pillVisible=false;
           const peek=document.createElement('div');   // the PILL = label + Show/Hide only; content-sized → symmetric padding
           peek.className='s-livePeek';
-          peek.style.cssText='position:fixed;z-index:60;display:none;align-items:center;gap:10px;background:var(--inset);border:1px solid var(--border);border-radius:10px;padding:7px 12px;box-shadow:0 8px 26px rgba(0,0,0,.32)';   // display toggles none↔inline-flex (inline-flex shrinks to content → symmetric padding)
+          peek.style.cssText='position:fixed;z-index:60;display:inline-flex;opacity:0;pointer-events:none;transition:opacity .25s ease;left:-9999px;top:0;align-items:center;gap:10px;background:var(--inset);border:1px solid var(--border);border-radius:10px;padding:7px 12px;box-shadow:0 8px 26px rgba(0,0,0,.32)';   // opacity-faded (250ms); position:fixed → no layout cost while invisible
           peek.innerHTML='<span class="val" style="opacity:.65;font-size:11px;white-space:nowrap">Live — real audio</span><button type="button" class="s-livePeekBtn" style="margin:0;padding:2px 9px">Show</button>';   // margin:0 overrides the global button margin-right (else the right gap is bigger than the left)
           body.appendChild(peek);
           const peekBtn=peek.querySelector('.s-livePeekBtn');
@@ -450,23 +451,25 @@
           dup.innerHTML='<div style="display:flex;align-items:center;justify-content:center;gap:8px;margin-bottom:3px"><span class="val" style="opacity:.65">Live — real audio</span></div>'+
             '<canvas class="s-livePeekCv" width="'+W+'" height="'+H+'" style="display:block;width:100%;height:auto;background:#0d1117;border-radius:6px"></canvas>';
           const dupCv=dup.querySelector('.s-livePeekCv'), dupCtx=dupCv.getContext('2d');
-          // dock the pill to the OUTER edge of the compositor (the far edge of the empty column OPPOSITE the audio
-          // card), not the column gap right next to the card. The audio card's column → the pill goes to the other side.
-          const positionPeek=()=>{ const cr=card.getBoundingClientRect(), gap=12;   // hug the settings panel's OUTER edge on the side with more empty room, CLOSE to it (not the far compositor edge)
-            peek.style.top=Math.round(window.innerHeight*0.30)+'px'; peek.style.right='auto';
-            if(cr.left >= (window.innerWidth - cr.right)){ peek.style.left=Math.round(cr.left-gap)+'px'; peek.style.transform='translateX(-100%)'; }   // more room LEFT → hug the panel's left edge from just outside
-            else { peek.style.left=Math.round(cr.right+gap)+'px'; peek.style.transform='none'; } };                                                     // more room RIGHT → hug the panel's right edge
+          // dock the pill just OUTSIDE the compositor, on the SAME side as the audio card's column (audio in the LEFT
+          // column → pill on the left; RIGHT column → pill on the right), clamped to stay on-screen.
+          const positionPeek=()=>{ const grid=card.parentElement, gr=grid.getBoundingClientRect(), comp=grid.closest('.card')||grid, compR=comp.getBoundingClientRect(), cr=card.getBoundingClientRect();
+            const pw=peek.offsetWidth||200, gap=12; peek.style.transform='none'; peek.style.right='auto';
+            peek.style.top=Math.round(window.innerHeight*0.30)+'px';
+            let left = (cr.left+cr.width/2) < (gr.left+gr.width/2) ? (compR.left-gap-pw) : (compR.right+gap);   // audio LEFT col → outside the compositor's left edge; RIGHT col → outside its right
+            left = Math.max(4, Math.min(left, window.innerWidth-4-pw));   // never off-screen
+            peek.style.left=Math.round(left)+'px'; };
           // insert the duplicate INLINE right after the section header nearest the top of the view (what you're tuning)
           const showDup=()=>{ const aim=window.innerHeight*0.16; let best=null, bd=1e9;
             card.querySelectorAll('.lsec').forEach(sc=>{ const t=sc.getBoundingClientRect().top; if(Math.abs(t-aim)<bd){ bd=Math.abs(t-aim); best=sc; } });
             if(best && best.parentNode) best.insertAdjacentElement('afterend', dup); else body.appendChild(dup);
             peekBtn.textContent='Hide'; };
           const hideDup=()=>{ if(dup.parentNode) dup.parentNode.removeChild(dup); peekBtn.textContent='Show'; };
+          const fadePill=(on)=>{ peek.style.opacity=on?'1':'0'; peek.style.pointerEvents=on?'auto':'none'; pillVisible=on; };   // 250ms via the CSS transition
           peekBtn.addEventListener('click',()=>{ if(dup.parentNode) hideDup(); else showDup(); });
           function frame(now){
             if(!document.body.contains(cvL||cvS)){ [peek,dup].forEach(e=>{ if(e.parentNode) e.parentNode.removeChild(e); }); return; }   // card rebuilt/removed → stop + clean
             if(ctxS && cvS.offsetParent!==null && synth){ E.applyAudioFeatures(pState, synth.sample(now/1000), s, now); E.renderAudio(sampL, now, pState); paint(ctxS, sampL.rgb); }
-            // peek visibility — show the pill only while the inline live preview is genuinely off-screen (and not hidden)
             let dupOn=false;
             if(liveWrap){
               const shown=liveWrap.offsetParent!==null && !s.livePrevOff;   // card expanded/enabled AND the live preview isn't toggled off
@@ -474,8 +477,11 @@
               const cr=shown?card.getBoundingClientRect():null;
               const cardInView=shown && cr.bottom>40 && cr.top<window.innerHeight-40;   // you're still within THIS audio card's controls
               const off=shown && cardInView && r.bottom<4;                              // and the inline preview has scrolled ABOVE the viewport (you're down in the tuner)
-              if(off){ if(peek.style.display!=='inline-flex'){ positionPeek(); peek.style.display='inline-flex'; } }   // dock the pill (preserve your Show/Hide choice while you stay in the tuner)
-              else { peek.style.display='none'; if(dup.parentNode) hideDup(); }   // back in view → hide pill + remove the inline duplicate
+              const dupOffTop=!!dup.parentNode && dup.getBoundingClientRect().bottom<4;  // the shown duplicate has scrolled off the top → pill is inapplicable, hide it
+              const want=off && !dupOffTop;
+              if(want){ if(!pillVisible){ positionPeek(); fadePill(true); } }
+              else if(pillVisible){ fadePill(false); }
+              if(!off && dup.parentNode) hideDup();   // scrolled all the way back to the inline preview → remove the duplicate + reset
               dupOn=!!dup.parentNode && dup.offsetParent!==null;
             }
             const liveOn=ctxL && cvL.offsetParent!==null;
