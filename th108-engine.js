@@ -105,9 +105,9 @@
       if(A._lpk == null) A._lpk = 0.12;
       A._sL = sm(A._sL, lm); A._rL = Math.max(lm, (A._rL==null?lm:A._rL)*RP);   // smoothed level + recent peak
       A._sG = sm(A._sG, fm); A._rG = Math.max(fm, (A._rG==null?fm:A._rG)*RP);
-      if(A._reL || A._sL < 0.6*A._lpk){ A._reL = true; A._lpk = Math.max(lm, A._lpk*FAST); if(A._lpk <= A._rL*1.3 + 0.01) A._reL = false; }
+      if(A._reL || A._sL < 0.5*A._lpk){ A._reL = true; A._lpk = Math.max(lm, A._lpk*FAST); if(A._lpk <= A._rL*1.3 + 0.01) A._reL = false; }
       else A._lpk = Math.max(lm, A._lpk*SLOW);
-      if(A._reG || A._sG < 0.6*A._gpk){ A._reG = true; A._gpk = Math.max(fm, A._gpk*FAST); if(A._gpk <= A._rG*1.3 + 0.01) A._reG = false; }
+      if(A._reG || A._sG < 0.5*A._gpk){ A._reG = true; A._gpk = Math.max(fm, A._gpk*FAST); if(A._gpk <= A._rG*1.3 + 0.01) A._reG = false; }
       else A._gpk = Math.max(fm, A._gpk*SLOW); }
     const agB = agc ? TARGET/Math.max(A._gpk, 0.05) : 1;          // 0.05 floor → near-silence noise isn't slammed to full
     const agL = agc ? TARGET/Math.max(A._lpk, 0.05) : 1;
