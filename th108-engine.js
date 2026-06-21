@@ -119,7 +119,7 @@
     // fades over ~200ms, and during that fade the live level is still well above an absolute gate — so the fast
     // decay ate the bar before pause-decay could engage (the slider barely mattered). Engaging when the input
     // drops below a fraction of its recent peak starts the slow settle while the bar still has height.
-    const silent = (liveLvl * gain < 0.02) || (liveLvl < 0.42 * (A._lpk || 0.2));
+    const silent = (liveLvl * gain < 0.02) || (liveLvl < 0.55 * (A._lpk || 0.2));   // 0.55 = balance: more uniform pause descent vs keeping music dynamics (raise → more uniform pause but compresses music; lower → snappier music but the top follows the audio's own fade)
     // PAUSE = a LINEAR glide to 0, not the exponential audioEnvelope. A one-pole decay drops fast then has a long
     // tail, so the tall (upper) rows cleared in ~1s while the base row rode the tail for the rest — looked like
     // "pause-decay only affects the bottom row". Linear = constant descent: every row turns off evenly and the
