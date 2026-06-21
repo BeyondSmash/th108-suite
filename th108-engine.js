@@ -115,7 +115,11 @@
     // per-note decay (decayMs, often <100ms) drop the level most of the way before pause-decay even kicked in,
     // so the slider looked dead. Mid-song the live level basically never hits this gate (music is continuous),
     // so true silence ⇒ pause/stop. Only the FALL is affected (audioEnvelope picks decay when target<prev).
-    const silent = (liveLvl * gain < 0.02);
+    // Detect "quieting toward a pause" RELATIVE to the recent level peak, not just near-zero: on pause the audio
+    // fades over ~200ms, and during that fade the live level is still well above an absolute gate — so the fast
+    // decay ate the bar before pause-decay could engage (the slider barely mattered). Engaging when the input
+    // drops below a fraction of its recent peak starts the slow settle while the bar still has height.
+    const silent = (liveLvl * gain < 0.02) || (liveLvl < 0.42 * (A._lpk || 0.2));
     // PAUSE = a LINEAR glide to 0, not the exponential audioEnvelope. A one-pole decay drops fast then has a long
     // tail, so the tall (upper) rows cleared in ~1s while the base row rode the tail for the rest — looked like
     // "pause-decay only affects the bottom row". Linear = constant descent: every row turns off evenly and the

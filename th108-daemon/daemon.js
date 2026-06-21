@@ -214,7 +214,9 @@ async function tick() {
     if (acHandle) {   // fold the latest real-audio frame into state.audio (>250ms stale → null → engine decays to silence)
       const raw = AC.freshOr(acHandle.latest(), Date.now(), 250);
       const aL = state.layers.find(L => L.enabled && L.type === 'audio');
-      if (raw && aL) E.applyAudioFeatures(state, raw, aL.settings, now);
+      // On stale (capture stalled on pause) feed a SILENT frame instead of skipping — skipping froze the bars
+      // and ran the fast decay for the first 250ms; feeding {live:0} lets pause-decay settle them to 0 evenly.
+      if (aL) E.applyAudioFeatures(state, raw || { level: 0, live: 0 }, aL.settings, now);
     }
     const flat = E.composeFrame(state, now);
     // throttled-skip feedback: blink the SPACEBAR red TWICE when a media command lands inside the
