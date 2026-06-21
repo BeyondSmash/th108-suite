@@ -569,3 +569,18 @@ test('twinkle pause: freezes the last frame, then sparkles every key out over th
   E.renderAudio(La, 1000 + dur + 50, st);
   assert.equal(sum(), 0, 'fully dissipated only after the set pauseDecayMs → board dark');
 });
+
+test('settle pause: a sub-peak bar still takes the FULL pauseDecayMs to glide to 0 (height-independent)', () => {
+  const st = E.createState([{ type:'audio', enabled:true, opacity:1, blend:'add', fps:30, settings:{ style:'bars', pauseStyle:'linear' } }]);
+  const s = st.layers[0].settings; const ap = E.audioParams(s);
+  ap.floor=0; ap.ceil=100; ap.contrast=0; ap.agc=false; ap.gain=1; ap.attackMs=1; ap.decayMs=60; ap.pauseDecayMs=2000;
+  const mid = { bands:new Float32Array(32).fill(0.4), level:0.4, beat:0, centroid:0.5 };   // a SUB-PEAK bar
+  let t=0; for(; t<=200; t+=16) E.applyAudioFeatures(st, mid, s, t);
+  const start = st.audio.bands[5]; assert.ok(start>0.2 && start<0.6, 'sub-peak bar loaded ('+start.toFixed(2)+')');
+  const silent = { bands:new Float32Array(32), level:0, beat:0, centroid:0.5 };
+  t+=16; E.applyAudioFeatures(st, silent, s, t); const t0=t;   // silence onset → snapshot
+  E.applyAudioFeatures(st, silent, s, t0 + 800);    // 40% of the 2000ms window — old proportional settle would have finished a 0.4 bar by ~800ms
+  assert.ok(st.audio.bands[5] > 0.4*start, 'still well-lit at 40% of the window (~0.6× start), i.e. NOT finished early');
+  E.applyAudioFeatures(st, silent, s, t0 + 2000 + 60);   // past the full window
+  assert.ok(st.audio.bands[5] < 0.02, 'reaches ~0 only after the full pauseDecayMs');
+});

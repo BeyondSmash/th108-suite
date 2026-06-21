@@ -143,33 +143,41 @@
       return;
     }
     A._twk=false;
-    // PAUSE = a LINEAR glide to 0, not the exponential audioEnvelope. A one-pole decay drops fast then has a long
-    // tail, so the tall (upper) rows cleared in ~1s while the base row rode the tail for the rest — looked like
-    // "pause-decay only affects the bottom row". Linear = constant descent: every row turns off evenly and the
-    // WHOLE bar takes ~pauseDecayMs to reach 0 (a full-height bar; shorter bars finish proportionally sooner).
+    // SETTLE = a fixed-duration LINEAR glide to 0 over pauseMs, INDEPENDENT of bar height. Snapshot every
+    // band/level the instant silence begins, then lerp them all to 0 over pauseMs. The old `cur - dt/pauseMs`
+    // decremented at a FULL-SCALE rate, so a half-height bar hit 0 in half the time → a mid-song pause read as
+    // ~1s even at a 3s setting. Now the WHOLE settle always takes pauseMs (matching the twinkle style).
     const pauseMs = (p.pauseDecayMs==null ? 700 : p.pauseDecayMs);
-    const settle = (cur)=> Math.max(0, cur - dt/Math.max(60, pauseMs));   // full-scale (0..1) drop per pauseMs
-    const tgtLevel = lvl(raw.level);
-    A.level = silent ? settle(A.level) : audioEnvelope(A.level, tgtLevel, dt, p.attackMs, p.decayMs);
-    A.centroid = audioEnvelope(A.centroid, (raw.centroid==null?0.5:raw.centroid), dt, p.attackMs, p.decayMs);
-    // beat: instantaneous rise, decay only (so a kick pops then fades); beatSens scales sensitivity
-    const beatTgt = Math.max(0, Math.min(1, (raw.beat||0) * (0.5 + (p.beatSens||50)/100)));
-    A.beat = Math.max(beatTgt, audioEnvelope(A.beat, 0, dt, 0, Math.max(60, p.decayMs)));
     const rb = raw.bands, rbL = raw.bandsL, rbR = raw.bandsR;
     // L/R channels feed the 'stereo' bars layout; when the source is mono (no bandsL/R) both fall back to
     // the mono band so the stereo layout still shows something (just symmetric) instead of going dark.
     if(!A.bandsL) A.bandsL = new Float32Array(32);
     if(!A.bandsR) A.bandsR = new Float32Array(32);
     if(!A.bandsRaw) { A.bandsRaw = new Float32Array(32); A.bandsRawL = new Float32Array(32); A.bandsRawR = new Float32Array(32); }
+    let settleF = 0;
+    if(silent){
+      if(!A._settling){ A._settling = true; A._settleT0 = now;   // snapshot the frame at silence onset (bars are still at their pre-pause height here)
+        const sn = A._snap || (A._snap = { L:0, b:new Float32Array(32), bL:new Float32Array(32), bR:new Float32Array(32), rb:new Float32Array(32), rbL:new Float32Array(32), rbR:new Float32Array(32) });
+        sn.L = A.level; sn.b.set(A.bands); sn.bL.set(A.bandsL); sn.bR.set(A.bandsR); sn.rb.set(A.bandsRaw); sn.rbL.set(A.bandsRawL); sn.rbR.set(A.bandsRawR);
+      }
+      settleF = Math.max(0, 1 - (now - A._settleT0)/Math.max(60, pauseMs));   // 1 at onset → 0 after pauseMs (height-independent)
+    } else A._settling = false;
+    const sn = A._snap;
+    const tgtLevel = lvl(raw.level);
+    A.level = silent ? sn.L*settleF : audioEnvelope(A.level, tgtLevel, dt, p.attackMs, p.decayMs);
+    A.centroid = audioEnvelope(A.centroid, (raw.centroid==null?0.5:raw.centroid), dt, p.attackMs, p.decayMs);
+    // beat: instantaneous rise, decay only (so a kick pops then fades); beatSens scales sensitivity
+    const beatTgt = Math.max(0, Math.min(1, (raw.beat||0) * (0.5 + (p.beatSens||50)/100)));
+    A.beat = Math.max(beatTgt, audioEnvelope(A.beat, 0, dt, 0, Math.max(60, p.decayMs)));
     const rawClamp = (v)=>{ v=(v||0); return v<0?0:(v>1?1:v); };   // pre-AGC magnitude (NO peak normalize) — keeps the real bass→treble shape for Spread
     for(let i=0;i<32;i++){
-      const t = rb ? band(rb[i], i) : 0; A.bands[i] = silent ? settle(A.bands[i]) : audioEnvelope(A.bands[i], t, dt, p.attackMs, p.decayMs);
-      const tL = rbL ? bandRO(rbL[i], i) : t; A.bandsL[i] = silent ? settle(A.bandsL[i]) : audioEnvelope(A.bandsL[i], tL, dt, p.attackMs, p.decayMs);
-      const tR = rbR ? bandRO(rbR[i], i) : t; A.bandsR[i] = silent ? settle(A.bandsR[i]) : audioEnvelope(A.bandsR[i], tR, dt, p.attackMs, p.decayMs);
+      const t = rb ? band(rb[i], i) : 0; A.bands[i] = silent ? sn.b[i]*settleF : audioEnvelope(A.bands[i], t, dt, p.attackMs, p.decayMs);
+      const tL = rbL ? bandRO(rbL[i], i) : t; A.bandsL[i] = silent ? sn.bL[i]*settleF : audioEnvelope(A.bandsL[i], tL, dt, p.attackMs, p.decayMs);
+      const tR = rbR ? bandRO(rbR[i], i) : t; A.bandsR[i] = silent ? sn.bR[i]*settleF : audioEnvelope(A.bandsR[i], tR, dt, p.attackMs, p.decayMs);
       const r = rb ? rawClamp(rb[i]) : 0;
-      A.bandsRaw[i]  = silent ? settle(A.bandsRaw[i])  : audioEnvelope(A.bandsRaw[i],  r, dt, p.attackMs, p.decayMs);
-      A.bandsRawL[i] = silent ? settle(A.bandsRawL[i]) : audioEnvelope(A.bandsRawL[i], rbL ? rawClamp(rbL[i]) : r, dt, p.attackMs, p.decayMs);
-      A.bandsRawR[i] = silent ? settle(A.bandsRawR[i]) : audioEnvelope(A.bandsRawR[i], rbR ? rawClamp(rbR[i]) : r, dt, p.attackMs, p.decayMs);
+      A.bandsRaw[i]  = silent ? sn.rb[i]*settleF  : audioEnvelope(A.bandsRaw[i],  r, dt, p.attackMs, p.decayMs);
+      A.bandsRawL[i] = silent ? sn.rbL[i]*settleF : audioEnvelope(A.bandsRawL[i], rbL ? rawClamp(rbL[i]) : r, dt, p.attackMs, p.decayMs);
+      A.bandsRawR[i] = silent ? sn.rbR[i]*settleF : audioEnvelope(A.bandsRawR[i], rbR ? rawClamp(rbR[i]) : r, dt, p.attackMs, p.decayMs);
     }
   }
   // Per-STYLE tuner params (gain/floor/attack/decay/beatSens) so tuning bars doesn't leak into pulse, etc.
