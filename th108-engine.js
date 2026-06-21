@@ -90,11 +90,24 @@
     const gamma = 1 + ((p.contrast==null?50:p.contrast)/100)*4;   // 0→1 (linear) … 100→5 (very punchy)
     const agc = p.agc !== false;   // auto-gain ON (default): peak→top per song, no manual re-gain. OFF: Gain is a plain linear sensitivity.
     const shape = (v)=>{ v=(v-lo)/(hi-lo); v=v<=0?0:(v>=1?1:v); return gamma!==1 ? Math.pow(v,gamma) : v; };
-    const slowFall = Math.exp(-dt/10000);                         // ~10s peak memory — long enough to hold the chorus peak so verses sit lower
     const TARGET = 1.0;                                           // the recent loud peak maps to the TOP (true highs hit the ceiling, like the manual-gain workflow); typical passages fall below → mid
+    // Peak follower: rises instantly, falls SLOWLY (~10s) to hold the chorus peak so verses sit lower (dynamics).
+    // BUT when the input sits sustained-low (>1s below 30% of the held peak) — a Spotify VOLUME turn-down, not a
+    // musical dip — collapse the peak FAST (~1.5s) so absolute volume drops back out within a couple seconds.
+    // This is what makes Auto-gain volume-independent quickly instead of lagging ~10-30s. (Quick musical dips
+    // never reach 1s sustained, so the slow hold — and the dynamics — are preserved.)
+    const SLOW = Math.exp(-dt/10000), FAST = Math.exp(-dt/1000);   // hold ~10s for dynamics; collapse ~1s once a volume turn-down is confirmed
     { let fm = 0; const _rb0 = raw.bands; if(_rb0) for(let i=0;i<32;i++){ const v=_rb0[i]||0; if(v>fm) fm=v; }
-      if(A._gpk == null) A._gpk = 0.12;  A._gpk = Math.max(fm,            A._gpk*slowFall);   // global band peak (max across bands)
-      if(A._lpk == null) A._lpk = 0.12;  A._lpk = Math.max(raw.level||0,  A._lpk*slowFall); } // overall level peak
+      const lm = raw.level||0;
+      if(A._gpk == null) A._gpk = 0.12;
+      if(A._lpk == null) A._lpk = 0.12;
+      // Re-normalize LATCH per peak: once the input has sat <40% of the held peak for >1s (a volume turn-down,
+      // not a brief musical dip), collapse the peak FAST until it MEETS the new input level, then resume the slow
+      // hold. Latching past the (shrinking) threshold is what lets it fully re-normalize instead of stalling.
+      if(A._reG){ A._gpk = Math.max(fm, A._gpk*FAST); if(A._gpk <= fm*1.2 + 0.01) A._reG = false; }
+      else { A._gLoMs = (fm < 0.4*A._gpk) ? (A._gLoMs||0)+dt : 0; if(A._gLoMs>1000){ A._reG=true; A._gLoMs=0; } A._gpk = Math.max(fm, A._gpk*SLOW); }
+      if(A._reL){ A._lpk = Math.max(lm, A._lpk*FAST); if(A._lpk <= lm*1.2 + 0.01) A._reL = false; }
+      else { A._lLoMs = (lm < 0.4*A._lpk) ? (A._lLoMs||0)+dt : 0; if(A._lLoMs>1000){ A._reL=true; A._lLoMs=0; } A._lpk = Math.max(lm, A._lpk*SLOW); } }
     const agB = agc ? TARGET/Math.max(A._gpk, 0.05) : 1;          // 0.05 floor → near-silence noise isn't slammed to full
     const agL = agc ? TARGET/Math.max(A._lpk, 0.05) : 1;
     // Gain multiplies in BOTH modes. With AGC on it's a VOLUME-INDEPENDENT bias (v/peak·gain — the peak scales
