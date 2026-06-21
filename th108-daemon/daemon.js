@@ -644,17 +644,19 @@ function shutdown(code = 0) {
   // (diagnosed 2026-06-20: a /restart hung after 'now-playing disabled', pid kept :8123). Releasing the
   // listener up front means even a hung cleanup can't squat the port.
   try { server.close(); } catch {}
-  setTimeout(() => process.exit(code), 2500).unref();   // backstop force-exit (fires unless a native call has blocked the event loop — but the port is already free regardless)
-  try {
-    if (device) {
-      const off = []; INDICES.forEach(i => off.push(i, 0, 0, 0));
-      if (send && !muteLogged) send(off);   // skip the blackout write on a wedged/muted board — it can block, and the revived instance repaints within a tick anyway
-      device.close();
-    }
-  } catch {}
-  try { if (npHandle) npHandle.stop(); } catch {}   // kill the sidecar — no orphaned powershell
-  try { if (acHandle) acHandle.stop(); } catch {}   // kill the audio-capture sidecar too
-  try { if (dwProc) dwProc.kill(); } catch {}       // and the display-off watcher
+  // KILL CHILD PROCESSES NEXT, before any HID/hook cleanup. The device.close()/uIOhook.stop() calls below are
+  // synchronous native calls that can BLOCK on a wedged board; if they hang while the capture sidecars are
+  // still alive, those sidecars orphan and auto-respawn → zombie daemons pile up across restarts, each holding
+  // its own (possibly wrong-source) capture (the 2026-06-21 multi-daemon / kick.com-bleed mess). Reaping the
+  // children first guarantees no orphans even if the cleanup below hangs.
+  try { if (npHandle) npHandle.stop(); } catch {}   // kill the now-playing sidecar
+  try { if (acHandle) acHandle.stop(); } catch {}   // kill the audio-capture sidecar (app-capture.exe / audio-sidecar.ps1)
+  try { if (dwProc) dwProc.kill(); } catch {}        // kill the display-off watcher
+  try { if (device && send && !muteLogged) { const off = []; INDICES.forEach(i => off.push(i, 0, 0, 0)); send(off); } } catch {}   // best-effort blackout (fire-and-forget; skip on a muted board)
+  setTimeout(() => process.exit(code), 1500).unref();   // backstop
+  // These can block on a wedged board — do them LAST. The OS releases the HID handle + global hook on exit
+  // anyway, so a hang here can't orphan anything (port + children already cleaned).
+  try { if (device) device.close(); } catch {}
   try { uIOhook.stop(); } catch {}
   process.exit(code);
 }
