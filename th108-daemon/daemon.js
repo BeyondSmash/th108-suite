@@ -65,16 +65,20 @@ const SPACE_K = INDICES.indexOf(KEYMAP['Space']);   // spacebar's slot in the fl
 // keys 1..0 (the number row) → their slots in the flat frame, for the song-progress light-bar
 const DIGIT_KS = ['Digit1','Digit2','Digit3','Digit4','Digit5','Digit6','Digit7','Digit8','Digit9','Digit0']
   .map(c => INDICES.indexOf(KEYMAP[c])).filter(k => k >= 0);
-// the numpad digits (1-9 then 0) — the bar can MIRROR onto these too (settings.npBarNumpad), filling bottom→top
+// the numpad digits (1-9 then 0) — the bar can run on these INSTEAD of the number row (settings.npBarKeys), filling bottom→top
 const NUMPAD_KS = ['Numpad1','Numpad2','Numpad3','Numpad4','Numpad5','Numpad6','Numpad7','Numpad8','Numpad9','Numpad0']
   .map(c => INDICES.indexOf(KEYMAP[c])).filter(k => k >= 0);
 const hexRGB = (h) => { const m = /^#?([0-9a-f]{6})$/i.exec(h || ''); if (!m) return [17, 255, 0]; const n = parseInt(m[1], 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; };
 // paint the first `lit` keys of `keys` as a progress bar, crossfaded over the frame by `op`. grad:
 //   'solid' = flat color | 'toWhite' = fades to white at the leading edge | 'fromWhite' = white at the start, fades to color
-function paintBar(flat, keys, lit, op, base, f, grad) {
+function paintBar(flat, keys, lit, op, base, f, grad, fit) {
   const [br, bg, bb] = base;
+  // gradient normalization: fit=false (default) spans the whole row (over keys.length) so each key keeps its
+  // color as the bar fills and white lands on the LAST key; fit=true stretches over the LIT portion so the
+  // leading edge is always the gradient end (white at the current position).
+  const span = (fit ? lit : keys.length) - 1;
   for (let i = 0; i < lit && i < keys.length; i++) {
-    let b = 0; if (grad && grad !== 'solid' && lit > 1) { const p = i / (lit - 1); b = grad === 'fromWhite' ? 1 - p : p; }
+    let b = 0; if (grad && grad !== 'solid' && span > 0) { const p = i / span; b = grad === 'fromWhite' ? 1 - p : p; }
     const r = (br + (255 - br) * b) * f, g = (bg + (255 - bg) * b) * f, bl = (bb + (255 - bb) * b) * f, o = keys[i] * 4;
     flat[o + 1] = (flat[o + 1] * (1 - op) + r) | 0; flat[o + 2] = (flat[o + 2] * (1 - op) + g) | 0; flat[o + 3] = (flat[o + 3] * (1 - op) + bl) | 0;
   }
@@ -88,7 +92,7 @@ let framesSent = 0, framesDeduped = 0;   // HID 0x32 stream stats for /metrics (
 const SETTINGS_PATH = path.join(__dirname, 'settings.json');
 function loadSettings() {
   const DEF = { usbReset: true, nowPlaying: false, npTitle: '#ffffff', npArtist: '#ffd98c', lightsOn: true, brightness: 100, npRevertSec: 0, npAllow: {}, npArtFit: false,
-                npBar: false, npBarColor: '#11ff00', npBarBright: 60, npFlash: true, npFlashColor: '#ffd000', npBarIdleSec: 3, npBarGrad: 'solid', npBarNumpad: false, npOnboardMask: false, dimOnDisplayOff: false };   // dimOnDisplayOff = blank the board while the monitor is off on the idle timeout   // npOnboardMask = set the keyboard's onboard effect to BLACK so the per-update flash is a dark blink, not rainbow   // npBarIdleSec = fade the bar out after this long with nothing playing   // npRevertSec 0 = never revert; npAllow = per-source override (absent → Spotify-only default); npBar = the 1-0 song-progress light-bar (lighting-only, no flash writes), npFlash = yellow track-change blip
+                npBar: false, npBarColor: '#11ff00', npBarBright: 60, npFlash: true, npFlashColor: '#ffd000', npBarIdleSec: 3, npBarGrad: 'solid', npBarGradFit: false, npBarKeys: 'row', npOnboardMask: false, dimOnDisplayOff: false };   // dimOnDisplayOff = blank the board while the monitor is off on the idle timeout   // npOnboardMask = set the keyboard's onboard effect to BLACK so the per-update flash is a dark blink, not rainbow   // npBarIdleSec = fade the bar out after this long with nothing playing   // npRevertSec 0 = never revert; npAllow = per-source override (absent → Spotify-only default); npBar = the 1-0 song-progress light-bar (lighting-only, no flash writes), npFlash = yellow track-change blip
   try { return Object.assign({}, DEF, JSON.parse(fs.readFileSync(SETTINGS_PATH, 'utf8'))); }
   catch { return Object.assign({}, DEF); }   // usbReset default ON — the escalation fails gracefully (one log line) if the task isn't registered
 }
@@ -260,18 +264,18 @@ async function tick() {
         // sequential lerp: walk the lit-key count toward the target ONE key per BAR_STEP_MS, so a seek
         // (e.g. 73% → 24%) visibly counts down rather than snapping. Normal playback advances 1 step
         // every ~(song/10)s, so it just keeps pace.
-        const target = Math.round(ms.progress * DIGIT_KS.length);
+        const barKs = settings.npBarKeys === 'numpad' ? NUMPAD_KS : DIGIT_KS;   // run the bar on the number row OR the numpad (not both)
+        const target = Math.round(ms.progress * barKs.length);
         const nowMs = Date.now();
         if (barCount !== target && nowMs - barStepAt >= BAR_STEP_MS) { barCount += Math.sign(target - barCount); barStepAt = nowMs; }
-        // crossfade the bar OVER the underlying lighting (op<1 mid-fade); mirror onto the numpad when enabled
-        paintBar(flat, DIGIT_KS, barCount, op, [br, bg, bb], f, settings.npBarGrad);
-        if (settings.npBarNumpad) paintBar(flat, NUMPAD_KS, barCount, op, [br, bg, bb], f, settings.npBarGrad);
+        // crossfade the bar OVER the underlying lighting (op<1 mid-fade)
+        paintBar(flat, barKs, barCount, op, [br, bg, bb], f, settings.npBarGrad, settings.npBarGradFit);
         // NO lastFlat reset: flatEq below catches a step/fade change and sends it; a STATIC bar over
         // static lighting stays equal → idles to the 1fps keepalive instead of forcing 30fps.
       } else if (!ms.hasMedia) { barCount = 0; }   // media gone → next song fills from empty
       if (npFlashAt && settings.npFlash) {
         const ft = Date.now() - npFlashAt;
-        if (ft >= 0 && ft < 150) { const [fr, fg, fb] = hexRGB(settings.npFlashColor); const fks = settings.npBarNumpad ? DIGIT_KS.concat(NUMPAD_KS) : DIGIT_KS; for (const k of fks) { const o = k * 4; flat[o + 1] = fr; flat[o + 2] = fg; flat[o + 3] = fb; } }   // flatEq sends the flash on its on/off edges
+        if (ft >= 0 && ft < 150) { const [fr, fg, fb] = hexRGB(settings.npFlashColor); const fks = settings.npBarKeys === 'numpad' ? NUMPAD_KS : DIGIT_KS; for (const k of fks) { const o = k * 4; flat[o + 1] = fr; flat[o + 2] = fg; flat[o + 3] = fb; } }   // flatEq sends the flash on its on/off edges
         else if (ft >= 150) npFlashAt = 0;
       } else if (npFlashAt && !settings.npFlash) npFlashAt = 0;
     }
@@ -532,7 +536,7 @@ const control = {
                       npSources: sourceList(),
                       npBar: settings.npBar, npBarColor: settings.npBarColor, npBarBright: settings.npBarBright,
                       npFlash: settings.npFlash, npFlashColor: settings.npFlashColor, npBarIdleSec: settings.npBarIdleSec,
-                      npBarGrad: settings.npBarGrad, npBarNumpad: settings.npBarNumpad,
+                      npBarGrad: settings.npBarGrad, npBarGradFit: settings.npBarGradFit, npBarKeys: settings.npBarKeys,
                       npOnboardMask: settings.npOnboardMask }; },
   setNowPlaying(on) {
     const was = settings.nowPlaying;
@@ -582,7 +586,8 @@ const control = {
     if (o && o.flashColor != null && /^#[0-9a-f]{6}$/i.test(o.flashColor)) settings.npFlashColor = o.flashColor;
     if (o && o.idleSec != null) settings.npBarIdleSec = Math.max(0, Math.min(60, Math.round(+o.idleSec || 0)));
     if (o && o.grad != null && ['solid', 'toWhite', 'fromWhite'].includes(o.grad)) settings.npBarGrad = o.grad;
-    if (o && 'numpad' in o) settings.npBarNumpad = !!o.numpad;
+    if (o && 'gradFit' in o) settings.npBarGradFit = !!o.gradFit;
+    if (o && o.keys != null && ['row', 'numpad'].includes(o.keys)) settings.npBarKeys = o.keys;
     saveSettings();
     syncNowPlaying();   // toggling the bar may need to start/stop the media sidecar
     if (state) state.lastFlat = null;   // repaint now

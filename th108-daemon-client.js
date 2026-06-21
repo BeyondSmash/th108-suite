@@ -197,9 +197,10 @@ window.TH108DaemonClient = (function () {
               if (fc) { fc.disabled = !on || !(fl && fl.checked); if ('npFlashColor' in s && document.activeElement !== fc) fc.value = s.npFlashColor; }
               const idle = document.getElementById('npBarIdle'), idleLbl = document.getElementById('npBarIdleLbl');
               if (idle) { idle.disabled = !on; if ('npBarIdleSec' in s && document.activeElement !== idle) idle.value = s.npBarIdleSec; if (idleLbl) idleLbl.textContent = (+idle.value) + 's'; }
-              const grad = document.getElementById('npBarGrad'), npd = document.getElementById('npBarNumpad');
+              const grad = document.getElementById('npBarGrad'), gfit = document.getElementById('npBarGradFit'), nkeys = document.getElementById('npBarKeys');
               if (grad) { grad.disabled = !on; if ('npBarGrad' in s && document.activeElement !== grad) grad.value = s.npBarGrad; }
-              if (npd) { npd.disabled = !on; if ('npBarNumpad' in s && document.activeElement !== npd) npd.checked = !!s.npBarNumpad; }
+              if (gfit) { gfit.disabled = !on; if ('npBarGradFit' in s && document.activeElement !== gfit) gfit.checked = !!s.npBarGradFit; }
+              if (nkeys) { nkeys.disabled = !on; if ('npBarKeys' in s && document.activeElement !== nkeys) nkeys.value = s.npBarKeys; }
             }
             // Refresh-LCD debug button — only meaningful when LCD now-playing is on
             const rfb = document.getElementById('npRefreshLcd');
@@ -315,9 +316,10 @@ window.TH108DaemonClient = (function () {
       }
       if (npFlashEl) npFlashEl.addEventListener('change', () => postBar({ flash: npFlashEl.checked }, '♪ track-change flash ' + (npFlashEl.checked ? 'on' : 'off')));
       if (npFlashColorEl) npFlashColorEl.addEventListener('change', () => postBar({ flashColor: npFlashColorEl.value }, '♪ track-change flash color → ' + npFlashColorEl.value));
-      const npGradEl = document.getElementById('npBarGrad'), npNumpadEl = document.getElementById('npBarNumpad');
+      const npGradEl = document.getElementById('npBarGrad'), npGradFitEl = document.getElementById('npBarGradFit'), npKeysEl = document.getElementById('npBarKeys');
       if (npGradEl) npGradEl.addEventListener('change', () => postBar({ grad: npGradEl.value }, '♪ progress-bar style → ' + npGradEl.options[npGradEl.selectedIndex].text));
-      if (npNumpadEl) npNumpadEl.addEventListener('change', () => postBar({ numpad: npNumpadEl.checked }, '♪ progress-bar ' + (npNumpadEl.checked ? 'also mirrors onto the numpad' : 'numpad mirror off')));
+      if (npGradFitEl) npGradFitEl.addEventListener('change', () => postBar({ gradFit: npGradFitEl.checked }, '♪ progress-bar gradient ' + (npGradFitEl.checked ? 'stretches to the filled part' : 'fixed across all keys')));
+      if (npKeysEl) npKeysEl.addEventListener('change', () => postBar({ keys: npKeysEl.value }, '♪ progress-bar on the ' + npKeysEl.options[npKeysEl.selectedIndex].text));
       const npIdleEl = document.getElementById('npBarIdle'), npIdleLblEl = document.getElementById('npBarIdleLbl');
       if (npIdleEl) {
         npIdleEl.addEventListener('input', () => { if (npIdleLblEl) npIdleLblEl.textContent = (+npIdleEl.value) + 's'; });
