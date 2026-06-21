@@ -97,10 +97,12 @@
       if(A._lpk == null) A._lpk = 0.12;  A._lpk = Math.max(raw.level||0,  A._lpk*slowFall); } // overall level peak
     const agB = agc ? TARGET/Math.max(A._gpk, 0.05) : 1;          // 0.05 floor → near-silence noise isn't slammed to full
     const agL = agc ? TARGET/Math.max(A._lpk, 0.05) : 1;
-    const g = agc ? 1 : gain;   // Auto-gain ON ⇒ the normalizer fully owns the level; manual Gain is IGNORED (set-and-forget, volume-independent). OFF ⇒ Gain is the manual linear sensitivity.
-    const band   = (v,i)=> shape((v||0)*g*agB);
-    const bandRO = (v,i)=> shape((v||0)*g*agB);   // L/R reuse the global band divisor (keeps the L↔R balance)
-    const lvl    = (v)  => shape((v||0)*g*agL);
+    // Gain multiplies in BOTH modes. With AGC on it's a VOLUME-INDEPENDENT bias (v/peak·gain — the peak scales
+    // with volume so it cancels): it's the "how easily the bars hit max" knob (gain>1 pushes more of the song to
+    // the top, gain<1 leaves headroom). With AGC off it's a plain linear sensitivity.
+    const band   = (v,i)=> shape((v||0)*gain*agB);
+    const bandRO = (v,i)=> shape((v||0)*gain*agB);   // L/R reuse the global band divisor (keeps the L↔R balance)
+    const lvl    = (v)  => shape((v||0)*gain*agL);
     // PAUSE DECAY: once the input has been silent a sustained moment (paused / song ended), fall to 0 with
     // pauseDecayMs (a graceful settle) instead of the per-note decayMs — brief gaps between notes still bounce.
     // Use the LIVE input level (raw.live), NOT the held/peak values: the decaying peak-hold (metronome-tick
@@ -114,9 +116,14 @@
     // so the slider looked dead. Mid-song the live level basically never hits this gate (music is continuous),
     // so true silence ⇒ pause/stop. Only the FALL is affected (audioEnvelope picks decay when target<prev).
     const silent = (liveLvl * gain < 0.02);
-    const decayNow = silent ? (p.pauseDecayMs==null ? 700 : p.pauseDecayMs) : p.decayMs;
+    // PAUSE = a LINEAR glide to 0, not the exponential audioEnvelope. A one-pole decay drops fast then has a long
+    // tail, so the tall (upper) rows cleared in ~1s while the base row rode the tail for the rest — looked like
+    // "pause-decay only affects the bottom row". Linear = constant descent: every row turns off evenly and the
+    // WHOLE bar takes ~pauseDecayMs to reach 0 (a full-height bar; shorter bars finish proportionally sooner).
+    const pauseMs = (p.pauseDecayMs==null ? 700 : p.pauseDecayMs);
+    const settle = (cur)=> Math.max(0, cur - dt/Math.max(60, pauseMs));   // full-scale (0..1) drop per pauseMs
     const tgtLevel = lvl(raw.level);
-    A.level = audioEnvelope(A.level, tgtLevel, dt, p.attackMs, decayNow);
+    A.level = silent ? settle(A.level) : audioEnvelope(A.level, tgtLevel, dt, p.attackMs, p.decayMs);
     A.centroid = audioEnvelope(A.centroid, (raw.centroid==null?0.5:raw.centroid), dt, p.attackMs, p.decayMs);
     // beat: instantaneous rise, decay only (so a kick pops then fades); beatSens scales sensitivity
     const beatTgt = Math.max(0, Math.min(1, (raw.beat||0) * (0.5 + (p.beatSens||50)/100)));
@@ -129,13 +136,13 @@
     if(!A.bandsRaw) { A.bandsRaw = new Float32Array(32); A.bandsRawL = new Float32Array(32); A.bandsRawR = new Float32Array(32); }
     const rawClamp = (v)=>{ v=(v||0); return v<0?0:(v>1?1:v); };   // pre-AGC magnitude (NO peak normalize) — keeps the real bass→treble shape for Spread
     for(let i=0;i<32;i++){
-      const t = rb ? band(rb[i], i) : 0; A.bands[i] = audioEnvelope(A.bands[i], t, dt, p.attackMs, decayNow);
-      const tL = rbL ? bandRO(rbL[i], i) : t; A.bandsL[i] = audioEnvelope(A.bandsL[i], tL, dt, p.attackMs, decayNow);
-      const tR = rbR ? bandRO(rbR[i], i) : t; A.bandsR[i] = audioEnvelope(A.bandsR[i], tR, dt, p.attackMs, decayNow);
+      const t = rb ? band(rb[i], i) : 0; A.bands[i] = silent ? settle(A.bands[i]) : audioEnvelope(A.bands[i], t, dt, p.attackMs, p.decayMs);
+      const tL = rbL ? bandRO(rbL[i], i) : t; A.bandsL[i] = silent ? settle(A.bandsL[i]) : audioEnvelope(A.bandsL[i], tL, dt, p.attackMs, p.decayMs);
+      const tR = rbR ? bandRO(rbR[i], i) : t; A.bandsR[i] = silent ? settle(A.bandsR[i]) : audioEnvelope(A.bandsR[i], tR, dt, p.attackMs, p.decayMs);
       const r = rb ? rawClamp(rb[i]) : 0;
-      A.bandsRaw[i]  = audioEnvelope(A.bandsRaw[i],  r, dt, p.attackMs, decayNow);
-      A.bandsRawL[i] = audioEnvelope(A.bandsRawL[i], rbL ? rawClamp(rbL[i]) : r, dt, p.attackMs, decayNow);
-      A.bandsRawR[i] = audioEnvelope(A.bandsRawR[i], rbR ? rawClamp(rbR[i]) : r, dt, p.attackMs, decayNow);
+      A.bandsRaw[i]  = silent ? settle(A.bandsRaw[i])  : audioEnvelope(A.bandsRaw[i],  r, dt, p.attackMs, p.decayMs);
+      A.bandsRawL[i] = silent ? settle(A.bandsRawL[i]) : audioEnvelope(A.bandsRawL[i], rbL ? rawClamp(rbL[i]) : r, dt, p.attackMs, p.decayMs);
+      A.bandsRawR[i] = silent ? settle(A.bandsRawR[i]) : audioEnvelope(A.bandsRawR[i], rbR ? rawClamp(rbR[i]) : r, dt, p.attackMs, p.decayMs);
     }
   }
   // Per-STYLE tuner params (gain/floor/attack/decay/beatSens) so tuning bars doesn't leak into pulse, etc.
