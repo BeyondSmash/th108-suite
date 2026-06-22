@@ -9,7 +9,7 @@
   function createWebCapture(log) {
     log = log || function () {};
     let ctx = null, analyser = null, stream = null, srcNode = null, active = false, kind = null;
-    let freq = null, time = null, prevMag = null, peakLvl = 1e-4, avgFlux = 1e-6;
+    let freq = null, time = null, prevMag = null, peakLvl = 1e-4, avgFlux = 1e-6, levelAvg = 1e-4;
     let splitter = null, analyserL = null, analyserR = null, freqL = null, freqR = null, stereo = false;   // L/R split for the 'stereo' bars layout
 
     // log-spaced 32-band map shared by mono + L + R (byte data is already perceptual → light linear boost)
@@ -53,7 +53,7 @@
         splitter.connect(analyserL, 0); splitter.connect(analyserR, 1);
         freqL = new Uint8Array(analyserL.frequencyBinCount); freqR = new Uint8Array(analyserR.frequencyBinCount);
       }
-      peakLvl = 1e-4; avgFlux = 1e-6; active = true; kind = sourceKind;
+      peakLvl = 1e-4; avgFlux = 1e-6; levelAvg = 1e-4; active = true; kind = sourceKind;
       at[0].addEventListener('ended', () => { stop(); });   // user clicked "Stop sharing"
       log('in-tab audio capture started (' + sourceKind + ')', 'ok');
       return true;
@@ -88,8 +88,13 @@
         bandsL = bandsFrom(freqL); bandsR = bandsFrom(freqR);
       }
       avgFlux = avgFlux * 0.93 + flux * 0.07;
-      const onset = (flux - avgFlux * 1.3) / (avgFlux + 1e-4);   // 1.3 (was 1.4): a touch more sensitive so quieter onsets still register
-      const beat = Math.max(0, Math.min(1, onset));
+      const fluxOnset = (flux - avgFlux * 1.3) / (avgFlux + 1e-4);   // 1.3 (was 1.4): a touch more sensitive so quieter onsets still register
+      // ALSO fire on a sharp LEVEL transient: a click/tick is a loudness spike that the peak term (inst) catches
+      // reliably even when its windowed spectral flux dips under threshold. max() of the two = redundancy, so the
+      // rare tick one detector misses, the other still catches (metronome "1-in-25 miss" cleanup).
+      levelAvg = levelAvg * 0.9 + inst * 0.1;
+      const lvlOnset = (inst - levelAvg * 1.6) / (levelAvg + 1e-4);
+      const beat = Math.max(0, Math.min(1, Math.max(fluxOnset, lvlOnset)));
       const centroid = centDen > 0 ? Math.min(1, (centNum / centDen) / bins * 2) : 0.5;
       // Downsample the time-domain PCM to a 64-point oscilloscope trace (last ~1024 samples ≈ 23ms) for the
       // Waveform style. `time` is -1..1 float PCM (getFloatTimeDomainData, captured above).

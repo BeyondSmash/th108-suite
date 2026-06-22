@@ -178,7 +178,7 @@ class AppCapture {
   // ---------- analysis (mirrors audio-sidecar.ps1 so app/system/tab look identical) ----------
   const int N = 2048;   // FFT window must stay > the sample hop so windows overlap (no gap impulses fall into); matches audio-sidecar.ps1
   static float[] win = new float[N], re = new float[N], im = new float[N], prevMag = new float[N/2];
-  static bool winInit = false; static float peakLvl = 1e-4f, avgFlux = 1e-6f, bandPeak = 1e-4f, bandPeak2 = 1e-4f;
+  static bool winInit = false; static float peakLvl = 1e-4f, avgFlux = 1e-6f, bandPeak = 1e-4f, bandPeak2 = 1e-4f, levelAvg = 1e-4f;
   const double BAND_DB_RANGE = 55.0;   // how many dB below the running spectrum peak maps to 0 (tune: smaller = fuller bars). Mirror in audio-sidecar.ps1.
   static void InitWin() { for (int i=0;i<N;i++) win[i]=(float)(0.5-0.5*Math.Cos(2*Math.PI*i/(N-1))); winInit=true; }
   static void FFT() {
@@ -210,7 +210,9 @@ class AppCapture {
       bands[b]=(float)Math.Min(1.0, Math.Max(0.0,nb)); }
     double inst=Math.Max(Math.Sqrt(rms/N), pk*0.6); peakLvl=Math.Max((float)inst, peakLvl*0.999f);   // RMS=body, PEAK=transients
     lbc[0]=(float)Math.Min(1.0, inst/Math.Max(peakLvl,1e-4));
-    avgFlux=avgFlux*0.93f+(float)flux*0.07f; double onset=(flux-avgFlux*1.3)/(avgFlux+1e-4);   // broadband flux, 1.3 threshold (a touch more sensitive)
+    avgFlux=avgFlux*0.93f+(float)flux*0.07f; double fluxOnset=(flux-avgFlux*1.3)/(avgFlux+1e-4);   // broadband flux, 1.3 threshold
+    levelAvg=levelAvg*0.9f+(float)inst*0.1f; double lvlOnset=(inst-levelAvg*1.6)/(levelAvg+1e-4);  // ALSO fire on a loudness spike (a click) — redundancy for the rare tick the flux misses
+    double onset=Math.Max(fluxOnset, lvlOnset);
     lbc[1]=(float)Math.Max(0, Math.Min(1.0, onset));
     lbc[2]=(float)(centDen>0 ? Math.Min(1.0,(centNum/centDen)/half*2.0) : 0.5);
     return true;

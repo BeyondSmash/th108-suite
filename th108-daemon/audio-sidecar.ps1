@@ -90,7 +90,8 @@ public static class Cap {
   static float[] re = new float[N], im = new float[N];
   static float[] prevMag = new float[N/2];   // for spectral-flux onset
   static float peakLvl = 1e-4f;              // slow-decaying loudness peak → auto-gain (volume-independent level)
-  static float avgFlux = 1e-6f;              // moving average of bass flux → onset/beat threshold
+  static float avgFlux = 1e-6f;              // moving average of broadband flux → onset/beat threshold
+  static float levelAvg = 1e-4f;             // fast EMA of instantaneous loudness → level-transient onset (catches a click the flux occasionally misses)
   static float bandPeak = 1e-4f, bandPeak2 = 1e-4f;   // running spectrum peaks (mono / L+R) → bands are dB RELATIVE to these = volume-independent
   const double BAND_DB_RANGE = 55.0;         // dB below the running spectrum peak that maps to 0 (mirror app-capture.cs)
   static bool winInit = false;
@@ -148,7 +149,10 @@ public static class Cap {
     outLBC[0]=(float)Math.Min(1.0, inst/Math.Max(peakLvl,1e-4));     // level normalized to that peak → full 0..1 at any volume
     outLBC[3]=(float)Math.Min(1.0, inst);                            // inAbs = ABSOLUTE level (pre auto-gain) → the mic noise gate acts on this
     avgFlux = avgFlux*0.93f + (float)flux*0.07f;                     // moving average of broadband flux
-    double onset=(flux - avgFlux*1.3)/(avgFlux + 1e-4);             // spikes when a transient exceeds ~1.3x the running average (1.3 vs 1.4 = a touch more sensitive)
+    double fluxOnset=(flux - avgFlux*1.3)/(avgFlux + 1e-4);          // spikes when a transient exceeds ~1.3x the running flux average
+    levelAvg = levelAvg*0.9f + (float)inst*0.1f;                     // ALSO fire on a sharp LOUDNESS spike (a click): redundancy so a tick the flux misses still registers
+    double lvlOnset=(inst - levelAvg*1.6)/(levelAvg + 1e-4);
+    double onset=Math.Max(fluxOnset, lvlOnset);
     outLBC[1]=(float)Math.Max(0, Math.Min(1.0, onset));             // beat 0..1 (sharp on kicks, ~0 between)
     outLBC[2]=(float)(centDen>0 ? Math.Min(1.0,(centNum/centDen)/half*2.0) : 0.5);   // brightness 0..1
     return true;
