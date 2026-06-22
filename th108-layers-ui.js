@@ -300,7 +300,7 @@
         const esc=t=>(t||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');
         let html='<div class="ctl">'+
           sec('Source')+
-          full('<span style="display:grid;grid-template-columns:1fr 1fr;gap:5px 14px;flex:1 1 100%">'+srcBubbles+'</span>')+
+          full('<span style="display:grid;grid-template-columns:auto auto;gap:7px 24px;justify-content:center;flex:1 1 100%">'+srcBubbles+'</span>')+
           (s.source==='app' ? sub('Specific App')+full('<select class="s-appId" style="max-width:180px"></select><button type="button" class="s-appRefresh" title="rescan currently-playing apps" style="flex:none">Refresh</button><span class="val s-appNote" style="opacity:.7"></span>') : '')+
           sec('Style')+ '<div class="lfull" style="justify-content:center"><select class="s-style">'+sopt+'</select></div>'+   // no left label → center it under the header
           sec('Preview')+ full('<div style="display:flex;flex-direction:column;gap:9px;flex:1 1 100%">'+
