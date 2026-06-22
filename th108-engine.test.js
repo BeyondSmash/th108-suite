@@ -269,6 +269,17 @@ test('wash-style Dynamics recedes on steady sound and Transparency sets an alpha
   assert.ok(La._alpha && La._alpha[0] < 1, 'Transparency sets an opacity mask below 1 during steady sound');
 });
 
+test('Mic is a separate tuning variant with smoother defaults', () => {
+  const L = { type:'audio', enabled:true, opacity:1, blend:'add', settings:{ style:'bars', source:'mic' }, rgb:new Uint8Array(E.NLED*3) };
+  E.ensureSettings(L); const s = L.settings;
+  const micAp = E.audioParams(s);
+  assert.equal(micAp.attackMs, 80, 'mic gets the smoother default attack');
+  assert.equal(micAp.pauseDecayMs, 1500, 'mic gets the long graceful settle');
+  s.source = 'system';
+  assert.equal(E.audioParams(s).attackMs, 40, 'a playback source uses the standard attack — separate variant');
+  assert.notEqual(E.audioVariantKey({ style:'bars', source:'mic' }), E.audioVariantKey({ style:'bars', source:'system' }), 'mic+bars and system+bars are distinct variants');
+});
+
 test('crop clip masks every key outside the rectangle', () => {
   const L = { type:'audio', enabled:true, opacity:1, blend:'add', settings:{ style:'pulse', pulseMin:100, pulseColor:'#ffffff', cropOn:true, cropFit:false, cropX:0, cropY:0, cropW:0.4, cropH:1 }, rgb:new Uint8Array(E.NLED*3) };
   E.ensureSettings(L); const st = E.createState([L]); const La = st.layers[0];

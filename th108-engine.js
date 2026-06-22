@@ -209,19 +209,24 @@
       A.hit[i] = tgt > A.hit[i] ? tgt : A.hit[i]*hitDecay;                 // instant attack, slow decay
     }
   }
-  // Per-STYLE tuner params (gain/floor/attack/decay/beatSens) so tuning bars doesn't leak into pulse, etc.
-  // Mirrors patParams: one-time migrates the old flat values onto the current style; new styles start at defaults.
+  // Per-VARIANT tuner params (gain/floor/attack/decay/beatSens) so tuning one variant doesn't leak into another.
+  // A "variant" is the style, EXCEPT Mic gets its own namespace ('mic\0'+style) — a microphone's input character
+  // (ambient, continuous, jittery) differs from playback, so it keeps separate tuning with smoother defaults.
   const AUDIO_TUNE_DEFAULTS = { gain:1, floor:5, ceil:100, contrast:50, agc:true, attackMs:40, decayMs:220, pauseDecayMs:700, beatSens:50 };
+  const MIC_TUNE_DEFAULTS = { attackMs:80, decayMs:300, pauseDecayMs:1500 };   // smoother attack + a long graceful settle (ambient input glides down, doesn't snap)
+  function audioVariantKey(s){ return (s.source==='mic' ? 'mic ' : '') + (s.style || 'bars'); }
   function audioParams(s){
-    const style = s.style || 'bars';
+    const key = audioVariantKey(s), defs = s.source==='mic' ? Object.assign({}, AUDIO_TUNE_DEFAULTS, MIC_TUNE_DEFAULTS) : AUDIO_TUNE_DEFAULTS;
     if(!s.ap){
-      const seed = { gain:s.gain, floor:s.floor, attackMs:s.attackMs, decayMs:s.decayMs, beatSens:s.beatSens };
+      // one-time migration of pre-`ap` flat values — but ONLY onto a non-mic variant. Those flat values are the
+      // legacy playback defaults; seeding them onto Mic would clobber Mic's smoother defaults (attack 80, etc).
+      const seed = s.source==='mic' ? {} : { gain:s.gain, floor:s.floor, attackMs:s.attackMs, decayMs:s.decayMs, beatSens:s.beatSens };
       Object.keys(seed).forEach(k=>{ if(seed[k]==null) delete seed[k]; });
-      s.ap = {}; s.ap[style] = Object.assign({}, AUDIO_TUNE_DEFAULTS, seed);
+      s.ap = {}; s.ap[key] = Object.assign({}, defs, seed);
     }
-    if(!s.ap[style]) s.ap[style] = Object.assign({}, AUDIO_TUNE_DEFAULTS);
-    else { const o = s.ap[style]; for(const k in AUDIO_TUNE_DEFAULTS) if(o[k] == null) o[k] = AUDIO_TUNE_DEFAULTS[k]; }   // backfill keys added after this layer was first saved (ceil/contrast/pauseDecayMs) IN-PLACE — must keep the SAME object reference so the panel's `ap` and the render/save path stay in sync (reassigning a fresh object orphaned slider edits → Tuning reset on refresh + live edits ignored)
-    return s.ap[style];
+    if(!s.ap[key]) s.ap[key] = Object.assign({}, defs);
+    else { const o = s.ap[key]; for(const k in defs) if(o[k] == null) o[k] = defs[k]; }   // backfill keys added after this layer was first saved IN-PLACE — must keep the SAME object reference so the panel's `ap` and the render/save path stay in sync
+    return s.ap[key];
   }
 
   // ===== per-pattern params (verbatim from controller) =====
@@ -1059,7 +1064,7 @@
 
   const TH108Engine = {
     KEYMAP, INDICES, NLED, BOARDW, BOARDH, GRID, GW, GH,
-    hexToRgb, hsv2rgb, patHash, patColorize, audioEnvelope, applyAudioFeatures, audioParams,
+    hexToRgb, hsv2rgb, patHash, patColorize, audioEnvelope, applyAudioFeatures, audioParams, audioVariantKey,
     keyCell, layerCell,
     PAT_DEFAULTS, patParams, ensureSettings, defaultLayers, createState, applyConfig,
     renderBackground, renderReactive, renderGradient, renderPattern, renderMedia, renderKeys, renderAudio,

@@ -48,6 +48,15 @@
     function saveLayers(){ try{ localStorage.setItem('th108_layers', JSON.stringify(serializeLayers(state.layers))); }catch(_){ } }
     function scheduleSaveLayers(){ clearTimeout(_slsT); _slsT=setTimeout(()=>{ saveLayers(); pushConfig(); },400); }   // mirror the edit to the daemon's config.json (no-op if no daemon)
     function restoreLayers(){ try{ overlayLayers(state.layers, JSON.parse(localStorage.getItem('th108_layers')||'null')); }catch(_){ } }
+    // Per-VARIANT render settings (Adjust/crop/pause/ducks share flat key NAMES across styles, so without this they
+    // leak between styles). Bucketed in s.sv[variantKey] (variant = style, Mic separate — mirrors engine ap). On a
+    // style OR source switch we snapshot the outgoing variant's flat values, then restore the incoming variant's.
+    const VARIANT_SHARED_KEYS = ['bri','sat','con','gam','spd','frozen','pauseStyle','cropOn','cropFit','cropX','cropY','cropW','cropH'];
+    function saveVariantVals(s, key){ if(!s.sv) s.sv={}; const b=s.sv[key]||(s.sv[key]={}); VARIANT_SHARED_KEYS.forEach(k=>{ if(s[k]!==undefined) b[k]=s[k]; }); b.ducks = Array.isArray(s.ducks)?JSON.parse(JSON.stringify(s.ducks)):[]; }
+    function loadVariantVals(s, key){ const b=s.sv&&s.sv[key];
+      if(!b){ if(String(key).indexOf('mic ')===0) s.pauseStyle='linear'; return; }   // fresh Mic variant → Settle-glide pause by default (mic input glides down, doesn't twinkle)
+      VARIANT_SHARED_KEYS.forEach(k=>{ if(b[k]!==undefined) s[k]=b[k]; }); if(b.ducks!==undefined) s.ducks=JSON.parse(JSON.stringify(b.ducks)); }
+    function swapVariant(s, oldKey, newKey){ if(oldKey===newKey) return; saveVariantVals(s, oldKey); loadVariantVals(s, newKey); }
     function saveLayerOrder(){ try{ localStorage.setItem('th108_layerOrder', JSON.stringify(serializeOrder(state.layers))); }catch(_){ } }
 
     // ===== layer cards UI (built from the layers array; Layer 1 listed first) =====
@@ -411,7 +420,7 @@
         '</div>';
         body.innerHTML=html;
         const c=q=>body.querySelector(q);
-        body.querySelectorAll('.s-source').forEach(r=>r.addEventListener('change',e=>{ const v=e.target.value; s.source=v;
+        body.querySelectorAll('.s-source').forEach(r=>r.addEventListener('change',e=>{ const v=e.target.value, oldK=E.audioVariantKey(s); s.source=v; swapVariant(s, oldK, E.audioVariantKey(s));   // Mic is a separate variant → carry its own Adjust/crop/pause/ducks (and tuning, via the engine ap key)
           if(v==='tab' && opts.isDriving && !opts.isDriving() && opts.connectKeyboard) opts.connectKeyboard();   // auto-handover: only Specific Tab is page-captured → grab the keyboard from the daemon so it reaches the keys (mic is daemon-driven now)
           onAudioSource(v); buildLayerBody(card,L); }));   // tab starts in-tab capture; system/app/mic stop it (daemon-driven); rebuild so the App/Mic panels show/hide
         // re-pick: clicking the ALREADY-selected "Specific Tab" re-opens the share picker (a 'change' doesn't fire when it's already chosen)
@@ -432,7 +441,7 @@
           if(rf) rf.addEventListener('click',load);
           load();
         }
-        c('.s-style').addEventListener('change',e=>{ s.style=e.target.value; buildLayerBody(card,L); });
+        c('.s-style').addEventListener('change',e=>{ const oldK=E.audioVariantKey(s); s.style=e.target.value; swapVariant(s, oldK, E.audioVariantKey(s)); buildLayerBody(card,L); scheduleSaveLayers(); });   // carry each variant's own Adjust/crop/pause/ducks
         ['barColorBass','barColorTreble','barTipColor','barGradA','barGradB','pulseColor','pulseColor2','bloomColor','bloomColor2','waveColor','waveColor2','sparkleColor'].forEach(key=>{ const el=c('.s-'+key); if(el) el.addEventListener('input',e=>s[key]=e.target.value); });
         // per-style appearance VALUE sliders that write to s directly (not the per-style tuner `ap`): pulse min/max, aurora width
         [['pulseMin','%'],['pulseMax','%'],['auroraWidth',''],['waveAmp','%'],['waveThick','%'],['micGain','%'],['micGate','%']].forEach(pair=>{ const key=pair[0], unit=pair[1], el=c('.s-'+key), v=c('.s-'+key+'V'); if(el&&v){ const up=()=>v.textContent=el.value+unit; el.addEventListener('input',()=>{ s[key]=+el.value; up(); }); up(); } });
