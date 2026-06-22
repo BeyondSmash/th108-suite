@@ -604,3 +604,19 @@ test('dynamics depth: a steady bar recedes, a change pops it bright (novelty →
   s.barDynamics = false; E.renderAudio(La, t+16, st);
   assert.ok(litSum(La, kBase) > popped*0.8, 'with Dynamics off the bar renders full regardless of hit');
 });
+
+test('alpha recede: a steady bar fades see-through (layer below shows), a hit makes it opaque', () => {
+  const mk = () => E.createState([
+    { name:'BG', type:'background', enabled:true, opacity:1, blend:'normal', fps:30, settings:{ color:'#ffffff', period:1, bgMin:100, bgMax:100 } },
+    { name:'Audio', type:'audio', enabled:true, opacity:1, blend:'normal', fps:30, settings:{ style:'bars', barDynamicsAlpha:true, barDynamicsDepth:100, barColor:'gradient', barGradA:'#ff0000', barGradB:'#ff0000' } },
+  ]);
+  const kBase = findK(c => c[0]===0 && c[1]===E.GH-1); assert.ok(kBase>=0, 'found column-0 bottom key'); const o = kBase*4;
+  // STEADY (hit=0) at depth 100 → bar fully see-through → the white background shows through
+  const st1 = mk(); st1.bri=1; st1.audio.bands.fill(0); st1.audio.bands[0]=1; st1.audio.hit=new Float32Array(32);
+  const f1 = E.composeFrame(st1, 100);
+  assert.ok(f1[o+2] > 200, 'steady bar is see-through → white background shows (green='+f1[o+2]+')');
+  // a HIT (hit=1) → bar opaque → red shows, NOT the background
+  const st2 = mk(); st2.bri=1; st2.audio.bands.fill(0); st2.audio.bands[0]=1; st2.audio.hit=new Float32Array(32); st2.audio.hit[0]=1;
+  const f2 = E.composeFrame(st2, 100);
+  assert.ok(f2[o+1] > 100 && f2[o+2] < 60, 'a hit makes the bar opaque → red shows, not white (r='+f2[o+1]+' g='+f2[o+2]+')');
+});

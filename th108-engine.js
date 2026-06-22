@@ -375,9 +375,9 @@
 
   function renderAudio(L, now, state){
     const s = L.settings, out = L.rgb, A = state.audio;
-    if(s.pauseStyle==='twinkle' && A._twk){ renderTwinkleOut(L, out, A, now, s); L._carve=null; return; }   // paused: sparkle the frozen frame out
+    if(s.pauseStyle==='twinkle' && A._twk){ renderTwinkleOut(L, out, A, now, s); L._carve=null; L._alpha=null; return; }   // paused: sparkle the frozen frame out
     out.fill(0);
-    L._carve = null;                          // only bars 'subtract' fill sets a carve mask (cleared each frame)
+    L._carve = null; L._alpha = null;         // only bars 'subtract' fill sets a carve mask; only bars alpha-recede sets _alpha (both cleared each frame, renderBars re-sets if needed)
     const style = s.style || 'bars';
     if(style==='bars') renderBars(s, out, A, now, L);
     else if(style==='pulse') renderPulse(s, out, A, now);
@@ -486,7 +486,11 @@
     const layout = s.barLayout || 'standard';
     const drive = s.barDrive || 'spectrum';   // what the bar HEIGHT follows: per-column frequency | overall volume | beat
     const spread = !!s.barSpread;             // volume/beat: shape columns by the per-column spectrum/stereo (per Layout) so they rise individually instead of as one wall
-    const dynOn = !!s.barDynamics, dynDepth = dynOn ? Math.max(0, Math.min(1, (s.barDynamicsDepth==null?60:s.barDynamicsDepth)/100)) : 0;   // Dynamics depth: a STEADY band dims to (1-depth) brightness and a change/beat (A.hit) pops it back to full → the wall breathes instead of sitting flat
+    // Dynamics depth: a STEADY band recedes (A.hit→0) and a change/beat pops it to full. Two independent recede
+    // styles share one depth: 'barDynamics' dims the bar's BRIGHTNESS; 'barDynamicsAlpha' fades its per-key OPACITY
+    // (the layers BELOW show through → real front/back depth). depth = how far a steady bar recedes.
+    const dynOn = !!s.barDynamics, alphaOn = !!s.barDynamicsAlpha;
+    const depth = (dynOn||alphaOn) ? Math.max(0, Math.min(1, (s.barDynamicsDepth==null?60:s.barDynamicsDepth)/100)) : 0;
     const ctr = (GW-1)/2;
     const vert = layout==='topdown' ? 'down' : layout==='centerout' ? 'center' : 'up';   // vertical fill mode
     const midRow = (GH-1)/2, halfH = GH/2;
@@ -498,6 +502,10 @@
     let maxRaw = 0.05; if(useSpread){ for(let i=0;i<32;i++) if(A.bandsRaw[i]>maxRaw) maxRaw=A.bandsRaw[i]; }
     let cb = null, any = false;
     if(subtract && L){ cb = L._carveBuf || (L._carveBuf = new Float32Array(NLED)); cb.fill(0); }
+    // alpha-recede: a per-key opacity mask the compositor reads (1 = opaque). Only solid fills (not the subtract
+    // silhouette, which carves separately). Default 1 at every key (unlit keys stay pass-through per blend mode).
+    let aBuf = null;
+    if(L){ if(alphaOn && !subtract){ aBuf = L._alpha = (L._alphaBuf || (L._alphaBuf = new Float32Array(NLED))); aBuf.fill(1); } else { L._alpha = null; } }
     // tip color (fc = column for rainbow drift; vuFb = the fill level scaled to the 6-row VU palette)
     const tipColorAt = (fc, vuFb) => tip==='rainbow' ? hsv2rgb(fc + t*0.15, 1, 1) : tip==='vu' ? vuRow(vuFb) : tipCol;
     for(let k=0;k<NLED;k++){
@@ -527,8 +535,9 @@
       // glides up/down smoothly — the classic analyzer look. partial: >1 full row, 0..1 the top row, <=0 empty.
       const partial = litCount - (fb - 1);
       if(partial <= 0){ out[o]=out[o+1]=out[o+2]=0; continue; }
-      const dyn = dynOn ? (1 - dynDepth + dynDepth*(A.hit ? A.hit[band] : 1)) : 1;   // recede when stale, snap to full on a hit (folds into every brightness path via fillF)
-      const fillF = (partial < 1 ? partial : 1) * dyn;
+      const rec = (dynOn||alphaOn) ? (1 - depth + depth*(A.hit ? A.hit[band] : 1)) : 1;   // recede when stale, snap to full on a hit
+      if(aBuf) aBuf[k] = rec;                                  // alpha recede: this LIT key fades see-through when stale
+      const fillF = (partial < 1 ? partial : 1) * (dynOn ? rec : 1);   // brightness recede folds into every fill/tip path via fillF
       const h = fb/steps;                                     // brightness-ramp coord (dimmer at base … brightest at tip)
       const hc = steps>1 ? (fb-1)/(steps-1) : 0;              // COLOR coord 0 (base) … 1 (tip)
       const vuFb = vert==='center' ? fb*2 : fb;               // center has only 3 levels/side → scale to the 6-step VU palette
@@ -802,7 +811,7 @@
     for(const L of state.layers){
       if(!L.enabled) continue;
       if(L.type==='audio' && !layerEmitting(L) && !L._carve) continue;   // silent/feedless audio = transparent — BUT a 'subtract' bars layer with a carve mask still carves even with no lit tips
-      const a=L.opacity, src=L.rgb, bl=L.blend, df=(L._duck==null?1:L._duck);   // df = audio-duck dim factor (1 = untouched)
+      const a=L.opacity, src=L.rgb, bl=L.blend, df=(L._duck==null?1:L._duck), alpha=L._alpha;   // df = audio-duck dim; alpha = per-key opacity mask (bars alpha-recede), null = uniform opacity
       // ISOLATE (punch-through): a reactive layer carves out the layers below at pressed keys
       if(L.type==='reactive' && L.settings && L.settings.isolate && L._inten){
         for(let k=0;k<NLED;k++){ const m=1-Math.max(0,Math.min(1,L._inten[k])), t=k*3;
@@ -815,17 +824,17 @@
       // below (crossfaded by opacity); fully-black keys are transparent and pass the layers through.
       // The "this layer owns these specific keys" mode (e.g. a song-progress bar on the number row).
       if(bl==='replace'){
-        for(let k=0;k<NLED;k++){ const t=k*3, sr=src[t]/255*df, sg=src[t+1]/255*df, sb=src[t+2]/255*df;
-          if(sr>0||sg>0||sb>0){ acc[t]=acc[t]*(1-a)+sr*a; acc[t+1]=acc[t+1]*(1-a)+sg*a; acc[t+2]=acc[t+2]*(1-a)+sb*a; } }
+        for(let k=0;k<NLED;k++){ const t=k*3, sr=src[t]/255*df, sg=src[t+1]/255*df, sb=src[t+2]/255*df, ak=alpha?a*alpha[k]:a;
+          if(sr>0||sg>0||sb>0){ acc[t]=acc[t]*(1-ak)+sr*ak; acc[t+1]=acc[t+1]*(1-ak)+sg*ak; acc[t+2]=acc[t+2]*(1-ak)+sb*ak; } }
         continue;
       }
       for(let i=0;i<acc.length;i++){
-        const dst=acc[i], s=src[i]/255*df; let v;
-        if(bl==='add')           v=Math.min(1, dst + s*a);
-        else if(bl==='screen'){  const sc=1-(1-dst)*(1-s); v=dst*(1-a)+sc*a; }
-        else if(bl==='multiply'){ const mu=dst*s;           v=dst*(1-a)+mu*a; }
-        else if(bl==='max'){     const mx=Math.max(dst,s);  v=dst*(1-a)+mx*a; }
-        else                     v=s*a + dst*(1-a);          // normal
+        const dst=acc[i], s=src[i]/255*df, aK=alpha?a*alpha[(i/3)|0]:a; let v;   // aK folds the per-key alpha-recede mask into this layer's opacity
+        if(bl==='add')           v=Math.min(1, dst + s*aK);
+        else if(bl==='screen'){  const sc=1-(1-dst)*(1-s); v=dst*(1-aK)+sc*aK; }
+        else if(bl==='multiply'){ const mu=dst*s;           v=dst*(1-aK)+mu*aK; }
+        else if(bl==='max'){     const mx=Math.max(dst,s);  v=dst*(1-aK)+mx*aK; }
+        else                     v=s*aK + dst*(1-aK);          // normal
         acc[i]=v;
       }
     }
@@ -880,7 +889,7 @@
       const ad={ style:'bars', source:'system', appId:'', deviceId:'', pauseStyle:'linear',
         gain:1, floor:5, attackMs:40, decayMs:220, beatSens:50,
         barColorBass:'#ff2200', barColorTreble:'#22aaff', barTip:'off', barTipColor:'#ffffff', barFill:'solid',
-        barColor:'bassTreble', barGradA:'#00ff66', barGradB:'#ff00aa', barLayout:'standard', barDrive:'spectrum', barSpread:false, barDynamics:false, barDynamicsDepth:60,
+        barColor:'bassTreble', barGradA:'#00ff66', barGradB:'#ff00aa', barLayout:'standard', barDrive:'spectrum', barSpread:false, barDynamics:false, barDynamicsAlpha:false, barDynamicsDepth:60,
         pulseColor:'#19b6ff', pulseColor2:'#ff00aa', pulseGrad:false,
         bloomColor:'#ff5a00', bloomColor2:'#ffd000', bloomGrad:false,
         waveColor:'#00e0ff', waveColor2:'#ff00aa', waveGrad:false, waveReverse:false };
