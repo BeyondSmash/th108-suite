@@ -486,10 +486,7 @@
             if(!document.body.contains(cvL||cvS)){ [peek,dup].forEach(e=>{ if(e.parentNode) e.parentNode.removeChild(e); }); return; }   // card rebuilt/removed → stop + clean
             if(nowEl){ let txt='';   // "what's playing" under the sources: tab/mic = shared-tab title / mic name, + a hint when this tab isn't driving the keyboard
               if((s.source==='tab'||s.source==='mic') && liveAudioActive()){
-                const np=(opts.nowPlaying&&opts.nowPlaying())||'';                       // real media-session title (daemon)
-                const raw=(opts.captureLabel&&opts.captureLabel())||'';
-                const clean=(/:\/\/|web-contents|mediastream/i.test(raw))?'':raw;         // hide the opaque tab stream-id ("web-contents-media-stream://…")
-                const lbl=np||clean||(s.source==='mic'?'microphone':'shared tab');
+                const lbl=(s.source==='mic'?'Microphone':'Shared tab');   // the shared tab's TITLE isn't obtainable (its audio track is an opaque stream id; the daemon's now-playing is the SYSTEM's current session, e.g. Spotify — NOT this tab), so don't show a wrong title
                 const driving=opts.isDriving?opts.isDriving():true;
                 txt='▶ '+lbl+(driving?'':'   ·   preview only — click “Drive from this Tab” to show it on the keyboard'); }
               if(txt!==_lastNow){ nowEl.textContent=txt; nowEl.style.color=(txt.indexOf('preview only')>=0)?'var(--warn,#e0a200)':''; _lastNow=txt; } }
@@ -583,6 +580,10 @@
       buildLayerCards();
       panel.addEventListener('input', scheduleSaveLayers);    // persist edits (debounced)
       panel.addEventListener('change', scheduleSaveLayers);
+      // Bug guard: clicking empty grid/card space (a non-control) was moving focus into a stray number box
+      // (reproduced even in Incognito, with NO .focus()/label in our code — a focus-on-mousedown quirk).
+      // preventDefault on mousedown for non-controls cancels that focus change without affecting real controls.
+      cards.addEventListener('mousedown', e=>{ if(!e.target.closest('input,button,select,textarea,a,label')) e.preventDefault(); });
     }
 
     return { init, buildCards: buildLayerCards, save: saveLayers, scheduleSave: scheduleSaveLayers, restore: restoreLayers, reorderFromDom };
