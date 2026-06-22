@@ -252,6 +252,23 @@ test('renderSparkle mono uses only the picked color', () => {
   assert.equal(g+b, 0, 'pure red picked color → no green/blue channel anywhere');
 });
 
+test('wash-style Dynamics recedes on steady sound and Transparency sets an alpha mask', () => {
+  const mk=extra=>{ const L={ type:'audio', enabled:true, opacity:1, blend:'add', settings:Object.assign({ style:'pulse', pulseMin:40, pulseColor:'#ffffff' }, extra), rgb:new Uint8Array(E.NLED*3) }; E.ensureSettings(L); return L; };
+  // Dynamics ON, full depth: a STEADY frame (beat 0) is dimmer than the same frame with a beat.
+  const Ld=mk({ pulseDynamics:true, pulseDynamicsDepth:100 });
+  let st=E.createState([Ld]); let La=st.layers[0];
+  st.audio.level=0.6; st.audio.beat=0; E.renderAudio(La,0,st);
+  let steady=0; for(let i=0;i<La.rgb.length;i++) steady+=La.rgb[i];
+  La.rgb.fill(0); st.audio.beat=1; E.renderAudio(La,0,st);
+  let onbeat=0; for(let i=0;i<La.rgb.length;i++) onbeat+=La.rgb[i];
+  assert.ok(onbeat > steady, 'a beat pops brighter than a steady passage when Dynamics is on');
+  // Transparency ON: renderAudio must publish a per-key alpha mask (< 1 while steady).
+  const Lt=mk({ pulseDynamicsAlpha:true, pulseDynamicsDepth:100 });
+  st=E.createState([Lt]); La=st.layers[0];
+  st.audio.level=0.6; st.audio.beat=0; E.renderAudio(La,0,st);
+  assert.ok(La._alpha && La._alpha[0] < 1, 'Transparency sets an opacity mask below 1 during steady sound');
+});
+
 test('renderBloom lights center keys on a beat and is dark with no beat', () => {
   const L = { type:'audio', enabled:true, opacity:1, blend:'add', settings:{ style:'bloom' }, rgb:new Uint8Array(E.NLED*3) };
   E.ensureSettings(L); const st = E.createState([L]); const La = st.layers[0];

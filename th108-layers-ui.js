@@ -312,6 +312,12 @@
               '<div style="display:flex;align-items:center;justify-content:center;gap:8px;margin-bottom:3px"><span class="val" style="opacity:.65">Live — real audio</span><button type="button" class="s-livePrevToggle">'+(s.livePrevOff?'Show':'Hide')+'</button></div>'+
               '<canvas class="s-audioPrevLive" width="378" height="92" style="width:100%;height:auto;display:'+(s.livePrevOff?'none':'block')+';background:#0d1117;border-radius:8px"></canvas></div>'+
           '</div>');
+        // Dynamics / Transparency rows for the wash styles (pulse/bloom/starfield) — mirrors Spectrum Bars but
+        // global. p = the style prefix (= its setting-key prefix). The depth slider shows only when either is on.
+        const dynRows=(p)=>{ const on=!!s[p+'Dynamics'], aon=!!s[p+'DynamicsAlpha'], dep=(s[p+'DynamicsDepth']==null?60:s[p+'DynamicsDepth']);
+          return row('Dynamics','<label class="sl" style="margin:0"><input type="checkbox" class="s-'+p+'Dynamics"'+(on?' checked':'')+'> Steady/sustained passages recede (dim); a beat pops it back to full — breathing depth instead of a flat wash</label><span></span>')+
+            row('Transparency','<label class="sl" style="margin:0"><input type="checkbox" class="s-'+p+'DynamicsAlpha"'+(aon?' checked':'')+'> Recede as SEE-THROUGH — between beats the layers below show through, snaps opaque on a hit. Stacks with Dynamics</label><span></span>')+
+            ((on||aon)?row('Dynamics depth','<span class="srange" style="width:100%"><input type="range" class="s-'+p+'DynamicsDepth" min="0" max="100" value="'+dep+'" title="How far a steady passage recedes (dim and/or see-through) before a beat pops it back to full"><i class="tick" style="left:calc(7px + (100% - 14px)*0.6)"></i></span><span class="val s-'+p+'DynamicsDepthV"></span>'):''); };
         html+=sub('Appearance');   // every surviving style now has at least one appearance control
         if(style==='bars'){ const bt=s.barTip||'off', bf=s.barFill||'solid', bc=s.barColor||'bassTreble', blo=s.barLayout||'standard', bdr=s.barDrive||'spectrum', bsp=!!s.barSpread;
           const btOpt=[['off','Off'],['color','Solid color'],['rainbow','Rainbow'],['vu','VU (green→red by level)']].map(o=>'<option value="'+o[0]+'"'+(o[0]===bt?' selected':'')+'>'+o[1]+'</option>').join('');
@@ -338,17 +344,20 @@
           row('Gradient','<label class="sl" style="margin:0"><input type="checkbox" class="s-pulseGrad"'+(s.pulseGrad?' checked':'')+'> Two-color (bottom→top)</label><span></span>')+
           (s.pulseGrad ? row('2nd color','<input type="color" class="s-pulseColor2" value="'+s.pulseColor2+'"><span></span>') : '')+
           row('Min brightness','<span class="srange" style="width:100%"><input type="range" class="s-pulseMin" min="0" max="100" value="'+(s.pulseMin==null?0:s.pulseMin)+'" title="Resting glow held even at silence (0 = goes fully dark on silence)"><i class="tick" style="left:calc(7px + (100% - 14px)*0.0)"></i></span><span class="val s-pulseMinV"></span>')+
-          row('Max brightness','<span class="srange" style="width:100%"><input type="range" class="s-pulseMax" min="0" max="100" value="'+(s.pulseMax==null?100:s.pulseMax)+'" title="Brightness a FULL beat reaches (the ceiling of the pump)"><i class="tick" style="left:calc(7px + (100% - 14px)*1.0)"></i></span><span class="val s-pulseMaxV"></span>');
+          row('Max brightness','<span class="srange" style="width:100%"><input type="range" class="s-pulseMax" min="0" max="100" value="'+(s.pulseMax==null?100:s.pulseMax)+'" title="Brightness a FULL beat reaches (the ceiling of the pump)"><i class="tick" style="left:calc(7px + (100% - 14px)*1.0)"></i></span><span class="val s-pulseMaxV"></span>')+
+          dynRows('pulse');
         else if(style==='bloom') html+=row('Color','<input type="color" class="s-bloomColor" value="'+s.bloomColor+'"><span></span>')+
           row('Gradient','<label class="sl" style="margin:0"><input type="checkbox" class="s-bloomGrad"'+(s.bloomGrad?' checked':'')+'> Two-color (center→edge)</label><span></span>')+
-          (s.bloomGrad ? row('Edge color','<input type="color" class="s-bloomColor2" value="'+s.bloomColor2+'"><span></span>') : '');
+          (s.bloomGrad ? row('Edge color','<input type="color" class="s-bloomColor2" value="'+s.bloomColor2+'"><span></span>') : '')+
+          dynRows('bloom');
         else if(style==='wave')  html+=row('Color','<input type="color" class="s-waveColor" value="'+s.waveColor+'"><span></span>')+
           row('Gradient','<label class="sl" style="margin:0"><input type="checkbox" class="s-waveGrad"'+(s.waveGrad?' checked':'')+'> Two-color (start→end)</label><span></span>')+
           (s.waveGrad ? row('2nd color','<input type="color" class="s-waveColor2" value="'+s.waveColor2+'"><span></span>') : '')+
           row('Direction','<label class="sl" style="margin:0"><input type="checkbox" class="s-waveReverse"'+(s.waveReverse?' checked':'')+'> Reverse flow</label><span></span>');
         else if(style==='aurora') html+=row('Width','<span class="srange" style="width:100%"><input type="range" class="s-auroraWidth" min="0" max="100" value="'+(s.auroraWidth==null?50:s.auroraWidth)+'" title="Thickness of the aurora curtains — higher = fatter, softer bands; lower = thin ribbons"><i class="tick" style="left:calc(7px + (100% - 14px)*0.5)"></i></span><span class="val s-auroraWidthV"></span>');
         else if(style==='sparkle') html+=row('Color mode','<label class="sl" style="margin:0"><input type="checkbox" class="s-sparkleMono"'+(s.sparkleMono?' checked':'')+'> Single color (off = full RGB rainbow)</label><span></span>')+
-          (s.sparkleMono ? row('Color','<input type="color" class="s-sparkleColor" value="'+(s.sparkleColor||'#00e0ff')+'"><span></span>') : '');
+          (s.sparkleMono ? row('Color','<input type="color" class="s-sparkleColor" value="'+(s.sparkleColor||'#00e0ff')+'"><span></span>') : '')+
+          dynRows('sparkle');
         // Dim-while-active: pick OTHER layers to quiet while this audio layer is emitting, each with its
         // own max-brightness slider — so the music keys read against a darker base. Stored in s.ducks.
         if(!Array.isArray(s.ducks)) s.ducks=[];
@@ -410,6 +419,11 @@
         { const bdy=c('.s-barDynamics'); if(bdy) bdy.addEventListener('change',e=>{ s.barDynamics=e.target.checked; buildLayerBody(card,L); }); }   // rebuild so the depth slider shows/hides
         { const bda=c('.s-barDynamicsAlpha'); if(bda) bda.addEventListener('change',e=>{ s.barDynamicsAlpha=e.target.checked; buildLayerBody(card,L); }); }   // rebuild so the depth slider shows/hides
         { const el=c('.s-barDynamicsDepth'), v=c('.s-barDynamicsDepthV'); if(el&&v){ const up=()=>v.textContent=el.value+'%'; el.addEventListener('input',()=>{ s.barDynamicsDepth=+el.value; up(); }); up(); } }
+        // wash-style Dynamics/Transparency (pulse/bloom/sparkle) — same shape as bars, keyed by prefix
+        ['pulse','bloom','sparkle'].forEach(p=>{
+          ['Dynamics','DynamicsAlpha'].forEach(suf=>{ const el=c('.s-'+p+suf); if(el) el.addEventListener('change',e=>{ s[p+suf]=e.target.checked; buildLayerBody(card,L); }); });   // rebuild so the depth slider shows/hides
+          const el=c('.s-'+p+'DynamicsDepth'), v=c('.s-'+p+'DynamicsDepthV'); if(el&&v){ const up=()=>v.textContent=el.value+'%'; el.addEventListener('input',()=>{ s[p+'DynamicsDepth']=+el.value; up(); }); up(); }
+        });
         { const ps=c('.s-pauseStyle'); if(ps) ps.addEventListener('change',e=>s.pauseStyle=e.target.value); }   // layer-level pause behavior: linear settle vs twinkle-out
         { const bd=c('.s-barDrive'); if(bd) bd.addEventListener('change',e=>{ s.barDrive=e.target.value; buildLayerBody(card,L); }); }   // rebuild so the Spread toggle shows/hides
         { const bsp=c('.s-barSpread'); if(bsp) bsp.addEventListener('change',e=>s.barSpread=e.target.checked); }

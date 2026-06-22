@@ -386,6 +386,19 @@
     else if(style==='aurora') renderAurora(s, out, A, now);
     else if(style==='sparkle') renderSparkle(s, out, A, now);
     else renderBars(s, out, A, now, L);
+    // Dynamics / Transparency for the wash styles (pulse/bloom/starfield), mirroring Spectrum Bars but GLOBAL
+    // (whole-board, since these aren't per-column meters): a STEADY/sustained passage recedes, a beat pops it
+    // back to full. Dynamics recedes BRIGHTNESS; Transparency recedes per-layer OPACITY so the layers below show
+    // through between beats and the effect snaps opaque on a hit (real front/back depth). They stack.
+    if(style==='pulse'||style==='bloom'||style==='sparkle'){
+      const dynOn=!!s[style+'Dynamics'], alphaOn=!!s[style+'DynamicsAlpha'];
+      if(dynOn||alphaOn){
+        const depth=Math.max(0,Math.min(1,(s[style+'DynamicsDepth']==null?60:s[style+'DynamicsDepth'])/100));
+        const gd=(1-depth)+depth*Math.min(1,A.beat);   // steady → 1-depth (receded), beat → 1 (full)
+        if(dynOn){ for(let i=0;i<out.length;i++) out[i]=out[i]*gd; }
+        if(alphaOn){ const ab=L._alpha=(L._alphaBuf||(L._alphaBuf=new Float32Array(NLED))); ab.fill(gd); }   // uniform per-key opacity = the global recede
+      }
+    }
     // Roll the snapshot a twinkle pause freezes on — but ONLY while the audio is near its recent peak. A pause
     // (or song end) fades the audio down over ~200ms; snapshotting every frame would capture the faded tail
     // (just the bottom row) by the time silence is confirmed. Gating on level vs the running peak holds the
@@ -878,9 +891,12 @@
         barColorBass:'#ff2200', barColorTreble:'#22aaff', barTip:'off', barTipColor:'#ffffff', barFill:'solid',
         barColor:'bassTreble', barGradA:'#00ff66', barGradB:'#ff00aa', barLayout:'standard', barDrive:'spectrum', barSpread:false, barDynamics:false, barDynamicsAlpha:false, barDynamicsDepth:60,
         pulseColor:'#19b6ff', pulseColor2:'#ff00aa', pulseGrad:false, pulseMin:0, pulseMax:100,
+        pulseDynamics:false, pulseDynamicsAlpha:false, pulseDynamicsDepth:60,
         bloomColor:'#ff5a00', bloomColor2:'#ffd000', bloomGrad:false,
+        bloomDynamics:false, bloomDynamicsAlpha:false, bloomDynamicsDepth:60,
         waveColor:'#00e0ff', waveColor2:'#ff00aa', waveGrad:false, waveReverse:false,
-        auroraWidth:50, sparkleMono:false, sparkleColor:'#00e0ff' };
+        auroraWidth:50, sparkleMono:false, sparkleColor:'#00e0ff',
+        sparkleDynamics:false, sparkleDynamicsAlpha:false, sparkleDynamicsDepth:60 };
       Object.keys(ad).forEach(k=>{ if(s[k]===undefined)s[k]=ad[k]; });
       if(s.style==='plasma') s.style='aurora'; else if(s.style==='radial') s.style='bars';   // retired styles → nearest survivor (so an old saved layer doesn't show a blank picker)
       if(!Array.isArray(s.ducks)) s.ducks=[];   // [{layer:<index>, dim:<0..100 max-brightness %>}] — dim these while the audio layer emits
