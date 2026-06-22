@@ -293,7 +293,7 @@
         const style=s.style||'bars', uid=card.dataset.n;
         // All four sources are live: system + app run through the background daemon (loopback / process-loopback);
         // tab + mic are captured in-tab via Web Audio. App needs the daemon (it spawns app-capture.exe).
-        const sources=[['system','All System Audio',true],['app','Specific App',true],['tab','This Tab',true],['mic','Mic / Line-in',true]];
+        const sources=[['system','All System Audio',true],['app','Specific App',true],['tab','Specific Tab',true],['mic','Mic / Line-in',true]];   // 'tab' = getDisplayMedia: you pick which tab/window to share (NOT this page — this site emits no sound), so "Specific Tab"
         const srcBubbles=sources.map(o=>{ const dis=!o[2]; return '<label class="sl" style="margin:0'+(dis?';opacity:.4':'')+'"><input type="radio" name="aud-src-'+uid+'" class="s-source" value="'+o[0]+'"'+((o[0]===(s.source||'system'))?' checked':'')+(dis?' disabled':'')+'> '+o[1]+'</label>'; }).join('');
         const styles=[['bars','Spectrum bars'],['pulse','Beat pulse'],['bloom','Radial bloom'],['wave','Waveform'],['plasma','Plasma'],['aurora','Aurora'],['sparkle','Starfield'],['radial','Radial spectrum']];
         const sopt=styles.map(m=>'<option value="'+m[0]+'"'+(m[0]===style?' selected':'')+'>'+m[1]+'</option>').join('');
@@ -375,9 +375,10 @@
         // "Specific app" picker — populated from the daemon's list of currently-playing audio apps; the saved
         // pick persists even when that app isn't playing (so it reattaches when it resumes). Stored in s.appId.
         if(s.source==='app'){ const sel=c('.s-appId'), note=c('.s-appNote'), rf=c('.s-appRefresh');
+          const HIDE_APPS=new Set(['app-capture','musicplug']);   // our own capture helper (holds a loopback session) + a non-source background app — never real capture targets
           const fill=(apps)=>{ if(!sel) return; const cur=s.appId||''; let has=false;
             const optsHtml=['<option value="">— pick a playing app —</option>'];
-            (apps||[]).forEach(a=>{ if(!a||!a.name) return; if(a.name===cur) has=true; optsHtml.push('<option value="'+esc(a.name)+'"'+(a.name===cur?' selected':'')+'>'+esc(a.name)+'</option>'); });
+            (apps||[]).filter(a=>a&&a.name && !HIDE_APPS.has(a.name.toLowerCase().replace(/\.exe$/,''))).forEach(a=>{ if(a.name===cur) has=true; optsHtml.push('<option value="'+esc(a.name)+'"'+(a.name===cur?' selected':'')+'>'+esc(a.name)+'</option>'); });
             if(cur && !has) optsHtml.push('<option value="'+esc(cur)+'" selected>'+esc(cur)+' (idle)</option>');   // keep the saved pick visible
             sel.innerHTML=optsHtml.join('');
             if(note) note.textContent=(apps&&apps.length)?'':'nothing playing — start audio, then ⟳'; };
