@@ -78,6 +78,14 @@
   // smoothing. `now` is ms; dt is derived from state.audio._t. s = the audio layer's settings.
   function applyAudioFeatures(state, raw, s, now){
     const A = state.audio, p = audioParams(s);   // tuner params are PER-STYLE (gain/floor/attack/decay/beatSens)
+    // Mic input conditioning (mic source only): a hard NOISE GATE on the ABSOLUTE input level — kills steady
+    // room tone / a distant fan that the auto-gain would otherwise pump up to full — plus an input GAIN. The gate
+    // must use raw.inAbs (pre auto-gain); raw.level is already peak-normalized so a fan reads ~1 there.
+    if(s.source==='mic' && raw && raw.inAbs!=null){   // inAbs present = a REAL capture frame (the synth Sample preview has none → left unconditioned)
+      const gate=(s.micGate==null?0:s.micGate)/100, mg=(s.micGain==null?100:s.micGain)/100, inAbs=raw.inAbs;
+      if(gate>0 && inAbs < gate){ raw = { level:0, live:0 }; }                                                   // below the gate → silence (idle keys stay dark)
+      else if(mg!==1){ raw = Object.assign({}, raw, { level:Math.min(1,(raw.level||0)*mg), bands: raw.bands?raw.bands.map(b=>Math.min(1,(b||0)*mg)):raw.bands }); }
+    }
     let dt = A._t ? Math.max(1, Math.min(100, now - A._t)) : 16;   // clamp dt (tab-throttle/sleep safe)
     A._t = now;
     // Feature shaping, in order: gain → AUTO-GAIN (ONE global divisor that maps the song's recent LOUD PEAK to
@@ -903,7 +911,7 @@
     else if(L.type==='individual'){ if(!L.settings.keys || typeof L.settings.keys!=='object') L.settings.keys={}; if(L.settings.current===undefined) L.settings.current='#ff8c00'; if(L.settings.fill===undefined) L.settings.fill='solid'; }
     else if(L.type==='audio'){
       const ad={ style:'bars', source:'system', appId:'', deviceId:'', pauseStyle:'linear',
-        gain:1, floor:5, attackMs:40, decayMs:220, beatSens:50,
+        gain:1, floor:5, attackMs:40, decayMs:220, beatSens:50, micGain:100, micGate:0,
         barColorBass:'#ff2200', barColorTreble:'#22aaff', barTip:'off', barTipColor:'#ffffff', barFill:'solid',
         barColor:'bassTreble', barGradA:'#00ff66', barGradB:'#ff00aa', barLayout:'standard', barDrive:'spectrum', barSpread:false, barDynamics:false, barDynamicsAlpha:false, barDynamicsDepth:60,
         pulseColor:'#19b6ff', pulseColor2:'#ff00aa', pulseGrad:false, pulseMin:0, pulseMax:100,

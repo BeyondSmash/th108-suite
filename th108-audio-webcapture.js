@@ -95,7 +95,9 @@
       // Waveform style. `time` is -1..1 float PCM (getFloatTimeDomainData, captured above).
       const WN = 64, span = Math.min(time.length, 1024), start = time.length - span, wave = new Array(WN);
       for (let i = 0; i < WN; i++) wave[i] = time[start + ((i * (span - 1) / (WN - 1)) | 0)];
-      return { bands, bandsL, bandsR, level, beat, centroid, wave, t: ctx ? ctx.currentTime * 1000 : 0 };
+      // inAbs = the ABSOLUTE input level (pre auto-gain), so a noise gate can act on the true mic level.
+      // `level` is already normalized to the recent peak, so a steady fan reads ~1 there and can't be gated.
+      return { bands, bandsL, bandsR, level, beat, centroid, wave, inAbs: Math.min(1, inst), t: ctx ? ctx.currentTime * 1000 : 0 };
     }
 
     async function stop() {

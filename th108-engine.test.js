@@ -269,6 +269,21 @@ test('wash-style Dynamics recedes on steady sound and Transparency sets an alpha
   assert.ok(La._alpha && La._alpha[0] < 1, 'Transparency sets an opacity mask below 1 during steady sound');
 });
 
+test('mic noise gate mutes below-threshold input on the absolute level', () => {
+  const L = { type:'audio', enabled:true, opacity:1, blend:'add', settings:{ style:'bars', source:'mic', micGate:30 }, rgb:new Uint8Array(E.NLED*3) };
+  E.ensureSettings(L); const st = E.createState([L]); const La = st.layers[0];
+  // a "fan": low absolute level but the capture's auto-gain already normalized `level` up to ~1
+  const fan = { level:1, live:1, inAbs:0.1, bands:new Array(32).fill(1) };
+  E.applyAudioFeatures(st, fan, La.settings, 0); E.renderAudio(La, 0, st);
+  let lit=0; for(let i=0;i<La.rgb.length;i++) if(La.rgb[i]>0) lit++;
+  assert.equal(lit, 0, 'inAbs 0.1 < gate 0.30 → board stays dark despite normalized level=1');
+  // real speech/loud input above the gate lights up
+  const loud = { level:1, live:1, inAbs:0.8, bands:new Array(32).fill(1) };
+  E.applyAudioFeatures(st, loud, La.settings, 16); E.renderAudio(La, 16, st);
+  let lit2=0; for(let i=0;i<La.rgb.length;i++) if(La.rgb[i]>0) lit2++;
+  assert.ok(lit2 > 0, 'inAbs 0.8 > gate 0.30 → board lights');
+});
+
 test('renderWave plots the live PCM trace (A.wave steers it)', () => {
   const litKeys=(L,st)=>{ st.audio.level=1; E.renderAudio(L,0,st); const out=[]; for(let k=0;k<E.NLED;k++){ const o=k*3; if(L.rgb[o]||L.rgb[o+1]||L.rgb[o+2]) out.push(k); } return out; };
   const mk=()=>{ const L={ type:'audio', enabled:true, opacity:1, blend:'add', settings:{ style:'wave', waveAmp:100, waveThick:20 }, rgb:new Uint8Array(E.NLED*3) }; E.ensureSettings(L); return L; };
