@@ -600,7 +600,8 @@
 
   // Pulse: uniform wash; hue from centroid, brightness from level+beat, faint per-key shimmer.
   function renderPulse(s, out, A, now){
-    const base = hexToRgb(s.pulseColor||'#19b6ff'), base2 = hexToRgb(s.pulseColor2||'#ff00aa'), grad = !!s.pulseGrad;
+    let base = hexToRgb(s.pulseColor||'#19b6ff'), base2 = hexToRgb(s.pulseColor2||'#ff00aa'); const grad = !!s.pulseGrad;
+    if(grad && s.pulseGradRev){ const tmp=base; base=base2; base2=tmp; }   // reverse gradient colors
     // beat-dominant so kicks PUNCH; small level term keeps a body during sustained sound. NO idle floor
     // → silence goes fully dark (so the board visibly pumps WITH the beat rather than sitting half-lit).
     const v0 = Math.max(0, Math.min(1, A.level*0.5 + A.beat*0.95));
@@ -621,7 +622,8 @@
 
   // Bloom: a ring expands from board center as beat decays, gated by audio energy so silence is dark.
   function renderBloom(s, out, A){
-    const col0 = hexToRgb(s.bloomColor||'#ff5a00'), col2 = hexToRgb(s.bloomColor2||'#ffd000'), grad = !!s.bloomGrad;
+    let col0 = hexToRgb(s.bloomColor||'#ff5a00'), col2 = hexToRgb(s.bloomColor2||'#ffd000'); const grad = !!s.bloomGrad;
+    if(grad && s.bloomGradRev){ const tmp=col0; col0=col2; col2=tmp; }   // reverse gradient colors
     const cx = (GW-1)/2, cy = (GH-1)/2;
     // BEAT-driven: a kick (beat→1) lights the center, then the ring expands outward as beat decays.
     // energy leans hard on beat (small level body) so it reads as discrete blooms, not a brightness wash.
@@ -644,7 +646,8 @@
   // key nearest the actual PCM sample at that point — so it shows the REAL waveform of what's playing. Falls
   // back to a band-driven synthetic trace if no PCM is present (e.g. a capture path that doesn't emit `wave`).
   function renderWave(s, out, A, now){
-    const col0 = hexToRgb(s.waveColor||'#00e0ff'), col2 = hexToRgb(s.waveColor2||'#ff00aa'), grad = !!s.waveGrad;
+    let col0 = hexToRgb(s.waveColor||'#00e0ff'), col2 = hexToRgb(s.waveColor2||'#ff00aa'); const grad = !!s.waveGrad;
+    if(grad && s.waveGradRev){ const tmp=col0; col0=col2; col2=tmp; }   // reverse gradient colors
     const dir = s.waveReverse ? -1 : 1;
     const lvl = Math.max(0, Math.min(1, A.level));
     const W = A.wave, amp = (s.waveAmp==null?100:s.waveAmp)/100;      // vertical gain (×, on top of the auto-scale below)
@@ -950,11 +953,11 @@
         gain:1, floor:5, attackMs:40, decayMs:220, beatSens:50, micGain:100, micGate:0,
         barColorBass:'#ff2200', barColorTreble:'#22aaff', barTip:'off', barTipColor:'#ffffff', barFill:'solid',
         barColor:'bassTreble', barGradA:'#00ff66', barGradB:'#ff00aa', barLayout:'standard', barDrive:'spectrum', barSpread:false, barDynamics:false, barDynamicsAlpha:false, barDynamicsDepth:60,
-        pulseColor:'#19b6ff', pulseColor2:'#ff00aa', pulseGrad:false, pulseMin:0, pulseMax:100,
+        pulseColor:'#19b6ff', pulseColor2:'#ff00aa', pulseGrad:false, pulseGradRev:false, pulseMin:0, pulseMax:100,
         pulseDynamics:false, pulseDynamicsAlpha:false, pulseDynamicsDepth:60,
-        bloomColor:'#ff5a00', bloomColor2:'#ffd000', bloomGrad:false,
+        bloomColor:'#ff5a00', bloomColor2:'#ffd000', bloomGrad:false, bloomGradRev:false,
         bloomDynamics:false, bloomDynamicsAlpha:false, bloomDynamicsDepth:60,
-        waveColor:'#00e0ff', waveColor2:'#ff00aa', waveGrad:false, waveReverse:false, waveAmp:100, waveThick:50,
+        waveColor:'#00e0ff', waveColor2:'#ff00aa', waveGrad:false, waveGradRev:false, waveReverse:false, waveAmp:100, waveThick:50,
         auroraWidth:50, sparkleMono:false, sparkleColor:'#00e0ff',
         sparkleDynamics:false, sparkleDynamicsAlpha:false, sparkleDynamicsDepth:60,
         cropOn:false, cropFit:true, cropX:0.1, cropY:0.1, cropW:0.8, cropH:0.8 };
