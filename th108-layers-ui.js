@@ -328,7 +328,9 @@
              : bc==='gradient' ? row('Top color','<input type="color" class="s-barGradB" value="'+s.barGradB+'"><span></span>')+row('Bottom color','<input type="color" class="s-barGradA" value="'+s.barGradA+'"><span></span>')
              : ''))+
           row('Bar tips','<select class="s-barTip" title="outline the top key of each bar so the silhouette stands out">'+btOpt+'</select><span></span>')+
-          (bt==='color' ? row('Tip color','<input type="color" class="s-barTipColor" value="'+s.barTipColor+'"><span></span>') : ''); }
+          (bt==='color' ? row('Tip color','<input type="color" class="s-barTipColor" value="'+s.barTipColor+'"><span></span>') : '')+
+          row('Dynamics','<label class="sl" style="margin:0"><input type="checkbox" class="s-barDynamics"'+(s.barDynamics?' checked':'')+'> Steady bars recede; a beat or spectral shift pops a bright rebound — depth instead of a flat constant-volume wall</label><span></span>')+
+          (s.barDynamics ? row('Dynamics depth','<span class="srange" style="width:100%"><input type="range" class="s-barDynamicsDepth" min="0" max="100" value="'+(s.barDynamicsDepth==null?60:s.barDynamicsDepth)+'" title="How far a STEADY bar dims back before a change/beat pops it to full. Higher = more breathing/depth (steady bars fade further); 0 = no recede"><i class="tick" style="left:calc(7px + (100% - 14px)*0.6)"></i></span><span class="val s-barDynamicsDepthV"></span>') : ''); }
         else if(style==='pulse') html+=row('Color','<input type="color" class="s-pulseColor" value="'+s.pulseColor+'"><span></span>')+
           row('Gradient','<label class="sl" style="margin:0"><input type="checkbox" class="s-pulseGrad"'+(s.pulseGrad?' checked':'')+'> Two-color (bottom→top)</label><span></span>')+
           (s.pulseGrad ? row('2nd color','<input type="color" class="s-pulseColor2" value="'+s.pulseColor2+'"><span></span>') : '');
@@ -389,6 +391,8 @@
         { const bt=c('.s-barTip'); if(bt) bt.addEventListener('change',e=>{ s.barTip=e.target.value; buildLayerBody(card,L); }); }   // rebuild so the tip-color picker shows/hides
         { const bf=c('.s-barFill'); if(bf) bf.addEventListener('change',e=>{ s.barFill=e.target.value; buildLayerBody(card,L); }); }   // rebuild so the color controls show/hide with solid/subtract
         { const bl=c('.s-barLayout'); if(bl) bl.addEventListener('change',e=>s.barLayout=e.target.value); }   // no dependent controls — no rebuild needed
+        { const bdy=c('.s-barDynamics'); if(bdy) bdy.addEventListener('change',e=>{ s.barDynamics=e.target.checked; buildLayerBody(card,L); }); }   // rebuild so the depth slider shows/hides
+        { const el=c('.s-barDynamicsDepth'), v=c('.s-barDynamicsDepthV'); if(el&&v){ const up=()=>v.textContent=el.value+'%'; el.addEventListener('input',()=>{ s.barDynamicsDepth=+el.value; up(); }); up(); } }
         { const ps=c('.s-pauseStyle'); if(ps) ps.addEventListener('change',e=>s.pauseStyle=e.target.value); }   // layer-level pause behavior: linear settle vs twinkle-out
         { const bd=c('.s-barDrive'); if(bd) bd.addEventListener('change',e=>{ s.barDrive=e.target.value; buildLayerBody(card,L); }); }   // rebuild so the Spread toggle shows/hides
         { const bsp=c('.s-barSpread'); if(bsp) bsp.addEventListener('change',e=>s.barSpread=e.target.checked); }

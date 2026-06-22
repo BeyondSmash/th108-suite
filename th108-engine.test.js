@@ -584,3 +584,23 @@ test('settle pause: a sub-peak bar still takes the FULL pauseDecayMs to glide to
   E.applyAudioFeatures(st, silent, s, t0 + 2000 + 60);   // past the full window
   assert.ok(st.audio.bands[5] < 0.02, 'reaches ~0 only after the full pauseDecayMs');
 });
+
+test('dynamics depth: a steady bar recedes, a change pops it bright (novelty → hit → brightness)', () => {
+  const L = { type:'audio', enabled:true, opacity:1, blend:'add', fps:30, settings:{ style:'bars', barDynamics:true, barDynamicsDepth:100 }, rgb:new Uint8Array(E.NLED*3) };
+  E.ensureSettings(L); const st = E.createState([L]); const La = st.layers[0]; const s = La.settings;
+  const ap = E.audioParams(s); ap.floor=0; ap.ceil=100; ap.contrast=0; ap.agc=false; ap.gain=1; ap.attackMs=1; ap.decayMs=1;
+  const kBase = findK(c => c[0]===0 && c[1]===E.GH-1); assert.ok(kBase>=0, 'found column-0 bottom key');
+  const up = { bands:new Float32Array(32), level:0.9, beat:0, centroid:0.5 }; up.bands[0]=1;
+  let t=0; for(; t<=1200; t+=16) E.applyAudioFeatures(st, up, s, t);   // hold band 0 high & STEADY → hit decays → recede
+  E.renderAudio(La, t, st); const steady = litSum(La, kBase);
+  // a change: band 0 dips then jumps back (level stays high → NOT a pause) → novelty spike → hit pops
+  const dip = { bands:new Float32Array(32), level:0.9, beat:0, centroid:0.5 }; dip.bands[0]=0.2;
+  t+=16; E.applyAudioFeatures(st, dip, s, t);
+  t+=16; E.applyAudioFeatures(st, up, s, t);
+  E.renderAudio(La, t, st); const popped = litSum(La, kBase);
+  assert.ok(popped > 0, 'the popped bar is lit');
+  assert.ok(steady < popped*0.35, 'a steady bar recedes well below a fresh change ('+steady+' vs '+popped+')');
+  // toggle OFF → no reced­e (depth ignored): same steady input renders full
+  s.barDynamics = false; E.renderAudio(La, t+16, st);
+  assert.ok(litSum(La, kBase) > popped*0.8, 'with Dynamics off the bar renders full regardless of hit');
+});

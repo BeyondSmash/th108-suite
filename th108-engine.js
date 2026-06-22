@@ -183,6 +183,17 @@
     if(!silent && A.level >= 0.6*Math.max(A._lpk||0, 0.05)){
       sn.L = A.level; sn.b.set(A.bands); sn.bL.set(A.bandsL); sn.bR.set(A.bandsR); sn.rb.set(A.bandsRaw); sn.rbL.set(A.bandsRawL); sn.rbR.set(A.bandsRawR);
     }
+    // DYNAMICS DEPTH: per-band novelty (positive rise) + the global beat drive a fast-attack/slow-decay "hit"
+    // envelope. A band that's been steady → hit decays to 0 → renderBars recedes it; a change/beat pops hit → a
+    // bright rebound. This is what gives a sustained-loud wall depth instead of a flat meter. (Spectrum-bars only,
+    // gated by s.barDynamics in renderBars; cheap to keep always-updated here.)
+    if(!A.hit){ A.hit = new Float32Array(32); A._novPrev = new Float32Array(32); }
+    const hitDecay = Math.exp(-dt/300);   // rebound fades over ~300ms
+    for(let i=0;i<32;i++){
+      const nov = A.bands[i] - A._novPrev[i]; A._novPrev[i] = A.bands[i];   // positive frame-to-frame rise = novelty
+      const tgt = Math.min(1, Math.max(0, nov)*5 + A.beat*0.6);            // a band jump OR a kick pops the rebound
+      A.hit[i] = tgt > A.hit[i] ? tgt : A.hit[i]*hitDecay;                 // instant attack, slow decay
+    }
   }
   // Per-STYLE tuner params (gain/floor/attack/decay/beatSens) so tuning bars doesn't leak into pulse, etc.
   // Mirrors patParams: one-time migrates the old flat values onto the current style; new styles start at defaults.
@@ -475,6 +486,7 @@
     const layout = s.barLayout || 'standard';
     const drive = s.barDrive || 'spectrum';   // what the bar HEIGHT follows: per-column frequency | overall volume | beat
     const spread = !!s.barSpread;             // volume/beat: shape columns by the per-column spectrum/stereo (per Layout) so they rise individually instead of as one wall
+    const dynOn = !!s.barDynamics, dynDepth = dynOn ? Math.max(0, Math.min(1, (s.barDynamicsDepth==null?60:s.barDynamicsDepth)/100)) : 0;   // Dynamics depth: a STEADY band dims to (1-depth) brightness and a change/beat (A.hit) pops it back to full → the wall breathes instead of sitting flat
     const ctr = (GW-1)/2;
     const vert = layout==='topdown' ? 'down' : layout==='centerout' ? 'center' : 'up';   // vertical fill mode
     const midRow = (GH-1)/2, halfH = GH/2;
@@ -515,7 +527,8 @@
       // glides up/down smoothly — the classic analyzer look. partial: >1 full row, 0..1 the top row, <=0 empty.
       const partial = litCount - (fb - 1);
       if(partial <= 0){ out[o]=out[o+1]=out[o+2]=0; continue; }
-      const fillF = partial < 1 ? partial : 1;
+      const dyn = dynOn ? (1 - dynDepth + dynDepth*(A.hit ? A.hit[band] : 1)) : 1;   // recede when stale, snap to full on a hit (folds into every brightness path via fillF)
+      const fillF = (partial < 1 ? partial : 1) * dyn;
       const h = fb/steps;                                     // brightness-ramp coord (dimmer at base … brightest at tip)
       const hc = steps>1 ? (fb-1)/(steps-1) : 0;              // COLOR coord 0 (base) … 1 (tip)
       const vuFb = vert==='center' ? fb*2 : fb;               // center has only 3 levels/side → scale to the 6-step VU palette
@@ -867,7 +880,7 @@
       const ad={ style:'bars', source:'system', appId:'', deviceId:'', pauseStyle:'linear',
         gain:1, floor:5, attackMs:40, decayMs:220, beatSens:50,
         barColorBass:'#ff2200', barColorTreble:'#22aaff', barTip:'off', barTipColor:'#ffffff', barFill:'solid',
-        barColor:'bassTreble', barGradA:'#00ff66', barGradB:'#ff00aa', barLayout:'standard', barDrive:'spectrum', barSpread:false,
+        barColor:'bassTreble', barGradA:'#00ff66', barGradB:'#ff00aa', barLayout:'standard', barDrive:'spectrum', barSpread:false, barDynamics:false, barDynamicsDepth:60,
         pulseColor:'#19b6ff', pulseColor2:'#ff00aa', pulseGrad:false,
         bloomColor:'#ff5a00', bloomColor2:'#ffd000', bloomGrad:false,
         waveColor:'#00e0ff', waveColor2:'#ff00aa', waveGrad:false, waveReverse:false };
