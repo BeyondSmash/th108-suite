@@ -174,6 +174,15 @@ public static class Cap {
     for (int b=0;b<32;b++){ double dbRel=20.0*Math.Log10(bn[b]/bandPeak2 + 1e-9); double nb=(dbRel+BAND_DB_RANGE)/BAND_DB_RANGE;
       bands[b]=(float)Math.Min(1.0, Math.Max(0.0, nb)); }
   }
+
+  // Downsample the most-recent PCM into wave[] (a time-domain oscilloscope trace for the Waveform style).
+  // Decimate the last min(count,1024) samples evenly into wave.Length points (-1..1, no windowing).
+  public static void Wave(float[] mono, int count, float[] wave) {
+    int WN=wave.Length;
+    if (count < WN) { for(int i=0;i<WN;i++) wave[i]=0; return; }
+    int span = Math.Min(count, 1024); int start = count - span;
+    for (int i=0;i<WN;i++){ int idx = start + (int)((long)i*(span-1)/(WN-1)); wave[i]=mono[idx]; }
+  }
 }
 "@
 
@@ -185,6 +194,7 @@ $right = New-Object 'float[]' ($N * 4)
 $bands = New-Object 'float[]' 32
 $bandsL= New-Object 'float[]' 32
 $bandsR= New-Object 'float[]' 32
+$wave  = New-Object 'float[]' 64
 $lbc   = New-Object 'float[]' 3
 $chunkM= New-Object 'float[]' 8192
 $chunkL= New-Object 'float[]' 8192
@@ -216,10 +226,14 @@ while ($true) {
     # per-channel bands are best-effort: a failure here must never kill the sidecar (host falls back to mono)
     $haveStereo = $false
     try { [Cap]::Bands($left, $count, $bandsL); [Cap]::Bands($right, $count, $bandsR); $haveStereo = $true } catch { $haveStereo = $false }
+    [Cap]::Wave($mono, $count, $wave)
     $sb = New-Object System.Text.StringBuilder
     [void]$sb.Append('{')
     Append-Bands $sb '"bands"' $bands
     if ($haveStereo) { [void]$sb.Append(','); Append-Bands $sb '"bandsL"' $bandsL; [void]$sb.Append(','); Append-Bands $sb '"bandsR"' $bandsR }
+    [void]$sb.Append(',"wave":[')
+    for ($i=0; $i -lt 64; $i++){ if($i){[void]$sb.Append(',')}; [void]$sb.Append([Math]::Round($wave[$i],4)) }
+    [void]$sb.Append(']')
     [void]$sb.Append(',"level":'); [void]$sb.Append([Math]::Round($lbc[0],4))
     [void]$sb.Append(',"beat":');   [void]$sb.Append([Math]::Round($lbc[1],4))
     [void]$sb.Append(',"centroid":'); [void]$sb.Append([Math]::Round($lbc[2],4))

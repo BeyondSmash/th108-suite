@@ -91,7 +91,11 @@
       const onset = (flux - avgFlux * 1.3) / (avgFlux + 1e-4);   // 1.3 (was 1.4): a touch more sensitive so quieter onsets still register
       const beat = Math.max(0, Math.min(1, onset));
       const centroid = centDen > 0 ? Math.min(1, (centNum / centDen) / bins * 2) : 0.5;
-      return { bands, bandsL, bandsR, level, beat, centroid, t: ctx ? ctx.currentTime * 1000 : 0 };
+      // Downsample the time-domain PCM to a 64-point oscilloscope trace (last ~1024 samples ≈ 23ms) for the
+      // Waveform style. `time` is -1..1 float PCM (getFloatTimeDomainData, captured above).
+      const WN = 64, span = Math.min(time.length, 1024), start = time.length - span, wave = new Array(WN);
+      for (let i = 0; i < WN; i++) wave[i] = time[start + ((i * (span - 1) / (WN - 1)) | 0)];
+      return { bands, bandsL, bandsR, level, beat, centroid, wave, t: ctx ? ctx.currentTime * 1000 : 0 };
     }
 
     async function stop() {

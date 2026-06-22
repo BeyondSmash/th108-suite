@@ -236,6 +236,14 @@ class AppCapture {
       bands[b]=(float)Math.Min(1.0, Math.Max(0.0, nb)); }
   }
 
+  // Downsample the most-recent PCM into wave[] (time-domain oscilloscope trace for the Waveform style). Mirrors audio-sidecar.ps1.
+  static void Wave(float[] mono, int count, float[] wave) {
+    int WN=wave.Length;
+    if (count < WN) { for(int i=0;i<WN;i++) wave[i]=0; return; }
+    int span = Math.Min(count, 1024); int start = count - span;
+    for (int i=0;i<WN;i++){ int idx = start + (int)((long)i*(span-1)/(WN-1)); wave[i]=mono[idx]; }
+  }
+
   // ---------- audio-session enumeration (--list and name→PID resolution) ----------
   struct AppSession { public uint pid; public string name; }
   static System.Collections.Generic.List<AppSession> Sessions(bool activeOnly) {
@@ -297,7 +305,7 @@ class AppCapture {
     }
     try { Open(pid); } catch (Exception e) { Console.Error.WriteLine("app-capture: " + e.Message); return 2; }
     var mono = new float[N*4]; var left = new float[N*4]; var right = new float[N*4];
-    var bands = new float[32]; var bandsL = new float[32]; var bandsR = new float[32];
+    var bands = new float[32]; var bandsL = new float[32]; var bandsR = new float[32]; var wave = new float[64];
     var lbc = new float[3]; var chunk = new float[8192]; var chunkL = new float[8192]; var chunkR = new float[8192];
     int countF = 0;
     while (true) {
@@ -315,6 +323,8 @@ class AppCapture {
         if (haveStereo) {
           sb.Append(",\"bandsL\":["); for (int i=0;i<32;i++){ if(i>0)sb.Append(','); sb.Append(Math.Round(bandsL[i],4).ToString(ci)); }
           sb.Append("],\"bandsR\":["); for (int i=0;i<32;i++){ if(i>0)sb.Append(','); sb.Append(Math.Round(bandsR[i],4).ToString(ci)); } sb.Append(']'); }
+        Wave(mono, countF, wave);
+        sb.Append(",\"wave\":["); for (int i=0;i<64;i++){ if(i>0)sb.Append(','); sb.Append(Math.Round(wave[i],4).ToString(ci)); } sb.Append(']');
         sb.Append(",\"level\":").Append(Math.Round(lbc[0],4).ToString(ci)).Append(",\"beat\":").Append(Math.Round(lbc[1],4).ToString(ci)).Append(",\"centroid\":").Append(Math.Round(lbc[2],4).ToString(ci)); }
       else { for (int i=0;i<32;i++){ if(i>0)sb.Append(','); sb.Append('0'); } sb.Append("],\"level\":0,\"beat\":0,\"centroid\":0.5"); }
       sb.Append(",\"t\":").Append(Math.Round(sw.Elapsed.TotalMilliseconds,1).ToString(ci)).Append('}');

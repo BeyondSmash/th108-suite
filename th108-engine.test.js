@@ -269,6 +269,19 @@ test('wash-style Dynamics recedes on steady sound and Transparency sets an alpha
   assert.ok(La._alpha && La._alpha[0] < 1, 'Transparency sets an opacity mask below 1 during steady sound');
 });
 
+test('renderWave plots the live PCM trace (A.wave steers it)', () => {
+  const litKeys=(L,st)=>{ st.audio.level=1; E.renderAudio(L,0,st); const out=[]; for(let k=0;k<E.NLED;k++){ const o=k*3; if(L.rgb[o]||L.rgb[o+1]||L.rgb[o+2]) out.push(k); } return out; };
+  const mk=()=>{ const L={ type:'audio', enabled:true, opacity:1, blend:'add', settings:{ style:'wave', waveAmp:100, waveThick:20 }, rgb:new Uint8Array(E.NLED*3) }; E.ensureSettings(L); return L; };
+  const up=mk(); let st=E.createState([up]); st.layers[0].__t=0;
+  st.audio.wave=new Float32Array(64).fill(1);   // +1 everywhere → trace pinned at the TOP row
+  const topLit=litKeys(st.layers[0], st);
+  const dn=mk(); st=E.createState([dn]);
+  st.audio.wave=new Float32Array(64).fill(-1);  // -1 everywhere → trace at the BOTTOM row
+  const botLit=litKeys(st.layers[0], st);
+  assert.ok(topLit.length>0 && botLit.length>0, 'both traces light keys');
+  assert.notDeepEqual(topLit, botLit, 'a +1 trace (top) lights different keys than a -1 trace (bottom)');
+});
+
 test('renderBloom lights center keys on a beat and is dark with no beat', () => {
   const L = { type:'audio', enabled:true, opacity:1, blend:'add', settings:{ style:'bloom' }, rgb:new Uint8Array(E.NLED*3) };
   E.ensureSettings(L); const st = E.createState([L]); const La = st.layers[0];

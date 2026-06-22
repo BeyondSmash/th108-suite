@@ -15,6 +15,7 @@ function parseLine(line) {
               centroid: o.centroid == null ? 0.5 : +o.centroid, t: +o.t || 0 };
   const bL = ch(o.bandsL), bR = ch(o.bandsR);
   if (bL) f.bandsL = bL; if (bR) f.bandsR = bR;
+  if (Array.isArray(o.wave) && o.wave.length) f.wave = o.wave.map(Number);   // time-domain PCM trace for the Waveform style (optional)
   return f;
 }
 // pure: the frame if it's younger than maxAgeMs, else null (so silence/stall → engine decays to 0)
@@ -34,7 +35,7 @@ const HOLD_DECAY = 0.75;   // per sidecar frame (~33ms) → ~130ms hold; long en
 function holdPeak(acc, f, decay) {
   const d = decay == null ? HOLD_DECAY : decay;
   if (!acc) return { bands: f.bands.slice(), bandsL: f.bandsL ? f.bandsL.slice() : undefined, bandsR: f.bandsR ? f.bandsR.slice() : undefined,
-                     level: f.level, beat: f.beat, centroid: f.centroid, t: f.t, _at: f._at, live: f.level };
+                     wave: f.wave ? f.wave.slice() : undefined, level: f.level, beat: f.beat, centroid: f.centroid, t: f.t, _at: f._at, live: f.level };
   for (let i = 0; i < 32; i++) {
     acc.bands[i] = Math.max(f.bands[i], acc.bands[i] * d);
     if (f.bandsL && acc.bandsL) acc.bandsL[i] = Math.max(f.bandsL[i], acc.bandsL[i] * d);
@@ -44,6 +45,7 @@ function holdPeak(acc, f, decay) {
   if (f.bandsR && !acc.bandsR) acc.bandsR = f.bandsR.slice();
   acc.level = Math.max(f.level, acc.level * d);
   acc.beat = Math.max(f.beat, acc.beat * d);
+  acc.wave = f.wave || acc.wave;   // latest PCM trace (a live signal, not a peak) — carry forward if a frame omits it
   acc.centroid = f.centroid; acc.t = f.t; acc._at = f._at;   // latest (not peak) for position/time
   acc.live = f.level;   // TRUE current level (not the held peak) → pause/silence detection in the engine
   return acc;

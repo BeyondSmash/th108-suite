@@ -24,7 +24,13 @@
         const pan = 0.5 + 0.5*Math.sin(t*0.6);                   // 0 = hard left … 1 = hard right
         const bandsL = new Float32Array(NB), bandsR = new Float32Array(NB);
         for(let i=0;i<NB;i++){ bandsL[i] = bands[i]*(1 - 0.85*pan); bandsR[i] = bands[i]*(0.15 + 0.85*pan); }
-        return { bands, bandsL, bandsR, level, beat, centroid };
+        // synthetic oscilloscope trace (so the Waveform style animates in the Sample preview): a moving tone +
+        // harmonic, swelling with level, with a transient ripple on each beat.
+        const WN = 64, wave = new Float32Array(WN);
+        for(let i=0;i<WN;i++){ const x=i/WN;
+          wave[i] = Math.max(-1, Math.min(1,
+            0.6*Math.sin((x*6 + t*4)*Math.PI*2)*(0.4+0.6*level) + 0.2*Math.sin((x*13 - t*7)*Math.PI*2) + (beat>0.4 ? 0.3*beat*Math.sin(x*40) : 0))); }
+        return { bands, bandsL, bandsR, level, beat, centroid, wave };
       },
     };
   }

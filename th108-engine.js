@@ -9,6 +9,7 @@
   const KEYMAP = {"Escape":0,"F1":1,"F2":2,"F3":3,"F4":4,"F5":5,"F6":6,"F7":7,"F8":8,"F9":9,"F10":10,"F11":11,"F12":12,"PrintScreen":99,"ScrollLock":100,"Pause":102,"Backquote":16,"Digit1":17,"Digit2":18,"Digit3":19,"Digit4":20,"Digit5":21,"Digit6":22,"Digit7":23,"Digit8":24,"Digit9":25,"Digit0":26,"Minus":27,"Equal":28,"Backspace":92,"Insert":103,"Home":104,"PageUp":105,"NumLock":29,"NumpadDivide":30,"NumpadMultiply":31,"NumpadSubtract":109,"Tab":32,"KeyQ":33,"KeyW":34,"KeyE":35,"KeyR":36,"KeyT":37,"KeyY":38,"KeyU":39,"KeyI":40,"KeyO":41,"KeyP":42,"BracketLeft":43,"BracketRight":44,"Backslash":60,"Delete":106,"End":107,"PageDown":108,"Numpad7":45,"Numpad8":46,"Numpad9":47,"NumpadAdd":110,"CapsLock":48,"KeyA":49,"KeyS":50,"KeyD":51,"KeyF":52,"KeyG":53,"KeyH":54,"KeyJ":55,"KeyK":56,"KeyL":57,"Semicolon":58,"Quote":59,"Enter":76,"Numpad4":61,"Numpad5":62,"Numpad6":63,"ShiftLeft":64,"KeyZ":65,"KeyX":66,"KeyC":67,"KeyV":68,"KeyB":69,"KeyN":70,"KeyM":71,"Comma":72,"Period":73,"Slash":74,"ShiftRight":75,"ArrowUp":90,"Numpad1":77,"Numpad2":78,"Numpad3":79,"NumpadEnter":95,"ControlLeft":80,"MetaLeft":81,"AltLeft":82,"Space":83,"AltRight":84,"ContextMenu":86,"ControlRight":87,"ArrowLeft":88,"ArrowDown":89,"ArrowRight":91,"Numpad0":93,"NumpadDecimal":94};
   const INDICES = [0,1,2,3,4,5,6,7,8,9,10,11,12,99,100,102,16,17,18,19,20,21,22,23,24,25,26,27,28,92,103,104,105,29,30,31,109,32,33,34,35,36,37,38,39,40,41,42,43,44,60,106,107,108,45,46,47,110,48,49,50,51,52,53,54,55,56,57,58,59,76,61,62,63,64,65,66,67,68,69,70,71,72,73,74,75,90,77,78,79,95,80,81,82,83,84,85,86,87,88,89,91,93,94];
   const NLED = INDICES.length;
+  const WAVE_N = 64;   // length of the time-domain PCM trace (A.wave) the Waveform style plots — captures downsample to this
 
   // physical full-size layout (LED index -> [x,y,w,h] in key units) — verbatim from controller
   const BOARDW = 22.5, BOARDH = 6.5;   // full-size + numpad ≈ 3.46:1
@@ -168,6 +169,11 @@
     // beat: instantaneous rise, decay only (so a kick pops then fades); beatSens scales sensitivity
     const beatTgt = Math.max(0, Math.min(1, (raw.beat||0) * (0.5 + (p.beatSens||50)/100)));
     A.beat = Math.max(beatTgt, audioEnvelope(A.beat, 0, dt, 0, Math.max(60, p.decayMs)));
+    // Time-domain PCM trace for the Waveform style (oscilloscope). Latest frame, not peak-held — it's a live
+    // signal. When a frame carries no PCM (stale/silent feed) relax toward flat so the trace settles to a line.
+    if(raw.wave && raw.wave.length){ if(!A.wave) A.wave = new Float32Array(WAVE_N);
+      const w = raw.wave, n = Math.min(WAVE_N, w.length); for(let i=0;i<n;i++) A.wave[i] = w[i]; }
+    else if(A.wave){ for(let i=0;i<WAVE_N;i++) A.wave[i] *= 0.8; }
     const rawClamp = (v)=>{ v=(v||0); return v<0?0:(v>1?1:v); };   // pre-AGC magnitude (NO peak normalize) — keeps the real bass→treble shape for Spread
     for(let i=0;i<32;i++){
       const t = rb ? band(rb[i], i) : 0; A.bands[i] = silent ? sn.b[i]*settleF : audioEnvelope(A.bands[i], t, dt, p.attackMs, p.decayMs);
@@ -597,21 +603,31 @@
     }
   }
 
-  // Wave: per-column sample forms an oscilloscope line scrolling across the board; light the key
-  // nearest the line, amplitude scaled by that column's band energy.
+  // Wave: a true oscilloscope of the live audio. The columns are the time axis (L→R), each column lights the
+  // key nearest the actual PCM sample at that point — so it shows the REAL waveform of what's playing. Falls
+  // back to a band-driven synthetic trace if no PCM is present (e.g. a capture path that doesn't emit `wave`).
   function renderWave(s, out, A, now){
     const col0 = hexToRgb(s.waveColor||'#00e0ff'), col2 = hexToRgb(s.waveColor2||'#ff00aa'), grad = !!s.waveGrad;
-    const t = now/1000, dir = s.waveReverse ? -1 : 1;   // flip the per-column phase to scroll the trace the other way
+    const dir = s.waveReverse ? -1 : 1;
     const lvl = Math.max(0, Math.min(1, A.level));
+    const W = A.wave, WN = W ? W.length : 0;
+    const amp = (s.waveAmp==null?100:s.waveAmp)/100;                  // vertical gain: 100% = a full-scale sample reaches the top/bottom row
+    const tw  = 0.5 + (s.waveThick==null?50:s.waveThick)/100*2.5;     // lit half-width in rows (default 50 → 1.75)
+    const mid = (GH-1)/2, t = now/1000;
     for(let k=0;k<NLED;k++){
       const idx = INDICES[k], cell = GRID[idx]; if(!cell) continue;
       const col = cell[0], row = cell[1], o = k*3;
       const fc = GW>1 ? col/(GW-1) : 0;
-      const band = Math.min(31, Math.round(fc*31));
-      // deflection is the column's BAND energy (no constant floor) → loud bands bulge, quiet sit flat;
-      // overall brightness tracks loudness so the trace fades out on silence (follows the song).
-      const samp = 0.5 + 0.48*Math.sin(t*6 + dir*col*0.6) * A.bands[band];
-      const line = samp*(GH-1), v = Math.max(0, 1 - Math.abs(row-line)*0.9) * (0.15 + 0.85*lvl);
+      let sample;   // -1..1 deflection at this column
+      if(WN){
+        const fpos = (dir>0 ? fc : 1-fc) * (WN-1), i0 = Math.floor(fpos), i1 = Math.min(WN-1, i0+1), fr = fpos-i0;
+        sample = W[i0]*(1-fr) + W[i1]*fr;                             // interpolate the real PCM across the columns
+      } else {
+        const band = Math.min(31, Math.round(fc*31));                // fallback: synthetic per-band trace (no live PCM)
+        sample = Math.sin(t*6 + dir*col*0.6) * A.bands[band];
+      }
+      const lineRow = mid - sample*amp*mid;                          // center the trace on the middle row; +sample = up (row 0 = top)
+      const v = Math.max(0, 1 - Math.abs(row-lineRow)/tw) * (0.15 + 0.85*lvl);
       if(v < 0.05){ out[o]=out[o+1]=out[o+2]=0; continue; }
       const c = grad ? [col0[0]+(col2[0]-col0[0])*fc, col0[1]+(col2[1]-col0[1])*fc, col0[2]+(col2[2]-col0[2])*fc] : col0;   // start→end (left→right)
       out[o]=(c[0]*v)|0; out[o+1]=(c[1]*v)|0; out[o+2]=(c[2]*v)|0;
@@ -894,7 +910,7 @@
         pulseDynamics:false, pulseDynamicsAlpha:false, pulseDynamicsDepth:60,
         bloomColor:'#ff5a00', bloomColor2:'#ffd000', bloomGrad:false,
         bloomDynamics:false, bloomDynamicsAlpha:false, bloomDynamicsDepth:60,
-        waveColor:'#00e0ff', waveColor2:'#ff00aa', waveGrad:false, waveReverse:false,
+        waveColor:'#00e0ff', waveColor2:'#ff00aa', waveGrad:false, waveReverse:false, waveAmp:100, waveThick:50,
         auroraWidth:50, sparkleMono:false, sparkleColor:'#00e0ff',
         sparkleDynamics:false, sparkleDynamicsAlpha:false, sparkleDynamicsDepth:60 };
       Object.keys(ad).forEach(k=>{ if(s[k]===undefined)s[k]=ad[k]; });
