@@ -489,17 +489,20 @@
     // Width: thickness of each curtain. Higher width = fatter band → smaller Gaussian falloff factor.
     // Default 50 reproduces the original 2.4 factor exactly; clamp the wide end so it can't flood the whole board.
     const wf = Math.max(0.8, 4.5 - 0.042*(s.auroraWidth==null?50:s.auroraWidth));
+    // Drive: Volume (default) = curtains brighten with loudness; Beat = they surge on kicks.
+    const energy = (s.auroraDrive==='beat') ? (A.level*0.3 + A.beat*0.85) : (0.85*A.level + A.beat*0.4);
     for(let k=0;k<NLED;k++){ const cell=GRID[INDICES[k]]; if(!cell) continue; const o=k*3;
       const x=GW>1?cell[0]/(GW-1):0, y=GH>1?cell[1]/(GH-1):0;
       const mag=A.bands[Math.min(31,Math.round(x*31))];
       const centerY = 0.5 - 0.28*Math.sin(t*0.6 + x*4) - mag*0.35;   // y=0 top
-      const v=Math.max(0,Math.min(1, Math.exp(-Math.pow((y-centerY)*wf,2)) * (0.85*A.level + A.beat*0.4)));   // no idle floor → dark on silence
+      const v=Math.max(0,Math.min(1, Math.exp(-Math.pow((y-centerY)*wf,2)) * energy));   // no idle floor → dark on silence
       if(v<0.03){ out[o]=out[o+1]=out[o+2]=0; continue; }
       const c=hsv2rgb(0.45 + A.centroid*0.35 + x*0.12, 0.85, v); out[o]=c[0]|0; out[o+1]=c[1]|0; out[o+2]=c[2]|0; }
   }
   // Starfield: per-key twinkle; louder = more stars lit, kicks burst a subset.
   function renderSparkle(s, out, A, now){
-    const t = now/1000, energy = Math.max(0, Math.min(1, A.level*0.7 + A.beat*0.6));
+    // Drive: Volume (default) = star density rides loudness; Beat = bursts of stars pop on kicks.
+    const t = now/1000, energy = Math.max(0, Math.min(1, (s.sparkleDrive==='beat') ? (A.level*0.2 + A.beat*0.9) : (A.level*0.7 + A.beat*0.6)));
     const mono = !!s.sparkleMono, mc = mono ? hexToRgb(s.sparkleColor||'#00e0ff') : null;   // mono = one picked color instead of the per-key rainbow
     for(let k=0;k<NLED;k++){ const o=k*3, ph=patHash(INDICES[k]);
       const tw=0.5+0.5*Math.sin(t*(2.5+ph*5) + ph*6.283), thr=1-energy;
@@ -602,9 +605,9 @@
   function renderPulse(s, out, A, now){
     let base = hexToRgb(s.pulseColor||'#19b6ff'), base2 = hexToRgb(s.pulseColor2||'#ff00aa'); const grad = !!s.pulseGrad;
     if(grad && s.pulseGradRev){ const tmp=base; base=base2; base2=tmp; }   // reverse gradient colors
-    // beat-dominant so kicks PUNCH; small level term keeps a body during sustained sound. NO idle floor
-    // → silence goes fully dark (so the board visibly pumps WITH the beat rather than sitting half-lit).
-    const v0 = Math.max(0, Math.min(1, A.level*0.5 + A.beat*0.95));
+    // Drive: Volume = follow overall loudness (a steady wash); Beat = pump on kicks (the default — "Beat Pulse").
+    const drv = s.pulseDrive || 'beat';
+    const v0 = Math.max(0, Math.min(1, drv==='volume' ? A.level : (A.level*0.5 + A.beat*0.95)));
     // Min/Max brightness: remap the 0..1 drive into [min,max]. Min = a resting glow even at silence (default 0 →
     // dark on silence, unchanged); Max = the brightness a full beat reaches (default 100 → unchanged).
     const lo=(s.pulseMin==null?0:s.pulseMin)/100, hi=Math.max(lo, (s.pulseMax==null?100:s.pulseMax)/100);
@@ -627,8 +630,11 @@
     const cx = (GW-1)/2, cy = (GH-1)/2;
     // BEAT-driven: a kick (beat→1) lights the center, then the ring expands outward as beat decays.
     // energy leans hard on beat (small level body) so it reads as discrete blooms, not a brightness wash.
-    const energy = Math.max(A.beat, A.level*0.3);
-    const radius = (1 - A.beat) * 1.5;              // 0 at the kick → grows out
+    // Drive: Beat (default) = a kick lights the center and the ring expands as it decays; Volume = the ring rides
+    // overall loudness (small/bright when loud, expands+dims as it quiets).
+    const sig = (s.bloomDrive==='volume') ? A.level : A.beat;
+    const energy = Math.max(sig, A.level*0.3);
+    const radius = (1 - sig) * 1.5;                 // 0 at full drive → grows out as it decays
     for(let k=0;k<NLED;k++){
       const idx = INDICES[k], cell = GRID[idx]; if(!cell) continue;
       const o = k*3;
@@ -649,7 +655,8 @@
     let col0 = hexToRgb(s.waveColor||'#00e0ff'), col2 = hexToRgb(s.waveColor2||'#ff00aa'); const grad = !!s.waveGrad;
     if(grad && s.waveGradRev){ const tmp=col0; col0=col2; col2=tmp; }   // reverse gradient colors
     const dir = s.waveReverse ? -1 : 1;
-    const lvl = Math.max(0, Math.min(1, A.level));
+    // Drive: Volume (default) = trace brightness rides loudness; Beat = the trace flashes brighter on each kick.
+    const lvl = Math.max(0, Math.min(1, (s.waveDrive==='beat') ? A.beat : A.level));
     const W = A.wave, amp = (s.waveAmp==null?100:s.waveAmp)/100;      // vertical gain (×, on top of the auto-scale below)
     // Auto-scale the PCM trace to its own recent peak: real audio rarely hits ±1 (typically ±0.1-0.3), so without
     // this the line barely leaves the center row and reads as a flat band ("not doing a wave"). Peak-normalize so
@@ -953,12 +960,12 @@
         gain:1, floor:5, attackMs:40, decayMs:220, beatSens:50, micGain:100, micGate:0,
         barColorBass:'#ff2200', barColorTreble:'#22aaff', barTip:'off', barTipColor:'#ffffff', barFill:'solid',
         barColor:'bassTreble', barGradA:'#00ff66', barGradB:'#ff00aa', barLayout:'standard', barDrive:'spectrum', barSpread:false, barDynamics:false, barDynamicsAlpha:false, barDynamicsDepth:60,
-        pulseColor:'#19b6ff', pulseColor2:'#ff00aa', pulseGrad:false, pulseGradRev:false, pulseMin:0, pulseMax:100,
+        pulseColor:'#19b6ff', pulseColor2:'#ff00aa', pulseGrad:false, pulseGradRev:false, pulseMin:0, pulseMax:100, pulseDrive:'beat',
         pulseDynamics:false, pulseDynamicsAlpha:false, pulseDynamicsDepth:60,
-        bloomColor:'#ff5a00', bloomColor2:'#ffd000', bloomGrad:false, bloomGradRev:false,
+        bloomColor:'#ff5a00', bloomColor2:'#ffd000', bloomGrad:false, bloomGradRev:false, bloomDrive:'beat',
         bloomDynamics:false, bloomDynamicsAlpha:false, bloomDynamicsDepth:60,
-        waveColor:'#00e0ff', waveColor2:'#ff00aa', waveGrad:false, waveGradRev:false, waveReverse:false, waveAmp:100, waveThick:50,
-        auroraWidth:50, sparkleMono:false, sparkleColor:'#00e0ff',
+        waveColor:'#00e0ff', waveColor2:'#ff00aa', waveGrad:false, waveGradRev:false, waveReverse:false, waveAmp:100, waveThick:50, waveDrive:'volume',
+        auroraWidth:50, auroraDrive:'volume', sparkleMono:false, sparkleColor:'#00e0ff', sparkleDrive:'volume',
         sparkleDynamics:false, sparkleDynamicsAlpha:false, sparkleDynamicsDepth:60,
         cropOn:false, cropFit:true, cropX:0.1, cropY:0.1, cropW:0.8, cropH:0.8 };
       Object.keys(ad).forEach(k=>{ if(s[k]===undefined)s[k]=ad[k]; });
