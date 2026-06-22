@@ -316,6 +316,7 @@
           (s.source==='mic' ? sub('Mic Input')+
             row('Mic gain','<span class="srange" style="width:100%"><input type="range" class="s-micGain" min="50" max="400" value="'+(s.micGain==null?100:s.micGain)+'" title="Input level boost/cut for the mic before it drives the keys"><i class="tick" style="left:calc(7px + (100% - 14px)*0.143)"></i></span><span class="val s-micGainV"></span>')+
             row('Noise gate','<span class="srange" style="width:100%"><input type="range" class="s-micGate" min="0" max="60" value="'+(s.micGate==null?0:s.micGate)+'" title="Mute the keys until the mic exceeds this absolute level — raise it just above your room/fan noise so background hum stops lighting the board. 0 = off"><i class="tick" style="left:calc(7px + (100% - 14px)*0.0)"></i></span><span class="val s-micGateV"></span>')+
+            row('Input level','<span style="position:relative;display:block;width:100%;height:11px;background:#0d1117;border-radius:6px;overflow:hidden;border:1px solid var(--border)"><span class="s-micMeterFill" style="position:absolute;left:0;top:0;bottom:0;width:0%;background:linear-gradient(90deg,#2ea043,#d29922 80%,#f85149);border-radius:6px"></span><span class="s-micMeterGate" style="position:absolute;top:-1px;bottom:-1px;width:2px;background:#e0a200;left:0%"></span></span><span class="val" style="opacity:.6">live mic level (yellow line = gate)</span>')+
             row('Toggle hotkey','<span style="display:flex;gap:6px;align-items:center;justify-content:center"><button type="button" class="s-bindKey">'+(s.toggleKeyLabel?('⌨ '+esc(s.toggleKeyLabel)):'Bind a key…')+'</button>'+(s.toggleKeyLed!=null?'<button type="button" class="s-bindClear" title="unbind" style="flex:none;padding:2px 8px">✕</button>':'')+'</span><span></span>')+
             full('<span class="val" style="opacity:.6;flex:1 1 100%;text-align:center;font-size:12px;line-height:1.4">Press it in any app to flip Mic lighting on/off — works with this page closed (the daemon must be running)</span>') : '')+
           sec('Style')+ '<div class="lfull" style="justify-content:center"><select class="s-style">'+sopt+'</select></div>'+   // no left label → center it under the header
@@ -558,6 +559,12 @@
             const end=()=>{ if(drag){ drag=null; scheduleSaveLayers(); } };
             canvas.addEventListener('pointerup',end); canvas.addEventListener('pointercancel',end); };
           attachCropDrag(cvS); attachCropDrag(cvL);
+          // Mic sensitivity meter: show the live ABSOLUTE input level (state.audio.inAbs) against the gate, both on
+          // the 0..0.6 scale the gate slider uses — so you can see your room/fan floor and set the gate just above it.
+          const micFill=c('.s-micMeterFill'), micGateEl=c('.s-micMeterGate'), MIC_SCALE=0.6;
+          const updMicMeter=()=>{ if(!micFill) return; const ia=Math.max(0,Math.min(1,(state.audio&&state.audio.inAbs)||0));
+            micFill.style.width=Math.min(100, ia/MIC_SCALE*100)+'%';
+            if(micGateEl) micGateEl.style.left=Math.min(100,((s.micGate==null?0:s.micGate)/100)/MIC_SCALE*100)+'%'; };
           // Floating side-peek: when the inline Live preview scrolls out of view, a small pill docks to whichever
           // side of the screen this card sits on. Clicking Show reveals a DUPLICATE live preview pinned near where
           // you're working, so you can watch the keys without scrolling back up; scrolling the inline preview back
@@ -595,6 +602,7 @@
           const nowEl=c('.s-srcNow'); let _lastNow=null;
           function frame(now){
             if(!document.body.contains(cvL||cvS)){ [peek,dup].forEach(e=>{ if(e.parentNode) e.parentNode.removeChild(e); }); return; }   // card rebuilt/removed → stop + clean
+            updMicMeter();
             if(nowEl){ let txt='';   // "what's playing" under the sources: only Specific Tab is page-captured → show a hint when this tab isn't driving (mic now runs in the daemon, so no caveat)
               if(s.source==='tab' && liveAudioActive()){
                 const driving=opts.isDriving?opts.isDriving():true;   // the shared tab's TITLE isn't obtainable (opaque stream id), so don't show a wrong title

@@ -78,6 +78,7 @@
   // smoothing. `now` is ms; dt is derived from state.audio._t. s = the audio layer's settings.
   function applyAudioFeatures(state, raw, s, now){
     const A = state.audio, p = audioParams(s);   // tuner params are PER-STYLE (gain/floor/attack/decay/beatSens)
+    A.inAbs = (raw && raw.inAbs!=null) ? raw.inAbs : (A.inAbs||0)*0.9;   // absolute input level (pre-gate) → the Mic sensitivity meter
     // Mic input conditioning (mic source only): a hard NOISE GATE on the ABSOLUTE input level — kills steady
     // room tone / a distant fan that the auto-gain would otherwise pump up to full — plus an input GAIN. The gate
     // must use raw.inAbs (pre auto-gain); raw.level is already peak-normalized so a fan reads ~1 there.
