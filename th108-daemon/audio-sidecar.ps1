@@ -119,10 +119,10 @@ public static class Cap {
     FFT();
     int half=N/2;
     float[] mag = new float[half];
-    double centNum=0, centDen=0, bassFlux=0; int bassBins=Math.Max(4, half/8);   // kicks live in the low bins
+    double centNum=0, centDen=0, flux=0;
     for (int i=0;i<half;i++){ float m=(float)Math.Sqrt(re[i]*re[i]+im[i]*im[i]); mag[i]=m;
       centNum += (double)i*m; centDen += m;
-      float d=m-prevMag[i]; if(d>0 && i<bassBins) bassFlux+=d; prevMag[i]=m;   // positive bass flux = onset energy
+      float d=m-prevMag[i]; if(d>0) flux+=d; prevMag[i]=m;   // BROADBAND positive spectral flux = onset energy. Bass-only missed mid/high transients (a metronome woodblock / hi-hat has little sub-3kHz energy → never fired).
     }
     double minLog=Math.Log(1), maxLog=Math.Log(half);
     // bands = per-band magnitude in dB RELATIVE to a running spectrum peak → VOLUME-INDEPENDENT (mirrors how outLBC[0] uses peakLvl).
@@ -142,8 +142,8 @@ public static class Cap {
     double inst=Math.Max(Math.Sqrt(rms/N), pk*0.6);                  // RMS = body, PEAK = transients (so a metronome click reads its true loudness, not averaged down by the ~46ms window)
     peakLvl = Math.Max((float)inst, peakLvl*0.999f);                 // auto-gain: track the loudest recent level (slow decay)
     outLBC[0]=(float)Math.Min(1.0, inst/Math.Max(peakLvl,1e-4));     // level normalized to that peak → full 0..1 at any volume
-    avgFlux = avgFlux*0.93f + (float)bassFlux*0.07f;                 // moving average of bass flux
-    double onset=(bassFlux - avgFlux*1.4)/(avgFlux + 1e-4);          // spikes when a kick exceeds ~1.4x the running average
+    avgFlux = avgFlux*0.93f + (float)flux*0.07f;                     // moving average of broadband flux
+    double onset=(flux - avgFlux*1.3)/(avgFlux + 1e-4);             // spikes when a transient exceeds ~1.3x the running average (1.3 vs 1.4 = a touch more sensitive)
     outLBC[1]=(float)Math.Max(0, Math.Min(1.0, onset));             // beat 0..1 (sharp on kicks, ~0 between)
     outLBC[2]=(float)(centDen>0 ? Math.Min(1.0,(centNum/centDen)/half*2.0) : 0.5);   // brightness 0..1
     return true;

@@ -73,9 +73,13 @@
       peakLvl = Math.max(inst, peakLvl * 0.999);    // auto-gain: normalize to the loudest recent
       const level = Math.min(1, inst / Math.max(peakLvl, 1e-4));
       const bands = new Array(NB);
-      let centNum = 0, centDen = 0, bassFlux = 0; const bassBins = Math.max(4, bins >> 3);
+      let centNum = 0, centDen = 0, flux = 0;
+      // BROADBAND spectral flux (all bins, positive change). Bass-only flux misses mid/high transients — a
+      // metronome woodblock or hi-hat has almost no sub-3kHz energy, so a bass-only detector never fired on it
+      // ("not detecting every tick"). Full-spectrum flux catches clicks AND kicks; avgFlux makes it relative
+      // (volume-independent), so it still gates steady noise.
       for (let i = 0; i < bins; i++) { const m = freq[i] / 255; centNum += i * m; centDen += m;
-        const d = m - prevMag[i]; if (d > 0 && i < bassBins) bassFlux += d; prevMag[i] = m; }
+        const d = m - prevMag[i]; if (d > 0) flux += d; prevMag[i] = m; }
       const monoBands = bandsFrom(freq);
       for (let b = 0; b < NB; b++) bands[b] = monoBands[b];
       let bandsL = null, bandsR = null;
@@ -83,8 +87,8 @@
         analyserL.getByteFrequencyData(freqL); analyserR.getByteFrequencyData(freqR);
         bandsL = bandsFrom(freqL); bandsR = bandsFrom(freqR);
       }
-      avgFlux = avgFlux * 0.93 + bassFlux * 0.07;
-      const onset = (bassFlux - avgFlux * 1.4) / (avgFlux + 1e-4);
+      avgFlux = avgFlux * 0.93 + flux * 0.07;
+      const onset = (flux - avgFlux * 1.3) / (avgFlux + 1e-4);   // 1.3 (was 1.4): a touch more sensitive so quieter onsets still register
       const beat = Math.max(0, Math.min(1, onset));
       const centroid = centDen > 0 ? Math.min(1, (centNum / centDen) / bins * 2) : 0.5;
       return { bands, bandsL, bandsR, level, beat, centroid, t: ctx ? ctx.currentTime * 1000 : 0 };

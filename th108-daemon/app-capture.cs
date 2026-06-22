@@ -195,9 +195,9 @@ class AppCapture {
     int start = count - N; double rms = 0; float pk = 0f;   // pk = peak amplitude (catches short transients RMS averages away)
     for (int i=0;i<N;i++){ float s=mono[start+i]; rms += s*s; float a=(s<0?-s:s); if(a>pk)pk=a; re[i]=s*win[i]; im[i]=0; }
     FFT(); int half=N/2; float[] mag = new float[half];
-    double centNum=0, centDen=0, bassFlux=0; int bassBins=Math.Max(4, half/8);
+    double centNum=0, centDen=0, flux=0;
     for (int i=0;i<half;i++){ float m=(float)Math.Sqrt(re[i]*re[i]+im[i]*im[i]); mag[i]=m;
-      centNum += (double)i*m; centDen += m; float d=m-prevMag[i]; if(d>0 && i<bassBins) bassFlux+=d; prevMag[i]=m; }
+      centNum += (double)i*m; centDen += m; float d=m-prevMag[i]; if(d>0) flux+=d; prevMag[i]=m; }   // BROADBAND positive spectral flux: bass-only missed mid/high transients (metronome woodblock / hi-hat)
     double minLog=Math.Log(1), maxLog=Math.Log(half);
     // bands = per-band magnitude in dB RELATIVE to a running spectrum peak → VOLUME-INDEPENDENT (mirrors how lbc[0] uses peakLvl).
     // Absolute dB (old: (dbv+100)/70 *1.6) pegged loud bands at high volume and collapsed the shape at low volume — that was the leak.
@@ -210,7 +210,7 @@ class AppCapture {
       bands[b]=(float)Math.Min(1.0, Math.Max(0.0,nb)); }
     double inst=Math.Max(Math.Sqrt(rms/N), pk*0.6); peakLvl=Math.Max((float)inst, peakLvl*0.999f);   // RMS=body, PEAK=transients
     lbc[0]=(float)Math.Min(1.0, inst/Math.Max(peakLvl,1e-4));
-    avgFlux=avgFlux*0.93f+(float)bassFlux*0.07f; double onset=(bassFlux-avgFlux*1.4)/(avgFlux+1e-4);
+    avgFlux=avgFlux*0.93f+(float)flux*0.07f; double onset=(flux-avgFlux*1.3)/(avgFlux+1e-4);   // broadband flux, 1.3 threshold (a touch more sensitive)
     lbc[1]=(float)Math.Max(0, Math.Min(1.0, onset));
     lbc[2]=(float)(centDen>0 ? Math.Min(1.0,(centNum/centDen)/half*2.0) : 0.5);
     return true;
