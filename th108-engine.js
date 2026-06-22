@@ -387,6 +387,34 @@
     L._carve = (subtract && any) ? cb : null;   // clear when solid / nothing painted (else a stale mask keeps carving)
   }
 
+  // Per-key physical center [cx,cy] in 0..1 board space (same space the card's preview paints + the crop overlay
+  // uses), computed once from keyCell so the crop rect matches what the user draws on the preview.
+  let _centers=null;
+  function keyCenters(){ if(_centers) return _centers; _centers=new Array(NLED);
+    for(let k=0;k<NLED;k++){ const c=keyCell(INDICES[k]); _centers[k]=c?[c[0],c[1]]:null; } return _centers; }
+  // Crop the rendered audio frame to a rectangle. CLIP = keys outside the box go dark/transparent; the visual is
+  // a window onto the full-board render. FIT = the WHOLE board's render is spatially remapped (nearest-key) so it
+  // squeezes inside the box. Outside keys are also made fully transparent (alpha 0) so non-additive blends don't
+  // paint a black box where the crop excludes.
+  function cropFrame(out, L, s){
+    const C=keyCenters();
+    const x0=s.cropX==null?0:s.cropX, y0=s.cropY==null?0:s.cropY, w=s.cropW==null?1:s.cropW, h=s.cropH==null?1:s.cropH;
+    const x1=x0+w, y1=y0+h, fit=!!s.cropFit;
+    const inside=(c)=> !!c && c[0]>=x0 && c[0]<=x1 && c[1]>=y0 && c[1]<=y1;
+    let ab=L._alpha; if(!ab){ ab=L._alpha=(L._alphaBuf||(L._alphaBuf=new Float32Array(NLED))); ab.fill(1); }   // preserve any transparency mask inside; force 0 outside
+    if(!fit){
+      for(let k=0;k<NLED;k++){ if(!inside(C[k])){ const o=k*3; out[o]=out[o+1]=out[o+2]=0; ab[k]=0; } }
+      return;
+    }
+    const src=L._cropBuf||(L._cropBuf=new Float32Array(NLED*3)); src.set(out);
+    for(let k=0;k<NLED;k++){ const o=k*3, c=C[k];
+      if(!inside(c)){ out[o]=out[o+1]=out[o+2]=0; ab[k]=0; continue; }
+      const lx=w>1e-4?(c[0]-x0)/w:0.5, ly=h>1e-4?(c[1]-y0)/h:0.5;   // local 0..1 in the box → the full-board position to sample
+      let best=-1, bd=1e9; for(let j=0;j<NLED;j++){ const sc=C[j]; if(!sc) continue; const dx=sc[0]-lx, dy=sc[1]-ly, d=dx*dx+dy*dy; if(d<bd){ bd=d; best=j; } }
+      if(best>=0){ const so=best*3; out[o]=src[so]; out[o+1]=src[so+1]; out[o+2]=src[so+2]; } else { out[o]=out[o+1]=out[o+2]=0; }
+    }
+  }
+
   function renderAudio(L, now, state){
     const s = L.settings, out = L.rgb, A = state.audio;
     if(s.pauseStyle==='twinkle' && A._twk){ renderTwinkleOut(L, out, A, now, s); L._carve=null; L._alpha=null; return; }   // paused: sparkle the frozen frame out
@@ -413,6 +441,7 @@
         if(alphaOn){ const ab=L._alpha=(L._alphaBuf||(L._alphaBuf=new Float32Array(NLED))); ab.fill(gd); }   // uniform per-key opacity = the global recede
       }
     }
+    if(s.cropOn) cropFrame(out, L, s);   // confine the light to the crop rectangle (clip or fit) — last, so it applies to every style
     // Roll the snapshot a twinkle pause freezes on — but ONLY while the audio is near its recent peak. A pause
     // (or song end) fades the audio down over ~200ms; snapshotting every frame would capture the faded tail
     // (just the bottom row) by the time silence is confirmed. Gating on level vs the running peak holds the
@@ -927,7 +956,8 @@
         bloomDynamics:false, bloomDynamicsAlpha:false, bloomDynamicsDepth:60,
         waveColor:'#00e0ff', waveColor2:'#ff00aa', waveGrad:false, waveReverse:false, waveAmp:100, waveThick:50,
         auroraWidth:50, sparkleMono:false, sparkleColor:'#00e0ff',
-        sparkleDynamics:false, sparkleDynamicsAlpha:false, sparkleDynamicsDepth:60 };
+        sparkleDynamics:false, sparkleDynamicsAlpha:false, sparkleDynamicsDepth:60,
+        cropOn:false, cropFit:true, cropX:0.1, cropY:0.1, cropW:0.8, cropH:0.8 };
       Object.keys(ad).forEach(k=>{ if(s[k]===undefined)s[k]=ad[k]; });
       if(s.style==='plasma') s.style='aurora'; else if(s.style==='radial') s.style='bars';   // retired styles → nearest survivor (so an old saved layer doesn't show a blank picker)
       if(!Array.isArray(s.ducks)) s.ducks=[];   // [{layer:<index>, dim:<0..100 max-brightness %>}] — dim these while the audio layer emits

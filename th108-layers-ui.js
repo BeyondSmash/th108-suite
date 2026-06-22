@@ -316,6 +316,13 @@
               '<div style="display:flex;align-items:center;justify-content:center;gap:8px;margin-bottom:3px"><span class="val" style="opacity:.65">Live — real audio</span><button type="button" class="s-livePrevToggle">'+(s.livePrevOff?'Show':'Hide')+'</button></div>'+
               '<canvas class="s-audioPrevLive" width="378" height="92" style="width:100%;height:auto;display:'+(s.livePrevOff?'none':'block')+';background:#0d1117;border-radius:8px"></canvas></div>'+
           '</div>');
+        // Crop: confine the audio light to a region of the board. The box is drawn + dragged on the previews above.
+        html += sub('Crop')+
+          full('<div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap;justify-content:center;flex:1 1 100%">'+
+            '<label class="sl" style="margin:0"><input type="checkbox" class="s-cropOn"'+(s.cropOn?' checked':'')+'> Crop the light to a region</label>'+
+            (s.cropOn?'<label class="sl" style="margin:0" title="Fit = the whole visualizer squeezes into the box; Clip = only the keys inside the box light (a window onto the full-board visual)"><input type="checkbox" class="s-cropFit"'+(s.cropFit?' checked':'')+'> Fit (squeeze in) · off = Clip</label><button type="button" class="s-cropReset" style="flex:none">Reset box</button>':'')+
+          '</div>')+
+          (s.cropOn?full('<span class="val" style="opacity:.6;flex:1 1 100%;text-align:center;font-size:12px">Drag the box on a preview above to move it; drag a corner to resize</span>'):'');
         // Dynamics / Transparency rows for the wash styles (pulse/bloom/starfield) — mirrors Spectrum Bars but
         // global. p = the style prefix (= its setting-key prefix). The depth slider shows only when either is on.
         const dynRows=(p)=>{ const on=!!s[p+'Dynamics'], aon=!!s[p+'DynamicsAlpha'], dep=(s[p+'DynamicsDepth']==null?60:s[p+'DynamicsDepth']);
@@ -473,6 +480,9 @@
         slider('decayMs','decayMs',x=>x+'ms',v=>v,220);
         slider('pauseDecayMs','pauseDecayMs',x=>x+'ms',v=>v,700);   // settle-to-0 time after the music stops
         slider('beatSens','beatSens',x=>x+'%',v=>v,50);
+        { const co=c('.s-cropOn'); if(co) co.addEventListener('change',e=>{ s.cropOn=e.target.checked; buildLayerBody(card,L); }); }   // rebuild so Fit/Reset + the note show/hide
+        { const cf=c('.s-cropFit'); if(cf) cf.addEventListener('change',e=>{ s.cropFit=e.target.checked; scheduleSaveLayers(); }); }
+        { const cr=c('.s-cropReset'); if(cr) cr.addEventListener('click',()=>{ s.cropX=0.1; s.cropY=0.1; s.cropW=0.8; s.cropH=0.8; scheduleSaveLayers(); }); }
         body.querySelectorAll('.s-duckOn').forEach(cb=>cb.addEventListener('change',e=>{
           const i=+e.target.dataset.i, sl=body.querySelector('.s-duckDim[data-i="'+i+'"]');
           if(!Array.isArray(s.ducks)) s.ducks=[];
@@ -501,7 +511,39 @@
             for(let k=0;k<E.NLED;k++){ const cell=E.keyCell(E.INDICES[k]); if(!cell) continue;
               const o=k*3, x=(cell[0]-cell[2]/2)*W, y=(cell[1]-cell[3]/2)*H, w=cell[2]*W, h=cell[3]*H;
               ctx.fillStyle='rgb('+rgb[o]+','+rgb[o+1]+','+rgb[o+2]+')';
-              ctx.fillRect(x+0.5,y+0.5,Math.max(1,w-1),Math.max(1,h-1)); } };
+              ctx.fillRect(x+0.5,y+0.5,Math.max(1,w-1),Math.max(1,h-1)); }
+            drawCrop(ctx); };   // overlay the crop box on top of every painted frame
+          // Crop overlay: the box lives in the same 0..1 keyCell space the engine crops in, so it maps straight to
+          // canvas px. Dim outside, outline + corner handles inside.
+          const drawCrop=(ctx)=>{ if(!s.cropOn||!ctx) return;
+            const x=(s.cropX||0)*W, y=(s.cropY||0)*H, w=(s.cropW||1)*W, h=(s.cropH||1)*H;
+            ctx.save();
+            ctx.fillStyle='rgba(0,0,0,0.45)'; ctx.fillRect(0,0,W,y); ctx.fillRect(0,y+h,W,H-(y+h)); ctx.fillRect(0,y,x,h); ctx.fillRect(x+w,y,W-(x+w),h);
+            ctx.strokeStyle='#4aa3ff'; ctx.lineWidth=1.5; ctx.strokeRect(x+0.5,y+0.5,Math.max(1,w),Math.max(1,h));
+            ctx.fillStyle='#4aa3ff'; const hs=4; [[x,y],[x+w,y],[x,y+h],[x+w,y+h]].forEach(p=>ctx.fillRect(p[0]-hs,p[1]-hs,hs*2,hs*2));
+            ctx.restore(); };
+          // Drag the crop box (move) / its corners (resize) on a preview canvas. Coords normalized via the canvas's
+          // displayed size (it's CSS-scaled), so it works at any zoom. MIN keeps the box from collapsing.
+          const attachCropDrag=(canvas)=>{ if(!canvas) return; let drag=null; const MIN=0.08, TOL=0.06;
+            const toN=e=>{ const r=canvas.getBoundingClientRect(); return [(e.clientX-r.left)/r.width, (e.clientY-r.top)/r.height]; };
+            const hit=(nx,ny)=>{ if(!s.cropOn) return null; const x0=s.cropX, y0=s.cropY, x1=x0+s.cropW, y1=y0+s.cropH, near=(a,b)=>Math.abs(a-b)<TOL;
+              const cx=near(nx,x0)?'w':near(nx,x1)?'e':'', cy=near(ny,y0)?'n':near(ny,y1)?'s':'';
+              if(cx&&cy) return cy+cx; if(nx>=x0-TOL&&nx<=x1+TOL&&ny>=y0-TOL&&ny<=y1+TOL) return 'move'; return null; };
+            canvas.addEventListener('pointerdown',e=>{ if(!s.cropOn) return; const n=toN(e), m=hit(n[0],n[1]); if(!m) return;
+              e.preventDefault(); try{canvas.setPointerCapture(e.pointerId);}catch(_){}
+              drag={mode:m, sx:n[0], sy:n[1], x:s.cropX, y:s.cropY, w:s.cropW, h:s.cropH}; });
+            canvas.addEventListener('pointermove',e=>{ if(!drag){ if(s.cropOn){ const n=toN(e), m=hit(n[0],n[1]); canvas.style.cursor=m==='move'?'move':m?'nwse-resize':'crosshair'; } return; }
+              const n=toN(e), dx=n[0]-drag.sx, dy=n[1]-drag.sy;
+              if(drag.mode==='move'){ s.cropX=Math.max(0,Math.min(1-drag.w, drag.x+dx)); s.cropY=Math.max(0,Math.min(1-drag.h, drag.y+dy)); }
+              else { let x0=drag.x, y0=drag.y, x1=drag.x+drag.w, y1=drag.y+drag.h;
+                if(drag.mode.indexOf('w')>=0) x0=Math.min(x1-MIN, Math.max(0, drag.x+dx));
+                if(drag.mode.indexOf('e')>=0) x1=Math.max(x0+MIN, Math.min(1, drag.x+drag.w+dx));
+                if(drag.mode.indexOf('n')>=0) y0=Math.min(y1-MIN, Math.max(0, drag.y+dy));
+                if(drag.mode.indexOf('s')>=0) y1=Math.max(y0+MIN, Math.min(1, drag.y+drag.h+dy));
+                s.cropX=x0; s.cropY=y0; s.cropW=x1-x0; s.cropH=y1-y0; } });
+            const end=()=>{ if(drag){ drag=null; scheduleSaveLayers(); } };
+            canvas.addEventListener('pointerup',end); canvas.addEventListener('pointercancel',end); };
+          attachCropDrag(cvS); attachCropDrag(cvL);
           // Floating side-peek: when the inline Live preview scrolls out of view, a small pill docks to whichever
           // side of the screen this card sits on. Clicking Show reveals a DUPLICATE live preview pinned near where
           // you're working, so you can watch the keys without scrolling back up; scrolling the inline preview back

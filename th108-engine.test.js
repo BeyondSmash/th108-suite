@@ -269,6 +269,16 @@ test('wash-style Dynamics recedes on steady sound and Transparency sets an alpha
   assert.ok(La._alpha && La._alpha[0] < 1, 'Transparency sets an opacity mask below 1 during steady sound');
 });
 
+test('crop clip masks every key outside the rectangle', () => {
+  const L = { type:'audio', enabled:true, opacity:1, blend:'add', settings:{ style:'pulse', pulseMin:100, pulseColor:'#ffffff', cropOn:true, cropFit:false, cropX:0, cropY:0, cropW:0.4, cropH:1 }, rgb:new Uint8Array(E.NLED*3) };
+  E.ensureSettings(L); const st = E.createState([L]); const La = st.layers[0];
+  st.audio.level = 1; st.audio.beat = 1; E.renderAudio(La, 0, st);   // pulseMin 100 → whole board would light without the crop
+  let lit = 0;
+  for (let k = 0; k < E.NLED; k++){ const o = k*3; if (La.rgb[o]||La.rgb[o+1]||La.rgb[o+2]) { lit++;
+    const c = E.keyCell(E.INDICES[k]); assert.ok(c && c[0] <= 0.4 + 1e-9, 'a lit key must sit inside the crop box (x<=0.4)'); } }
+  assert.ok(lit > 0, 'crop still lights keys inside the box');
+});
+
 test('mic noise gate mutes below-threshold input on the absolute level', () => {
   const L = { type:'audio', enabled:true, opacity:1, blend:'add', settings:{ style:'bars', source:'mic', micGate:30 }, rgb:new Uint8Array(E.NLED*3) };
   E.ensureSettings(L); const st = E.createState([L]); const La = st.layers[0];
