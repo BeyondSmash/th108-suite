@@ -295,7 +295,7 @@
         // tab + mic are captured in-tab via Web Audio. App needs the daemon (it spawns app-capture.exe).
         const sources=[['system','All System Audio',true],['app','Specific App',true],['tab','Specific Tab',true],['mic','Mic / Line-in',true]];   // 'tab' = getDisplayMedia: you pick which tab/window to share (NOT this page — this site emits no sound), so "Specific Tab"
         const srcBubbles=sources.map(o=>{ const dis=!o[2]; return '<label class="sl" style="margin:0'+(dis?';opacity:.4':'')+'"><input type="radio" name="aud-src-'+uid+'" class="s-source" value="'+o[0]+'"'+((o[0]===(s.source||'system'))?' checked':'')+(dis?' disabled':'')+'> '+o[1]+'</label>'; }).join('');
-        const styles=[['bars','Spectrum bars'],['pulse','Beat pulse'],['bloom','Radial bloom'],['wave','Waveform'],['plasma','Plasma'],['aurora','Aurora'],['sparkle','Starfield'],['radial','Radial spectrum']];
+        const styles=[['bars','Spectrum Bars'],['pulse','Beat Pulse'],['bloom','Radial Bloom'],['wave','Waveform'],['aurora','Aurora'],['sparkle','Starfield']];
         const sopt=styles.map(m=>'<option value="'+m[0]+'"'+(m[0]===style?' selected':'')+'>'+m[1]+'</option>').join('');
         const esc=t=>(t||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');
         let html='<div class="ctl">'+

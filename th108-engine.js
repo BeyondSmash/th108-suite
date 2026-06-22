@@ -383,10 +383,8 @@
     else if(style==='pulse') renderPulse(s, out, A, now);
     else if(style==='bloom') renderBloom(s, out, A);
     else if(style==='wave') renderWave(s, out, A, now);
-    else if(style==='plasma') renderPlasma(s, out, A, now);
     else if(style==='aurora') renderAurora(s, out, A, now);
     else if(style==='sparkle') renderSparkle(s, out, A, now);
-    else if(style==='radial') renderRadial(s, out, A, now);
     else renderBars(s, out, A, now, L);
     // Roll the snapshot a twinkle pause freezes on — but ONLY while the audio is near its recent peak. A pause
     // (or song end) fades the audio down over ~200ms; snapshotting every frame would capture the faded tail
@@ -429,17 +427,6 @@
   }
 
   // ===== abstract / WMP-style visualizers (auto-colored from the spectrum; all fade to dark on silence) =====
-  // Plasma: a flowing sine field; flow speed + brightness ride loudness, hue drifts with spectral brightness.
-  function renderPlasma(s, out, A, now){
-    const t = now/1000 * (0.4 + A.level*1.6);
-    const energy = Math.min(1, A.level*1.5 + A.beat*0.8);            // → dark on silence
-    const amp = 0.5 + A.beat*0.5;
-    for(let k=0;k<NLED;k++){ const cell=GRID[INDICES[k]]; if(!cell) continue; const o=k*3;
-      const x=GW>1?cell[0]/(GW-1):0, y=GH>1?cell[1]/(GH-1):0;
-      const p=(Math.sin(x*3+t)+Math.sin(y*4-t*0.8)+Math.sin((x+y)*3+t*0.6)+Math.sin(Math.hypot(x-0.5,y-0.5)*8-t*1.2))/4;  // -1..1
-      const v=Math.max(0,Math.min(1, amp*(0.45+0.55*(0.5+0.5*Math.sin(p*Math.PI*1.5)))*energy));
-      const c=hsv2rgb(A.centroid*0.6 + p*0.2 + t*0.02, 1, v); out[o]=c[0]|0; out[o+1]=c[1]|0; out[o+2]=c[2]|0; }
-  }
   // Aurora: soft vertical color curtains that sway with time and lift/brighten with each column's energy.
   function renderAurora(s, out, A, now){
     const t = now/1000;
@@ -460,15 +447,6 @@
       v = Math.min(1, v*(0.6+0.4*A.level) + (A.beat>0.5 && ph>0.6 ? A.beat*0.6 : 0));
       if(v<0.03){ out[o]=out[o+1]=out[o+2]=0; continue; }
       const c=hsv2rgb(ph + t*0.08, 0.9, v); out[o]=c[0]|0; out[o+1]=c[1]|0; out[o+2]=c[2]|0; }
-  }
-  // Radial spectrum: distance from board center → band (center bass, edge treble); rainbow by angle.
-  function renderRadial(s, out, A, now){
-    const cx=(GW-1)/2, cy=(GH-1)/2, maxd=Math.hypot(cx,cy)||1, t=now/1000;
-    for(let k=0;k<NLED;k++){ const cell=GRID[INDICES[k]]; if(!cell) continue; const o=k*3;
-      const dx=cell[0]-cx, dy=cell[1]-cy, d=Math.hypot(dx,dy)/maxd;
-      const v=Math.max(0,Math.min(1, A.bands[Math.min(31,Math.round(d*31))]*(0.5+A.beat*0.5)));
-      if(v<0.03){ out[o]=out[o+1]=out[o+2]=0; continue; }
-      const c=hsv2rgb(Math.atan2(dy,dx)/(2*Math.PI)+0.5 + t*0.1, 1, v); out[o]=c[0]|0; out[o+1]=c[1]|0; out[o+2]=c[2]|0; }
   }
   // Bars: column (GRID col 0..GW-1) → frequency band; each bar fills by that band's magnitude.
   // s.barLayout picks BOTH the horizontal frequency mapping and the vertical fill direction:
@@ -894,6 +872,7 @@
         bloomColor:'#ff5a00', bloomColor2:'#ffd000', bloomGrad:false,
         waveColor:'#00e0ff', waveColor2:'#ff00aa', waveGrad:false, waveReverse:false };
       Object.keys(ad).forEach(k=>{ if(s[k]===undefined)s[k]=ad[k]; });
+      if(s.style==='plasma') s.style='aurora'; else if(s.style==='radial') s.style='bars';   // retired styles → nearest survivor (so an old saved layer doesn't show a blank picker)
       if(!Array.isArray(s.ducks)) s.ducks=[];   // [{layer:<index>, dim:<0..100 max-brightness %>}] — dim these while the audio layer emits
     }
     // common per-layer adjust fields — backfilled for EVERY layer type

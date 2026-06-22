@@ -467,7 +467,7 @@ test('contrast deepens the dips: a sub-peak band reads lower at high contrast', 
 });
 
 test('abstract styles light on sound and go fully dark on silence', () => {
-  for (const style of ['plasma','aurora','sparkle','radial']) {
+  for (const style of ['aurora','sparkle']) {
     const L = { type:'audio', enabled:true, opacity:1, blend:'add', settings:{ style }, rgb:new Uint8Array(E.NLED*3) };
     E.ensureSettings(L); const st = E.createState([L]); const La = st.layers[0];
     st.audio.level = 1; st.audio.beat = 1; st.audio.centroid = 0.6; st.audio.bands.fill(0.8);
