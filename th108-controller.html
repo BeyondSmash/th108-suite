@@ -262,16 +262,18 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
   /* checkbox rows (Spread, Auto-gain, Isolate, …): checkbox sits in the MIDPOINT of the gap between the label
      and the descriptor, which gets its own column. (cbrow + the descriptor span are added by wrapCheckboxRows.) */
   .lbody .ctl .lrow.cbrow{ grid-template-columns:1fr auto 1fr; align-items:center; }           /* equal 1fr sides → description (col2) stays card-centered */
-  .lbody .ctl .lrow.cbrow > label:first-child{ grid-column:1; justify-self:start; }            /* label far left */
+  .lbody .ctl .lrow.cbrow > label:first-child{ grid-column:1; grid-row:1; justify-self:start; }   /* label far left — grid-row:1 keeps it on the SAME line as the checkbox (else label+checkbox share col1 with no row and grid stacks them into rows 1 & 2) */
   .lbody .ctl .lrow.cbrow > .sl{ display:contents; }                                          /* let the checkbox + description place into the row grid independently (label-click still toggles) */
-  .lbody .ctl .lrow.cbrow > .sl > input{ grid-column:1; justify-self:end; margin:0 40px 0 0; }  /* checkbox at the col1 right edge pulled 40px LEFT → sits at the optical midpoint of the label↔description gap, clear of even a long label ("Transparency"); align-items:center handles the vertical midpoint of the multi-line description */
-  .lbody .ctl .lrow.cbrow > .sl > .sl-d{ grid-column:2; max-width:220px; text-align:center; }   /* description card-centered */
+  .lbody .ctl .lrow.cbrow > .sl > input{ grid-column:1; grid-row:1; justify-self:end; margin:0 40px 0 0; }  /* checkbox at the col1 right edge pulled 40px LEFT → optical midpoint of the label↔description gap, clear of even "Transparency"; row 1 + align-items:center put it on the label's line and the description's vertical midpoint */
+  .lbody .ctl .lrow.cbrow > .sl > .sl-d{ grid-column:2; grid-row:1; max-width:220px; text-align:center; }   /* description card-centered, same row */
   .lbody .ctl .lrow:nth-of-type(even){ background:var(--zebra-bg, transparent); border-radius:8px; }   /* zebra band; --zebra-bg is set live by the Row-shading slider (white tint = brighter rows, black tint = darker rows, 0 = none) */
   .lbody .ctl .lsec, .lbody .ctl .lsub{ grid-column:1/-1; }
-  .lbody .ctl .lsec{ margin:13px 0 1px; padding-top:11px; border-top:1px solid var(--border); color:var(--text); font-size:13px; font-weight:600; letter-spacing:.02em; text-align:center; }
-  .lbody .ctl .lsec:first-child{ margin-top:0; padding-top:2px; border-top:0; }
+  .lbody .ctl .lsec{ position:relative; margin:13px 0 1px; padding-top:11px; color:var(--text); font-size:13px; font-weight:600; letter-spacing:.02em; text-align:center; }
+  .lbody .ctl .lsec::before{ content:""; position:absolute; top:0; left:0; right:0; height:1px; background:currentColor; opacity:.34; }   /* full-width section rule = ~1/3 of the section's text color → clearly reads as a divider on BOTH themes (pseudo-element opacity is reliable; color-mix fell back to opaque here) */
+  .lbody .ctl .lsec:first-child{ margin-top:0; padding-top:2px; }
+  .lbody .ctl .lsec:first-child::before{ display:none; }
   .lbody .ctl .lsub{ position:relative; margin:9px 0 0; padding-top:8px; color:var(--muted); font-size:12px; text-align:center; }
-  .lbody .ctl .lsub::before{ content:""; position:absolute; top:0; left:50%; transform:translateX(-50%); width:150px; max-width:55%; height:1px; background:var(--border); opacity:.8; }
+  .lbody .ctl .lsub::before{ content:""; position:absolute; top:0; left:50%; transform:translateX(-50%); width:180px; max-width:60%; height:1px; background:currentColor; opacity:.7; }   /* mini sub-section rule (currentColor = --muted) */
   .lbody .ctl .lfull{ grid-column:1/-1; display:flex; flex-wrap:wrap; align-items:center; justify-content:center; gap:8px 14px; }   /* center full-width control blocks (Specific-app picker, individual paint controls, Style) under the centered headers; 100%-width children (Source bubbles, Preview) are unaffected */
   .lhead .lgrip{ cursor:grab; color:var(--muted); font-size:15px; user-select:none; padding:0 2px; }
   .lhead .lgrip:active{ cursor:grabbing; }
@@ -1368,6 +1370,10 @@ async function toggleDriver(){
 document.getElementById('driveToggle').addEventListener('click',toggleDriver);
 refreshDriverUI();   // boot: sync the toggle + pill once everything (running/GIF/DC/HID) is initialized — NEVER call this before `let running` and `const GIF` above (TDZ throws and halts init)
 
+// live media title (system media session, via the daemon) — the ONLY real source of "what's playing" for a
+// tab share (its WebRTC track label is an opaque stream id). Polled lightly; '' when no daemon / nothing playing.
+let _npLive='';
+setInterval(()=>{ if(!DC.present){ _npLive=''; return; } fetch('/status',{cache:'no-store'}).then(r=>r.json()).then(s=>{ _npLive=(s.npHealth&&s.npHealth.livePlaying)||''; }).catch(()=>{ _npLive=''; }); }, 5000);
 // ===== layer cards UI — extracted to th108-layers-ui.js (cards + bodies + Adjust block + grip reorder + persist) =====
 const LUI=TH108LayersUI.create({
   state, engine: TH108Engine,
@@ -1381,6 +1387,9 @@ const LUI=TH108LayersUI.create({
   liveAudioActive: ()=>webCap.active() || dmnAudioFresh(),   // in-tab capture OR a fresh daemon (system/app) frame → Live preview shows real audio (else blank)
   captureLabel: ()=>webCap.active() ? webCap.label() : null, // for tab/mic: the shared tab TITLE / mic name → shown as "what's playing" under the sources
   isDriving: ()=>!!HID.device,                               // does THIS tab hold the keyboard? (tab/mic audio only reaches the keys when it does)
+  connectKeyboard: ()=>{ if(!HID.device) document.getElementById('connect').click(); },   // tab/mic auto-handover: take the keyboard from the daemon (runs the normal Connect flow → /yield handoff) so in-page capture reaches the keys
+  nowPlaying: ()=>_npLive,                                   // real "what's playing" title (media session) — replaces the opaque tab stream-id in the Source now-line
+
   listAudioApps: ()=>fetch('/audio/apps',{cache:'no-store'}).then(r=>r.json()).then(d=>d.apps||[])   // "Specific app" picker → daemon's currently-playing apps (app-capture.exe --list)
 });
 LUI.init();   // restore saved layers → ensureSettings backfill → build cards → persist-on-edit listeners on #layersPanel

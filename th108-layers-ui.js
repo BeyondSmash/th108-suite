@@ -302,7 +302,7 @@
           sec('Source')+
           full('<span style="display:grid;grid-template-columns:auto auto;gap:7px 24px;justify-content:center;flex:1 1 100%">'+srcBubbles+'</span>')+
           full('<span class="val s-srcNow" style="opacity:.8;flex:1 1 100%;text-align:center;font-size:12px;min-height:1em"></span>')+   // "▶ what's playing" (tab/mic = shared-tab title; + a hint when this tab isn't driving the keyboard)
-          full('<span class="val" style="opacity:.55;flex:1 1 100%;text-align:left;font-size:11px;line-height:1.35">Specific Tab &amp; Mic / Line-in are captured in this page — they only show on the keyboard while this site is open AND driving it (Connect Keyboard / Drive from this Tab). System Audio &amp; Specific App run in the daemon (work with this page closed).</span>')+   // left-aligned note: the tab/mic capture-location gotcha, stated up front
+          full('<span class="val" style="opacity:.55;flex:1 1 100%;text-align:center;font-size:12px;line-height:1.4">Specific Tab &amp; Mic / Line-in are captured in this page — they only show on the keyboard while this site is open AND driving it (Connect Keyboard / Drive from this Tab). System Audio &amp; Specific App run in the daemon (work with this page closed).</span>')+   // centered note: the tab/mic capture-location gotcha, stated up front
           (s.source==='app' ? sub('Specific App')+full('<select class="s-appId" style="max-width:180px"></select><button type="button" class="s-appRefresh" title="rescan currently-playing apps" style="flex:none">Refresh</button><span class="val s-appNote" style="opacity:.7"></span>') : '')+
           sec('Style')+ '<div class="lfull" style="justify-content:center"><select class="s-style">'+sopt+'</select></div>'+   // no left label → center it under the header
           sec('Preview')+ full('<div style="display:flex;flex-direction:column;gap:9px;flex:1 1 100%">'+
@@ -373,7 +373,9 @@
         '</div>';
         body.innerHTML=html;
         const c=q=>body.querySelector(q);
-        body.querySelectorAll('.s-source').forEach(r=>r.addEventListener('change',e=>{ s.source=e.target.value; onAudioSource(e.target.value); buildLayerBody(card,L); }));   // tab/mic start in-tab capture; system/app stop it (daemon-driven); rebuild so the App picker shows/hides
+        body.querySelectorAll('.s-source').forEach(r=>r.addEventListener('change',e=>{ const v=e.target.value; s.source=v;
+          if((v==='tab'||v==='mic') && opts.isDriving && !opts.isDriving() && opts.connectKeyboard) opts.connectKeyboard();   // auto-handover: tab/mic are page-captured → grab the keyboard from the daemon so they reach the keys (runs the normal Connect flow)
+          onAudioSource(v); buildLayerBody(card,L); }));   // tab/mic start in-tab capture; system/app stop it (daemon-driven); rebuild so the App picker shows/hides
         // re-pick: clicking the ALREADY-selected "Specific Tab" re-opens the share picker (a 'change' doesn't fire when it's already chosen)
         { const tabR=[...body.querySelectorAll('.s-source')].find(x=>x.value==='tab'); if(tabR) tabR.addEventListener('click',()=>{ if(s.source==='tab') onAudioSource('tab'); }); }
         // "Specific app" picker — populated from the daemon's list of currently-playing audio apps; the saved
@@ -483,7 +485,12 @@
           function frame(now){
             if(!document.body.contains(cvL||cvS)){ [peek,dup].forEach(e=>{ if(e.parentNode) e.parentNode.removeChild(e); }); return; }   // card rebuilt/removed → stop + clean
             if(nowEl){ let txt='';   // "what's playing" under the sources: tab/mic = shared-tab title / mic name, + a hint when this tab isn't driving the keyboard
-              if((s.source==='tab'||s.source==='mic') && liveAudioActive()){ const lbl=(opts.captureLabel&&opts.captureLabel())||(s.source==='mic'?'microphone':'shared tab'); const driving=opts.isDriving?opts.isDriving():true;
+              if((s.source==='tab'||s.source==='mic') && liveAudioActive()){
+                const np=(opts.nowPlaying&&opts.nowPlaying())||'';                       // real media-session title (daemon)
+                const raw=(opts.captureLabel&&opts.captureLabel())||'';
+                const clean=(/:\/\/|web-contents|mediastream/i.test(raw))?'':raw;         // hide the opaque tab stream-id ("web-contents-media-stream://…")
+                const lbl=np||clean||(s.source==='mic'?'microphone':'shared tab');
+                const driving=opts.isDriving?opts.isDriving():true;
                 txt='▶ '+lbl+(driving?'':'   ·   preview only — click “Drive from this Tab” to show it on the keyboard'); }
               if(txt!==_lastNow){ nowEl.textContent=txt; nowEl.style.color=(txt.indexOf('preview only')>=0)?'var(--warn,#e0a200)':''; _lastNow=txt; } }
             if(ctxS && cvS.offsetParent!==null && synth){ E.applyAudioFeatures(pState, synth.sample(now/1000), s, now); E.renderAudio(sampL, now, pState); paint(ctxS, sampL.rgb); }
@@ -496,7 +503,7 @@
               const off=shown && cardInView && r.bottom<4;                              // and the inline preview has scrolled ABOVE the viewport (you're down in the tuner)
               const dupOffTop=!!dup.parentNode && dup.getBoundingClientRect().bottom<4;  // the shown duplicate has scrolled off the top → pill is inapplicable, hide it
               const want=off && !dupOffTop;
-              if(want){ if(!pillVisible){ positionPeek(); fadePill(true); } }
+              if(want){ positionPeek(); if(!pillVisible) fadePill(true); }   // re-position EVERY frame while shown → tracks zoom/resize/scroll (was positioned once on show → stranded after a zoom)
               else if(pillVisible){ fadePill(false); }
               if(!off && dup.parentNode) hideDup();   // scrolled all the way back to the inline preview → remove the duplicate + reset
               dupOn=!!dup.parentNode && dup.offsetParent!==null;
