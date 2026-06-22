@@ -372,9 +372,17 @@
             '<span style="display:flex;gap:6px;align-items:center"><input type="range" class="s-duckDim" data-i="'+o.i+'" min="0" max="100" value="'+dim+'"'+(on?'':' disabled')+' title="Max brightness this layer is allowed while the music is showing"><span class="val s-duckDimV" data-i="'+o.i+'">'+dim+'%</span></span>');
         }).join('');
         const ap=E.audioParams(s);   // tuner sliders are PER-STYLE (gain/floor/attack/decay/beatSens live in s.ap[style])
+        // Copy-from: pull another style's PER-STYLE values into this one. Only Tuning (the ap block) and the
+        // Dynamics/Transparency trio mean the same thing across styles — appearance colors/layout are inherently
+        // style-specific (a bar layout means nothing to a pulse), and Dim-while-active is one shared layer-level
+        // setting — so those aren't offered (nothing to copy). Source list = styles you've actually tuned.
+        const STYLE_LABELS={bars:'Spectrum Bars',pulse:'Beat Pulse',bloom:'Radial Bloom',wave:'Waveform',aurora:'Aurora',sparkle:'Starfield'};
+        const tunedStyles=Object.keys(s.ap||{}).filter(st=>st!==style && STYLE_LABELS[st]);
+        const copyCtl = tunedStyles.length ? full('<span style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;flex:1 1 100%;justify-content:center"><span class="val" style="opacity:.7">Copy from</span><select class="s-copyFrom">'+tunedStyles.map(st=>'<option value="'+st+'">'+STYLE_LABELS[st]+'</option>').join('')+'</select><label class="sl" style="margin:0"><input type="checkbox" class="s-copyTuning" checked> Tuning</label><label class="sl" style="margin:0"><input type="checkbox" class="s-copyDyn" checked> Dynamics</label><button type="button" class="s-copyApply" style="flex:none">Apply</button></span>') : '';
         html+=
           '</div><div class="ctl s-tuningCtl">'+   // close the colors .ctl and open a separate Tuning .ctl so the shared Adjust block can sit BETWEEN them (under color editing, above Tuning)
           sec('Tuning')+
+          copyCtl+
           row('Gain','<span class="srange" style="width:100%"><input type="range" class="s-gain" min="50" max="300" value="'+Math.round((ap.gain||1)*100)+'" title="Boost/cut input sensitivity before it drives the keys (this style only)"><i class="tick" style="left:calc(7px + (100% - 14px)*0.2)"></i></span><span class="val s-gainV"></span>')+
           row('Noise floor','<span class="srange" style="width:100%"><input type="range" class="s-floor" min="0" max="40" value="'+ap.floor+'" title="MIN level — gate out quiet hiss below this so idle keys stay dark (this style only)"><i class="tick" style="left:calc(7px + (100% - 14px)*0.125)"></i></span><span class="val s-floorV"></span>')+
           row('Ceiling','<span class="srange" style="width:100%"><input type="range" class="s-ceil" min="20" max="100" value="'+(ap.ceil==null?100:ap.ceil)+'" title="MAX level — the loudness that fills bars to the TOP. LOWER = bars hit the top more easily / more volatile (it stretches floor→ceiling across the full height). 100 = no boost (this style only)"><i class="tick" style="left:calc(7px + (100% - 14px)*1.0)"></i></span><span class="val s-ceilV"></span>')+
@@ -427,6 +435,14 @@
           const el=c('.s-'+p+'DynamicsDepth'), v=c('.s-'+p+'DynamicsDepthV'); if(el&&v){ const up=()=>v.textContent=el.value+'%'; el.addEventListener('input',()=>{ s[p+'DynamicsDepth']=+el.value; up(); }); up(); }
         });
         { const ps=c('.s-pauseStyle'); if(ps) ps.addEventListener('change',e=>s.pauseStyle=e.target.value); }   // layer-level pause behavior: linear settle vs twinkle-out
+        // Copy-from Apply: clone the chosen style's Tuning (ap) and/or Dynamics trio into THIS style, then rebuild.
+        { const btn=c('.s-copyApply'); if(btn) btn.addEventListener('click',()=>{
+            const sel=c('.s-copyFrom'); if(!sel||!sel.value) return; const src=sel.value;
+            if(c('.s-copyTuning') && c('.s-copyTuning').checked && s.ap && s.ap[src]) s.ap[style]=JSON.parse(JSON.stringify(s.ap[src]));   // wholesale ap copy (audioParams backfills any missing keys on rebuild)
+            if(c('.s-copyDyn') && c('.s-copyDyn').checked){ const DP={bars:'bar',pulse:'pulse',bloom:'bloom',sparkle:'sparkle'}, sp=DP[src], dp=DP[style];
+              if(sp&&dp){ s[dp+'Dynamics']=s[sp+'Dynamics']; s[dp+'DynamicsAlpha']=s[sp+'DynamicsAlpha']; s[dp+'DynamicsDepth']=s[sp+'DynamicsDepth']; } }   // wave/aurora have no dynamics → silently skipped
+            buildLayerBody(card,L); scheduleSaveLayers();
+          }); }
         { const bd=c('.s-barDrive'); if(bd) bd.addEventListener('change',e=>{ s.barDrive=e.target.value; buildLayerBody(card,L); }); }   // rebuild so the Spread toggle shows/hides
         { const bsp=c('.s-barSpread'); if(bsp) bsp.addEventListener('change',e=>s.barSpread=e.target.checked); }
         { const bc=c('.s-barColor'); if(bc) bc.addEventListener('change',e=>{ s.barColor=e.target.value; buildLayerBody(card,L); }); }   // rebuild so bass/treble vs gradient vs vu color pickers swap
