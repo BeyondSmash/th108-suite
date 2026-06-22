@@ -233,6 +233,25 @@ test('renderPulse brightens the whole board with level+beat and dims on silence'
   assert.ok(loud > quiet, 'louder audio = brighter board');
 });
 
+test('renderPulse Min brightness holds a resting glow at silence', () => {
+  const L = { type:'audio', enabled:true, opacity:1, blend:'add', settings:{ style:'pulse', pulseMin:50, pulseColor:'#ffffff' }, rgb:new Uint8Array(E.NLED*3) };
+  E.ensureSettings(L); const st = E.createState([L]); const La = st.layers[0];
+  st.audio.level = 0; st.audio.beat = 0;   // silence
+  E.renderAudio(La, 0, st);
+  let lit=0; for(let i=0;i<La.rgb.length;i++) if(La.rgb[i]>0) lit++;
+  assert.ok(lit > 0, 'pulseMin=50 keeps the board glowing at silence (default 0 would be dark)');
+});
+
+test('renderSparkle mono uses only the picked color', () => {
+  const L = { type:'audio', enabled:true, opacity:1, blend:'add', settings:{ style:'sparkle', sparkleMono:true, sparkleColor:'#ff0000' }, rgb:new Uint8Array(E.NLED*3) };
+  E.ensureSettings(L); const st = E.createState([L]); const La = st.layers[0];
+  st.audio.level = 1; st.audio.beat = 1; st.audio.bands.fill(0.8);
+  E.renderAudio(La, 50, st);
+  let g=0,b=0,lit=0; for(let k=0;k<E.NLED;k++){ const o=k*3; if(La.rgb[o]>0){lit++;} g+=La.rgb[o+1]; b+=La.rgb[o+2]; }
+  assert.ok(lit > 0, 'mono starfield lights keys');
+  assert.equal(g+b, 0, 'pure red picked color → no green/blue channel anywhere');
+});
+
 test('renderBloom lights center keys on a beat and is dark with no beat', () => {
   const L = { type:'audio', enabled:true, opacity:1, blend:'add', settings:{ style:'bloom' }, rgb:new Uint8Array(E.NLED*3) };
   E.ensureSettings(L); const st = E.createState([L]); const La = st.layers[0];

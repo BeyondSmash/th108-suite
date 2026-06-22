@@ -312,7 +312,7 @@
               '<div style="display:flex;align-items:center;justify-content:center;gap:8px;margin-bottom:3px"><span class="val" style="opacity:.65">Live — real audio</span><button type="button" class="s-livePrevToggle">'+(s.livePrevOff?'Show':'Hide')+'</button></div>'+
               '<canvas class="s-audioPrevLive" width="378" height="92" style="width:100%;height:auto;display:'+(s.livePrevOff?'none':'block')+';background:#0d1117;border-radius:8px"></canvas></div>'+
           '</div>');
-        if(style==='bars'||style==='pulse'||style==='bloom'||style==='wave') html+=sub('Appearance');   // abstract styles (plasma/aurora/sparkle/radial) auto-color → no per-style controls
+        html+=sub('Appearance');   // every surviving style now has at least one appearance control
         if(style==='bars'){ const bt=s.barTip||'off', bf=s.barFill||'solid', bc=s.barColor||'bassTreble', blo=s.barLayout||'standard', bdr=s.barDrive||'spectrum', bsp=!!s.barSpread;
           const btOpt=[['off','Off'],['color','Solid color'],['rainbow','Rainbow'],['vu','VU (green→red by level)']].map(o=>'<option value="'+o[0]+'"'+(o[0]===bt?' selected':'')+'>'+o[1]+'</option>').join('');
           const bfOpt=[['solid','Solid'],['subtract','Subtract (silhouette)']].map(o=>'<option value="'+o[0]+'"'+(o[0]===bf?' selected':'')+'>'+o[1]+'</option>').join('');
@@ -336,7 +336,9 @@
           ((s.barDynamics||s.barDynamicsAlpha) ? row('Dynamics depth','<span class="srange" style="width:100%"><input type="range" class="s-barDynamicsDepth" min="0" max="100" value="'+(s.barDynamicsDepth==null?60:s.barDynamicsDepth)+'" title="How far a STEADY bar recedes (dims and/or fades see-through) before a change/beat pops it back to full. Higher = more breathing/depth; 0 = no recede"><i class="tick" style="left:calc(7px + (100% - 14px)*0.6)"></i></span><span class="val s-barDynamicsDepthV"></span>') : ''); }
         else if(style==='pulse') html+=row('Color','<input type="color" class="s-pulseColor" value="'+s.pulseColor+'"><span></span>')+
           row('Gradient','<label class="sl" style="margin:0"><input type="checkbox" class="s-pulseGrad"'+(s.pulseGrad?' checked':'')+'> Two-color (bottom→top)</label><span></span>')+
-          (s.pulseGrad ? row('2nd color','<input type="color" class="s-pulseColor2" value="'+s.pulseColor2+'"><span></span>') : '');
+          (s.pulseGrad ? row('2nd color','<input type="color" class="s-pulseColor2" value="'+s.pulseColor2+'"><span></span>') : '')+
+          row('Min brightness','<span class="srange" style="width:100%"><input type="range" class="s-pulseMin" min="0" max="100" value="'+(s.pulseMin==null?0:s.pulseMin)+'" title="Resting glow held even at silence (0 = goes fully dark on silence)"><i class="tick" style="left:calc(7px + (100% - 14px)*0.0)"></i></span><span class="val s-pulseMinV"></span>')+
+          row('Max brightness','<span class="srange" style="width:100%"><input type="range" class="s-pulseMax" min="0" max="100" value="'+(s.pulseMax==null?100:s.pulseMax)+'" title="Brightness a FULL beat reaches (the ceiling of the pump)"><i class="tick" style="left:calc(7px + (100% - 14px)*1.0)"></i></span><span class="val s-pulseMaxV"></span>');
         else if(style==='bloom') html+=row('Color','<input type="color" class="s-bloomColor" value="'+s.bloomColor+'"><span></span>')+
           row('Gradient','<label class="sl" style="margin:0"><input type="checkbox" class="s-bloomGrad"'+(s.bloomGrad?' checked':'')+'> Two-color (center→edge)</label><span></span>')+
           (s.bloomGrad ? row('Edge color','<input type="color" class="s-bloomColor2" value="'+s.bloomColor2+'"><span></span>') : '');
@@ -344,6 +346,9 @@
           row('Gradient','<label class="sl" style="margin:0"><input type="checkbox" class="s-waveGrad"'+(s.waveGrad?' checked':'')+'> Two-color (start→end)</label><span></span>')+
           (s.waveGrad ? row('2nd color','<input type="color" class="s-waveColor2" value="'+s.waveColor2+'"><span></span>') : '')+
           row('Direction','<label class="sl" style="margin:0"><input type="checkbox" class="s-waveReverse"'+(s.waveReverse?' checked':'')+'> Reverse flow</label><span></span>');
+        else if(style==='aurora') html+=row('Width','<span class="srange" style="width:100%"><input type="range" class="s-auroraWidth" min="0" max="100" value="'+(s.auroraWidth==null?50:s.auroraWidth)+'" title="Thickness of the aurora curtains — higher = fatter, softer bands; lower = thin ribbons"><i class="tick" style="left:calc(7px + (100% - 14px)*0.5)"></i></span><span class="val s-auroraWidthV"></span>');
+        else if(style==='sparkle') html+=row('Color mode','<label class="sl" style="margin:0"><input type="checkbox" class="s-sparkleMono"'+(s.sparkleMono?' checked':'')+'> Single color (off = full RGB rainbow)</label><span></span>')+
+          (s.sparkleMono ? row('Color','<input type="color" class="s-sparkleColor" value="'+(s.sparkleColor||'#00e0ff')+'"><span></span>') : '');
         // Dim-while-active: pick OTHER layers to quiet while this audio layer is emitting, each with its
         // own max-brightness slider — so the music keys read against a darker base. Stored in s.ducks.
         if(!Array.isArray(s.ducks)) s.ducks=[];
@@ -395,7 +400,9 @@
           load();
         }
         c('.s-style').addEventListener('change',e=>{ s.style=e.target.value; buildLayerBody(card,L); });
-        ['barColorBass','barColorTreble','barTipColor','barGradA','barGradB','pulseColor','pulseColor2','bloomColor','bloomColor2','waveColor','waveColor2'].forEach(key=>{ const el=c('.s-'+key); if(el) el.addEventListener('input',e=>s[key]=e.target.value); });
+        ['barColorBass','barColorTreble','barTipColor','barGradA','barGradB','pulseColor','pulseColor2','bloomColor','bloomColor2','waveColor','waveColor2','sparkleColor'].forEach(key=>{ const el=c('.s-'+key); if(el) el.addEventListener('input',e=>s[key]=e.target.value); });
+        // per-style appearance VALUE sliders that write to s directly (not the per-style tuner `ap`): pulse min/max, aurora width
+        [['pulseMin','%'],['pulseMax','%'],['auroraWidth','']].forEach(pair=>{ const key=pair[0], unit=pair[1], el=c('.s-'+key), v=c('.s-'+key+'V'); if(el&&v){ const up=()=>v.textContent=el.value+unit; el.addEventListener('input',()=>{ s[key]=+el.value; up(); }); up(); } });
         { const wr=c('.s-waveReverse'); if(wr) wr.addEventListener('change',e=>s.waveReverse=e.target.checked); }
         { const bt=c('.s-barTip'); if(bt) bt.addEventListener('change',e=>{ s.barTip=e.target.value; buildLayerBody(card,L); }); }   // rebuild so the tip-color picker shows/hides
         { const bf=c('.s-barFill'); if(bf) bf.addEventListener('change',e=>{ s.barFill=e.target.value; buildLayerBody(card,L); }); }   // rebuild so the color controls show/hide with solid/subtract
@@ -407,7 +414,7 @@
         { const bd=c('.s-barDrive'); if(bd) bd.addEventListener('change',e=>{ s.barDrive=e.target.value; buildLayerBody(card,L); }); }   // rebuild so the Spread toggle shows/hides
         { const bsp=c('.s-barSpread'); if(bsp) bsp.addEventListener('change',e=>s.barSpread=e.target.checked); }
         { const bc=c('.s-barColor'); if(bc) bc.addEventListener('change',e=>{ s.barColor=e.target.value; buildLayerBody(card,L); }); }   // rebuild so bass/treble vs gradient vs vu color pickers swap
-        ['pulseGrad','bloomGrad','waveGrad'].forEach(key=>{ const el=c('.s-'+key); if(el) el.addEventListener('change',e=>{ s[key]=e.target.checked; buildLayerBody(card,L); }); });   // rebuild so the 2nd-color picker shows/hides
+        ['pulseGrad','bloomGrad','waveGrad','sparkleMono'].forEach(key=>{ const el=c('.s-'+key); if(el) el.addEventListener('change',e=>{ s[key]=e.target.checked; buildLayerBody(card,L); }); });   // rebuild so the 2nd-color / single-color picker shows/hides
         const slider=(cls,key,fmt,xform,snapTo,tol)=>{ const el=c('.s-'+cls), v=c('.s-'+cls+'V'); if(!el||!v) return; const up=()=>v.textContent=fmt(ap[key]); el.addEventListener('input',e=>{ if(snapTo!=null) snap(el,snapTo,tol==null?4:tol); ap[key]=xform(+el.value); up(); }); up(); };   // writes the PER-STYLE param (ap); tol = snap approach width (smaller on short-range sliders); guard !v so a class mismatch can't crash init
         slider('gain','gain',x=>Math.round(x*100)+'%',v=>v/100,100);
         slider('floor','floor',x=>x+'%',v=>v,5,1);   // 0-40 range → tight snap (±1) so the tick isn't sticky

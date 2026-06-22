@@ -430,23 +430,28 @@
   // Aurora: soft vertical color curtains that sway with time and lift/brighten with each column's energy.
   function renderAurora(s, out, A, now){
     const t = now/1000;
+    // Width: thickness of each curtain. Higher width = fatter band → smaller Gaussian falloff factor.
+    // Default 50 reproduces the original 2.4 factor exactly; clamp the wide end so it can't flood the whole board.
+    const wf = Math.max(0.8, 4.5 - 0.042*(s.auroraWidth==null?50:s.auroraWidth));
     for(let k=0;k<NLED;k++){ const cell=GRID[INDICES[k]]; if(!cell) continue; const o=k*3;
       const x=GW>1?cell[0]/(GW-1):0, y=GH>1?cell[1]/(GH-1):0;
       const mag=A.bands[Math.min(31,Math.round(x*31))];
       const centerY = 0.5 - 0.28*Math.sin(t*0.6 + x*4) - mag*0.35;   // y=0 top
-      const v=Math.max(0,Math.min(1, Math.exp(-Math.pow((y-centerY)*2.4,2)) * (0.85*A.level + A.beat*0.4)));   // no idle floor → dark on silence
+      const v=Math.max(0,Math.min(1, Math.exp(-Math.pow((y-centerY)*wf,2)) * (0.85*A.level + A.beat*0.4)));   // no idle floor → dark on silence
       if(v<0.03){ out[o]=out[o+1]=out[o+2]=0; continue; }
       const c=hsv2rgb(0.45 + A.centroid*0.35 + x*0.12, 0.85, v); out[o]=c[0]|0; out[o+1]=c[1]|0; out[o+2]=c[2]|0; }
   }
   // Starfield: per-key twinkle; louder = more stars lit, kicks burst a subset.
   function renderSparkle(s, out, A, now){
     const t = now/1000, energy = Math.max(0, Math.min(1, A.level*0.7 + A.beat*0.6));
+    const mono = !!s.sparkleMono, mc = mono ? hexToRgb(s.sparkleColor||'#00e0ff') : null;   // mono = one picked color instead of the per-key rainbow
     for(let k=0;k<NLED;k++){ const o=k*3, ph=patHash(INDICES[k]);
       const tw=0.5+0.5*Math.sin(t*(2.5+ph*5) + ph*6.283), thr=1-energy;
       let v = tw>thr ? (tw-thr)/Math.max(0.02,energy) : 0;
       v = Math.min(1, v*(0.6+0.4*A.level) + (A.beat>0.5 && ph>0.6 ? A.beat*0.6 : 0));
       if(v<0.03){ out[o]=out[o+1]=out[o+2]=0; continue; }
-      const c=hsv2rgb(ph + t*0.08, 0.9, v); out[o]=c[0]|0; out[o+1]=c[1]|0; out[o+2]=c[2]|0; }
+      if(mono){ out[o]=mc[0]*v|0; out[o+1]=mc[1]*v|0; out[o+2]=mc[2]*v|0; }
+      else { const c=hsv2rgb(ph + t*0.08, 0.9, v); out[o]=c[0]|0; out[o+1]=c[1]|0; out[o+2]=c[2]|0; } }
   }
   // Bars: column (GRID col 0..GW-1) → frequency band; each bar fills by that band's magnitude.
   // s.barLayout picks BOTH the horizontal frequency mapping and the vertical fill direction:
@@ -542,7 +547,11 @@
     const base = hexToRgb(s.pulseColor||'#19b6ff'), base2 = hexToRgb(s.pulseColor2||'#ff00aa'), grad = !!s.pulseGrad;
     // beat-dominant so kicks PUNCH; small level term keeps a body during sustained sound. NO idle floor
     // → silence goes fully dark (so the board visibly pumps WITH the beat rather than sitting half-lit).
-    const v = Math.max(0, Math.min(1, A.level*0.5 + A.beat*0.95));
+    const v0 = Math.max(0, Math.min(1, A.level*0.5 + A.beat*0.95));
+    // Min/Max brightness: remap the 0..1 drive into [min,max]. Min = a resting glow even at silence (default 0 →
+    // dark on silence, unchanged); Max = the brightness a full beat reaches (default 100 → unchanged).
+    const lo=(s.pulseMin==null?0:s.pulseMin)/100, hi=Math.max(lo, (s.pulseMax==null?100:s.pulseMax)/100);
+    const v = lo + (hi-lo)*v0;
     const t = now/1000;
     for(let k=0;k<NLED;k++){
       const o=k*3, sh = 0.92 + 0.08*Math.sin(t*8 + k);
@@ -868,9 +877,10 @@
         gain:1, floor:5, attackMs:40, decayMs:220, beatSens:50,
         barColorBass:'#ff2200', barColorTreble:'#22aaff', barTip:'off', barTipColor:'#ffffff', barFill:'solid',
         barColor:'bassTreble', barGradA:'#00ff66', barGradB:'#ff00aa', barLayout:'standard', barDrive:'spectrum', barSpread:false, barDynamics:false, barDynamicsAlpha:false, barDynamicsDepth:60,
-        pulseColor:'#19b6ff', pulseColor2:'#ff00aa', pulseGrad:false,
+        pulseColor:'#19b6ff', pulseColor2:'#ff00aa', pulseGrad:false, pulseMin:0, pulseMax:100,
         bloomColor:'#ff5a00', bloomColor2:'#ffd000', bloomGrad:false,
-        waveColor:'#00e0ff', waveColor2:'#ff00aa', waveGrad:false, waveReverse:false };
+        waveColor:'#00e0ff', waveColor2:'#ff00aa', waveGrad:false, waveReverse:false,
+        auroraWidth:50, sparkleMono:false, sparkleColor:'#00e0ff' };
       Object.keys(ad).forEach(k=>{ if(s[k]===undefined)s[k]=ad[k]; });
       if(s.style==='plasma') s.style='aurora'; else if(s.style==='radial') s.style='bars';   // retired styles → nearest survivor (so an old saved layer doesn't show a blank picker)
       if(!Array.isArray(s.ducks)) s.ducks=[];   // [{layer:<index>, dim:<0..100 max-brightness %>}] — dim these while the audio layer emits
