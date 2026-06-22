@@ -442,16 +442,17 @@ function audioCfg() {
   if (!aL) return null;
   const s = aL.settings || {};
   if (s.source === 'app' && s.appId) return { key: 'app:' + s.appId, app: s.appId };
-  if (s.source === 'tab' || s.source === 'mic') return null;   // page captures these in-tab
+  if (s.source === 'mic') return { key: 'mic', mic: true };    // default capture (mic / line-in) endpoint — daemon-driven so it works with the page closed
+  if (s.source === 'tab') return null;                          // tab audio is page-only (getDisplayMedia)
   return { key: 'system' };
 }
 function syncAudioCapture() {
   const cfg = audioCfg();
   if (cfg && acKey !== cfg.key) {                                   // (re)start when the target changes (system↔app, or a new app)
     if (acHandle) { acHandle.stop(); acHandle = null; }
-    acHandle = AC.start({ log, app: cfg.app });
+    acHandle = AC.start({ log, app: cfg.app, mic: cfg.mic });
     acKey = cfg.key;
-    log('♪ audio capture started (' + (cfg.app ? 'app: ' + cfg.app : 'system loopback') + ')');
+    log('♪ audio capture started (' + (cfg.app ? 'app: ' + cfg.app : cfg.mic ? 'mic / line-in' : 'system loopback') + ')');
   } else if (!cfg && acHandle) {
     acHandle.stop(); acHandle = null; acKey = null; log('♪ audio capture stopped');
   }

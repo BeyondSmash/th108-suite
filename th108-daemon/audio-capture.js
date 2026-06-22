@@ -16,6 +16,7 @@ function parseLine(line) {
   const bL = ch(o.bandsL), bR = ch(o.bandsR);
   if (bL) f.bandsL = bL; if (bR) f.bandsR = bR;
   if (Array.isArray(o.wave) && o.wave.length) f.wave = o.wave.map(Number);   // time-domain PCM trace for the Waveform style (optional)
+  if (o.inAbs != null) f.inAbs = +o.inAbs;                                    // absolute (pre auto-gain) level → the mic noise gate (optional)
   return f;
 }
 // pure: the frame if it's younger than maxAgeMs, else null (so silence/stall → engine decays to 0)
@@ -35,7 +36,7 @@ const HOLD_DECAY = 0.75;   // per sidecar frame (~33ms) → ~130ms hold; long en
 function holdPeak(acc, f, decay) {
   const d = decay == null ? HOLD_DECAY : decay;
   if (!acc) return { bands: f.bands.slice(), bandsL: f.bandsL ? f.bandsL.slice() : undefined, bandsR: f.bandsR ? f.bandsR.slice() : undefined,
-                     wave: f.wave ? f.wave.slice() : undefined, level: f.level, beat: f.beat, centroid: f.centroid, t: f.t, _at: f._at, live: f.level };
+                     wave: f.wave ? f.wave.slice() : undefined, level: f.level, beat: f.beat, centroid: f.centroid, inAbs: f.inAbs, t: f.t, _at: f._at, live: f.level };
   for (let i = 0; i < 32; i++) {
     acc.bands[i] = Math.max(f.bands[i], acc.bands[i] * d);
     if (f.bandsL && acc.bandsL) acc.bandsL[i] = Math.max(f.bandsL[i], acc.bandsL[i] * d);
@@ -46,6 +47,7 @@ function holdPeak(acc, f, decay) {
   acc.level = Math.max(f.level, acc.level * d);
   acc.beat = Math.max(f.beat, acc.beat * d);
   acc.wave = f.wave || acc.wave;   // latest PCM trace (a live signal, not a peak) — carry forward if a frame omits it
+  acc.inAbs = f.inAbs != null ? f.inAbs : acc.inAbs;   // latest absolute level (live, not a peak) for the mic gate
   acc.centroid = f.centroid; acc.t = f.t; acc._at = f._at;   // latest (not peak) for position/time
   acc.live = f.level;   // TRUE current level (not the held peak) → pause/silence detection in the engine
   return acc;
@@ -70,6 +72,7 @@ function listApps(cb) {
 function start(opts) {
   const log = (opts && opts.log) || function () {};
   const app = opts && opts.app;
+  const mic = !!(opts && opts.mic);   // capture the default mic/line-in endpoint (audio-sidecar.ps1 -Mic) instead of system loopback
   let proc = null, stopped = false, carry = '';
   let frame = null, peakAcc = null, lastLineAt = 0, restarts = 0, parseErrs = 0;
 
@@ -79,8 +82,9 @@ function start(opts) {
       if (!fs.existsSync(APP_EXE)) { log('✗ per-app capture: app-capture.exe not built — run setup.cmd (falling back to no audio)'); return; }
       proc = spawn(APP_EXE, [app], { stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true });
     } else {
-      proc = spawn('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', path.join(__dirname, 'audio-sidecar.ps1')],
-        { stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true });
+      const args = ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', path.join(__dirname, 'audio-sidecar.ps1')];
+      if (mic) args.push('-Mic');   // default capture endpoint (mic / line-in) rather than render loopback
+      proc = spawn('powershell.exe', args, { stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true });
     }
     proc.on('error', e => { log('✗ audio capture spawn failed: ' + e.message); });
     carry = '';

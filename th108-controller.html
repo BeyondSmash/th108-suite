@@ -1134,8 +1134,8 @@ window.addEventListener('keyup',(e)=>{
 // Web Audio analyser → real {bands,level,beat,centroid} for the music layer. layerTick uses it when active.
 const webCap = TH108WebCapture.createWebCapture((m,c)=>log(m,c));
 async function startAudioSource(kind){
-  if(kind==='tab'||kind==='mic'){ await webCap.start(kind); }   // browser share / mic prompt; on success the feed switches to it
-  else { await webCap.stop(); }                                  // system/app → page falls back to the synth (the daemon does true system audio)
+  if(kind==='tab'){ await webCap.start(kind); }   // browser share prompt; on success the feed switches to it
+  else { await webCap.stop(); }                    // system/app/mic → the daemon captures it (mic = audio-sidecar.ps1 -Mic); page falls back to the daemon frame / synth
 }
 // SINGLE audio feed: once per frame, fold the live source (in-tab webCap if active, else the synthetic
 // signal) into state.audio whenever an audio layer is enabled — regardless of whether we're driving the
@@ -1150,7 +1150,7 @@ async function startAudioSource(kind){
 let _dmnAudio=null, _dmnAudioAt=0;
 setInterval(async ()=>{
   const aL=state.layers.find(L=>L.enabled && L.type==='audio'), src=aL&&aL.settings.source;
-  if(!aL || (src!=='system' && src!=='app') || !DC.present){ _dmnAudio=null; return; }
+  if(!aL || (src!=='system' && src!=='app' && src!=='mic') || !DC.present){ _dmnAudio=null; return; }   // mic is now daemon-driven too
   try{ const j=await (await fetch('/audio/frame',{cache:'no-store'})).json(); _dmnAudio=j.frame||null; if(_dmnAudio) _dmnAudioAt=performance.now(); }
   catch(_){ _dmnAudio=null; }
 }, 60);   // ~16Hz: 25ms (40Hz) hammered localhost and made the tab sluggish; the engine smooths between frames
@@ -1159,8 +1159,8 @@ function feedAudio(now){
   const aL = state.layers.find(L=>L.enabled && L.type==='audio');
   if(!aL) return;
   const src = aL.settings.source;
-  // tab/mic = in-tab webCap; system/app = the daemon's polled frame; else silent (no synth on the real keys).
-  const raw = webCap.active() ? webCap.sample() : ((src==='system'||src==='app') ? _dmnAudio : null);
+  // tab = in-tab webCap; system/app/mic = the daemon's polled frame; else silent (no synth on the real keys).
+  const raw = webCap.active() ? webCap.sample() : ((src==='system'||src==='app'||src==='mic') ? _dmnAudio : null);
   TH108Engine.applyAudioFeatures(state, raw || {}, aL.settings, now);
 }
 function audioFeedTick(now){

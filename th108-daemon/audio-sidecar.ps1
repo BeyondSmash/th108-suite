@@ -1,7 +1,9 @@
-# audio-sidecar.ps1 — WASAPI loopback capture for the music layer. Uses ONLY the in-box .NET
-# Framework via Add-Type (no NuGet/SDK/binary), mirroring media-sidecar.ps1's "PowerShell sidecar"
-# pattern. Prints newline-delimited JSON feature frames to stdout; the daemon (audio-capture.js)
-# spawns + supervises it. SPIKE STAGE: emits {level,t} only — Task 2 adds bands/beat/centroid.
+# audio-sidecar.ps1 — WASAPI capture for the music layer. Uses ONLY the in-box .NET Framework via
+# Add-Type (no NuGet/SDK/binary), mirroring media-sidecar.ps1's "PowerShell sidecar" pattern. Prints
+# newline-delimited JSON feature frames to stdout; the daemon (audio-capture.js) spawns + supervises it.
+# Default = system output via render LOOPBACK. -Mic = the default capture (mic / line-in) endpoint, so the
+# daemon can drive the music layer from a microphone with the page/tab closed.
+param([switch]$Mic)
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
@@ -37,15 +39,17 @@ public static class Cap {
   public static int channels, sampleRate;
   static IAudioClient client; static IAudioCaptureClient capture;
 
-  public static void Open() {
+  // dataFlow: 0 = eRender (system output, captured via LOOPBACK), 1 = eCapture (a mic / line-in input).
+  // streamFlags: LOOPBACK for render-loopback, 0 for a real input device.
+  public static void Open(int dataFlow, int streamFlags) {
     var enumr = (IMMDeviceEnumerator)(new MMDeviceEnumerator());
-    IMMDevice dev; enumr.GetDefaultAudioEndpoint(0 /*eRender*/, 0 /*eConsole*/, out dev);
+    IMMDevice dev; enumr.GetDefaultAudioEndpoint(dataFlow, 0 /*eConsole*/, out dev);
     object o; dev.Activate(ref IID_IAudioClient, 1 /*INPROC*/, IntPtr.Zero, out o); client = (IAudioClient)o;
     IntPtr fmt; client.GetMixFormat(out fmt);
     // WAVEFORMATEX: wFormatTag(2) nChannels(2) nSamplesPerSec(4) nAvgBytes(4) nBlockAlign(2) wBitsPerSample(2)
     channels   = Marshal.ReadInt16(fmt, 2);
     sampleRate = Marshal.ReadInt32(fmt, 4);
-    client.Initialize(SHARED, LOOPBACK, 2000000 /*200ms*/, 0, fmt, IntPtr.Zero);
+    client.Initialize(SHARED, streamFlags, 2000000 /*200ms*/, 0, fmt, IntPtr.Zero);
     object c; client.GetService(ref IID_IAudioCaptureClient, out c); capture = (IAudioCaptureClient)c;
     client.Start();
   }
@@ -142,6 +146,7 @@ public static class Cap {
     double inst=Math.Max(Math.Sqrt(rms/N), pk*0.6);                  // RMS = body, PEAK = transients (so a metronome click reads its true loudness, not averaged down by the ~46ms window)
     peakLvl = Math.Max((float)inst, peakLvl*0.999f);                 // auto-gain: track the loudest recent level (slow decay)
     outLBC[0]=(float)Math.Min(1.0, inst/Math.Max(peakLvl,1e-4));     // level normalized to that peak → full 0..1 at any volume
+    outLBC[3]=(float)Math.Min(1.0, inst);                            // inAbs = ABSOLUTE level (pre auto-gain) → the mic noise gate acts on this
     avgFlux = avgFlux*0.93f + (float)flux*0.07f;                     // moving average of broadband flux
     double onset=(flux - avgFlux*1.3)/(avgFlux + 1e-4);             // spikes when a transient exceeds ~1.3x the running average (1.3 vs 1.4 = a touch more sensitive)
     outLBC[1]=(float)Math.Max(0, Math.Min(1.0, onset));             // beat 0..1 (sharp on kicks, ~0 between)
@@ -186,7 +191,7 @@ public static class Cap {
 }
 "@
 
-[Cap]::Open()
+if ($Mic) { [Cap]::Open(1, 0) } else { [Cap]::Open(0, 0x00020000) }   # eCapture/no-flag for a mic; eRender+LOOPBACK for system output
 $N = 2048   # must match the C# FFT window above
 $mono  = New-Object 'float[]' ($N * 4)   # rolling buffers (mono + per-channel for the stereo layout)
 $left  = New-Object 'float[]' ($N * 4)
@@ -195,7 +200,7 @@ $bands = New-Object 'float[]' 32
 $bandsL= New-Object 'float[]' 32
 $bandsR= New-Object 'float[]' 32
 $wave  = New-Object 'float[]' 64
-$lbc   = New-Object 'float[]' 3
+$lbc   = New-Object 'float[]' 4
 $chunkM= New-Object 'float[]' 8192
 $chunkL= New-Object 'float[]' 8192
 $chunkR= New-Object 'float[]' 8192
@@ -237,10 +242,11 @@ while ($true) {
     [void]$sb.Append(',"level":'); [void]$sb.Append([Math]::Round($lbc[0],4))
     [void]$sb.Append(',"beat":');   [void]$sb.Append([Math]::Round($lbc[1],4))
     [void]$sb.Append(',"centroid":'); [void]$sb.Append([Math]::Round($lbc[2],4))
+    [void]$sb.Append(',"inAbs":'); [void]$sb.Append([Math]::Round($lbc[3],4))
     [void]$sb.Append(',"t":'); [void]$sb.Append([Math]::Round($sw.Elapsed.TotalMilliseconds,1)); [void]$sb.Append('}')
     [Console]::Out.WriteLine($sb.ToString()); [Console]::Out.Flush()
   } else {
-    [Console]::Out.WriteLine('{"bands":[' + (("0,"*31)+"0") + '],"level":0,"beat":0,"centroid":0.5,"t":' + [Math]::Round($sw.Elapsed.TotalMilliseconds,1) + '}')
+    [Console]::Out.WriteLine('{"bands":[' + (("0,"*31)+"0") + '],"level":0,"beat":0,"centroid":0.5,"inAbs":0,"t":' + [Math]::Round($sw.Elapsed.TotalMilliseconds,1) + '}')
     [Console]::Out.Flush()
   }
   Start-Sleep -Milliseconds 16   # ~30Hz emit (work + ~15ms timer granularity); was 33 — a bit fresher
