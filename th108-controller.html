@@ -1378,6 +1378,8 @@ const LUI=TH108LayersUI.create({
   onPatternPick: ()=>{ if(obActive && HID.device && !running && !GIF.playing) start(); },   // picking a pattern while a firmware effect is showing = "back to layers", no extra click
   onAudioSource: startAudioSource,                           // audio-layer source pick → start/stop in-tab Web Audio capture
   liveAudioActive: ()=>webCap.active() || dmnAudioFresh(),   // in-tab capture OR a fresh daemon (system/app) frame → Live preview shows real audio (else blank)
+  captureLabel: ()=>webCap.active() ? webCap.label() : null, // for tab/mic: the shared tab TITLE / mic name → shown as "what's playing" under the sources
+  isDriving: ()=>!!HID.device,                               // does THIS tab hold the keyboard? (tab/mic audio only reaches the keys when it does)
   listAudioApps: ()=>fetch('/audio/apps',{cache:'no-store'}).then(r=>r.json()).then(d=>d.apps||[])   // "Specific app" picker → daemon's currently-playing apps (app-capture.exe --list)
 });
 LUI.init();   // restore saved layers → ensureSettings backfill → build cards → persist-on-edit listeners on #layersPanel

@@ -301,6 +301,7 @@
         let html='<div class="ctl">'+
           sec('Source')+
           full('<span style="display:grid;grid-template-columns:auto auto;gap:7px 24px;justify-content:center;flex:1 1 100%">'+srcBubbles+'</span>')+
+          full('<span class="val s-srcNow" style="opacity:.8;flex:1 1 100%;text-align:center;font-size:12px;min-height:1em"></span>')+   // "▶ what's playing" (tab/mic = shared-tab title; + a hint when this tab isn't driving the keyboard)
           (s.source==='app' ? sub('Specific App')+full('<select class="s-appId" style="max-width:180px"></select><button type="button" class="s-appRefresh" title="rescan currently-playing apps" style="flex:none">Refresh</button><span class="val s-appNote" style="opacity:.7"></span>') : '')+
           sec('Style')+ '<div class="lfull" style="justify-content:center"><select class="s-style">'+sopt+'</select></div>'+   // no left label → center it under the header
           sec('Preview')+ full('<div style="display:flex;flex-direction:column;gap:9px;flex:1 1 100%">'+
@@ -372,6 +373,8 @@
         body.innerHTML=html;
         const c=q=>body.querySelector(q);
         body.querySelectorAll('.s-source').forEach(r=>r.addEventListener('change',e=>{ s.source=e.target.value; onAudioSource(e.target.value); buildLayerBody(card,L); }));   // tab/mic start in-tab capture; system/app stop it (daemon-driven); rebuild so the App picker shows/hides
+        // re-pick: clicking the ALREADY-selected "Specific Tab" re-opens the share picker (a 'change' doesn't fire when it's already chosen)
+        { const tabR=[...body.querySelectorAll('.s-source')].find(x=>x.value==='tab'); if(tabR) tabR.addEventListener('click',()=>{ if(s.source==='tab') onAudioSource('tab'); }); }
         // "Specific app" picker — populated from the daemon's list of currently-playing audio apps; the saved
         // pick persists even when that app isn't playing (so it reattaches when it resumes). Stored in s.appId.
         if(s.source==='app'){ const sel=c('.s-appId'), note=c('.s-appNote'), rf=c('.s-appRefresh');
@@ -474,8 +477,13 @@
           const hideDup=()=>{ if(dup.parentNode) dup.parentNode.removeChild(dup); peekBtn.textContent='Show'; };
           const fadePill=(on)=>{ peek.style.opacity=on?'1':'0'; peek.style.pointerEvents=on?'auto':'none'; pillVisible=on; };   // 250ms via the CSS transition
           peekBtn.addEventListener('click',()=>{ if(dup.parentNode) hideDup(); else showDup(); });
+          const nowEl=c('.s-srcNow'); let _lastNow=null;
           function frame(now){
             if(!document.body.contains(cvL||cvS)){ [peek,dup].forEach(e=>{ if(e.parentNode) e.parentNode.removeChild(e); }); return; }   // card rebuilt/removed → stop + clean
+            if(nowEl){ let txt='';   // "what's playing" under the sources: tab/mic = shared-tab title / mic name, + a hint when this tab isn't driving the keyboard
+              if((s.source==='tab'||s.source==='mic') && liveAudioActive()){ const lbl=(opts.captureLabel&&opts.captureLabel())||(s.source==='mic'?'microphone':'shared tab'); const driving=opts.isDriving?opts.isDriving():true;
+                txt='▶ '+lbl+(driving?'':'   ·   preview only — click “Drive from this Tab” to show it on the keyboard'); }
+              if(txt!==_lastNow){ nowEl.textContent=txt; nowEl.style.color=(txt.indexOf('preview only')>=0)?'var(--warn,#e0a200)':''; _lastNow=txt; } }
             if(ctxS && cvS.offsetParent!==null && synth){ E.applyAudioFeatures(pState, synth.sample(now/1000), s, now); E.renderAudio(sampL, now, pState); paint(ctxS, sampL.rgb); }
             let dupOn=false;
             if(liveWrap){

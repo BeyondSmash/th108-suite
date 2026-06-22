@@ -100,7 +100,11 @@
       freqL = freqR = null;
     }
 
-    return { start, stop, sample, active: () => active, kind: () => kind };
+    // human label for the current capture — for a shared tab this is the tab/window TITLE (what's playing); for mic, the device name
+    function label(){ if(!stream) return null;
+      const vt=(stream.getVideoTracks&&stream.getVideoTracks()[0]), at=(stream.getAudioTracks&&stream.getAudioTracks()[0]);
+      return (vt&&vt.label)||(at&&at.label)||(kind==='mic'?'microphone':'shared tab'); }
+    return { start, stop, sample, active: () => active, kind: () => kind, label };
   }
   const api = { createWebCapture };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
