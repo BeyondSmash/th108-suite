@@ -306,7 +306,8 @@
           (s.source==='app' ? sub('Specific App')+full('<select class="s-appId" style="max-width:180px"></select><button type="button" class="s-appRefresh" title="rescan currently-playing apps" style="flex:none">Refresh</button><span class="val s-appNote" style="opacity:.7"></span>') : '')+
           (s.source==='mic' ? sub('Mic Input')+
             row('Mic gain','<span class="srange" style="width:100%"><input type="range" class="s-micGain" min="50" max="400" value="'+(s.micGain==null?100:s.micGain)+'" title="Input level boost/cut for the mic before it drives the keys"><i class="tick" style="left:calc(7px + (100% - 14px)*0.143)"></i></span><span class="val s-micGainV"></span>')+
-            row('Noise gate','<span class="srange" style="width:100%"><input type="range" class="s-micGate" min="0" max="60" value="'+(s.micGate==null?0:s.micGate)+'" title="Mute the keys until the mic exceeds this absolute level — raise it just above your room/fan noise so background hum stops lighting the board. 0 = off"><i class="tick" style="left:calc(7px + (100% - 14px)*0.0)"></i></span><span class="val s-micGateV"></span>') : '')+
+            row('Noise gate','<span class="srange" style="width:100%"><input type="range" class="s-micGate" min="0" max="60" value="'+(s.micGate==null?0:s.micGate)+'" title="Mute the keys until the mic exceeds this absolute level — raise it just above your room/fan noise so background hum stops lighting the board. 0 = off"><i class="tick" style="left:calc(7px + (100% - 14px)*0.0)"></i></span><span class="val s-micGateV"></span>')+
+            row('Toggle hotkey','<span style="display:flex;gap:6px;align-items:center"><button type="button" class="s-bindKey">'+(s.toggleKeyLabel?('⌨ '+esc(s.toggleKeyLabel)):'Bind a key…')+'</button>'+(s.toggleKeyLed!=null?'<button type="button" class="s-bindClear" title="unbind" style="flex:none;padding:2px 8px">✕</button>':'')+'</span><span class="val" style="opacity:.6">Press it in any app to flip Mic lighting on/off — works with this page closed (the daemon must be running)</span>') : '')+
           sec('Style')+ '<div class="lfull" style="justify-content:center"><select class="s-style">'+sopt+'</select></div>'+   // no left label → center it under the header
           sec('Preview')+ full('<div style="display:flex;flex-direction:column;gap:9px;flex:1 1 100%">'+
             '<div><div style="display:flex;align-items:center;justify-content:center;gap:8px;margin-bottom:3px"><span class="val" style="opacity:.65">Sample — test signal</span><button type="button" class="s-samplePrevToggle">'+(s.samplePrevOff?'Show':'Hide')+'</button></div>'+
@@ -425,6 +426,18 @@
         ['barColorBass','barColorTreble','barTipColor','barGradA','barGradB','pulseColor','pulseColor2','bloomColor','bloomColor2','waveColor','waveColor2','sparkleColor'].forEach(key=>{ const el=c('.s-'+key); if(el) el.addEventListener('input',e=>s[key]=e.target.value); });
         // per-style appearance VALUE sliders that write to s directly (not the per-style tuner `ap`): pulse min/max, aurora width
         [['pulseMin','%'],['pulseMax','%'],['auroraWidth',''],['waveAmp','%'],['waveThick','%'],['micGain','%'],['micGate','%']].forEach(pair=>{ const key=pair[0], unit=pair[1], el=c('.s-'+key), v=c('.s-'+key+'V'); if(el&&v){ const up=()=>v.textContent=el.value+unit; el.addEventListener('input',()=>{ s[key]=+el.value; up(); }); up(); } });
+        // Mic toggle-hotkey bind: capture one keydown → store its LED index (universal) + a readable label.
+        // The daemon flips this layer's enabled when that key is pressed in any app (see daemon.js layer-toggle).
+        { const bk=c('.s-bindKey');
+          const keyLabel=code=>code.replace(/^Key/,'').replace(/^Digit/,'').replace(/^Numpad/,'Num ').replace(/^Arrow/,'');
+          if(bk) bk.addEventListener('click',()=>{ bk.textContent='Press a key…  (Esc cancels)';
+            const onKey=ev=>{ ev.preventDefault(); ev.stopPropagation(); document.removeEventListener('keydown',onKey,true);
+              if(ev.code==='Escape'){ buildLayerBody(card,L); return; }
+              const led=E.KEYMAP[ev.code];
+              if(led==null){ bk.textContent='Unsupported key — try again'; return; }
+              s.toggleKeyLed=led; s.toggleKeyLabel=keyLabel(ev.code); buildLayerBody(card,L); scheduleSaveLayers(); };
+            document.addEventListener('keydown',onKey,true); });
+          const bc=c('.s-bindClear'); if(bc) bc.addEventListener('click',()=>{ delete s.toggleKeyLed; delete s.toggleKeyLabel; buildLayerBody(card,L); scheduleSaveLayers(); }); }
         { const wr=c('.s-waveReverse'); if(wr) wr.addEventListener('change',e=>s.waveReverse=e.target.checked); }
         { const bt=c('.s-barTip'); if(bt) bt.addEventListener('change',e=>{ s.barTip=e.target.value; buildLayerBody(card,L); }); }   // rebuild so the tip-color picker shows/hides
         { const bf=c('.s-barFill'); if(bf) bf.addEventListener('change',e=>{ s.barFill=e.target.value; buildLayerBody(card,L); }); }   // rebuild so the color controls show/hide with solid/subtract

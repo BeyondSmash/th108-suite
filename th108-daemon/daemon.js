@@ -131,6 +131,26 @@ uIOhook.on('keydown', e => {
   U.fire(log);
   closeDevice(); nextOpenAt = Date.now() + 3000;   // let the re-enumeration settle, then the tick reopens (when not yielded)
 });
+// Layer-toggle hotkey: a user-chosen key flips an audio layer's enabled state. The page binds it by storing
+// settings.toggleKeyLed = the key's LED index; this runs in the daemon so it works with the page/tab CLOSED
+// (e.g. a one-key "mic lighting on/off"). Reads the bind from in-memory state (no per-keystroke file I/O);
+// only on an actual toggle does it flip live state + persist config.json + start/stop capture.
+let layerToggleAt = 0;
+uIOhook.on('keydown', e => {
+  if (!state || !Array.isArray(state.layers)) return;
+  const led = UIO2IDX[e.keycode]; if (led === undefined) return;
+  const L = state.layers.find(l => l && l.type === 'audio' && l.settings && l.settings.toggleKeyLed === led);
+  if (!L) return;
+  if (Date.now() - layerToggleAt < 400) return;   // swallow key-repeat
+  layerToggleAt = Date.now();
+  L.enabled = !L.enabled;
+  state.lastFlat = null;   // force a resend (a static frame might not otherwise)
+  const cfg = loadConfig();   // mirror the flip into config.json so it survives restart + the page sees it
+  if (Array.isArray(cfg)) { const cl = cfg.find(x => x && x.type === 'audio' && x.settings && x.settings.toggleKeyLed === led);
+    if (cl) { cl.enabled = L.enabled; try { fs.writeFileSync(CONFIG_PATH, JSON.stringify(cfg)); } catch {} } }
+  syncAudioCapture();   // disabling the audio layer stops capture; enabling restarts it
+  log('🎚 hotkey: audio layer "' + (L.name || '') + '" ' + (L.enabled ? 'ON' : 'OFF'));
+});
 uIOhook.start();
 
 // ----- device lifecycle -----
