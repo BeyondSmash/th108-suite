@@ -278,6 +278,7 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
   .lcard.ldragging{ opacity:.5; }
   .lhead .llvl{ font-weight:700; color:var(--num); font-size:12px; min-width:50px; }
   .numin{ font:inherit; width:62px; background:var(--card); color:var(--text); border:1px solid var(--border); border-radius:8px; padding:2px 4px; }   /* triple-digit values (220, 900, 1.00) must not clip */
+  .lbody .ctl span:has(> input.numin){ width:max-content; }   /* the number-input wrapper otherwise STRETCHES to fill its grid cell → the empty space (right of the 62px box) becomes a dead-zone whose click focuses the input. Hug the content so that empty area belongs to the grid (inert), not the input. */
   .lhead .numin{ width:52px; }   /* "100" must not clip against the padding */
   .hexin{ background:var(--inset); color:var(--text); border:1px solid var(--border); border-radius:8px; padding:2px 6px; font:inherit; width:92px; }   /* fits all 7 chars of #RRGGBB without clipping */
   .cwrap{ display:inline-flex; align-items:center; gap:6px; flex-wrap:wrap; }

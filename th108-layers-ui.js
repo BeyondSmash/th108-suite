@@ -302,6 +302,7 @@
           sec('Source')+
           full('<span style="display:grid;grid-template-columns:auto auto;gap:7px 24px;justify-content:center;flex:1 1 100%">'+srcBubbles+'</span>')+
           full('<span class="val s-srcNow" style="opacity:.8;flex:1 1 100%;text-align:center;font-size:12px;min-height:1em"></span>')+   // "▶ what's playing" (tab/mic = shared-tab title; + a hint when this tab isn't driving the keyboard)
+          full('<span class="val" style="opacity:.55;flex:1 1 100%;text-align:left;font-size:11px;line-height:1.35">Specific Tab &amp; Mic / Line-in are captured in this page — they only show on the keyboard while this site is open AND driving it (Connect Keyboard / Drive from this Tab). System Audio &amp; Specific App run in the daemon (work with this page closed).</span>')+   // left-aligned note: the tab/mic capture-location gotcha, stated up front
           (s.source==='app' ? sub('Specific App')+full('<select class="s-appId" style="max-width:180px"></select><button type="button" class="s-appRefresh" title="rescan currently-playing apps" style="flex:none">Refresh</button><span class="val s-appNote" style="opacity:.7"></span>') : '')+
           sec('Style')+ '<div class="lfull" style="justify-content:center"><select class="s-style">'+sopt+'</select></div>'+   // no left label → center it under the header
           sec('Preview')+ full('<div style="display:flex;flex-direction:column;gap:9px;flex:1 1 100%">'+
@@ -379,10 +380,11 @@
         // pick persists even when that app isn't playing (so it reattaches when it resumes). Stored in s.appId.
         if(s.source==='app'){ const sel=c('.s-appId'), note=c('.s-appNote'), rf=c('.s-appRefresh');
           const HIDE_APPS=new Set(['app-capture','musicplug']);   // our own capture helper (holds a loopback session) + a non-source background app — never real capture targets
+          const cap=n=>n?n.charAt(0).toUpperCase()+n.slice(1):n;   // DISPLAY only — capitalize the first letter ("brave"→"Brave"); the option VALUE stays the real process name for capture/matching
           const fill=(apps)=>{ if(!sel) return; const cur=s.appId||''; let has=false;
             const optsHtml=['<option value="">— pick a playing app —</option>'];
-            (apps||[]).filter(a=>a&&a.name && !HIDE_APPS.has(a.name.toLowerCase().replace(/\.exe$/,''))).forEach(a=>{ if(a.name===cur) has=true; optsHtml.push('<option value="'+esc(a.name)+'"'+(a.name===cur?' selected':'')+'>'+esc(a.name)+'</option>'); });
-            if(cur && !has) optsHtml.push('<option value="'+esc(cur)+'" selected>'+esc(cur)+' (idle)</option>');   // keep the saved pick visible
+            (apps||[]).filter(a=>a&&a.name && !HIDE_APPS.has(a.name.toLowerCase().replace(/\.exe$/,''))).forEach(a=>{ if(a.name===cur) has=true; optsHtml.push('<option value="'+esc(a.name)+'"'+(a.name===cur?' selected':'')+'>'+esc(cap(a.name))+'</option>'); });
+            if(cur && !has) optsHtml.push('<option value="'+esc(cur)+'" selected>'+esc(cap(cur))+' (idle)</option>');   // keep the saved pick visible
             sel.innerHTML=optsHtml.join('');
             if(note) note.textContent=(apps&&apps.length)?'':'nothing playing — start audio, then ⟳'; };
           const load=()=>{ if(note) note.textContent='scanning…'; Promise.resolve(opts.listAudioApps && opts.listAudioApps()).then(a=>fill(a||[])).catch(()=>{ if(note) note.textContent='(daemon not running — start it to list apps)'; fill([]); }); };
