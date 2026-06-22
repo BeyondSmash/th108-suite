@@ -618,8 +618,14 @@
     const col0 = hexToRgb(s.waveColor||'#00e0ff'), col2 = hexToRgb(s.waveColor2||'#ff00aa'), grad = !!s.waveGrad;
     const dir = s.waveReverse ? -1 : 1;
     const lvl = Math.max(0, Math.min(1, A.level));
-    const W = A.wave, WN = W ? W.length : 0;
-    const amp = (s.waveAmp==null?100:s.waveAmp)/100;                  // vertical gain: 100% = a full-scale sample reaches the top/bottom row
+    const W = A.wave, amp = (s.waveAmp==null?100:s.waveAmp)/100;      // vertical gain (×, on top of the auto-scale below)
+    // Auto-scale the PCM trace to its own recent peak: real audio rarely hits ±1 (typically ±0.1-0.3), so without
+    // this the line barely leaves the center row and reads as a flat band ("not doing a wave"). Peak-normalize so
+    // the loudest sample reaches full deflection regardless of absolute level (a real oscilloscope's auto-gain).
+    // Gate on a real peak so true silence (or a path emitting no PCM) falls back to the synthetic trace instead
+    // of amplifying noise into a jittery flat line.
+    let wpk = 0; if(W){ for(let i=0;i<W.length;i++){ const a=W[i]<0?-W[i]:W[i]; if(a>wpk) wpk=a; } }
+    const hasWave = !!W && wpk > 0.02, WN = hasWave ? W.length : 0, wScale = 1/Math.max(wpk, 0.08);
     const tw  = 0.5 + (s.waveThick==null?50:s.waveThick)/100*2.5;     // lit half-width in rows (default 50 → 1.75)
     const mid = (GH-1)/2, t = now/1000;
     for(let k=0;k<NLED;k++){
@@ -629,7 +635,8 @@
       let sample;   // -1..1 deflection at this column
       if(WN){
         const fpos = (dir>0 ? fc : 1-fc) * (WN-1), i0 = Math.floor(fpos), i1 = Math.min(WN-1, i0+1), fr = fpos-i0;
-        sample = W[i0]*(1-fr) + W[i1]*fr;                             // interpolate the real PCM across the columns
+        sample = (W[i0]*(1-fr) + W[i1]*fr) * wScale;                  // interpolate the real PCM, peak-normalized to full deflection
+        if(sample>1) sample=1; else if(sample<-1) sample=-1;
       } else {
         const band = Math.min(31, Math.round(fc*31));                // fallback: synthetic per-band trace (no live PCM)
         sample = Math.sin(t*6 + dir*col*0.6) * A.bands[band];
