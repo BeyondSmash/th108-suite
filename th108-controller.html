@@ -1387,7 +1387,8 @@ const LUI=TH108LayersUI.create({
   isDriving: ()=>!!HID.device,                               // does THIS tab hold the keyboard? (tab/mic audio only reaches the keys when it does)
   connectKeyboard: ()=>{ if(!HID.device) document.getElementById('connect').click(); },   // tab/mic auto-handover: take the keyboard from the daemon (runs the normal Connect flow → /yield handoff) so in-page capture reaches the keys
 
-  listAudioApps: ()=>fetch('/audio/apps',{cache:'no-store'}).then(r=>r.json()).then(d=>d.apps||[])   // "Specific app" picker → daemon's currently-playing apps (app-capture.exe --list)
+  listAudioApps: ()=>fetch('/audio/apps',{cache:'no-store'}).then(r=>r.json()).then(d=>d.apps||[]),   // "Specific app" picker → daemon's currently-playing apps (app-capture.exe --list)
+  listAudioInputs: ()=>fetch('/audio/inputs',{cache:'no-store'}).then(r=>r.json()).then(d=>d.inputs||[])   // Mic device picker → daemon's recording devices (audio-sidecar.ps1 -ListInputs)
 });
 LUI.init();   // restore saved layers → ensureSettings backfill → build cards → persist-on-edit listeners on #layersPanel
 attachHex(document.getElementById('gifPanel'));   // typeable hex box on the GIF bar-color picker

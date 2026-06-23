@@ -3,7 +3,7 @@
 # newline-delimited JSON feature frames to stdout; the daemon (audio-capture.js) spawns + supervises it.
 # Default = system output via render LOOPBACK. -Mic = the default capture (mic / line-in) endpoint, so the
 # daemon can drive the music layer from a microphone with the page/tab closed.
-param([switch]$Mic)
+param([switch]$Mic, [switch]$ListInputs, [string]$Device)
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
@@ -15,9 +15,48 @@ public static class Cap {
   // ---- COM interop for WASAPI loopback on the default render endpoint ----
   [ComImport, Guid("BCDE0395-E52F-467C-8E3D-C4579291692E")] class MMDeviceEnumerator { }
   [Guid("A95664D2-9614-4F35-A746-DE8DB63617E6"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
-  interface IMMDeviceEnumerator { int NotImpl1(); int GetDefaultAudioEndpoint(int dataFlow, int role, out IMMDevice ep); }
+  interface IMMDeviceEnumerator {
+    int EnumAudioEndpoints(int dataFlow, int stateMask, out IMMDeviceCollection col);            // slot 0 (vtable order matters)
+    int GetDefaultAudioEndpoint(int dataFlow, int role, out IMMDevice ep);                       // slot 1
+    int GetDevice([MarshalAs(UnmanagedType.LPWStr)] string id, out IMMDevice dev);               // slot 2
+  }
+  [Guid("0BD7A1BE-7A1A-44DB-8397-CC5392387B5E"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+  interface IMMDeviceCollection { int GetCount(out int count); int Item(int nDevice, out IMMDevice dev); }
   [Guid("D666063F-1587-4E43-81F1-B948E807363F"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
-  interface IMMDevice { int Activate(ref Guid iid, int clsctx, IntPtr act, [MarshalAs(UnmanagedType.IUnknown)] out object o); }
+  interface IMMDevice {
+    int Activate(ref Guid iid, int clsctx, IntPtr act, [MarshalAs(UnmanagedType.IUnknown)] out object o);   // slot 0
+    int OpenPropertyStore(int access, out IPropertyStore store);                                            // slot 1
+    int GetId([MarshalAs(UnmanagedType.LPWStr)] out string id);                                             // slot 2
+  }
+  [Guid("886D8EEB-8CF2-4446-8D02-CDBA1DBDCF99"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+  interface IPropertyStore {
+    int GetCount(out int c); int GetAt(int i, out PROPERTYKEY pk);
+    int GetValue(ref PROPERTYKEY key, out PROPVARIANT pv); int SetValue(ref PROPERTYKEY key, ref PROPVARIANT pv); int Commit();
+  }
+  [StructLayout(LayoutKind.Sequential)] struct PROPERTYKEY { public Guid fmtid; public int pid; }
+  [StructLayout(LayoutKind.Explicit)] struct PROPVARIANT { [FieldOffset(0)] public ushort vt; [FieldOffset(8)] public IntPtr p; }
+  [DllImport("ole32.dll")] static extern int PropVariantClear(ref PROPVARIANT pv);
+
+  // List ACTIVE capture (recording) endpoints as JSON [{id,name}] — so the host can let the user pick which mic the daemon uses.
+  public static string ListInputs() {
+    var enumr = (IMMDeviceEnumerator)(new MMDeviceEnumerator());
+    IMMDeviceCollection col; enumr.EnumAudioEndpoints(1 /*eCapture*/, 0x1 /*DEVICE_STATE_ACTIVE*/, out col);
+    int n; col.GetCount(out n);
+    var pkey = new PROPERTYKEY { fmtid = new Guid("a45c254e-df1c-4efd-8020-67d146a850e0"), pid = 14 };   // PKEY_Device_FriendlyName
+    var sb = new System.Text.StringBuilder("[");
+    for (int i=0;i<n;i++){ IMMDevice dev; col.Item(i, out dev);
+      string id = null; try { dev.GetId(out id); } catch {}
+      string name = id;
+      try { IPropertyStore store; dev.OpenPropertyStore(0 /*STGM_READ*/, out store);
+        PROPVARIANT pv; store.GetValue(ref pkey, out pv);
+        if (pv.p != IntPtr.Zero) name = Marshal.PtrToStringUni(pv.p);
+        PropVariantClear(ref pv); } catch {}
+      if (i>0) sb.Append(',');
+      sb.Append("{\"id\":\"").Append(JsonEsc(id)).Append("\",\"name\":\"").Append(JsonEsc(name)).Append("\"}");
+    }
+    return sb.Append("]").ToString();
+  }
+  static string JsonEsc(string s){ return s==null ? "" : s.Replace("\\","\\\\").Replace("\"","\\\""); }
   [Guid("1CB9AD4C-DBFA-4C32-B178-C2F568A703B2"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
   interface IAudioClient {
     int Initialize(int shareMode, int streamFlags, long hnsBufDur, long hnsPeriod, IntPtr fmt, IntPtr session);
@@ -41,9 +80,11 @@ public static class Cap {
 
   // dataFlow: 0 = eRender (system output, captured via LOOPBACK), 1 = eCapture (a mic / line-in input).
   // streamFlags: LOOPBACK for render-loopback, 0 for a real input device.
-  public static void Open(int dataFlow, int streamFlags) {
+  public static void Open(int dataFlow, int streamFlags, string deviceId) {
     var enumr = (IMMDeviceEnumerator)(new MMDeviceEnumerator());
-    IMMDevice dev; enumr.GetDefaultAudioEndpoint(dataFlow, 0 /*eConsole*/, out dev);
+    IMMDevice dev;
+    if (!string.IsNullOrEmpty(deviceId)) enumr.GetDevice(deviceId, out dev);   // a specific picked mic
+    else enumr.GetDefaultAudioEndpoint(dataFlow, 0 /*eConsole*/, out dev);     // else the default endpoint
     object o; dev.Activate(ref IID_IAudioClient, 1 /*INPROC*/, IntPtr.Zero, out o); client = (IAudioClient)o;
     IntPtr fmt; client.GetMixFormat(out fmt);
     // WAVEFORMATEX: wFormatTag(2) nChannels(2) nSamplesPerSec(4) nAvgBytes(4) nBlockAlign(2) wBitsPerSample(2)
@@ -198,7 +239,8 @@ public static class Cap {
 }
 "@
 
-if ($Mic) { [Cap]::Open(1, 0) } else { [Cap]::Open(0, 0x00020000) }   # eCapture/no-flag for a mic; eRender+LOOPBACK for system output
+if ($ListInputs) { [Console]::Out.WriteLine([Cap]::ListInputs()); exit 0 }   # one-shot: enumerate recording devices as JSON, then quit
+if ($Mic) { [Cap]::Open(1, 0, $Device) } else { [Cap]::Open(0, 0x00020000, $null) }   # eCapture/no-flag for a mic (optional specific $Device); eRender+LOOPBACK for system output
 $N = 2048   # must match the C# FFT window above
 $mono  = New-Object 'float[]' ($N * 4)   # rolling buffers (mono + per-channel for the stereo layout)
 $left  = New-Object 'float[]' ($N * 4)

@@ -462,7 +462,7 @@ function audioCfg() {
   if (!aL) return null;
   const s = aL.settings || {};
   if (s.source === 'app' && s.appId) return { key: 'app:' + s.appId, app: s.appId };
-  if (s.source === 'mic') return { key: 'mic', mic: true };    // default capture (mic / line-in) endpoint — daemon-driven so it works with the page closed
+  if (s.source === 'mic') return { key: 'mic:' + (s.micDeviceId || ''), mic: true, micDevice: s.micDeviceId || '' };   // a picked recording device (else default) — daemon-driven so it works with the page closed
   if (s.source === 'tab') return null;                          // tab audio is page-only (getDisplayMedia)
   return { key: 'system' };
 }
@@ -470,9 +470,9 @@ function syncAudioCapture() {
   const cfg = audioCfg();
   if (cfg && acKey !== cfg.key) {                                   // (re)start when the target changes (system↔app, or a new app)
     if (acHandle) { acHandle.stop(); acHandle = null; }
-    acHandle = AC.start({ log, app: cfg.app, mic: cfg.mic });
+    acHandle = AC.start({ log, app: cfg.app, mic: cfg.mic, micDevice: cfg.micDevice });
     acKey = cfg.key;
-    log('♪ audio capture started (' + (cfg.app ? 'app: ' + cfg.app : cfg.mic ? 'mic / line-in' : 'system loopback') + ')');
+    log('♪ audio capture started (' + (cfg.app ? 'app: ' + cfg.app : cfg.mic ? ('mic' + (cfg.micDevice ? ' [picked device]' : ' / line-in (default)')) : 'system loopback') + ')');
   } else if (!cfg && acHandle) {
     acHandle.stop(); acHandle = null; acKey = null; log('♪ audio capture stopped');
   }
@@ -543,6 +543,8 @@ const control = {
     syncAudioCapture(); },   // an edit that enables/disables the audio layer starts/stops capture live
   // List currently-playing audio apps for the page's "Specific app" picker (one-shot app-capture.exe --list).
   listAudioApps() { return new Promise(r => AC.listApps((_e, arr) => r(arr))); },
+  // List recording (capture) devices for the Mic device picker (one-shot audio-sidecar.ps1 -ListInputs).
+  listAudioInputs() { return new Promise(r => AC.listInputs((_e, arr) => r(arr))); },
   // Latest captured audio frame (system/app) so the open page can preview it + drive the keys in real time.
   audioFrame() { return acHandle ? AC.freshOr(acHandle.latest(), Date.now(), 300) : null; },
   // Current media position so the open page can draw the song-progress bar itself while it drives the device.

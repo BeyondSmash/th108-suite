@@ -60,7 +60,7 @@
     // tuning (ap) + render bucket (sv) + adjust + crop + pause + ducks. Everything in `s` EXCEPT the source/device/
     // mic-input/hotkey config (which is what *selects* the source) is snapshotted per source in s.bySource. A
     // never-visited source starts fresh from defaults (ensureSettings), so sources don't bleed into each other.
-    const SRC_KEEP = new Set(['source','appId','deviceId','micGain','micGate','toggleKeyLed','toggleKeyLabel','samplePrevOff','livePrevOff','_copyUndo','bySource']);
+    const SRC_KEEP = new Set(['source','appId','deviceId','micDeviceId','micGain','micGate','toggleKeyLed','toggleKeyLabel','samplePrevOff','livePrevOff','_copyUndo','bySource']);
     function snapshotLook(s){ const o={}; for(const k in s){ if(!SRC_KEEP.has(k)) o[k]=s[k]; } return JSON.parse(JSON.stringify(o)); }
     function switchSource(s, L, oldSrc, newSrc){ if(oldSrc===newSrc) return;
       s.bySource = s.bySource || {};
@@ -327,6 +327,8 @@
           full('<span class="val" style="opacity:.55;flex:1 1 100%;text-align:center;font-size:12px;line-height:1.4">Specific Tab &amp; Mic / Line-in are captured in this page (reliable mic pick) — they show on the keyboard while this site is open AND driving it. System Audio &amp; Specific App run in the daemon (work with this page closed); Mic also has a daemon fallback for when the tab is closed (pick its device below).</span>')+   // centered note: capture-location gotcha + mic page/daemon split
           (s.source==='app' ? sub('Specific App')+full('<select class="s-appId" style="max-width:180px"></select><button type="button" class="s-appRefresh" title="rescan currently-playing apps" style="flex:none">Refresh</button><span class="val s-appNote" style="opacity:.7"></span>') : '')+
           (s.source==='mic' ? sub('Mic Input')+
+            row('Device','<select class="s-micDev" style="max-width:200px"><option value="">— default recording device —</option></select><button type="button" class="s-micDevRefresh" title="rescan recording devices" style="flex:none">⟳</button>')+
+            full('<span class="val" style="opacity:.55;flex:1 1 100%;text-align:center;font-size:11px;line-height:1.4">Which mic the DAEMON captures when this tab is CLOSED (the default endpoint is often silent). While the tab drives, your browser-picked mic is used instead.</span>')+
             row('Mic Gain','<span class="srange" style="width:100%"><input type="range" class="s-micGain" min="0" max="1000" step="1" value="'+Math.round(1000*Math.log((s.micGain==null?100:s.micGain)/50)/Math.log(144))+'" title="SENSITIVITY — how little input drives the bars to full (LOG scale: each step is a meaningful multiplier, 50% … 7200%). Higher = less voice/volume needed to fill the board."></span><span class="val s-micGainV"></span>')+
             row('Noise Gate','<span class="srange" style="width:100%"><input type="range" class="s-micGate" min="0" max="20" step="0.25" value="'+(s.micGate==null?0:s.micGate)+'" title="Mute the keys until the mic exceeds this absolute level — raise it just above your room/fan noise so background hum stops lighting the board. Scaled 0–20% to match a real mic’s RMS range. 0 = off"><i class="tick" style="left:calc(7px + (100% - 14px)*0.0)"></i></span><span class="val s-micGateV"></span>')+
             row('Input Level','<span style="position:relative;display:block;width:100%;height:11px;background:#0d1117;border-radius:6px;overflow:hidden;border:1px solid var(--border)"><span class="s-micMeterFill" style="position:absolute;left:0;top:0;bottom:0;width:0%;background:linear-gradient(90deg,#2ea043,#d29922 80%,#f85149);border-radius:6px"></span><span class="s-micMeterGate" style="position:absolute;top:-1px;bottom:-1px;width:2px;background:#e0a200;left:0%"></span></span><span class="val" style="opacity:.6">live mic level (yellow line = gate)</span>')+
@@ -452,6 +454,17 @@
             if(note) note.textContent=(apps&&apps.length)?'':'nothing playing — start audio, then ⟳'; };
           const load=()=>{ if(note) note.textContent='scanning…'; Promise.resolve(opts.listAudioApps && opts.listAudioApps()).then(a=>fill(a||[])).catch(()=>{ if(note) note.textContent='(daemon not running — start it to list apps)'; fill([]); }); };
           if(sel) sel.addEventListener('change',e=>{ s.appId=e.target.value; });   // panel 'change' listener pushes config → daemon (re)starts app capture
+          if(rf) rf.addEventListener('click',load);
+          load();
+        }
+        if(s.source==='mic'){ const sel=c('.s-micDev'), rf=c('.s-micDevRefresh');   // daemon recording-device picker (closed-tab capture)
+          const fill=(inputs)=>{ if(!sel) return; const cur=s.micDeviceId||''; let has=false;
+            const optsHtml=['<option value="">— default recording device —</option>'];
+            (inputs||[]).filter(d=>d&&d.id).forEach(d=>{ if(d.id===cur) has=true; optsHtml.push('<option value="'+esc(d.id)+'"'+(d.id===cur?' selected':'')+'>'+esc(d.name||d.id)+'</option>'); });
+            if(cur && !has) optsHtml.push('<option value="'+esc(cur)+'" selected>(saved device — not present)</option>');   // keep the saved pick visible
+            sel.innerHTML=optsHtml.join(''); };
+          const load=()=>Promise.resolve(opts.listAudioInputs && opts.listAudioInputs()).then(a=>fill(a||[])).catch(()=>fill([]));
+          if(sel) sel.addEventListener('change',e=>{ s.micDeviceId=e.target.value; });   // 'change' pushes config → daemon (re)starts mic capture on that device
           if(rf) rf.addEventListener('click',load);
           load();
         }

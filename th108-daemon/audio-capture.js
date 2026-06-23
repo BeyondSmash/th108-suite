@@ -68,11 +68,25 @@ function listApps(cb) {
   setTimeout(() => { try { p.kill(); } catch (_) {} finish(new Error('list timed out'), []); }, 4000);
 }
 
+// One-shot: list recording (capture) devices via `audio-sidecar.ps1 -ListInputs` → [{id,name}] (or [] on error).
+function listInputs(cb) {
+  let out = ''; let done = false;
+  const finish = (err, arr) => { if (done) return; done = true; cb(err, arr || []); };
+  let p;
+  try { p = spawn('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', path.join(__dirname, 'audio-sidecar.ps1'), '-ListInputs'], { stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true }); }
+  catch (e) { return finish(e, []); }
+  p.stdout.on('data', d => { out += d.toString('utf8'); if (out.length > 65536) { try { p.kill(); } catch (_) {} } });
+  p.on('error', e => finish(e, []));
+  p.on('exit', () => { const m = out.match(/\[[\s\S]*\]/); try { finish(null, m ? JSON.parse(m[0]) : []); } catch (e) { finish(e, []); } });
+  setTimeout(() => { try { p.kill(); } catch (_) {} finish(new Error('list inputs timed out'), []); }, 6000);
+}
+
 // opts.app = a process NAME → capture that app via app-capture.exe; falsy → system loopback via the ps1 sidecar.
 function start(opts) {
   const log = (opts && opts.log) || function () {};
   const app = opts && opts.app;
-  const mic = !!(opts && opts.mic);   // capture the default mic/line-in endpoint (audio-sidecar.ps1 -Mic) instead of system loopback
+  const mic = !!(opts && opts.mic);   // capture a mic/line-in endpoint (audio-sidecar.ps1 -Mic) instead of system loopback
+  const micDevice = opts && opts.micDevice;   // a specific recording-device id (else the default capture endpoint)
   let proc = null, stopped = false, carry = '';
   let frame = null, peakAcc = null, lastLineAt = 0, restarts = 0, parseErrs = 0;
 
@@ -83,7 +97,7 @@ function start(opts) {
       proc = spawn(APP_EXE, [app], { stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true });
     } else {
       const args = ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', path.join(__dirname, 'audio-sidecar.ps1')];
-      if (mic) args.push('-Mic');   // default capture endpoint (mic / line-in) rather than render loopback
+      if (mic) { args.push('-Mic'); if (micDevice) args.push('-Device', micDevice); }   // capture a mic / line-in (a specific device if picked, else default)
       proc = spawn('powershell.exe', args, { stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true });
     }
     proc.on('error', e => { log('✗ audio capture spawn failed: ' + e.message); });
@@ -118,4 +132,4 @@ function start(opts) {
   };
 }
 
-module.exports = { parseLine, freshOr, start, listApps, holdPeak };
+module.exports = { parseLine, freshOr, start, listApps, listInputs, holdPeak };

@@ -82,6 +82,7 @@ function createServer({ control, root, port = 8123, watchdogMs = 12000 }) {
       if (req.method === 'GET' && u === '/status') return sendJson(res, 200, control.status());
       if (req.method === 'GET' && u === '/metrics') return sendJson(res, 200, { endpoints: metricsSnapshot(), windowSec: FLOOD_WINDOW_MS / 1000, driver: control.metrics ? control.metrics() : null });
       if (req.method === 'GET' && u === '/audio/apps') return sendJson(res, 200, { apps: control.listAudioApps ? await control.listAudioApps() : [] });   // currently-playing audio processes for the "Specific app" picker
+      if (req.method === 'GET' && u === '/audio/inputs') return sendJson(res, 200, { inputs: control.listAudioInputs ? await control.listAudioInputs() : [] });   // recording devices for the Mic device picker
       if (req.method === 'GET' && u === '/audio/frame') return sendJson(res, 200, { frame: control.audioFrame ? control.audioFrame() : null });   // latest system/app audio frame for the page preview/drive
       if (req.method === 'GET' && u === '/nowplaying/pos') return sendJson(res, 200, { pos: control.npPos ? control.npPos() : null });   // media position so the page can draw the song-progress bar while it drives
       if (req.method === 'POST' && u === '/yield') {
