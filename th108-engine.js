@@ -83,9 +83,8 @@
     // room tone / a distant fan that the auto-gain would otherwise pump up to full — plus an input GAIN. The gate
     // must use raw.inAbs (pre auto-gain); raw.level is already peak-normalized so a fan reads ~1 there.
     if(s.source==='mic' && raw && raw.inAbs!=null){   // inAbs present = a REAL capture frame (the synth Sample preview has none → left unconditioned)
-      const gate=(s.micGate==null?0:s.micGate)/100, mg=(s.micGain==null?100:s.micGain)/100, inAbs=raw.inAbs;
-      if(gate>0 && inAbs < gate){ raw = { level:0, live:0 }; }                                                   // below the gate → silence (idle keys stay dark)
-      else if(mg!==1){ raw = Object.assign({}, raw, { level:Math.min(1,(raw.level||0)*mg), bands: raw.bands?raw.bands.map(b=>Math.min(1,(b||0)*mg)):raw.bands }); }
+      const gate=(s.micGate==null?0:s.micGate)/100;
+      if(gate>0 && raw.inAbs < gate) raw = { level:0, live:0 };   // below the gate → silence (idle keys stay dark). Mic Gain is applied as micAbs below (NOT here — the capture's bands are already ~1 so scaling+clamping them is a no-op).
     }
     let dt = A._t ? Math.max(1, Math.min(100, now - A._t)) : 16;   // clamp dt (tab-throttle/sleep safe)
     A._t = now;
@@ -103,7 +102,7 @@
     // short bars, a shout = tall). The capture pre-normalizes bands/level (volume-INDEPENDENCE, great for music,
     // wrong for a mic), so we scale by the absolute input A.inAbs (RMS) here. ALWAYS on for mic (not tied to the
     // auto-gain toggle) so a stale agc:true saved setting can't make a faint tap peg the board. Mic gain trims it.
-    const micAbs = (s.source==='mic') ? Math.min(1, (A.inAbs||0)*gain*2) : null;
+    const micAbs = (s.source==='mic') ? Math.min(1, (A.inAbs||0)*((s.micGain==null?100:s.micGain)/100)*3) : null;   // Mic Gain IS the sensitivity dial: inAbs × micGain × 3 (×3 base so 100% is usable; 800% ≈ ×24 for a quiet mic)
     const shape = (v)=>{ v=(v-lo)/(hi-lo); v=v<=0?0:(v>=1?1:v); return gamma!==1 ? Math.pow(v,gamma) : v; };
     const TARGET = 1.0;                                           // the recent loud peak maps to the TOP (true highs hit the ceiling, like the manual-gain workflow); typical passages fall below → mid
     // Peak follower: rises instantly, falls SLOWLY (~10s) to hold the chorus peak so verses sit lower (dynamics).
@@ -662,27 +661,35 @@
     }
   }
 
-  // Wave: a clean traveling SINE LINE (the readable "wave" look from the synth preview) DRIVEN by the audio —
-  // its amplitude pulses with loudness + beats, it scrolls over time, and its ripple count rides spectral
-  // brightness. A raw PCM oscilloscope aliases into noise on 21 columns; a music-modulated sine is the legible
-  // "waveform" at this resolution. Silence → a flat, dim center line; louder/beatier → a bigger, brighter wave.
+  // Wave: a clean traveling SINE LINE (the readable "wave" look) DRIVEN by the audio. To stream SMOOTHLY (not
+  // flutter), the scroll uses a CONTINUOUS accumulated phase advanced by a smoothed speed — recomputing phase as
+  // t*speed makes it JUMP whenever speed changes — and amplitude/frequency are low-passed so they glide with the
+  // song instead of jittering per frame. Amplitude + brightness ride loudness; ripple count rides spectral brightness.
   function renderWave(s, out, A, now){
     let col0 = hexToRgb(s.waveColor||'#00e0ff'), col2 = hexToRgb(s.waveColor2||'#ff00aa'); const grad = !!s.waveGrad;
     if(grad && s.waveGradRev){ const tmp=col0; col0=col2; col2=tmp; }   // reverse gradient colors
     const dir = s.waveReverse ? -1 : 1, amp = (s.waveAmp==null?100:s.waveAmp)/100;
     const tw = 0.5 + (s.waveThick==null?50:s.waveThick)/100*2;          // line half-width in rows
-    const mid = (GH-1)/2, t = now/1000;
-    // Amplitude envelope: Volume drive rides loudness (beats add a swell); Beat drive pulses hard on each kick.
-    const env = (s.waveDrive==='beat') ? Math.min(1, A.level*0.3 + A.beat*0.9) : Math.min(1, A.level*0.7 + A.beat*0.45);
-    const waves = 1.6 + (A.centroid==null?0.5:A.centroid)*2.4;          // cycles across the board: brighter audio = more ripples
-    const speed = 2.2 + A.level*4.5;                                    // scrolls faster when louder
+    const mid = (GH-1)/2;
+    const dt = A._waveT ? Math.max(1, Math.min(100, now - A._waveT)) : 16; A._waveT = now;
+    // Targets from the audio, then low-passed so they GLIDE (no per-frame flicker).
+    const loudT = (s.waveDrive==='beat') ? Math.min(1, A.level*0.3 + A.beat*0.9) : Math.min(1, A.level*0.7 + A.beat*0.45);
+    const freqT = 1.6 + (A.centroid==null?0.5:A.centroid)*2.2;          // cycles across the board (brighter audio = more ripples)
+    const spdT  = 1.4 + A.level*2.6;                                    // scroll speed (gently faster when louder)
+    const ke = 1-Math.exp(-dt/120), kf = 1-Math.exp(-dt/500);           // ~120ms for loudness, ~500ms for freq/speed
+    A._wEnv  = A._wEnv ==null ? loudT : A._wEnv  + (loudT-A._wEnv )*ke;
+    A._wFreq = A._wFreq==null ? freqT : A._wFreq + (freqT-A._wFreq)*kf;
+    A._wSpd  = A._wSpd ==null ? spdT  : A._wSpd  + (spdT -A._wSpd )*kf;
+    A._wPhase = (A._wPhase||0) + A._wSpd * dt/1000;                     // CONTINUOUS phase → a speed change never jumps the wave
+    const env=A._wEnv, waves=A._wFreq, ph0=A._wPhase;
+    const ampl = 0.1 + 0.9*env, bright = 0.15 + 0.85*env;              // a gentle baseline wave that grows + brightens with the song
     for(let k=0;k<NLED;k++){
       const idx = INDICES[k], cell = GRID[idx]; if(!cell) continue;
       const col = cell[0], row = cell[1], o = k*3, fc = GW>1 ? col/(GW-1) : 0;
-      const phase = (dir>0 ? fc : 1-fc) * waves * 6.28318 - t*speed;
-      const sNorm = Math.sin(phase) * env;                             // -env..env deflection
+      const phase = (dir>0 ? fc : 1-fc) * waves * 6.28318 - ph0;
+      const sNorm = Math.sin(phase) * ampl;                            // -ampl..ampl deflection
       const lineRow = mid - sNorm*amp*mid;                             // center the line; +amp = up (row 0 = top)
-      const v = Math.max(0, 1 - Math.abs(row-lineRow)/tw) * (0.12 + 0.88*env);   // brightness rides the envelope → dark on silence, bright on hits
+      const v = Math.max(0, 1 - Math.abs(row-lineRow)/tw) * bright;
       if(v < 0.05){ out[o]=out[o+1]=out[o+2]=0; continue; }
       const c = grad ? [col0[0]+(col2[0]-col0[0])*fc, col0[1]+(col2[1]-col0[1])*fc, col0[2]+(col2[2]-col0[2])*fc] : col0;   // start→end (left→right)
       out[o]=(c[0]*v)|0; out[o+1]=(c[1]*v)|0; out[o+2]=(c[2]*v)|0;
