@@ -712,7 +712,10 @@
     W._aLo = W._aLo==null ? W._wAct : Math.min(W._wAct, W._aLo + (W._wAct-W._aLo)*apr);
     W._aHi = W._aHi==null ? W._wAct : Math.max(W._wAct, W._aHi + (W._wAct-W._aHi)*apr);
     const aNorm = (W._aHi-W._aLo > 0.015) ? (W._wAct-W._aLo)/(W._aHi-W._aLo) : 0.35;
-    const speed = 0.5 + aNorm*7.5;                                     // 0.5 (sparse) … 8 (frantic) — wide, dynamic flow
+    // Blend the RELATIVE (auto-ranged) pace with an ABSOLUTE activity floor: when the song is genuinely busy for a
+    // while, the auto-range would adapt and drift back to "normal" (stasis) — the absolute term keeps it fast.
+    const aMix = Math.max(aNorm*0.8, Math.min(1, W._wAct*3.4));
+    const speed = 0.6 + aMix*7.4;                                      // 0.6 (sparse) … 8 (frantic) — wide, dynamic flow
     W._wPhase = (W._wPhase||0) + speed * W._wDt/1000;                  // scroll by the SMOOTHED frame time → steady, no hitch-jerk
     const env=W._wEnv, waves=W._wFreq, ph0=W._wPhase, harm=W._wHarm*0.55, bassA=W._wBass*0.6, trebA=W._wTreb*0.4;
     const ampl = (0.95*env) / (1+harm+bassA+trebA), bright = env;     // normalize for the extra components; NO floor → fully dark on silence/pause
