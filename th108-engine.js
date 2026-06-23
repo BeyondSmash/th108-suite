@@ -223,7 +223,7 @@
   // (ambient, continuous, jittery) differs from playback, so it keeps separate tuning with smoother defaults.
   const AUDIO_TUNE_DEFAULTS = { gain:1, floor:5, ceil:100, contrast:50, agc:true, attackMs:40, decayMs:220, pauseDecayMs:700, beatSens:50 };
   const MIC_TUNE_DEFAULTS = { attackMs:80, decayMs:300, pauseDecayMs:1500, agc:false };   // smoother attack + a long graceful settle; AGC OFF so bar HEIGHT tracks absolute loudness (a tap = short, a shout = tall)
-  function audioVariantKey(s){ return (s.source==='mic' ? 'mic ' : '') + (s.style || 'bars'); }
+  function audioVariantKey(s){ return s.style || 'bars'; }   // per-STYLE within a source; full per-SOURCE isolation is host-side (s.bySource). Mic keeps its own defaults via the source check below.
   function audioParams(s){
     const key = audioVariantKey(s), defs = s.source==='mic' ? Object.assign({}, AUDIO_TUNE_DEFAULTS, MIC_TUNE_DEFAULTS) : AUDIO_TUNE_DEFAULTS;
     if(!s.ap){

@@ -269,15 +269,13 @@ test('wash-style Dynamics recedes on steady sound and Transparency sets an alpha
   assert.ok(La._alpha && La._alpha[0] < 1, 'Transparency sets an opacity mask below 1 during steady sound');
 });
 
-test('Mic is a separate tuning variant with smoother defaults', () => {
-  const L = { type:'audio', enabled:true, opacity:1, blend:'add', settings:{ style:'bars', source:'mic' }, rgb:new Uint8Array(E.NLED*3) };
-  E.ensureSettings(L); const s = L.settings;
-  const micAp = E.audioParams(s);
-  assert.equal(micAp.attackMs, 80, 'mic gets the smoother default attack');
-  assert.equal(micAp.pauseDecayMs, 1500, 'mic gets the long graceful settle');
-  s.source = 'system';
-  assert.equal(E.audioParams(s).attackMs, 40, 'a playback source uses the standard attack — separate variant');
-  assert.notEqual(E.audioVariantKey({ style:'bars', source:'mic' }), E.audioVariantKey({ style:'bars', source:'system' }), 'mic+bars and system+bars are distinct variants');
+test('Mic source gets smoother tuning defaults; playback sources use the standard ones', () => {
+  const tune=src=>{ const L={ type:'audio', enabled:true, opacity:1, blend:'add', settings:{ style:'bars', source:src }, rgb:new Uint8Array(E.NLED*3) }; E.ensureSettings(L); return E.audioParams(L.settings); };
+  const mic=tune('mic');
+  assert.equal(mic.attackMs, 80, 'mic gets the smoother default attack');
+  assert.equal(mic.pauseDecayMs, 1500, 'mic gets the long graceful settle');
+  assert.equal(tune('system').attackMs, 40, 'a playback source uses the standard attack');
+  // full per-source isolation is host-side (s.bySource); the engine just supplies mic-appropriate defaults on creation.
 });
 
 test('crop clip masks every key outside the rectangle', () => {

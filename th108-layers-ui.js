@@ -48,15 +48,28 @@
     function saveLayers(){ try{ localStorage.setItem('th108_layers', JSON.stringify(serializeLayers(state.layers))); }catch(_){ } }
     function scheduleSaveLayers(){ clearTimeout(_slsT); _slsT=setTimeout(()=>{ saveLayers(); pushConfig(); },400); }   // mirror the edit to the daemon's config.json (no-op if no daemon)
     function restoreLayers(){ try{ overlayLayers(state.layers, JSON.parse(localStorage.getItem('th108_layers')||'null')); }catch(_){ } }
-    // Per-VARIANT render settings (Adjust/crop/pause/ducks share flat key NAMES across styles, so without this they
-    // leak between styles). Bucketed in s.sv[variantKey] (variant = style, Mic separate — mirrors engine ap). On a
-    // style OR source switch we snapshot the outgoing variant's flat values, then restore the incoming variant's.
+    // Per-STYLE render settings (Adjust/crop/pause/ducks share flat key NAMES across styles, so without this they
+    // leak between styles WITHIN a source). Bucketed in s.sv[style]; on a style switch we snapshot the outgoing
+    // style's flat values, then restore the incoming style's.
     const VARIANT_SHARED_KEYS = ['bri','sat','con','gam','spd','frozen','pauseStyle','cropOn','cropFit','cropX','cropY','cropW','cropH'];
     function saveVariantVals(s, key){ if(!s.sv) s.sv={}; const b=s.sv[key]||(s.sv[key]={}); VARIANT_SHARED_KEYS.forEach(k=>{ if(s[k]!==undefined) b[k]=s[k]; }); b.ducks = Array.isArray(s.ducks)?JSON.parse(JSON.stringify(s.ducks)):[]; }
-    function loadVariantVals(s, key){ const b=s.sv&&s.sv[key];
-      if(!b){ if(String(key).indexOf('mic ')===0) s.pauseStyle='linear'; return; }   // fresh Mic variant → Settle-glide pause by default (mic input glides down, doesn't twinkle)
+    function loadVariantVals(s, key){ const b=s.sv&&s.sv[key]; if(!b) return;
       VARIANT_SHARED_KEYS.forEach(k=>{ if(b[k]!==undefined) s[k]=b[k]; }); if(b.ducks!==undefined) s.ducks=JSON.parse(JSON.stringify(b.ducks)); }
     function swapVariant(s, oldKey, newKey){ if(oldKey===newKey) return; saveVariantVals(s, oldKey); loadVariantVals(s, newKey); }
+    // Per-SOURCE full-look isolation: each source (System/App/Tab/Mic) is its own profile — style + all appearance +
+    // tuning (ap) + render bucket (sv) + adjust + crop + pause + ducks. Everything in `s` EXCEPT the source/device/
+    // mic-input/hotkey config (which is what *selects* the source) is snapshotted per source in s.bySource. A
+    // never-visited source starts fresh from defaults (ensureSettings), so sources don't bleed into each other.
+    const SRC_KEEP = new Set(['source','appId','deviceId','micGain','micGate','toggleKeyLed','toggleKeyLabel','samplePrevOff','livePrevOff','_copyUndo','bySource']);
+    function snapshotLook(s){ const o={}; for(const k in s){ if(!SRC_KEEP.has(k)) o[k]=s[k]; } return JSON.parse(JSON.stringify(o)); }
+    function switchSource(s, L, oldSrc, newSrc){ if(oldSrc===newSrc) return;
+      s.bySource = s.bySource || {};
+      s.bySource[oldSrc] = snapshotLook(s);                                   // save the outgoing source's whole look
+      const saved = s.bySource[newSrc];
+      for(const k of Object.keys(s)) if(!SRC_KEEP.has(k)) delete s[k];          // clear the look
+      s.source = newSrc;
+      if(saved){ const copy=JSON.parse(JSON.stringify(saved)); for(const k in copy) s[k]=copy[k]; }   // restore (or leave cleared → ensureSettings fills defaults for a fresh source)
+      E.ensureSettings(L); }
     function saveLayerOrder(){ try{ localStorage.setItem('th108_layerOrder', JSON.stringify(serializeOrder(state.layers))); }catch(_){ } }
 
     // ===== layer cards UI (built from the layers array; Layer 1 listed first) =====
@@ -421,9 +434,9 @@
         '</div>';
         body.innerHTML=html;
         const c=q=>body.querySelector(q);
-        body.querySelectorAll('.s-source').forEach(r=>r.addEventListener('change',e=>{ const v=e.target.value, oldK=E.audioVariantKey(s); s.source=v; swapVariant(s, oldK, E.audioVariantKey(s));   // Mic is a separate variant → carry its own Adjust/crop/pause/ducks (and tuning, via the engine ap key)
+        body.querySelectorAll('.s-source').forEach(r=>r.addEventListener('change',e=>{ const v=e.target.value; switchSource(s, L, s.source, v);   // each source is its own profile (style + whole look) — swap the entire look in/out
           if(v==='tab' && opts.isDriving && !opts.isDriving() && opts.connectKeyboard) opts.connectKeyboard();   // auto-handover: only Specific Tab is page-captured → grab the keyboard from the daemon so it reaches the keys (mic is daemon-driven now)
-          onAudioSource(v); buildLayerBody(card,L); }));   // tab starts in-tab capture; system/app/mic stop it (daemon-driven); rebuild so the App/Mic panels show/hide
+          onAudioSource(v); buildLayerBody(card,L); scheduleSaveLayers(); }));   // tab starts in-tab capture; system/app/mic stop it (daemon-driven); rebuild so the App/Mic panels show/hide
         // re-pick: clicking the ALREADY-selected "Specific Tab" re-opens the share picker (a 'change' doesn't fire when it's already chosen)
         { const tabR=[...body.querySelectorAll('.s-source')].find(x=>x.value==='tab'); if(tabR) tabR.addEventListener('click',()=>{ if(s.source==='tab') onAudioSource('tab'); }); }
         // "Specific app" picker — populated from the daemon's list of currently-playing audio apps; the saved
