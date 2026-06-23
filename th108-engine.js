@@ -677,22 +677,29 @@
     const realDt = W._waveT ? Math.max(1, now - W._waveT) : 16; W._waveT = now;
     const pdt = Math.min(realDt, 200);   // PHASE uses real elapsed time (time-accurate scroll) — cap only huge gaps (tab switch)
     const sdt = Math.min(realDt, 50);    // SMOOTHING dt capped so a frame hitch can't jolt the envelope/frequency
-    // AMPLITUDE rides BEATS + loudness (NOT the auto-gained level alone — for music that's ~constant, so the wave
-    // never moved). Beats make it visibly TALLER; FREQUENCY rides spectral brightness over a WIDE range so it gets
-    // visibly wider (bass) / thinner (treble). Scroll speed is STEADY (a gliding speed read as left/right jerking).
+    // Several audio-driven variables so it isn't monotonous:
+    //  • AMPLITUDE (taller/shorter) rides BEATS + loudness (NOT auto-gained level alone — ~constant for music).
+    //  • FREQUENCY (wider/thinner) rides spectral brightness over a WIDE range.
+    //  • SCROLL SPEED rides the song's PACE — a SLOWLY-smoothed activity (~1.6s), so it tracks the section's
+    //    energy/tempo without the per-beat jerk a fast speed caused.
+    //  • A 2nd HARMONIC layers in with brightness so busy/bright passages get a wigglier, more complex line.
     const loudT = (s.waveDrive==='beat') ? Math.min(1, A.level*0.25 + A.beat*0.9) : Math.min(1, A.level*0.45 + A.beat*0.75);
-    const freqT = 1.2 + (A.centroid==null?0.5:A.centroid)*3.3;          // 1.2–4.5 cycles across the board → clearly wider/thinner with the music
-    const ke = 1-Math.exp(-sdt/170), kf = 1-Math.exp(-sdt/280);        // ~170ms loudness (visible swells, no flicker), ~280ms frequency (visible but smooth)
+    const freqT = 1.2 + (A.centroid==null?0.5:A.centroid)*3.3;          // 1.2–4.5 cycles across the board
+    const paceT = Math.min(1, A.level*0.55 + A.beat*0.45);             // overall activity → scroll pace
+    const harmT = (A.centroid==null?0.5:A.centroid);                   // brightness → 2nd-harmonic strength
+    const ke=1-Math.exp(-sdt/170), kf=1-Math.exp(-sdt/320), kp=1-Math.exp(-sdt/1600), kh=1-Math.exp(-sdt/400);
     W._wEnv  = W._wEnv ==null ? loudT : W._wEnv  + (loudT-W._wEnv )*ke;
     W._wFreq = W._wFreq==null ? freqT : W._wFreq + (freqT-W._wFreq)*kf;
-    W._wPhase = (W._wPhase||0) + 2.3 * pdt/1000;                        // STEADY continuous scroll (constant rate → no speed-jerk)
-    const env=W._wEnv, waves=W._wFreq, ph0=W._wPhase;
-    const ampl = 0.06 + 0.94*env, bright = 0.15 + 0.85*env;            // amplitude + brightness ride the (beat-driven) envelope → taller & brighter on hits
+    W._wPace = W._wPace==null ? paceT : W._wPace + (paceT-W._wPace)*kp;
+    W._wHarm = W._wHarm==null ? harmT : W._wHarm + (harmT-W._wHarm)*kh;
+    W._wPhase = (W._wPhase||0) + (1.0 + W._wPace*4.2) * pdt/1000;       // STEADY-per-frame but the RATE rides the song's pace (smoothed → no jerk)
+    const env=W._wEnv, waves=W._wFreq, ph0=W._wPhase, harm=W._wHarm*0.55;
+    const ampl = (0.06 + 0.94*env) / (1+harm), bright = 0.15 + 0.85*env;   // normalize amplitude for the added harmonic
     for(let k=0;k<NLED;k++){
       const idx = INDICES[k], cell = GRID[idx]; if(!cell) continue;
       const col = cell[0], row = cell[1], o = k*3, fc = GW>1 ? col/(GW-1) : 0;
       const phase = (dir>0 ? fc : 1-fc) * waves * 6.28318 - ph0;
-      const sNorm = Math.sin(phase) * ampl;                            // -ampl..ampl deflection
+      const sNorm = (Math.sin(phase) + harm*Math.sin(phase*2 + ph0*0.6)) * ampl;   // base + brightness-driven 2nd harmonic
       const lineRow = mid - sNorm*amp*mid;                             // center the line; +amp = up (row 0 = top)
       const v = Math.max(0, 1 - Math.abs(row-lineRow)/tw) * bright;
       if(v < 0.05){ out[o]=out[o+1]=out[o+2]=0; continue; }
