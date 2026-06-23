@@ -1134,8 +1134,8 @@ window.addEventListener('keyup',(e)=>{
 // Web Audio analyser → real {bands,level,beat,centroid} for the music layer. layerTick uses it when active.
 const webCap = TH108WebCapture.createWebCapture((m,c)=>log(m,c));
 async function startAudioSource(kind){
-  if(kind==='tab'){ await webCap.start(kind); }   // browser share prompt; on success the feed switches to it
-  else { await webCap.stop(); }                    // system/app/mic → the daemon captures it (mic = audio-sidecar.ps1 -Mic); page falls back to the daemon frame / synth
+  if(kind==='tab'||kind==='mic'){ await webCap.start(kind); }   // tab = share picker; mic = getUserMedia (reliably grabs YOUR mic — WASAPI default-capture in the daemon often gets a silent device). While the tab drives, this in-page capture is used; the daemon's mic sidecar is the closed-tab fallback.
+  else { await webCap.stop(); }                                  // system/app → the daemon captures it; page falls back to the daemon frame / synth
 }
 // SINGLE audio feed: once per frame, fold the live source (in-tab webCap if active, else the synthetic
 // signal) into state.audio whenever an audio layer is enabled — regardless of whether we're driving the

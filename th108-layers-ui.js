@@ -324,7 +324,7 @@
           sec('Source')+
           full('<span style="display:grid;grid-template-columns:auto auto;gap:7px 24px;justify-content:center;flex:1 1 100%">'+srcBubbles+'</span>')+
           full('<span class="val s-srcNow" style="opacity:.8;flex:1 1 100%;text-align:center;font-size:12px;min-height:1em"></span>')+   // "▶ what's playing" (tab/mic = shared-tab title; + a hint when this tab isn't driving the keyboard)
-          full('<span class="val" style="opacity:.55;flex:1 1 100%;text-align:center;font-size:12px;line-height:1.4">Specific Tab is captured in this page — it only shows on the keyboard while this site is open AND driving it (Connect Keyboard / Drive from this Tab). System Audio, Specific App &amp; Mic / Line-in run in the daemon (they work with this page closed).</span>')+   // centered note: the tab capture-location gotcha, stated up front
+          full('<span class="val" style="opacity:.55;flex:1 1 100%;text-align:center;font-size:12px;line-height:1.4">Specific Tab &amp; Mic / Line-in are captured in this page (reliable mic pick) — they show on the keyboard while this site is open AND driving it. System Audio &amp; Specific App run in the daemon (work with this page closed); Mic also has a daemon fallback for when the tab is closed (pick its device below).</span>')+   // centered note: capture-location gotcha + mic page/daemon split
           (s.source==='app' ? sub('Specific App')+full('<select class="s-appId" style="max-width:180px"></select><button type="button" class="s-appRefresh" title="rescan currently-playing apps" style="flex:none">Refresh</button><span class="val s-appNote" style="opacity:.7"></span>') : '')+
           (s.source==='mic' ? sub('Mic Input')+
             row('Mic Gain','<span class="srange" style="width:100%"><input type="range" class="s-micGain" min="0" max="1000" step="1" value="'+Math.round(1000*Math.log((s.micGain==null?100:s.micGain)/50)/Math.log(144))+'" title="SENSITIVITY — how little input drives the bars to full (LOG scale: each step is a meaningful multiplier, 50% … 7200%). Higher = less voice/volume needed to fill the board."></span><span class="val s-micGainV"></span>')+
@@ -435,8 +435,8 @@
         body.innerHTML=html;
         const c=q=>body.querySelector(q);
         body.querySelectorAll('.s-source').forEach(r=>r.addEventListener('change',e=>{ const v=e.target.value; switchSource(s, L, s.source, v);   // each source is its own profile (style + whole look) — swap the entire look in/out
-          if(v==='tab' && opts.isDriving && !opts.isDriving() && opts.connectKeyboard) opts.connectKeyboard();   // auto-handover: only Specific Tab is page-captured → grab the keyboard from the daemon so it reaches the keys (mic is daemon-driven now)
-          onAudioSource(v); buildLayerBody(card,L); scheduleSaveLayers(); }));   // tab starts in-tab capture; system/app/mic stop it (daemon-driven); rebuild so the App/Mic panels show/hide
+          if((v==='tab'||v==='mic') && opts.isDriving && !opts.isDriving() && opts.connectKeyboard) opts.connectKeyboard();   // auto-handover: Tab + Mic are page-captured (getUserMedia) → grab the keyboard so they reach the keys while this tab drives; the daemon mic sidecar covers the closed-tab case
+          onAudioSource(v); buildLayerBody(card,L); scheduleSaveLayers(); }));   // tab/mic start in-tab capture; system/app stop it (daemon-driven); rebuild so the App/Mic panels show/hide
         // re-pick: clicking the ALREADY-selected "Specific Tab" re-opens the share picker (a 'change' doesn't fire when it's already chosen)
         { const tabR=[...body.querySelectorAll('.s-source')].find(x=>x.value==='tab'); if(tabR) tabR.addEventListener('click',()=>{ if(s.source==='tab') onAudioSource('tab'); }); }
         // "Specific app" picker — populated from the daemon's list of currently-playing audio apps; the saved
@@ -639,7 +639,7 @@
               if(s.source==='tab' && liveAudioActive()){
                 const driving=opts.isDriving?opts.isDriving():true;   // the shared tab's TITLE isn't obtainable (opaque stream id), so don't show a wrong title
                 txt='▶ Shared tab'+(driving?'':'   ·   preview only — click “Drive from this Tab” to show it on the keyboard'); }
-              else if(s.source==='mic' && liveAudioActive()) txt='▶ Microphone';
+              else if(s.source==='mic' && liveAudioActive()){ const driving=opts.isDriving?opts.isDriving():true; txt='▶ Microphone'+(driving?'':'   ·   preview only — click “Drive from this Tab” to show it on the keyboard'); }
               if(txt!==_lastNow){ nowEl.textContent=txt; nowEl.style.color=(txt.indexOf('preview only')>=0)?'var(--warn,#e0a200)':''; _lastNow=txt; } }
             if(ctxS && cvS.offsetParent!==null && synth){ E.applyAudioFeatures(pState, synth.sample(now/1000), s, now); E.renderAudio(sampL, now, pState); paint(ctxS, sampL.rgb); }
             let dupOn=false;
