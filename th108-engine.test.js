@@ -290,6 +290,15 @@ test('crop clip masks every key outside the rectangle', () => {
   assert.ok(lit > 0, 'crop still lights keys inside the box');
 });
 
+test('Mic absolute-volume: bar height tracks input loudness (auto-gain off)', () => {
+  const run=(inAbs)=>{ const L={ type:'audio', enabled:true, opacity:1, blend:'add', settings:{ style:'bars', source:'mic' }, rgb:new Uint8Array(E.NLED*3) };
+    E.ensureSettings(L); const st=E.createState([L]); const frame={ level:1, live:1, inAbs, bands:new Array(32).fill(1) };
+    for(let f=0;f<25;f++) E.applyAudioFeatures(st, frame, st.layers[0].settings, f*16);   // let the envelope settle
+    let sum=0; for(let i=0;i<32;i++) sum+=st.audio.bands[i]; return sum; };
+  const quiet=run(0.1), loud=run(0.6);
+  assert.ok(loud > quiet*2, 'a louder mic input makes taller bars (absolute) instead of auto-gaining a faint tap to full');
+});
+
 test('mic noise gate mutes below-threshold input on the absolute level', () => {
   const L = { type:'audio', enabled:true, opacity:1, blend:'add', settings:{ style:'bars', source:'mic', micGate:30 }, rgb:new Uint8Array(E.NLED*3) };
   E.ensureSettings(L); const st = E.createState([L]); const La = st.layers[0];

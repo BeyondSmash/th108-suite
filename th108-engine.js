@@ -99,6 +99,11 @@
     const gain = p.gain || 1, lo = (p.floor||0)/100, hi = Math.max(lo + 0.02, (p.ceil==null?100:p.ceil)/100);
     const gamma = 1 + ((p.contrast==null?50:p.contrast)/100)*4;   // 0→1 (linear) … 100→5 (very punchy)
     const agc = p.agc !== false;   // auto-gain ON (default): peak→top per song, no manual re-gain. OFF: Gain is a plain linear sensitivity.
+    // MIC absolute-volume drive: with auto-gain OFF on the mic, the bar HEIGHT must track the true input loudness
+    // (a faint tap = short bars, a shout = tall) — the user's goal. The capture pre-normalizes bands/level (for
+    // volume-INDEPENDENCE, great for music, wrong for a mic VU), so we scale by the absolute input A.inAbs here.
+    // ×2 maps a loud-ish mic level (~0.5) to full; Mic gain trims sensitivity. null = not active (use the normal path).
+    const micAbs = (s.source==='mic' && !agc) ? Math.min(1, (A.inAbs||0)*gain*2) : null;
     const shape = (v)=>{ v=(v-lo)/(hi-lo); v=v<=0?0:(v>=1?1:v); return gamma!==1 ? Math.pow(v,gamma) : v; };
     const TARGET = 1.0;                                           // the recent loud peak maps to the TOP (true highs hit the ceiling, like the manual-gain workflow); typical passages fall below → mid
     // Peak follower: rises instantly, falls SLOWLY (~10s) to hold the chorus peak so verses sit lower (dynamics).
@@ -172,7 +177,7 @@
       if(!A._settling){ A._settling = true; A._settleT0 = now; }   // begin the glide from the held (last-loud) snapshot
       settleF = Math.max(0, 1 - (now - A._settleT0)/Math.max(60, pauseMs));   // 1 at onset → 0 after pauseMs (height-independent)
     } else A._settling = false;
-    const tgtLevel = lvl(raw.level);
+    const tgtLevel = micAbs!=null ? micAbs : lvl(raw.level);   // mic absolute-volume: level = true loudness, not peak-normalized
     A.level = silent ? sn.L*settleF : audioEnvelope(A.level, tgtLevel, dt, p.attackMs, p.decayMs);
     A.centroid = audioEnvelope(A.centroid, (raw.centroid==null?0.5:raw.centroid), dt, p.attackMs, p.decayMs);
     // beat: instantaneous rise, decay only (so a kick pops then fades); beatSens scales sensitivity
@@ -187,9 +192,10 @@
     else if(A.wave){ for(let i=0;i<WAVE_N;i++) A.wave[i] *= 0.8; }
     const rawClamp = (v)=>{ v=(v||0); return v<0?0:(v>1?1:v); };   // pre-AGC magnitude (NO peak normalize) — keeps the real bass→treble shape for Spread
     for(let i=0;i<32;i++){
-      const t = rb ? band(rb[i], i) : 0; A.bands[i] = silent ? sn.b[i]*settleF : audioEnvelope(A.bands[i], t, dt, p.attackMs, p.decayMs);
-      const tL = rbL ? bandRO(rbL[i], i) : t; A.bandsL[i] = silent ? sn.bL[i]*settleF : audioEnvelope(A.bandsL[i], tL, dt, p.attackMs, p.decayMs);
-      const tR = rbR ? bandRO(rbR[i], i) : t; A.bandsR[i] = silent ? sn.bR[i]*settleF : audioEnvelope(A.bandsR[i], tR, dt, p.attackMs, p.decayMs);
+      // mic absolute: band height = the per-band spectral SHAPE × absolute loudness (so quiet input = short bars).
+      const t = rb ? (micAbs!=null ? rawClamp(rb[i])*micAbs : band(rb[i], i)) : 0; A.bands[i] = silent ? sn.b[i]*settleF : audioEnvelope(A.bands[i], t, dt, p.attackMs, p.decayMs);
+      const tL = rbL ? (micAbs!=null ? rawClamp(rbL[i])*micAbs : bandRO(rbL[i], i)) : t; A.bandsL[i] = silent ? sn.bL[i]*settleF : audioEnvelope(A.bandsL[i], tL, dt, p.attackMs, p.decayMs);
+      const tR = rbR ? (micAbs!=null ? rawClamp(rbR[i])*micAbs : bandRO(rbR[i], i)) : t; A.bandsR[i] = silent ? sn.bR[i]*settleF : audioEnvelope(A.bandsR[i], tR, dt, p.attackMs, p.decayMs);
       const r = rb ? rawClamp(rb[i]) : 0;
       A.bandsRaw[i]  = silent ? sn.rb[i]*settleF  : audioEnvelope(A.bandsRaw[i],  r, dt, p.attackMs, p.decayMs);
       A.bandsRawL[i] = silent ? sn.rbL[i]*settleF : audioEnvelope(A.bandsRawL[i], rbL ? rawClamp(rbL[i]) : r, dt, p.attackMs, p.decayMs);
@@ -216,7 +222,7 @@
   // A "variant" is the style, EXCEPT Mic gets its own namespace ('mic\0'+style) — a microphone's input character
   // (ambient, continuous, jittery) differs from playback, so it keeps separate tuning with smoother defaults.
   const AUDIO_TUNE_DEFAULTS = { gain:1, floor:5, ceil:100, contrast:50, agc:true, attackMs:40, decayMs:220, pauseDecayMs:700, beatSens:50 };
-  const MIC_TUNE_DEFAULTS = { attackMs:80, decayMs:300, pauseDecayMs:1500 };   // smoother attack + a long graceful settle (ambient input glides down, doesn't snap)
+  const MIC_TUNE_DEFAULTS = { attackMs:80, decayMs:300, pauseDecayMs:1500, agc:false };   // smoother attack + a long graceful settle; AGC OFF so bar HEIGHT tracks absolute loudness (a tap = short, a shout = tall)
   function audioVariantKey(s){ return (s.source==='mic' ? 'mic ' : '') + (s.style || 'bars'); }
   function audioParams(s){
     const key = audioVariantKey(s), defs = s.source==='mic' ? Object.assign({}, AUDIO_TUNE_DEFAULTS, MIC_TUNE_DEFAULTS) : AUDIO_TUNE_DEFAULTS;
