@@ -672,21 +672,22 @@
     const tw = 0.5 + (s.waveThick==null?50:s.waveThick)/100*2;          // line half-width in rows
     const mid = (GH-1)/2;
     // PER-LAYER scroll/smoothing state (W = L if present, else A): keeps the keyboard render and the card's preview
-    // — which both render this audio — from sharing/fighting one phase. dt CLAMPED to 50ms so a frame hitch can't
-    // jolt the phase or the smoothing.
+    // — which both render this audio — from fighting over one phase.
     const W = L || A;
-    const dt = W._waveT ? Math.max(1, Math.min(50, now - W._waveT)) : 16; W._waveT = now;
-    // Targets from the audio, then low-passed so they GLIDE (no per-frame flicker / transient jitter).
-    const loudT = (s.waveDrive==='beat') ? Math.min(1, A.level*0.4 + A.beat*0.7) : Math.min(1, A.level);
-    const freqT = 1.8 + (A.centroid==null?0.5:A.centroid)*1.4;          // cycles across the board (brighter audio = a few more ripples) — narrow range so the wavelength barely shifts
-    const spdT  = 1.4 + A.level*2.2;                                    // scroll speed (gently faster when louder)
-    const ke = 1-Math.exp(-dt/260), kf = 1-Math.exp(-dt/900);          // ~260ms for loudness, ~900ms for freq/speed → smooth swells, very gradual wavelength
+    const realDt = W._waveT ? Math.max(1, now - W._waveT) : 16; W._waveT = now;
+    const pdt = Math.min(realDt, 200);   // PHASE uses real elapsed time (time-accurate scroll) — cap only huge gaps (tab switch)
+    const sdt = Math.min(realDt, 50);    // SMOOTHING dt capped so a frame hitch can't jolt the envelope/frequency
+    // AMPLITUDE rides BEATS + loudness (NOT the auto-gained level alone — for music that's ~constant, so the wave
+    // never moved). Beats make it visibly TALLER; FREQUENCY rides spectral brightness over a WIDE range so it gets
+    // visibly wider (bass) / thinner (treble). Scroll speed is STEADY (a gliding speed read as left/right jerking).
+    const loudT = (s.waveDrive==='beat') ? Math.min(1, A.level*0.25 + A.beat*0.9) : Math.min(1, A.level*0.45 + A.beat*0.75);
+    const freqT = 1.2 + (A.centroid==null?0.5:A.centroid)*3.3;          // 1.2–4.5 cycles across the board → clearly wider/thinner with the music
+    const ke = 1-Math.exp(-sdt/170), kf = 1-Math.exp(-sdt/280);        // ~170ms loudness (visible swells, no flicker), ~280ms frequency (visible but smooth)
     W._wEnv  = W._wEnv ==null ? loudT : W._wEnv  + (loudT-W._wEnv )*ke;
     W._wFreq = W._wFreq==null ? freqT : W._wFreq + (freqT-W._wFreq)*kf;
-    W._wSpd  = W._wSpd ==null ? spdT  : W._wSpd  + (spdT -W._wSpd )*kf;
-    W._wPhase = (W._wPhase||0) + W._wSpd * dt/1000;                     // CONTINUOUS phase → a speed change never jumps the wave
+    W._wPhase = (W._wPhase||0) + 2.3 * pdt/1000;                        // STEADY continuous scroll (constant rate → no speed-jerk)
     const env=W._wEnv, waves=W._wFreq, ph0=W._wPhase;
-    const ampl = 0.1 + 0.9*env, bright = 0.15 + 0.85*env;              // a gentle baseline wave that grows + brightens with the song
+    const ampl = 0.06 + 0.94*env, bright = 0.15 + 0.85*env;            // amplitude + brightness ride the (beat-driven) envelope → taller & brighter on hits
     for(let k=0;k<NLED;k++){
       const idx = INDICES[k], cell = GRID[idx]; if(!cell) continue;
       const col = cell[0], row = cell[1], o = k*3, fc = GW>1 ? col/(GW-1) : 0;
