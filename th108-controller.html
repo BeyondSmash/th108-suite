@@ -1396,6 +1396,10 @@ attachHex(document.getElementById('gifPanel'));   // typeable hex box on the GIF
 // while testing keys, don't let a focused <select> hijack letter presses (type-ahead); keep arrow/enter nav
 document.addEventListener('keydown',e=>{ if(e.target && e.target.tagName==='SELECT' && e.key && e.key.length===1) e.preventDefault(); }, true);
 document.addEventListener('change',e=>{ const t=e.target; if(t && (t.tagName==='SELECT' || t.type==='color')) t.blur(); }, true);   // drop focus after picking a select/color so a later keypress (e.g. a media key) doesn't make a stray focus ring appear on it
+// Click on non-interactive space → blur the focused control, so a dropdown/number box doesn't stay highlight-selected
+// until you click far away. (Clicking another control/label/button transfers focus normally; we don't touch those.)
+document.addEventListener('mousedown',e=>{ const ae=document.activeElement;
+  if(ae && (ae.tagName==='SELECT'||ae.tagName==='INPUT'||ae.tagName==='TEXTAREA') && ae!==e.target && !e.target.closest('input,select,textarea,button,label,a,[contenteditable]')) ae.blur(); }, true);
 
 // ===== theme (light/dark) — crossfaded via the View Transitions API (Chromium has it; WebHID already requires Chromium) =====
 if(!document.startViewTransition) document.documentElement.classList.add('no-vt');   // arms the CSS-transition fallback for the theme switch
