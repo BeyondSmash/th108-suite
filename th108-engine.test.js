@@ -331,13 +331,17 @@ test('renderBloom lights center keys on a beat and is dark with no beat', () => 
   assert.ok(onBeat > noBeat, 'a beat blooms; silence is dark');
 });
 
-test('renderWave lights a scrolling line and reacts to band energy', () => {
+test('renderWave lights the traveling line with audio and is dark on silence', () => {
   const L = { type:'audio', enabled:true, opacity:1, blend:'add', settings:{ style:'wave' }, rgb:new Uint8Array(E.NLED*3) };
   E.ensureSettings(L); const st = E.createState([L]); const La = st.layers[0];
-  st.audio.bands.fill(1);
+  st.audio.level = 1; st.audio.centroid = 0.5;
   E.renderAudio(La, 0, st);
   let lit=0; for(let i=0;i<La.rgb.length;i++) if(La.rgb[i]>0) lit++;
-  assert.ok(lit > 0, 'wave lights keys near the trace');
+  assert.ok(lit > 0, 'wave lights keys near the trace when there is audio');
+  La.rgb.fill(0); st.audio.level = 0; st.audio.beat = 0;
+  for(let f=0; f<20; f++) E.renderAudio(La, f*30, st);   // let the envelope settle to silence
+  let silent=0; for(let i=0;i<La.rgb.length;i++) silent+=La.rgb[i];
+  assert.equal(silent, 0, 'silence/pause → fully dark (no dim center line)');
 });
 
 test('audio duck dims a target layer only while the audio layer is emitting light', () => {
