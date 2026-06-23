@@ -685,7 +685,7 @@ function shutdown(code = 0) {
   // that freeze the JS thread, so the timer never fires and the process zombies (server closed, but never exits →
   // the supervisor can't revive a child that didn't die; happened on a wedged board 2026-06-23). An outside killer
   // is immune to the frozen thread. If we exit cleanly first, the taskkill just hits a dead PID (harmless).
-  try { require('child_process').spawn(process.env.ComSpec || 'cmd.exe', ['/c', 'timeout /t 3 /nobreak >nul & taskkill /F /PID ' + process.pid], { detached: true, stdio: 'ignore', windowsHide: true }).unref(); } catch {}
+  try { require('child_process').spawn('powershell.exe', ['-NoProfile', '-WindowStyle', 'Hidden', '-Command', 'Start-Sleep -Seconds 3; Stop-Process -Id ' + process.pid + ' -Force -ErrorAction SilentlyContinue'], { stdio: 'ignore', windowsHide: true }).unref(); } catch {}   // PowerShell hidden (like the sidecars) → NO cmd-window flash; survives our exit, force-kills us if we hang
   try { clearInterval(timer); } catch {}
   // FREE PORT 8123 FIRST. A wedged/muted board can make the HID cleanup below block (node-hid write/close
   // are synchronous native calls), and if that hangs while the port is still held, the supervisor's revived
