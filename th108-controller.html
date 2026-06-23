@@ -1159,8 +1159,10 @@ function feedAudio(now){
   const aL = state.layers.find(L=>L.enabled && L.type==='audio');
   if(!aL) return;
   const src = aL.settings.source;
-  // tab = in-tab webCap; system/app/mic = the daemon's polled frame; else silent (no synth on the real keys).
-  const raw = webCap.active() ? webCap.sample() : ((src==='system'||src==='app'||src==='mic') ? _dmnAudio : null);
+  // ONLY tab/mic use the in-page webCap — gate on src so a still-closing mic stream can't keep feeding after you
+  // switch to System/App (it lingered ~15s while getUserMedia released). system/app/mic(closed-tab) = daemon frame.
+  const usePage = (src==='tab' || src==='mic') && webCap.active();
+  const raw = usePage ? webCap.sample() : ((src==='system'||src==='app'||src==='mic') ? _dmnAudio : null);
   TH108Engine.applyAudioFeatures(state, raw || {}, aL.settings, now);
 }
 function audioFeedTick(now){
