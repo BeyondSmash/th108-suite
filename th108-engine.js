@@ -99,11 +99,11 @@
     const gain = p.gain || 1, lo = (p.floor||0)/100, hi = Math.max(lo + 0.02, (p.ceil==null?100:p.ceil)/100);
     const gamma = 1 + ((p.contrast==null?50:p.contrast)/100)*4;   // 0→1 (linear) … 100→5 (very punchy)
     const agc = p.agc !== false;   // auto-gain ON (default): peak→top per song, no manual re-gain. OFF: Gain is a plain linear sensitivity.
-    // MIC absolute-volume drive: with auto-gain OFF on the mic, the bar HEIGHT must track the true input loudness
-    // (a faint tap = short bars, a shout = tall) — the user's goal. The capture pre-normalizes bands/level (for
-    // volume-INDEPENDENCE, great for music, wrong for a mic VU), so we scale by the absolute input A.inAbs here.
-    // ×2 maps a loud-ish mic level (~0.5) to full; Mic gain trims sensitivity. null = not active (use the normal path).
-    const micAbs = (s.source==='mic' && !agc) ? Math.min(1, (A.inAbs||0)*gain*2) : null;
+    // MIC absolute-volume drive: a mic is a VU — bar HEIGHT must track the true input loudness (a faint tap =
+    // short bars, a shout = tall). The capture pre-normalizes bands/level (volume-INDEPENDENCE, great for music,
+    // wrong for a mic), so we scale by the absolute input A.inAbs (RMS) here. ALWAYS on for mic (not tied to the
+    // auto-gain toggle) so a stale agc:true saved setting can't make a faint tap peg the board. Mic gain trims it.
+    const micAbs = (s.source==='mic') ? Math.min(1, (A.inAbs||0)*gain*2) : null;
     const shape = (v)=>{ v=(v-lo)/(hi-lo); v=v<=0?0:(v>=1?1:v); return gamma!==1 ? Math.pow(v,gamma) : v; };
     const TARGET = 1.0;                                           // the recent loud peak maps to the TOP (true highs hit the ceiling, like the manual-gain workflow); typical passages fall below → mid
     // Peak follower: rises instantly, falls SLOWLY (~10s) to hold the chorus peak so verses sit lower (dynamics).
@@ -662,39 +662,36 @@
     }
   }
 
-  // Wave: a DAW-style AMPLITUDE WAVEFORM of the live audio. Columns are the time axis (L→R); each column draws a
-  // bar SYMMETRIC about the middle row whose half-height = that time-slice's amplitude (A.wave = per-slice peak).
-  // Loud slice → tall, quiet → thin — the recognizable "waveform" shape. A raw oscilloscope line aliases into
-  // noise on only 21 columns, so the envelope is the readable representation. Falls back to a band-driven shape
-  // if no PCM is present (a capture path that emits no `wave`).
+  // Wave: a SCROLLING amplitude waveform. Each ~70ms we push the current loudness onto a history ring; the last
+  // GW points map across the columns and draw a bar SYMMETRIC about the middle row (height = that moment's
+  // loudness). So beats/peaks travel across the board like a real waveform/VU trace — the recognizable, undulating
+  // "wave" shape. (A true PCM oscilloscope aliases into noise on 21 columns, and a single-window envelope is flat
+  // because music amplitude is ~constant over 23ms; a TIME history is what reads as a wave at this resolution.)
   function renderWave(s, out, A, now){
     let col0 = hexToRgb(s.waveColor||'#00e0ff'), col2 = hexToRgb(s.waveColor2||'#ff00aa'); const grad = !!s.waveGrad;
     if(grad && s.waveGradRev){ const tmp=col0; col0=col2; col2=tmp; }   // reverse gradient colors
-    const dir = s.waveReverse ? -1 : 1;
-    // Drive: Volume (default) = brightness rides loudness; Beat = the waveform flashes brighter on each kick.
-    const lvl = Math.max(0, Math.min(1, (s.waveDrive==='beat') ? A.beat : A.level));
-    const W = A.wave, amp = (s.waveAmp==null?100:s.waveAmp)/100;      // vertical gain (×, on top of the auto-scale below)
-    // Auto-scale to the recent peak amplitude so the waveform uses the full height at any input level (a quiet
-    // passage still shows a wave). Gate on a real peak so silence / a no-PCM path falls back to the synthetic shape.
-    let wpk = 0; if(W){ for(let i=0;i<W.length;i++){ if(W[i]>wpk) wpk=W[i]; } }
-    const hasWave = !!W && wpk > 0.02, WN = hasWave ? W.length : 0, wScale = 1/Math.max(wpk, 0.08);
-    const edge = 0.5 + (s.waveThick==null?50:s.waveThick)/100*1.5;    // soft-edge width in rows (thickness feathers the top/bottom of the bar)
-    const mid = (GH-1)/2, t = now/1000;
+    const dir = s.waveReverse ? -1 : 1, amp = (s.waveAmp==null?100:s.waveAmp)/100;
+    const edge = 0.5 + (s.waveThick==null?50:s.waveThick)/100*1.5;      // soft-edge width in rows (feathers the bar top/bottom)
+    const mid = (GH-1)/2;
+    // History ring (one slot per column). Push the current loudness on a ~70ms cadence so the GW columns span ~1.5s
+    // of audio. Gate by time so multiple renders in one frame (live + duplicate preview) don't double-advance it.
+    if(!A._whist || A._whist.length!==GW){ A._whist = new Float32Array(GW); A._whistT = 0; }
+    const hist = A._whist;
+    if(!A._whistT || now - A._whistT >= 70 || now < A._whistT){ A._whistT = now;
+      // Drive: Volume = the loudness envelope; Beat = beat-weighted so kicks punch through as tall spikes.
+      const push = (s.waveDrive==='beat') ? Math.min(1, A.level*0.3 + A.beat*0.95) : Math.min(1, A.level*0.7 + A.beat*0.4);
+      for(let i=0;i<GW-1;i++) hist[i]=hist[i+1]; hist[GW-1]=push;   // scroll left, newest at the right
+    }
+    let hpk=0.06; for(let i=0;i<GW;i++) if(hist[i]>hpk) hpk=hist[i];   // auto-scale to the recent peak so it always fills
+    const hScale = 1/hpk;
     for(let k=0;k<NLED;k++){
       const idx = INDICES[k], cell = GRID[idx]; if(!cell) continue;
-      const col = cell[0], row = cell[1], o = k*3;
-      const fc = GW>1 ? col/(GW-1) : 0;
-      let half;   // half-height of this column's symmetric bar, in rows
-      if(WN){
-        const fpos = (dir>0 ? fc : 1-fc) * (WN-1), i0 = Math.floor(fpos), i1 = Math.min(WN-1, i0+1), fr = fpos-i0;
-        let aSamp = (W[i0]*(1-fr) + W[i1]*fr) * wScale; if(aSamp>1) aSamp=1; else if(aSamp<0) aSamp=0;   // 0..1 amplitude, peak-normalized
-        half = aSamp * amp * mid;
-      } else {
-        const band = Math.min(31, Math.round(fc*31));                // fallback: per-band amplitude (no live PCM)
-        half = Math.abs(Math.sin(t*6 + dir*col*0.6)) * A.bands[band] * amp * mid;
-      }
-      const dist = Math.abs(row - mid);                              // rows from the center line
-      const v = Math.max(0, Math.min(1, 1 - (dist - half)/edge)) * (0.15 + 0.85*lvl);   // filled within ±half, feathered by `edge`
+      const col = cell[0], row = cell[1], o = k*3, fc = GW>1 ? col/(GW-1) : 0;
+      const hi = dir>0 ? col : (GW-1-col);                            // column → history slot (newest on the right; reverse flips)
+      let aSamp = hist[Math.max(0,Math.min(GW-1,hi))] * hScale * amp; if(aSamp>1) aSamp=1; else if(aSamp<0) aSamp=0;
+      const half = aSamp * mid;                                       // half-height of this column's symmetric bar
+      const dist = Math.abs(row - mid);
+      const v = Math.max(0, Math.min(1, 1 - (dist - half)/edge)) * (0.4 + 0.6*aSamp);   // brightness also rides the local height
       if(v < 0.05){ out[o]=out[o+1]=out[o+2]=0; continue; }
       const c = grad ? [col0[0]+(col2[0]-col0[0])*fc, col0[1]+(col2[1]-col0[1])*fc, col0[2]+(col2[2]-col0[2])*fc] : col0;   // start→end (left→right)
       out[o]=(c[0]*v)|0; out[o+1]=(c[1]*v)|0; out[o+2]=(c[2]*v)|0;

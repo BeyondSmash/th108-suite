@@ -314,13 +314,13 @@ test('mic noise gate mutes below-threshold input on the absolute level', () => {
   assert.ok(lit2 > 0, 'inAbs 0.8 > gate 0.30 → board lights');
 });
 
-test('renderWave amplitude envelope: louder slices = taller bars', () => {
-  const litCount=(amp)=>{ const L={ type:'audio', enabled:true, opacity:1, blend:'add', settings:{ style:'wave', waveAmp:100, waveThick:20 }, rgb:new Uint8Array(E.NLED*3) };
-    E.ensureSettings(L); const st=E.createState([L]); const La=st.layers[0]; st.audio.level=1; st.audio.wave=new Float32Array(64).fill(amp);
-    E.renderAudio(La, 0, st); let n=0; for(let k=0;k<E.NLED;k++){ const o=k*3; if(La.rgb[o]||La.rgb[o+1]||La.rgb[o+2]) n++; } return n; };
-  const loud=litCount(1.0), quiet=litCount(0.03);   // 0.03 is below the auto-scale floor → genuinely shorter bars
-  assert.ok(loud > quiet, 'a full-amplitude waveform fills more rows (taller bars) than a near-silent one');
-  assert.ok(quiet > 0, 'a quiet waveform still shows a thin trace near the center');
+test('renderWave scrolling history: sound (with beats) fills more than silence', () => {
+  const litCount=(withSound)=>{ const L={ type:'audio', enabled:true, opacity:1, blend:'add', settings:{ style:'wave', waveAmp:100, waveThick:20 }, rgb:new Uint8Array(E.NLED*3) };
+    E.ensureSettings(L); const st=E.createState([L]); const La=st.layers[0];
+    for(let f=0; f<30; f++){ st.audio.level = withSound?0.6:0; st.audio.beat = (withSound && f%3===0)?1:0; E.renderAudio(La, f*100, st); }   // 100ms steps → the 70ms ring gate pushes each frame
+    let n=0; for(let k=0;k<E.NLED;k++){ const o=k*3; if(La.rgb[o]||La.rgb[o+1]||La.rgb[o+2]) n++; } return n; };
+  const sound=litCount(true), silence=litCount(false);
+  assert.ok(sound > silence, 'a beating signal scrolls tall peaks across the board; silence collapses to a flat center line');
 });
 
 test('renderBloom lights center keys on a beat and is dark with no beat', () => {
@@ -380,13 +380,14 @@ test('a non-emitting audio layer is transparent (multiply-black must not dim the
   assert.ok(anyDim, 'emitting audio layer composites (multiply changes the board)');
 });
 
-test('renderWave reverse flips the scroll direction (different frame, same instant)', () => {
-  const mkL=rev=>{ const L={type:'audio',enabled:true,opacity:1,blend:'add',settings:{style:'wave',waveReverse:rev},rgb:new Uint8Array(E.NLED*3)}; E.ensureSettings(L); return L; };
-  const Lf=mkL(false), Lr=mkL(true);
-  const st=E.createState([Lf]); st.audio.bands.fill(0.7);
-  E.renderAudio(Lf, 500, st); E.renderAudio(Lr, 500, st);
-  let diff=false; for(let i=0;i<Lf.rgb.length;i++) if(Lf.rgb[i]!==Lr.rgb[i]){ diff=true; break; }
-  assert.ok(diff, 'reverse produces a different waveform than forward at the same instant');
+test('renderWave reverse mirrors the scroll direction', () => {
+  const build=rev=>{ const L={type:'audio',enabled:true,opacity:1,blend:'add',settings:{style:'wave',waveReverse:rev},rgb:new Uint8Array(E.NLED*3)}; E.ensureSettings(L);
+    const st=E.createState([L]), La=st.layers[0];
+    for(let f=0; f<E.GW; f++){ st.audio.level=f/E.GW; st.audio.beat=0; E.renderAudio(La, f*100, st); }   // rising ramp → history grows newest→loudest
+    return La.rgb; };
+  const fwd=build(false), rev=build(true);   // forward = tall on the newest (right) edge; reverse mirrors it to the left
+  let diff=false; for(let i=0;i<fwd.length;i++) if(fwd[i]!==rev[i]){ diff=true; break; }
+  assert.ok(diff, 'reverse flips which side the newest (tallest) part of the waveform scrolls to');
 });
 
 test('renderBars tip outlines the topmost lit key of a column with the tip color', () => {
