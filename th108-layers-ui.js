@@ -402,7 +402,7 @@
         // setting — so those aren't offered (nothing to copy). Source list = styles you've actually tuned.
         const STYLE_LABELS={bars:'Spectrum Bars',pulse:'Beat Pulse',bloom:'Radial Bloom',wave:'Waveform',aurora:'Aurora',sparkle:'Starfield'};
         const tunedStyles=Object.keys(s.ap||{}).filter(st=>st!==style && STYLE_LABELS[st]);
-        const copyCtl = tunedStyles.length ? full('<span style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;flex:1 1 100%;justify-content:center"><span class="val" style="opacity:.7">Copy from</span><select class="s-copyFrom">'+tunedStyles.map(st=>'<option value="'+st+'">'+STYLE_LABELS[st]+'</option>').join('')+'</select><label class="sl" style="margin:0"><input type="checkbox" class="s-copyTuning" checked> Tuning</label><label class="sl" style="margin:0"><input type="checkbox" class="s-copyDyn" checked> Dynamics</label><button type="button" class="s-copyApply" style="flex:none">Apply</button></span>') : '';
+        const copyCtl = tunedStyles.length ? full('<span style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;flex:1 1 100%;justify-content:center"><span class="val" style="opacity:.7">Copy from</span><select class="s-copyFrom">'+tunedStyles.map(st=>'<option value="'+st+'">'+STYLE_LABELS[st]+'</option>').join('')+'</select><label class="sl" style="margin:0"><input type="checkbox" class="s-copyTuning" checked> Tuning</label><label class="sl" style="margin:0"><input type="checkbox" class="s-copyDyn" checked> Dynamics</label><button type="button" class="s-copyApply" style="flex:none">Apply</button>'+(s._copyUndo?'<button type="button" class="s-copyUndo" style="flex:none" title="revert the last Apply">Undo</button>':'')+'</span>') : '';
         html+=
           '</div><div class="ctl s-tuningCtl">'+   // close the colors .ctl and open a separate Tuning .ctl so the shared Adjust block can sit BETWEEN them (under color editing, above Tuning)
           sec('Tuning')+
@@ -472,13 +472,21 @@
         });
         { const ps=c('.s-pauseStyle'); if(ps) ps.addEventListener('change',e=>s.pauseStyle=e.target.value); }   // layer-level pause behavior: linear settle vs twinkle-out
         // Copy-from Apply: clone the chosen style's Tuning (ap) and/or Dynamics trio into THIS style, then rebuild.
-        { const btn=c('.s-copyApply'); if(btn) btn.addEventListener('click',()=>{
-            const sel=c('.s-copyFrom'); if(!sel||!sel.value) return; const src=sel.value;
-            if(c('.s-copyTuning') && c('.s-copyTuning').checked && s.ap && s.ap[src]) s.ap[style]=JSON.parse(JSON.stringify(s.ap[src]));   // wholesale ap copy (audioParams backfills any missing keys on rebuild)
-            if(c('.s-copyDyn') && c('.s-copyDyn').checked){ const DP={bars:'bar',pulse:'pulse',bloom:'bloom',sparkle:'sparkle'}, sp=DP[src], dp=DP[style];
-              if(sp&&dp){ s[dp+'Dynamics']=s[sp+'Dynamics']; s[dp+'DynamicsAlpha']=s[sp+'DynamicsAlpha']; s[dp+'DynamicsDepth']=s[sp+'DynamicsDepth']; } }   // wave/aurora have no dynamics → silently skipped
+        { const DP={bars:'bar',pulse:'pulse',bloom:'bloom',sparkle:'sparkle'};
+          const btn=c('.s-copyApply'); if(btn) btn.addEventListener('click',()=>{
+            const sel=c('.s-copyFrom'); if(!sel||!sel.value) return; const src=sel.value, dst=E.audioVariantKey(s), dp=DP[style];
+            const undo={};   // snapshot what we're about to overwrite, so Undo can revert this exact Apply
+            if(c('.s-copyTuning') && c('.s-copyTuning').checked && s.ap && s.ap[src]){ undo.ap=JSON.parse(JSON.stringify(s.ap[dst]||{})); s.ap[dst]=JSON.parse(JSON.stringify(s.ap[src])); }
+            if(c('.s-copyDyn') && c('.s-copyDyn').checked){ const sp=DP[src];
+              if(sp&&dp){ undo.dyn={Dynamics:s[dp+'Dynamics'], DynamicsAlpha:s[dp+'DynamicsAlpha'], DynamicsDepth:s[dp+'DynamicsDepth']};
+                s[dp+'Dynamics']=s[sp+'Dynamics']; s[dp+'DynamicsAlpha']=s[sp+'DynamicsAlpha']; s[dp+'DynamicsDepth']=s[sp+'DynamicsDepth']; } }   // wave/aurora have no dynamics → silently skipped
+            s._copyUndo = undo;
             buildLayerBody(card,L); scheduleSaveLayers();
-          }); }
+          });
+          const ub=c('.s-copyUndo'); if(ub) ub.addEventListener('click',()=>{ const u=s._copyUndo||{}, dst=E.audioVariantKey(s), dp=DP[style];
+            if(u.ap){ if(!s.ap) s.ap={}; s.ap[dst]=u.ap; }
+            if(u.dyn&&dp){ s[dp+'Dynamics']=u.dyn.Dynamics; s[dp+'DynamicsAlpha']=u.dyn.DynamicsAlpha; s[dp+'DynamicsDepth']=u.dyn.DynamicsDepth; }
+            delete s._copyUndo; buildLayerBody(card,L); scheduleSaveLayers(); }); }
         { const bd=c('.s-barDrive'); if(bd) bd.addEventListener('change',e=>{ s.barDrive=e.target.value; buildLayerBody(card,L); }); }   // rebuild so the Spread toggle shows/hides
         { const bsp=c('.s-barSpread'); if(bsp) bsp.addEventListener('change',e=>s.barSpread=e.target.checked); }
         { const bc=c('.s-barColor'); if(bc) bc.addEventListener('change',e=>{ s.barColor=e.target.value; buildLayerBody(card,L); }); }   // rebuild so bass/treble vs gradient vs vu color pickers swap
