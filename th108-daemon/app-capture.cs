@@ -238,12 +238,15 @@ class AppCapture {
       bands[b]=(float)Math.Min(1.0, Math.Max(0.0, nb)); }
   }
 
-  // Downsample the most-recent PCM into wave[] (time-domain oscilloscope trace for the Waveform style). Mirrors audio-sidecar.ps1.
+  // Downsample the most-recent PCM into wave[] (time-domain oscilloscope trace). BUCKET-AVERAGE (box filter), NOT
+  // decimation — decimation aliases music into noise. Mirrors audio-sidecar.ps1.
   static void Wave(float[] mono, int count, float[] wave) {
     int WN=wave.Length;
     if (count < WN) { for(int i=0;i<WN;i++) wave[i]=0; return; }
-    int span = Math.Min(count, 1024); int start = count - span;
-    for (int i=0;i<WN;i++){ int idx = start + (int)((long)i*(span-1)/(WN-1)); wave[i]=mono[idx]; }
+    int span = Math.Min(count, 1024), start = count - span, half = Math.Max(1, span/WN);
+    for (int i=0;i<WN;i++){ int ctr = start + (int)((long)i*(span-1)/(WN-1)); double sum=0; int n=0;
+      for (int j=ctr-half;j<=ctr+half;j++){ if(j>=0 && j<count){ sum+=mono[j]; n++; } }
+      wave[i]=(float)(n>0?sum/n:0); }
   }
 
   // ---------- audio-session enumeration (--list and name→PID resolution) ----------

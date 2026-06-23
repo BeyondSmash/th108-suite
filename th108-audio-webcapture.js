@@ -97,9 +97,13 @@
       const beat = Math.max(0, Math.min(1, Math.max(fluxOnset, lvlOnset)));
       const centroid = centDen > 0 ? Math.min(1, (centNum / centDen) / bins * 2) : 0.5;
       // Downsample the time-domain PCM to a 64-point oscilloscope trace (last ~1024 samples ≈ 23ms) for the
-      // Waveform style. `time` is -1..1 float PCM (getFloatTimeDomainData, captured above).
+      // Waveform style. BUCKET-AVERAGE (overlapping box filter), NOT decimation: picking every Nth sample aliases
+      // high-frequency music into noise ("scrambled"); averaging low-passes it to the smooth low-freq wave shape.
       const WN = 64, span = Math.min(time.length, 1024), start = time.length - span, wave = new Array(WN);
-      for (let i = 0; i < WN; i++) wave[i] = time[start + ((i * (span - 1) / (WN - 1)) | 0)];
+      const half = Math.max(1, (span / WN) | 0);   // ~half-window = the stride → ~2× overlap → de-aliasing low-pass
+      for (let i = 0; i < WN; i++) { const ctr = start + ((i * (span - 1) / (WN - 1)) | 0); let sum = 0, n = 0;
+        for (let j = ctr - half; j <= ctr + half; j++) { if (j >= 0 && j < time.length) { sum += time[j]; n++; } }
+        wave[i] = n ? sum / n : 0; }
       // inAbs = the ABSOLUTE input level (pre auto-gain), so a noise gate can act on the true mic level.
       // `level` is already normalized to the recent peak, so a steady fan reads ~1 there and can't be gated.
       return { bands, bandsL, bandsR, level, beat, centroid, wave, inAbs: Math.min(1, inst), t: ctx ? ctx.currentTime * 1000 : 0 };

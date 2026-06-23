@@ -181,7 +181,9 @@
     // Time-domain PCM trace for the Waveform style (oscilloscope). Latest frame, not peak-held — it's a live
     // signal. When a frame carries no PCM (stale/silent feed) relax toward flat so the trace settles to a line.
     if(raw.wave && raw.wave.length){ if(!A.wave) A.wave = new Float32Array(WAVE_N);
-      const w = raw.wave, n = Math.min(WAVE_N, w.length); for(let i=0;i<n;i++) A.wave[i] = w[i]; }
+      // temporal smoothing: blend toward the new frame instead of replacing — consecutive capture windows are
+      // ~16ms apart, so a hard swap makes the trace JUMP (reads as scramble); blending makes it flow like a wave.
+      const w = raw.wave, n = Math.min(WAVE_N, w.length); for(let i=0;i<n;i++) A.wave[i] = A.wave[i]*0.45 + w[i]*0.55; }
     else if(A.wave){ for(let i=0;i<WAVE_N;i++) A.wave[i] *= 0.8; }
     const rawClamp = (v)=>{ v=(v||0); return v<0?0:(v>1?1:v); };   // pre-AGC magnitude (NO peak normalize) — keeps the real bass→treble shape for Spread
     for(let i=0;i<32;i++){

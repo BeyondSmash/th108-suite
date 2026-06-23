@@ -185,12 +185,14 @@ public static class Cap {
   }
 
   // Downsample the most-recent PCM into wave[] (a time-domain oscilloscope trace for the Waveform style).
-  // Decimate the last min(count,1024) samples evenly into wave.Length points (-1..1, no windowing).
+  // BUCKET-AVERAGE (overlapping box filter) the last min(count,1024) samples — decimation aliases music into noise.
   public static void Wave(float[] mono, int count, float[] wave) {
     int WN=wave.Length;
     if (count < WN) { for(int i=0;i<WN;i++) wave[i]=0; return; }
-    int span = Math.Min(count, 1024); int start = count - span;
-    for (int i=0;i<WN;i++){ int idx = start + (int)((long)i*(span-1)/(WN-1)); wave[i]=mono[idx]; }
+    int span = Math.Min(count, 1024), start = count - span, half = Math.Max(1, span/WN);
+    for (int i=0;i<WN;i++){ int ctr = start + (int)((long)i*(span-1)/(WN-1)); double sum=0; int n=0;
+      for (int j=ctr-half;j<=ctr+half;j++){ if(j>=0 && j<count){ sum+=mono[j]; n++; } }
+      wave[i]=(float)(n>0?sum/n:0); }
   }
 }
 "@
