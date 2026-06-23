@@ -662,36 +662,27 @@
     }
   }
 
-  // Wave: a SCROLLING amplitude waveform. Each ~70ms we push the current loudness onto a history ring; the last
-  // GW points map across the columns and draw a bar SYMMETRIC about the middle row (height = that moment's
-  // loudness). So beats/peaks travel across the board like a real waveform/VU trace — the recognizable, undulating
-  // "wave" shape. (A true PCM oscilloscope aliases into noise on 21 columns, and a single-window envelope is flat
-  // because music amplitude is ~constant over 23ms; a TIME history is what reads as a wave at this resolution.)
+  // Wave: a clean traveling SINE LINE (the readable "wave" look from the synth preview) DRIVEN by the audio —
+  // its amplitude pulses with loudness + beats, it scrolls over time, and its ripple count rides spectral
+  // brightness. A raw PCM oscilloscope aliases into noise on 21 columns; a music-modulated sine is the legible
+  // "waveform" at this resolution. Silence → a flat, dim center line; louder/beatier → a bigger, brighter wave.
   function renderWave(s, out, A, now){
     let col0 = hexToRgb(s.waveColor||'#00e0ff'), col2 = hexToRgb(s.waveColor2||'#ff00aa'); const grad = !!s.waveGrad;
     if(grad && s.waveGradRev){ const tmp=col0; col0=col2; col2=tmp; }   // reverse gradient colors
     const dir = s.waveReverse ? -1 : 1, amp = (s.waveAmp==null?100:s.waveAmp)/100;
-    const edge = 0.5 + (s.waveThick==null?50:s.waveThick)/100*1.5;      // soft-edge width in rows (feathers the bar top/bottom)
-    const mid = (GH-1)/2;
-    // History ring (one slot per column). Push the current loudness on a ~70ms cadence so the GW columns span ~1.5s
-    // of audio. Gate by time so multiple renders in one frame (live + duplicate preview) don't double-advance it.
-    if(!A._whist || A._whist.length!==GW){ A._whist = new Float32Array(GW); A._whistT = 0; }
-    const hist = A._whist;
-    if(!A._whistT || now - A._whistT >= 70 || now < A._whistT){ A._whistT = now;
-      // Drive: Volume = the loudness envelope; Beat = beat-weighted so kicks punch through as tall spikes.
-      const push = (s.waveDrive==='beat') ? Math.min(1, A.level*0.3 + A.beat*0.95) : Math.min(1, A.level*0.7 + A.beat*0.4);
-      for(let i=0;i<GW-1;i++) hist[i]=hist[i+1]; hist[GW-1]=push;   // scroll left, newest at the right
-    }
-    let hpk=0.06; for(let i=0;i<GW;i++) if(hist[i]>hpk) hpk=hist[i];   // auto-scale to the recent peak so it always fills
-    const hScale = 1/hpk;
+    const tw = 0.5 + (s.waveThick==null?50:s.waveThick)/100*2;          // line half-width in rows
+    const mid = (GH-1)/2, t = now/1000;
+    // Amplitude envelope: Volume drive rides loudness (beats add a swell); Beat drive pulses hard on each kick.
+    const env = (s.waveDrive==='beat') ? Math.min(1, A.level*0.3 + A.beat*0.9) : Math.min(1, A.level*0.7 + A.beat*0.45);
+    const waves = 1.6 + (A.centroid==null?0.5:A.centroid)*2.4;          // cycles across the board: brighter audio = more ripples
+    const speed = 2.2 + A.level*4.5;                                    // scrolls faster when louder
     for(let k=0;k<NLED;k++){
       const idx = INDICES[k], cell = GRID[idx]; if(!cell) continue;
       const col = cell[0], row = cell[1], o = k*3, fc = GW>1 ? col/(GW-1) : 0;
-      const hi = dir>0 ? col : (GW-1-col);                            // column → history slot (newest on the right; reverse flips)
-      let aSamp = hist[Math.max(0,Math.min(GW-1,hi))] * hScale * amp; if(aSamp>1) aSamp=1; else if(aSamp<0) aSamp=0;
-      const half = aSamp * mid;                                       // half-height of this column's symmetric bar
-      const dist = Math.abs(row - mid);
-      const v = Math.max(0, Math.min(1, 1 - (dist - half)/edge)) * (0.4 + 0.6*aSamp);   // brightness also rides the local height
+      const phase = (dir>0 ? fc : 1-fc) * waves * 6.28318 - t*speed;
+      const sNorm = Math.sin(phase) * env;                             // -env..env deflection
+      const lineRow = mid - sNorm*amp*mid;                             // center the line; +amp = up (row 0 = top)
+      const v = Math.max(0, 1 - Math.abs(row-lineRow)/tw) * (0.12 + 0.88*env);   // brightness rides the envelope → dark on silence, bright on hits
       if(v < 0.05){ out[o]=out[o+1]=out[o+2]=0; continue; }
       const c = grad ? [col0[0]+(col2[0]-col0[0])*fc, col0[1]+(col2[1]-col0[1])*fc, col0[2]+(col2[2]-col0[2])*fc] : col0;   // start→end (left→right)
       out[o]=(c[0]*v)|0; out[o+1]=(c[1]*v)|0; out[o+2]=(c[2]*v)|0;
