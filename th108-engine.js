@@ -46,7 +46,9 @@
   }
   // VU meter, DISCRETE by row-from-bottom (6-row board): rows 1-2 green, 3-4 yellow, 5-6 red. Fully
   // saturated, high-contrast (classic 3-zone meter — no lime/orange blends).
-  function vuRow(fb){ return fb<=2 ? [0,255,0] : fb<=4 ? [255,255,0] : [255,0,0]; }
+  // VU palette: one distinct color PER ROW (6-step green→red) — green, yellow-green, yellow, orange, red-orange, red.
+  const VU_PALETTE = [[0,255,0],[150,255,0],[255,255,0],[255,150,0],[255,60,0],[255,0,0]];
+  function vuRow(fb){ let i=Math.round(fb)-1; if(i<0)i=0; else if(i>5)i=5; return VU_PALETTE[i]; }
   // deterministic per-index hash → 0..1 (stable sparkle/column offsets)
   function patHash(i){ const x=Math.sin(i*127.1+311.7)*43758.5453; return x-Math.floor(x); }
   // one-pole smoothing toward `target`; rising uses attackMs, falling uses decayMs. dt in ms.
