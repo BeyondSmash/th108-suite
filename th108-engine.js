@@ -714,10 +714,14 @@
     const aNorm = (W._aHi-W._aLo > 0.015) ? (W._wAct-W._aLo)/(W._aHi-W._aLo) : 0.35;
     // Blend the RELATIVE (auto-ranged) pace with an ABSOLUTE activity floor: when the song is genuinely busy for a
     // while, the auto-range would adapt and drift back to "normal" (stasis) — the absolute term keeps it fast.
+    // CAP the wave COUNT for readability — past a density threshold the small waves get hard to read. The "wanted"
+    // excess frequency is redirected into faster SCROLL instead (it speeds up to fit the wavecount), so busy/bright
+    // passages read as a fast-flowing capped wave rather than a cramped dense one.
+    const FREQ_CAP = 3.6, waves = Math.min(W._wFreq, FREQ_CAP), freqOver = Math.max(0, W._wFreq - FREQ_CAP);
     const aMix = Math.max(aNorm*0.8, Math.min(1, W._wAct*3.4));
-    const speed = 0.6 + aMix*7.4;                                      // 0.6 (sparse) … 8 (frantic) — wide, dynamic flow
+    const speed = 0.6 + aMix*7.4 + freqOver*2.8;                       // base flow + the capped-frequency overflow → faster, readable
     W._wPhase = (W._wPhase||0) + speed * W._wDt/1000;                  // scroll by the SMOOTHED frame time → steady, no hitch-jerk
-    const env=W._wEnv, waves=W._wFreq, ph0=W._wPhase, harm=W._wHarm*0.55, bassA=W._wBass*0.6, trebA=W._wTreb*0.4;
+    const env=W._wEnv, ph0=W._wPhase, harm=W._wHarm*0.55, bassA=W._wBass*0.6, trebA=W._wTreb*0.4;
     const ampl = (0.95*env) / (1+harm+bassA+trebA), bright = env;     // normalize for the extra components; NO floor → fully dark on silence/pause
     // SHAPE morph: brightness sharpens the base wave from a rounded SINE (bass) toward a flat-top SQUARE (treble).
     const sharp = 1 + W._wHarm*6, tanhSharp = Math.tanh(sharp);
