@@ -235,7 +235,8 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
 
   /* layer cards — bento sub-grid inside the compositor card (order still = stacking order, row-major) */
   #layerCards{ display:grid; grid-template-columns:repeat(auto-fill,minmax(440px,1fr)); gap:12px; align-items:start; }
-  .lcard{ background:var(--inset); border-radius:18px; padding:12px; margin:0; position:relative; }
+  .lcard{ background:var(--inset); border-radius:18px; padding:12px; margin:0; position:relative; user-select:none; -webkit-user-select:none; }   /* clicking/dragging empty space shouldn't text-select the labels */
+  .lcard input, .lcard textarea{ user-select:text; -webkit-user-select:text; }   /* but keep hex/number fields selectable */
   .lcard.coll .lbody{ display:none; }                      /* manual collapse — header row only (the toggle in the top-right corner) */
   .lcoll{ position:absolute; top:10px; right:10px; margin:0; padding:5px 7px; line-height:0; }
   .lcard.off{ opacity:.55; }
