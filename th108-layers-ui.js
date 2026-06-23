@@ -539,15 +539,22 @@
             ctx.restore(); };
           // Drag the crop box (move) / its corners (resize) on a preview canvas. Coords normalized via the canvas's
           // displayed size (it's CSS-scaled), so it works at any zoom. MIN keeps the box from collapsing.
-          const attachCropDrag=(canvas)=>{ if(!canvas) return; let drag=null; const MIN=0.08, TOL=0.06;
+          const attachCropDrag=(canvas)=>{ if(!canvas) return; let drag=null, lastPush=0; const MIN=0.08, TOL=0.06;
             const toN=e=>{ const r=canvas.getBoundingClientRect(); return [(e.clientX-r.left)/r.width, (e.clientY-r.top)/r.height]; };
+            // Grab a CORNER (both axes near), a single EDGE (one axis near + within the other's span), or the body (move).
             const hit=(nx,ny)=>{ if(!s.cropOn) return null; const x0=s.cropX, y0=s.cropY, x1=x0+s.cropW, y1=y0+s.cropH, near=(a,b)=>Math.abs(a-b)<TOL;
-              const cx=near(nx,x0)?'w':near(nx,x1)?'e':'', cy=near(ny,y0)?'n':near(ny,y1)?'s':'';
-              if(cx&&cy) return cy+cx; if(nx>=x0-TOL&&nx<=x1+TOL&&ny>=y0-TOL&&ny<=y1+TOL) return 'move'; return null; };
+              const inX=nx>=x0-TOL&&nx<=x1+TOL, inY=ny>=y0-TOL&&ny<=y1+TOL;
+              const cx=(inY&&near(nx,x0))?'w':(inY&&near(nx,x1))?'e':'', cy=(inX&&near(ny,y0))?'n':(inX&&near(ny,y1))?'s':'';
+              if(cy&&cx) return cy+cx;   // corner
+              if(cy) return cy;          // top / bottom edge
+              if(cx) return cx;          // left / right edge
+              if(inX&&inY) return 'move'; return null; };
+            const cursorFor=m=> m==='move'?'move' : (m==='n'||m==='s')?'ns-resize' : (m==='e'||m==='w')?'ew-resize' : (m==='ne'||m==='sw')?'nesw-resize' : m?'nwse-resize':'crosshair';
+            const livePush=()=>{ const t=window.performance?performance.now():0; if(t-lastPush>120){ lastPush=t; saveLayers(); pushConfig(); } };   // throttled push so the daemon-driven keyboard updates DURING the drag, not only on release
             canvas.addEventListener('pointerdown',e=>{ if(!s.cropOn) return; const n=toN(e), m=hit(n[0],n[1]); if(!m) return;
               e.preventDefault(); try{canvas.setPointerCapture(e.pointerId);}catch(_){}
               drag={mode:m, sx:n[0], sy:n[1], x:s.cropX, y:s.cropY, w:s.cropW, h:s.cropH}; });
-            canvas.addEventListener('pointermove',e=>{ if(!drag){ if(s.cropOn){ const n=toN(e), m=hit(n[0],n[1]); canvas.style.cursor=m==='move'?'move':m?'nwse-resize':'crosshair'; } return; }
+            canvas.addEventListener('pointermove',e=>{ if(!drag){ if(s.cropOn){ const n=toN(e); canvas.style.cursor=cursorFor(hit(n[0],n[1])); } return; }
               const n=toN(e), dx=n[0]-drag.sx, dy=n[1]-drag.sy;
               if(drag.mode==='move'){ s.cropX=Math.max(0,Math.min(1-drag.w, drag.x+dx)); s.cropY=Math.max(0,Math.min(1-drag.h, drag.y+dy)); }
               else { let x0=drag.x, y0=drag.y, x1=drag.x+drag.w, y1=drag.y+drag.h;
@@ -555,7 +562,8 @@
                 if(drag.mode.indexOf('e')>=0) x1=Math.max(x0+MIN, Math.min(1, drag.x+drag.w+dx));
                 if(drag.mode.indexOf('n')>=0) y0=Math.min(y1-MIN, Math.max(0, drag.y+dy));
                 if(drag.mode.indexOf('s')>=0) y1=Math.max(y0+MIN, Math.min(1, drag.y+drag.h+dy));
-                s.cropX=x0; s.cropY=y0; s.cropW=x1-x0; s.cropH=y1-y0; } });
+                s.cropX=x0; s.cropY=y0; s.cropW=x1-x0; s.cropH=y1-y0; }
+              livePush(); });   // preview reads s live; this mirrors it to the keyboard mid-drag too
             const end=()=>{ if(drag){ drag=null; scheduleSaveLayers(); } };
             canvas.addEventListener('pointerup',end); canvas.addEventListener('pointercancel',end); };
           attachCropDrag(cvS); attachCropDrag(cvL);
