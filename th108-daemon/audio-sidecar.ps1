@@ -144,10 +144,11 @@ public static class Cap {
     bandPeak=Math.Max((float)frameMax, bandPeak*0.999f);   // running spectrum peak: the dB reference tracks volume, so band shape stays put
     for (int b=0;b<32;b++){ double dbRel=20.0*Math.Log10(bn[b]/bandPeak + 1e-9); double nb=(dbRel+BAND_DB_RANGE)/BAND_DB_RANGE;
       bands[b]=(float)Math.Min(1.0, Math.Max(0.0, nb)); }
-    double inst=Math.Max(Math.Sqrt(rms/N), pk*0.6);                  // RMS = body, PEAK = transients (so a metronome click reads its true loudness, not averaged down by the ~46ms window)
+    double rmsAbs=Math.Sqrt(rms/N);                                  // sustained loudness (RMS) — a brief impulse barely moves it
+    double inst=Math.Max(rmsAbs, pk*0.6);                            // RMS = body, PEAK = transients (so a metronome click reads its true loudness, not averaged down by the ~46ms window)
     peakLvl = Math.Max((float)inst, peakLvl*0.999f);                 // auto-gain: track the loudest recent level (slow decay)
     outLBC[0]=(float)Math.Min(1.0, inst/Math.Max(peakLvl,1e-4));     // level normalized to that peak → full 0..1 at any volume
-    outLBC[3]=(float)Math.Min(1.0, inst);                            // inAbs = ABSOLUTE level (pre auto-gain) → the mic noise gate acts on this
+    outLBC[3]=(float)Math.Min(1.0, rmsAbs);                          // inAbs = ABSOLUTE RMS level (NOT peak) → mic gate + mic VU height track SUSTAINED loudness, so a sharp tap reads short, not full
     avgFlux = avgFlux*0.93f + (float)flux*0.07f;                     // moving average of broadband flux
     double fluxOnset=(flux - avgFlux*1.3)/(avgFlux + 1e-4);          // spikes when a transient exceeds ~1.3x the running flux average
     levelAvg = levelAvg*0.9f + (float)inst*0.1f;                     // ALSO fire on a sharp LOUDNESS spike (a click): redundancy so a tick the flux misses still registers
@@ -184,15 +185,15 @@ public static class Cap {
       bands[b]=(float)Math.Min(1.0, Math.Max(0.0, nb)); }
   }
 
-  // Downsample the most-recent PCM into wave[] (a time-domain oscilloscope trace for the Waveform style).
-  // BUCKET-AVERAGE (overlapping box filter) the last min(count,1024) samples — decimation aliases music into noise.
+  // 64-point AMPLITUDE ENVELOPE of the last min(count,1024) samples for the Waveform style: each point = peak
+  // |sample| in its slice (the recognizable DAW waveform; a raw scope line aliases into noise on 21 columns).
   public static void Wave(float[] mono, int count, float[] wave) {
     int WN=wave.Length;
     if (count < WN) { for(int i=0;i<WN;i++) wave[i]=0; return; }
     int span = Math.Min(count, 1024), start = count - span, half = Math.Max(1, span/WN);
-    for (int i=0;i<WN;i++){ int ctr = start + (int)((long)i*(span-1)/(WN-1)); double sum=0; int n=0;
-      for (int j=ctr-half;j<=ctr+half;j++){ if(j>=0 && j<count){ sum+=mono[j]; n++; } }
-      wave[i]=(float)(n>0?sum/n:0); }
+    for (int i=0;i<WN;i++){ int ctr = start + (int)((long)i*(span-1)/(WN-1)); float pk=0;
+      for (int j=ctr-half;j<=ctr+half;j++){ if(j>=0 && j<count){ float a=mono[j]<0?-mono[j]:mono[j]; if(a>pk)pk=a; } }
+      wave[i]=pk; }
   }
 }
 "@

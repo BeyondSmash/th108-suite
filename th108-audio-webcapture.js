@@ -96,17 +96,19 @@
       const lvlOnset = (inst - levelAvg * 1.6) / (levelAvg + 1e-4);
       const beat = Math.max(0, Math.min(1, Math.max(fluxOnset, lvlOnset)));
       const centroid = centDen > 0 ? Math.min(1, (centNum / centDen) / bins * 2) : 0.5;
-      // Downsample the time-domain PCM to a 64-point oscilloscope trace (last ~1024 samples ≈ 23ms) for the
-      // Waveform style. BUCKET-AVERAGE (overlapping box filter), NOT decimation: picking every Nth sample aliases
-      // high-frequency music into noise ("scrambled"); averaging low-passes it to the smooth low-freq wave shape.
+      // 64-point AMPLITUDE ENVELOPE of the last ~1024 samples (≈23ms) for the Waveform style: each point = the PEAK
+      // |sample| in its time slice. Drawn symmetrically from the center, this is the recognizable DAW "waveform"
+      // (loud slice = tall, quiet = thin). A raw oscilloscope line aliases into noise on only 21 columns; the
+      // envelope is robustly discernible. (-1..1 PCM from getFloatTimeDomainData.)
       const WN = 64, span = Math.min(time.length, 1024), start = time.length - span, wave = new Array(WN);
-      const half = Math.max(1, (span / WN) | 0);   // ~half-window = the stride → ~2× overlap → de-aliasing low-pass
-      for (let i = 0; i < WN; i++) { const ctr = start + ((i * (span - 1) / (WN - 1)) | 0); let sum = 0, n = 0;
-        for (let j = ctr - half; j <= ctr + half; j++) { if (j >= 0 && j < time.length) { sum += time[j]; n++; } }
-        wave[i] = n ? sum / n : 0; }
-      // inAbs = the ABSOLUTE input level (pre auto-gain), so a noise gate can act on the true mic level.
-      // `level` is already normalized to the recent peak, so a steady fan reads ~1 there and can't be gated.
-      return { bands, bandsL, bandsR, level, beat, centroid, wave, inAbs: Math.min(1, inst), t: ctx ? ctx.currentTime * 1000 : 0 };
+      const half = Math.max(1, (span / WN) | 0);   // overlapping slice ~= the stride
+      for (let i = 0; i < WN; i++) { const ctr = start + ((i * (span - 1) / (WN - 1)) | 0); let pk = 0;
+        for (let j = ctr - half; j <= ctr + half; j++) { if (j >= 0 && j < time.length) { const a = time[j] < 0 ? -time[j] : time[j]; if (a > pk) pk = a; } }
+        wave[i] = pk; }
+      // inAbs = the ABSOLUTE input level (pre auto-gain), so the mic gate + mic VU height act on the true level.
+      // Use RMS (sustained loudness), NOT the peak-inclusive inst — a sharp tap has a huge peak but tiny RMS, so
+      // peak would spike the VU to full on a faint tap. `level` stays normalized (a steady fan reads ~1 there).
+      return { bands, bandsL, bandsR, level, beat, centroid, wave, inAbs: Math.min(1, rms), t: ctx ? ctx.currentTime * 1000 : 0 };
     }
 
     async function stop() {

@@ -662,40 +662,39 @@
     }
   }
 
-  // Wave: a true oscilloscope of the live audio. The columns are the time axis (L→R), each column lights the
-  // key nearest the actual PCM sample at that point — so it shows the REAL waveform of what's playing. Falls
-  // back to a band-driven synthetic trace if no PCM is present (e.g. a capture path that doesn't emit `wave`).
+  // Wave: a DAW-style AMPLITUDE WAVEFORM of the live audio. Columns are the time axis (L→R); each column draws a
+  // bar SYMMETRIC about the middle row whose half-height = that time-slice's amplitude (A.wave = per-slice peak).
+  // Loud slice → tall, quiet → thin — the recognizable "waveform" shape. A raw oscilloscope line aliases into
+  // noise on only 21 columns, so the envelope is the readable representation. Falls back to a band-driven shape
+  // if no PCM is present (a capture path that emits no `wave`).
   function renderWave(s, out, A, now){
     let col0 = hexToRgb(s.waveColor||'#00e0ff'), col2 = hexToRgb(s.waveColor2||'#ff00aa'); const grad = !!s.waveGrad;
     if(grad && s.waveGradRev){ const tmp=col0; col0=col2; col2=tmp; }   // reverse gradient colors
     const dir = s.waveReverse ? -1 : 1;
-    // Drive: Volume (default) = trace brightness rides loudness; Beat = the trace flashes brighter on each kick.
+    // Drive: Volume (default) = brightness rides loudness; Beat = the waveform flashes brighter on each kick.
     const lvl = Math.max(0, Math.min(1, (s.waveDrive==='beat') ? A.beat : A.level));
     const W = A.wave, amp = (s.waveAmp==null?100:s.waveAmp)/100;      // vertical gain (×, on top of the auto-scale below)
-    // Auto-scale the PCM trace to its own recent peak: real audio rarely hits ±1 (typically ±0.1-0.3), so without
-    // this the line barely leaves the center row and reads as a flat band ("not doing a wave"). Peak-normalize so
-    // the loudest sample reaches full deflection regardless of absolute level (a real oscilloscope's auto-gain).
-    // Gate on a real peak so true silence (or a path emitting no PCM) falls back to the synthetic trace instead
-    // of amplifying noise into a jittery flat line.
-    let wpk = 0; if(W){ for(let i=0;i<W.length;i++){ const a=W[i]<0?-W[i]:W[i]; if(a>wpk) wpk=a; } }
+    // Auto-scale to the recent peak amplitude so the waveform uses the full height at any input level (a quiet
+    // passage still shows a wave). Gate on a real peak so silence / a no-PCM path falls back to the synthetic shape.
+    let wpk = 0; if(W){ for(let i=0;i<W.length;i++){ if(W[i]>wpk) wpk=W[i]; } }
     const hasWave = !!W && wpk > 0.02, WN = hasWave ? W.length : 0, wScale = 1/Math.max(wpk, 0.08);
-    const tw  = 0.5 + (s.waveThick==null?50:s.waveThick)/100*2.5;     // lit half-width in rows (default 50 → 1.75)
+    const edge = 0.5 + (s.waveThick==null?50:s.waveThick)/100*1.5;    // soft-edge width in rows (thickness feathers the top/bottom of the bar)
     const mid = (GH-1)/2, t = now/1000;
     for(let k=0;k<NLED;k++){
       const idx = INDICES[k], cell = GRID[idx]; if(!cell) continue;
       const col = cell[0], row = cell[1], o = k*3;
       const fc = GW>1 ? col/(GW-1) : 0;
-      let sample;   // -1..1 deflection at this column
+      let half;   // half-height of this column's symmetric bar, in rows
       if(WN){
         const fpos = (dir>0 ? fc : 1-fc) * (WN-1), i0 = Math.floor(fpos), i1 = Math.min(WN-1, i0+1), fr = fpos-i0;
-        sample = (W[i0]*(1-fr) + W[i1]*fr) * wScale;                  // interpolate the real PCM, peak-normalized to full deflection
-        if(sample>1) sample=1; else if(sample<-1) sample=-1;
+        let aSamp = (W[i0]*(1-fr) + W[i1]*fr) * wScale; if(aSamp>1) aSamp=1; else if(aSamp<0) aSamp=0;   // 0..1 amplitude, peak-normalized
+        half = aSamp * amp * mid;
       } else {
-        const band = Math.min(31, Math.round(fc*31));                // fallback: synthetic per-band trace (no live PCM)
-        sample = Math.sin(t*6 + dir*col*0.6) * A.bands[band];
+        const band = Math.min(31, Math.round(fc*31));                // fallback: per-band amplitude (no live PCM)
+        half = Math.abs(Math.sin(t*6 + dir*col*0.6)) * A.bands[band] * amp * mid;
       }
-      const lineRow = mid - sample*amp*mid;                          // center the trace on the middle row; +sample = up (row 0 = top)
-      const v = Math.max(0, 1 - Math.abs(row-lineRow)/tw) * (0.15 + 0.85*lvl);
+      const dist = Math.abs(row - mid);                              // rows from the center line
+      const v = Math.max(0, Math.min(1, 1 - (dist - half)/edge)) * (0.15 + 0.85*lvl);   // filled within ±half, feathered by `edge`
       if(v < 0.05){ out[o]=out[o+1]=out[o+2]=0; continue; }
       const c = grad ? [col0[0]+(col2[0]-col0[0])*fc, col0[1]+(col2[1]-col0[1])*fc, col0[2]+(col2[2]-col0[2])*fc] : col0;   // start→end (left→right)
       out[o]=(c[0]*v)|0; out[o+1]=(c[1]*v)|0; out[o+2]=(c[2]*v)|0;
