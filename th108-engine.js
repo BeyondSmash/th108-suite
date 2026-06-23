@@ -693,18 +693,30 @@
     const cNorm = (W._cHi-W._cLo > 0.04) ? (cen-W._cLo)/(W._cHi-W._cLo) : 0.5;
     const loudT = Math.min(1, A.level*0.45 + A.beat*0.75);   // Waveform is always Volume-driven (loudness + a beat swell)
     const freqT = 0.7 + cNorm*4.8;                                      // 0.7–5.5 cycles, driven by the auto-ranged brightness → dramatic stretch/squash
-    const paceT = Math.min(1, A.level*0.55 + A.beat*0.45);             // overall activity → scroll pace
     const harmT = cNorm;                                              // brightness → 2nd-harmonic strength
-    const ke=1-Math.exp(-sdt/170), kf=1-Math.exp(-sdt/450), kp=1-Math.exp(-sdt/1600), kh=1-Math.exp(-sdt/450);   // freq smoothed slower (450ms) → the stretch glides, no twitch
+    // PACE from spectral ACTIVITY (novelty), NOT bpm: avg of the per-band novelty envelope A.hit — it stays high
+    // through busy/fast passages (a quick string of words = lots of spectral change) and drops on sustained notes.
+    let act=0; if(A.hit){ for(let i=0;i<32;i++) act+=A.hit[i]; act/=32; }
+    // BASS / TREBLE prominence from the RAW (pre-AGC) spectrum → each gets its own wave component when strong.
+    let bassR=0, trebR=0; const rb=A.bandsRaw;
+    if(rb){ for(let i=0;i<6;i++) bassR+=rb[i]; for(let i=26;i<32;i++) trebR+=rb[i]; bassR=Math.min(1,bassR/2.5); trebR=Math.min(1,trebR/2.5); }
+    const ke=1-Math.exp(-sdt/170), kf=1-Math.exp(-sdt/450), kh=1-Math.exp(-sdt/450), kpa=1-Math.exp(-sdt/420);
     W._wEnv  = W._wEnv ==null ? loudT : W._wEnv  + (loudT-W._wEnv )*ke;
     W._wFreq = W._wFreq==null ? freqT : W._wFreq + (freqT-W._wFreq)*kf;
-    W._wPace = W._wPace==null ? paceT : W._wPace + (paceT-W._wPace)*kp;
     W._wHarm = W._wHarm==null ? harmT : W._wHarm + (harmT-W._wHarm)*kh;
-    W._wPhase = (W._wPhase||0) + (1.0 + W._wPace*4.2) * W._wDt/1000;    // scroll by the SMOOTHED frame time → steady, no hitch-jerk
-    const env=W._wEnv, waves=W._wFreq, ph0=W._wPhase, harm=W._wHarm*0.55;
-    const ampl = (0.95*env) / (1+harm), bright = env;                  // NO floor → fully dark on silence/pause (env→0); fades in with the audio
-    // SHAPE morph: brightness sharpens the base wave from a rounded SINE (bass) toward a flat-top SQUARE (treble),
-    // so the line's SHAPE changes with the song, not just its size/wavelength. tanh denominator is constant/frame.
+    W._wAct  = W._wAct ==null ? act   : W._wAct  + (act -W._wAct )*kpa;
+    W._wBass = W._wBass==null ? bassR : W._wBass + (bassR-W._wBass)*(1-Math.exp(-sdt/170));
+    W._wTreb = W._wTreb==null ? trebR : W._wTreb + (trebR-W._wTreb)*(1-Math.exp(-sdt/120));
+    // AUTO-RANGE the activity so it spans the FULL speed range — dynamic per passage, not a fixed bpm-ish rate.
+    const apr=1-Math.exp(-sdt/9000);
+    W._aLo = W._aLo==null ? W._wAct : Math.min(W._wAct, W._aLo + (W._wAct-W._aLo)*apr);
+    W._aHi = W._aHi==null ? W._wAct : Math.max(W._wAct, W._aHi + (W._wAct-W._aHi)*apr);
+    const aNorm = (W._aHi-W._aLo > 0.015) ? (W._wAct-W._aLo)/(W._aHi-W._aLo) : 0.35;
+    const speed = 0.5 + aNorm*7.5;                                     // 0.5 (sparse) … 8 (frantic) — wide, dynamic flow
+    W._wPhase = (W._wPhase||0) + speed * W._wDt/1000;                  // scroll by the SMOOTHED frame time → steady, no hitch-jerk
+    const env=W._wEnv, waves=W._wFreq, ph0=W._wPhase, harm=W._wHarm*0.55, bassA=W._wBass*0.6, trebA=W._wTreb*0.4;
+    const ampl = (0.95*env) / (1+harm+bassA+trebA), bright = env;     // normalize for the extra components; NO floor → fully dark on silence/pause
+    // SHAPE morph: brightness sharpens the base wave from a rounded SINE (bass) toward a flat-top SQUARE (treble).
     const sharp = 1 + W._wHarm*6, tanhSharp = Math.tanh(sharp);
     for(let k=0;k<NLED;k++){
       const idx = INDICES[k], cell = GRID[idx]; if(!cell) continue;
@@ -712,7 +724,8 @@
       const sp = (dir>0 ? fc : 1-fc) - 0.5;                             // CENTER-anchored → frequency squishes/stretches symmetrically about the middle (no left/right reverse-jerk)
       const phase = sp * waves * 6.28318 - ph0;
       const base = Math.tanh(Math.sin(phase)*sharp) / tanhSharp;       // sine→square morph
-      const sNorm = (base + harm*Math.sin(phase*2 + ph0*0.6)) * ampl / (1+harm);   // morphed base + brightness-driven 2nd harmonic
+      // base + 2nd harmonic + a BASS slow half-wavelength swell + a TREBLE fast fine ripple (each shows when prominent)
+      const sNorm = (base + harm*Math.sin(phase*2 + ph0*0.6) + bassA*Math.sin(phase*0.5 - ph0*0.2) + trebA*Math.sin(phase*3.2 + ph0*0.9)) * ampl;
       const lineRow = mid - sNorm*amp*mid;                             // center the line; +amp = up (row 0 = top)
       const v = Math.max(0, 1 - Math.abs(row-lineRow)/tw) * bright;
       if(v < 0.05){ out[o]=out[o+1]=out[o+2]=0; continue; }
