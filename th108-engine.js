@@ -437,7 +437,7 @@
     if(style==='bars') renderBars(s, out, A, now, L);
     else if(style==='pulse') renderPulse(s, out, A, now);
     else if(style==='bloom') renderBloom(s, out, A);
-    else if(style==='wave') renderWave(s, out, A, now);
+    else if(style==='wave') renderWave(s, out, A, now, L);
     else if(style==='aurora') renderAurora(s, out, A, now);
     else if(style==='sparkle') renderSparkle(s, out, A, now);
     else renderBars(s, out, A, now, L);
@@ -665,23 +665,27 @@
   // flutter), the scroll uses a CONTINUOUS accumulated phase advanced by a smoothed speed — recomputing phase as
   // t*speed makes it JUMP whenever speed changes — and amplitude/frequency are low-passed so they glide with the
   // song instead of jittering per frame. Amplitude + brightness ride loudness; ripple count rides spectral brightness.
-  function renderWave(s, out, A, now){
+  function renderWave(s, out, A, now, L){
     let col0 = hexToRgb(s.waveColor||'#00e0ff'), col2 = hexToRgb(s.waveColor2||'#ff00aa'); const grad = !!s.waveGrad;
     if(grad && s.waveGradRev){ const tmp=col0; col0=col2; col2=tmp; }   // reverse gradient colors
     const dir = s.waveReverse ? -1 : 1, amp = (s.waveAmp==null?100:s.waveAmp)/100;
     const tw = 0.5 + (s.waveThick==null?50:s.waveThick)/100*2;          // line half-width in rows
     const mid = (GH-1)/2;
-    const dt = A._waveT ? Math.max(1, Math.min(100, now - A._waveT)) : 16; A._waveT = now;
-    // Targets from the audio, then low-passed so they GLIDE (no per-frame flicker).
-    const loudT = (s.waveDrive==='beat') ? Math.min(1, A.level*0.3 + A.beat*0.9) : Math.min(1, A.level*0.7 + A.beat*0.45);
-    const freqT = 1.6 + (A.centroid==null?0.5:A.centroid)*2.2;          // cycles across the board (brighter audio = more ripples)
-    const spdT  = 1.4 + A.level*2.6;                                    // scroll speed (gently faster when louder)
-    const ke = 1-Math.exp(-dt/120), kf = 1-Math.exp(-dt/500);           // ~120ms for loudness, ~500ms for freq/speed
-    A._wEnv  = A._wEnv ==null ? loudT : A._wEnv  + (loudT-A._wEnv )*ke;
-    A._wFreq = A._wFreq==null ? freqT : A._wFreq + (freqT-A._wFreq)*kf;
-    A._wSpd  = A._wSpd ==null ? spdT  : A._wSpd  + (spdT -A._wSpd )*kf;
-    A._wPhase = (A._wPhase||0) + A._wSpd * dt/1000;                     // CONTINUOUS phase → a speed change never jumps the wave
-    const env=A._wEnv, waves=A._wFreq, ph0=A._wPhase;
+    // PER-LAYER scroll/smoothing state (W = L if present, else A): keeps the keyboard render and the card's preview
+    // — which both render this audio — from sharing/fighting one phase. dt CLAMPED to 50ms so a frame hitch can't
+    // jolt the phase or the smoothing.
+    const W = L || A;
+    const dt = W._waveT ? Math.max(1, Math.min(50, now - W._waveT)) : 16; W._waveT = now;
+    // Targets from the audio, then low-passed so they GLIDE (no per-frame flicker / transient jitter).
+    const loudT = (s.waveDrive==='beat') ? Math.min(1, A.level*0.4 + A.beat*0.7) : Math.min(1, A.level);
+    const freqT = 1.8 + (A.centroid==null?0.5:A.centroid)*1.4;          // cycles across the board (brighter audio = a few more ripples) — narrow range so the wavelength barely shifts
+    const spdT  = 1.4 + A.level*2.2;                                    // scroll speed (gently faster when louder)
+    const ke = 1-Math.exp(-dt/260), kf = 1-Math.exp(-dt/900);          // ~260ms for loudness, ~900ms for freq/speed → smooth swells, very gradual wavelength
+    W._wEnv  = W._wEnv ==null ? loudT : W._wEnv  + (loudT-W._wEnv )*ke;
+    W._wFreq = W._wFreq==null ? freqT : W._wFreq + (freqT-W._wFreq)*kf;
+    W._wSpd  = W._wSpd ==null ? spdT  : W._wSpd  + (spdT -W._wSpd )*kf;
+    W._wPhase = (W._wPhase||0) + W._wSpd * dt/1000;                     // CONTINUOUS phase → a speed change never jumps the wave
+    const env=W._wEnv, waves=W._wFreq, ph0=W._wPhase;
     const ampl = 0.1 + 0.9*env, bright = 0.15 + 0.85*env;              // a gentle baseline wave that grows + brightens with the song
     for(let k=0;k<NLED;k++){
       const idx = INDICES[k], cell = GRID[idx]; if(!cell) continue;
