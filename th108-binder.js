@@ -390,22 +390,34 @@
         if (curTab === 'host') renderGrid();
       }).catch(() => {});
     }
+    // Host actions bind by CAPTURING the key you press (its emitted code → LED), NOT a board click. This is what
+    // makes a firmware-remapped key work: pressing a Menu key remapped to Pause emits Pause → the same LED the
+    // daemon resolves it to. (A board click would bind the key's physical slot, which a remap makes wrong.)
+    function captureHostKey(item, btn) {
+      btn.textContent = 'Press the key to use…  (Esc cancels)';
+      const onKey = ev => { ev.preventDefault(); ev.stopPropagation(); document.removeEventListener('keydown', onKey, true);
+        if (ev.code === 'Escape') { renderGrid(); return; }
+        const led = (board && board.ledForCode) ? board.ledForCode(ev.code) : null;
+        if (led == null) { btn.textContent = 'That key isn\'t on the keyboard — try another'; return; }
+        setHostBinding(item.host, led, (board && board.labelFor) ? board.labelFor(led) : ('LED ' + led)); };
+      document.addEventListener('keydown', onKey, true);
+    }
     function renderHostGrid() {
       const host = $('bdGrid'); host.textContent = '';
-      const sel = selKey(), list = loadHostActions();
+      const list = loadHostActions();
       hostItems.forEach(item => {
         const bound = list.find(b => b && b.action === item.host);
         const b = document.createElement('button');
-        b.className = 'patbtn'; b.disabled = !sel;
+        b.className = 'patbtn';
         b.textContent = item.label + (bound ? '  ·  ' + bound.label : '');
-        b.title = sel ? 'Bind ' + (selKey().label || 'Space') + ' → ' + item.label : 'Pick a key on the board above, then click to bind';
-        b.addEventListener('click', () => setHostBinding(item.host, sel.idx, sel.label || 'Space'));
+        b.title = 'Click, then press the key you want to use for ' + item.label;
+        b.addEventListener('click', () => captureHostKey(item, b));
         host.appendChild(b);
         if (bound) { const x = document.createElement('button'); x.className = 'patbtn'; x.style.flex = '0 0 auto';
           x.textContent = '✕'; x.title = 'Clear binding: ' + item.label;
           x.addEventListener('click', () => setHostBinding(item.host, null)); host.appendChild(x); }
       });
-      $('bdHint').textContent = 'These run via the background app, so they work with this page closed. Pick a key on the board above, then click an action — the key still types normally; the app just watches it. (Profile cycling needs saved profiles on the Profiles tab.)';
+      $('bdHint').textContent = 'Click an action, then PRESS the key you want to use for it — this captures whatever the key sends, so it works even if you\'ve firmware-remapped that key. Runs via the background app (works with this page closed); the key still does its normal thing too.';
     }
 
     // modified-key marks: what OUR binder wrote, persisted so the board shows it across reloads
