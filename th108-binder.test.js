@@ -61,8 +61,11 @@ test('keymapLooksValid accepts a populated keymap, rejects an empty/failed read'
 
 test('palette holds only hardware-confirmed encodings and the knob-mute option', () => {
   const tabs = B.PALETTE.map(t => t.key);
-  assert.deepEqual(tabs, ['basic', 'extended', 'special', 'function']);
-  for (const tab of B.PALETTE) for (const item of tab.items) assert.ok(B.entryBytes(item), tab.key + '/' + item.label + ' must encode');
+  assert.deepEqual(tabs, ['basic', 'extended', 'special', 'function', 'host']);
+  for (const tab of B.PALETTE) { if (tab.key === 'host') continue;   // host items are daemon actions, not firmware encodings
+    for (const item of tab.items) assert.ok(B.entryBytes(item), tab.key + '/' + item.label + ' must encode'); }
+  const hostItems = B.PALETTE.find(t => t.key === 'host').items;
+  assert.ok(hostItems.length && hostItems.every(i => i.host && !B.entryBytes(i)), 'host items carry an action, not a firmware encoding');
   const f = B.PALETTE.find(t => t.key === 'function').items;
   assert.ok(f.some(i => i.code === 46), 'knob-mute (46) stays available');
   assert.ok(f.some(i => i.code === 164), 'ambient color (164) present');

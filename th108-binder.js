@@ -132,11 +132,19 @@
     { label: 'Restore Factory Settings', code: 1 }   // careful: a bare tap of the bound key factory-resets the board
   ];
 
+  // HOST ACTIONS: bind a key to a host-side software action run by the background app (daemon) — NOT a firmware
+  // remap. The key still types whatever it types; the daemon just watches it. Works with this page CLOSED.
+  const hostItems = [
+    { label: 'Mic / Music Lighting Toggle', host: 'micToggle' },
+    { label: 'Profile → Next', host: 'profileNext' },
+    { label: 'Profile → Previous', host: 'profilePrev' }
+  ];
   const PALETTE = [
     { key: 'basic', name: 'Basic Characters', items: basics },
     { key: 'extended', name: 'Extended Characters', items: extended },
     { key: 'special', name: 'Special Characters', items: special },
-    { key: 'function', name: 'Function Keys', items: funcs }
+    { key: 'function', name: 'Function Keys', items: funcs },
+    { key: 'host', name: 'Host Actions', items: hostItems }
   ];
 
   // decorative toggles — one click binds the SPACEBAR to the function + opens the focus overlay.
@@ -347,6 +355,7 @@
       });
     }
     function renderGrid() {
+      if (curTab === 'host') return renderHostGrid();
       const host = $('bdGrid');
       host.textContent = '';
       const tab = PALETTE.find(t => t.key === curTab);
@@ -357,6 +366,46 @@
         b.addEventListener('click', () => assign(item));
         host.appendChild(b);
       });
+    }
+    // ---- Host Actions registry (key LED index → daemon action). Stored on the page + pushed to the daemon so it
+    // runs page-closed. One key per action (re-binding moves it). NO firmware write, NO Connect needed. ----
+    const HOST_KEY = 'th108_host_actions';
+    function loadHostActions() { try { const a = JSON.parse(localStorage.getItem(HOST_KEY) || '[]'); return Array.isArray(a) ? a : []; } catch (_) { return []; } }
+    function pushHostActions(list) { try { fetch('/host-actions', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ actions: list.map(b => ({ led: b.led, action: b.action })) }) }).catch(() => {}); } catch (_) {} }
+    function saveHostActions(list, push) { try { localStorage.setItem(HOST_KEY, JSON.stringify(list)); } catch (_) {} if (push !== false) pushHostActions(list); }
+    function setHostBinding(action, led, label) {
+      const list = loadHostActions().filter(b => b && b.action !== action);   // one key per action
+      if (led != null) list.push({ action, led, label });
+      saveHostActions(list);
+      if (led != null) log('✓ ' + label + ' → ' + (hostItems.find(i => i.host === action) || {}).label + ' (works with this page closed)', 'ok');
+      renderGrid();
+    }
+    // On load, seed the page's display from the daemon (e.g. a migrated Mic toggle-hotkey) if the page has none yet.
+    function seedHostActionsFromDaemon() {
+      fetch('/host-actions').then(r => r.json()).then(d => {
+        if (!d || !Array.isArray(d.actions) || !d.actions.length) return;
+        if (loadHostActions().length) return;   // page already has bindings → don't clobber
+        const seeded = d.actions.map(a => ({ action: a.action, led: a.led, label: (board && board.labelFor) ? board.labelFor(a.led) : ('LED ' + a.led) }));
+        saveHostActions(seeded, false);   // don't push back what we just read
+        if (curTab === 'host') renderGrid();
+      }).catch(() => {});
+    }
+    function renderHostGrid() {
+      const host = $('bdGrid'); host.textContent = '';
+      const sel = selKey(), list = loadHostActions();
+      hostItems.forEach(item => {
+        const bound = list.find(b => b && b.action === item.host);
+        const b = document.createElement('button');
+        b.className = 'patbtn'; b.disabled = !sel;
+        b.textContent = item.label + (bound ? '  ·  ' + bound.label : '');
+        b.title = sel ? 'Bind ' + (selKey().label || 'Space') + ' → ' + item.label : 'Pick a key on the board above, then click to bind';
+        b.addEventListener('click', () => setHostBinding(item.host, sel.idx, sel.label || 'Space'));
+        host.appendChild(b);
+        if (bound) { const x = document.createElement('button'); x.className = 'patbtn'; x.style.flex = '0 0 auto';
+          x.textContent = '✕'; x.title = 'Clear binding: ' + item.label;
+          x.addEventListener('click', () => setHostBinding(item.host, null)); host.appendChild(x); }
+      });
+      $('bdHint').textContent = 'These run via the background app, so they work with this page closed. Pick a key on the board above, then click an action — the key still types normally; the app just watches it. (Profile cycling needs saved profiles on the Profiles tab.)';
     }
 
     // modified-key marks: what OUR binder wrote, persisted so the board shows it across reloads
@@ -750,6 +799,7 @@
     }
     renderTabs();
     refresh();
+    seedHostActionsFromDaemon();   // reflect a daemon-migrated Mic toggle-hotkey in the Host Actions tab
 
     return { setConnected, exitSpace, revertKey, reapplyAll, get busy() { return busy; } };
   }

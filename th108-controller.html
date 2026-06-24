@@ -1953,6 +1953,7 @@ const KBOARD=(function(){
   });
   return {
     get sel(){ return sel; },
+    labelFor(idx){ const k=byIdx[idx]; return k ? (k.full||k.base||('LED '+idx)) : ('LED '+idx); },   // key label for an LED index (host-action display)
     onChange(cb){ subs.push(cb); },
     onReset(cb){ resetCbs.push(cb); },   // right-click "Reset" tooltip → restore that key to default
     clear: clearSel,

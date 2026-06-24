@@ -52,7 +52,13 @@
     const $ = id => document.getElementById(id);
 
     function load() { try { const a = JSON.parse(localStorage.getItem(KEY) || '[]'); return Array.isArray(a) ? a : []; } catch (_) { return []; } }
-    function store(list) { try { localStorage.setItem(KEY, JSON.stringify(list)); } catch (_) { } }
+    // Mirror the profile list to the daemon so the Host Actions "Profile → Next/Prev" key can cycle them with
+    // this page closed (the daemon applies a profile's layers + config.json straight to the board).
+    function pushToDaemon(list) {
+      try { fetch('/profiles', { method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ profiles: (list || load()).map(p => ({ name: p.name, layers: p.layers, order: p.order })) }) }).catch(() => {}); } catch (_) {}
+    }
+    function store(list) { try { localStorage.setItem(KEY, JSON.stringify(list)); } catch (_) { } pushToDaemon(list); }
 
     function snapshot(name) {
       flushSave();   // flush the live layer state to localStorage first, same as Toolbox Export
@@ -138,6 +144,7 @@
     });
 
     render();
+    pushToDaemon();   // initial sync so the daemon has the current profiles even with no edit this session
     return { render };
   }
 

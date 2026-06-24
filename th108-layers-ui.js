@@ -332,9 +332,7 @@
             full('<span class="val" style="opacity:.55;flex:1 1 100%;text-align:center;font-size:11px;line-height:1.4">Which mic the DAEMON captures when this tab is CLOSED (the default endpoint is often silent). While the tab drives, your browser-picked mic is used instead.</span>')+
             row('Mic Gain','<span class="srange" style="width:100%"><input type="range" class="s-micGain" min="0" max="1000" step="1" value="'+Math.round(1000*Math.log((s.micGain==null?100:s.micGain)/50)/Math.log(144))+'" title="SENSITIVITY — how little input drives the bars to full (LOG scale: each step is a meaningful multiplier, 50% … 7200%). Higher = less voice/volume needed to fill the board."></span><span class="val s-micGainV"></span>')+
             row('Noise Gate','<span class="srange" style="width:100%"><input type="range" class="s-micGate" min="0" max="20" step="0.25" value="'+(s.micGate==null?0:s.micGate)+'" title="Mute the keys until the mic exceeds this absolute level — raise it just above your room/fan noise so background hum stops lighting the board. Scaled 0–20% to match a real mic’s RMS range. 0 = off"><i class="tick" style="left:calc(7px + (100% - 14px)*0.0)"></i></span><span class="val s-micGateV"></span>')+
-            row('Input Level','<span style="position:relative;display:block;width:100%;height:11px;background:#0d1117;border-radius:6px;overflow:hidden;border:1px solid var(--border)"><span class="s-micMeterFill" style="position:absolute;left:0;top:0;bottom:0;width:0%;background:linear-gradient(90deg,#2ea043,#d29922 80%,#f85149);border-radius:6px"></span><span class="s-micMeterGate" style="position:absolute;top:-1px;bottom:-1px;width:2px;background:#e0a200;left:0%"></span></span><span class="val" style="opacity:.6">live mic level (yellow line = gate)</span>')+
-            row('Toggle Hotkey','<span style="display:flex;gap:6px;align-items:center;justify-content:center"><button type="button" class="s-bindKey">'+(s.toggleKeyLabel?('⌨ '+esc(s.toggleKeyLabel)):'Bind a key…')+'</button>'+(s.toggleKeyLed!=null?'<button type="button" class="s-bindClear" title="unbind" style="flex:none;padding:2px 8px">✕</button>':'')+'</span><span></span>')+
-            full('<span class="val" style="opacity:.6;flex:1 1 100%;text-align:center;font-size:12px;line-height:1.4">Press it in any app to flip Mic lighting on/off — works with this page closed (the daemon must be running)</span>') : '')+
+            row('Input Level','<span style="position:relative;display:block;width:100%;height:11px;background:#0d1117;border-radius:6px;overflow:hidden;border:1px solid var(--border)"><span class="s-micMeterFill" style="position:absolute;left:0;top:0;bottom:0;width:0%;background:linear-gradient(90deg,#2ea043,#d29922 80%,#f85149);border-radius:6px"></span><span class="s-micMeterGate" style="position:absolute;top:-1px;bottom:-1px;width:2px;background:#e0a200;left:0%"></span></span><span class="val" style="opacity:.6">live mic level (yellow line = gate)</span>') : '')+
           sec('Style')+ '<div class="lfull" style="justify-content:center"><select class="s-style">'+sopt+'</select></div>'+   // no left label → center it under the header
           sec('Preview')+ full('<div style="display:flex;flex-direction:column;gap:9px;flex:1 1 100%">'+
             '<div><div style="display:flex;align-items:center;justify-content:center;gap:8px;margin-bottom:3px"><span class="val" style="opacity:.65">Sample — test signal</span><button type="button" class="s-samplePrevToggle">'+(s.samplePrevOff?'Show':'Hide')+'</button></div>'+
@@ -478,18 +476,8 @@
         // Mic Gain is a LOG slider: position 0..1000 → 50%..7200% (each step a multiplier, so the useful low end isn't crammed at the bottom). The position maps to the real % stored in s.micGain.
         { const el=c('.s-micGain'), v=c('.s-micGainV'); if(el&&v){ const toG=pos=>Math.round(50*Math.pow(144, pos/1000)/10)*10; const up=()=>v.textContent=(s.micGain==null?100:s.micGain)+'%';
           el.addEventListener('input',()=>{ s.micGain=toG(+el.value); up(); }); up(); } }
-        // Mic toggle-hotkey bind: capture one keydown → store its LED index (universal) + a readable label.
-        // The daemon flips this layer's enabled when that key is pressed in any app (see daemon.js layer-toggle).
-        { const bk=c('.s-bindKey');
-          const keyLabel=code=>code.replace(/^Key/,'').replace(/^Digit/,'').replace(/^Numpad/,'Num ').replace(/^Arrow/,'');
-          if(bk) bk.addEventListener('click',()=>{ bk.textContent='Press a key…  (Esc cancels)';
-            const onKey=ev=>{ ev.preventDefault(); ev.stopPropagation(); document.removeEventListener('keydown',onKey,true);
-              if(ev.code==='Escape'){ buildLayerBody(card,L); return; }
-              const led=E.KEYMAP[ev.code];
-              if(led==null){ bk.textContent='Unsupported key — try again'; return; }
-              s.toggleKeyLed=led; s.toggleKeyLabel=keyLabel(ev.code); buildLayerBody(card,L); scheduleSaveLayers(); };
-            document.addEventListener('keydown',onKey,true); });
-          const bc=c('.s-bindClear'); if(bc) bc.addEventListener('click',()=>{ delete s.toggleKeyLed; delete s.toggleKeyLabel; buildLayerBody(card,L); scheduleSaveLayers(); }); }
+        // (Mic toggle-hotkey moved to the Hotkeys → "Host Actions" binder tab; the daemon migrates an old per-layer
+        // toggleKeyLed bind into the registry on startup.)
         { const wr=c('.s-waveReverse'); if(wr) wr.addEventListener('change',e=>s.waveReverse=e.target.checked); }
         { const bt=c('.s-barTip'); if(bt) bt.addEventListener('change',e=>{ s.barTip=e.target.value; buildLayerBody(card,L); }); }   // rebuild so the tip-color picker shows/hides
         { const bf=c('.s-barFill'); if(bf) bf.addEventListener('change',e=>{ s.barFill=e.target.value; buildLayerBody(card,L); }); }   // rebuild so the color controls show/hide with solid/subtract
