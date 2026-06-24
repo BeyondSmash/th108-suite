@@ -731,12 +731,19 @@
     // CAP the wave COUNT for readability — past a density threshold the small waves get hard to read. The "wanted"
     // excess frequency is redirected into faster SCROLL instead (it speeds up to fit the wavecount), so busy/bright
     // passages read as a fast-flowing capped wave rather than a cramped dense one.
-    const FREQ_CAP = 3.6, waves = Math.min(W._wFreq, FREQ_CAP), freqOver = Math.max(0, W._wFreq - FREQ_CAP);
+    const FREQ_CAP = 1.6 + (s.waveDensity==null?50:s.waveDensity)/100*4;   // Density slider: 1.6 (chunky/readable) … 5.6 (dense); 50 = the prior 3.6 default
+    const waves = Math.min(W._wFreq, FREQ_CAP), freqOver = Math.max(0, W._wFreq - FREQ_CAP);
     const aMix = Math.max(aNorm*0.8, Math.min(1, W._wAct*3.4));
     const speed = 0.6 + aMix*7.4 + freqOver*2.8;                       // base flow + the capped-frequency overflow → faster, readable
     W._wPhase = (W._wPhase||0) + speed * W._wDt/1000;                  // scroll by the SMOOTHED frame time → steady, no hitch-jerk
     const env=W._wEnv, ph0=W._wPhase, harm=W._wHarm*0.55, bassA=W._wBass*0.6, trebA=W._wTreb*0.4;
     const ampl = (0.95*env) / (1+harm+bassA+trebA), bright = env;     // normalize for the extra components; NO floor → fully dark on silence/pause
+    // ADAPTIVE INTENSITY: on intense (loud/beaty) passages, fatten the line toward full and overdrive brightness;
+    // the slider scales how strongly. At full slider: thickness rides 50%→100% and brightness 100%→200% with the
+    // loudness envelope. At 0 (default) it's a no-op. Uses env (the smoothed loudness) as the "intensity".
+    const adapt = (s.waveAdaptive==null?0:s.waveAdaptive)/100;
+    const twE = tw * (1 - adapt*(1-env)*0.5);                         // calm → 50% thickness, intense → 100%
+    const brightE = bright * (1 + adapt*env);                        // calm → 100% brightness, intense → 200%
     // SHAPE morph: brightness sharpens the base wave from a rounded SINE (bass) toward a flat-top SQUARE (treble).
     const sharp = 1 + W._wHarm*6, tanhSharp = Math.tanh(sharp);
     for(let k=0;k<NLED;k++){
@@ -748,10 +755,10 @@
       // base + 2nd harmonic + a BASS slow half-wavelength swell + a TREBLE fast fine ripple (each shows when prominent)
       const sNorm = (base + harm*Math.sin(phase*2 + ph0*0.6) + bassA*Math.sin(phase*0.5 - ph0*0.2) + trebA*Math.sin(phase*3.2 + ph0*0.9)) * ampl;
       const lineRow = mid - sNorm*amp*mid;                             // center the line; +amp = up (row 0 = top)
-      const v = Math.max(0, 1 - Math.abs(row-lineRow)/tw) * bright;
+      const v = Math.max(0, 1 - Math.abs(row-lineRow)/twE) * brightE;
       if(v < 0.05){ out[o]=out[o+1]=out[o+2]=0; continue; }
       const c = grad ? [col0[0]+(col2[0]-col0[0])*fc, col0[1]+(col2[1]-col0[1])*fc, col0[2]+(col2[2]-col0[2])*fc] : col0;   // start→end (left→right)
-      out[o]=(c[0]*v)|0; out[o+1]=(c[1]*v)|0; out[o+2]=(c[2]*v)|0;
+      out[o]=Math.min(255,c[0]*v)|0; out[o+1]=Math.min(255,c[1]*v)|0; out[o+2]=Math.min(255,c[2]*v)|0;   // clamp: Adaptive brightness (v up to 2) must clip to white, not wrap in the Uint8 buffer
     }
   }
 
@@ -1031,7 +1038,7 @@
         pulseDynamics:false, pulseDynamicsAlpha:false, pulseDynamicsDepth:60,
         bloomColor:'#ff5a00', bloomColor2:'#ffd000', bloomGrad:false, bloomGradRev:false, bloomDrive:'beat',
         bloomDynamics:false, bloomDynamicsAlpha:false, bloomDynamicsDepth:60,
-        waveColor:'#00e0ff', waveColor2:'#ff00aa', waveGrad:false, waveGradRev:false, waveReverse:false, waveAmp:100, waveThick:50, waveDrive:'volume',
+        waveColor:'#00e0ff', waveColor2:'#ff00aa', waveGrad:false, waveGradRev:false, waveReverse:false, waveAmp:100, waveThick:50, waveDensity:50, waveAdaptive:0, waveDrive:'volume',
         auroraWidth:50, auroraDrive:'volume', sparkleMono:false, sparkleColor:'#00e0ff', sparkleDrive:'volume',
         sparkleDynamics:false, sparkleDynamicsAlpha:false, sparkleDynamicsDepth:60,
         cropOn:false, cropFit:true, cropX:0.1, cropY:0.1, cropW:0.8, cropH:0.8 };

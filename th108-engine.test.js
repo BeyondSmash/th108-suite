@@ -234,6 +234,15 @@ test('activity-paced styles (aurora/sparkle) advance their motion faster when th
   assert.ok(lb._acClk > lc._acClk * 1.5, 'busy passage paces motion faster than calm');
 });
 
+test('Waveform Adaptive Intensity adds light on loud passages, no-op when off', () => {
+  const mk = (adapt) => E.createState([{ type:'audio', enabled:true, opacity:1, blend:'add', settings:{ style:'wave', waveAdaptive:adapt } }]);
+  const stOff = mk(0), stOn = mk(100);
+  [stOff, stOn].forEach(st=>{ st.audio.level=1; st.audio.beat=1; if(st.audio.hit) st.audio.hit.fill(1); });
+  for(let f=0; f<40; f++){ E.renderAudio(stOff.layers[0], f*16, stOff); E.renderAudio(stOn.layers[0], f*16, stOn); }
+  const sum = rgb => { let t=0; for(let i=0;i<rgb.length;i++) t+=rgb[i]; return t; };
+  assert.ok(sum(stOn.layers[0].rgb) > sum(stOff.layers[0].rgb), 'adaptive boosts total light on loud audio');
+});
+
 test('renderLayer dispatches type audio to renderAudio', () => {
   const L = { type:'audio', enabled:true, opacity:1, blend:'add', settings:{}, rgb:new Uint8Array(E.NLED*3) };
   E.ensureSettings(L);
