@@ -140,27 +140,28 @@ uIOhook.on('keydown', e => {
   U.fire(log);
   closeDevice(); nextOpenAt = Date.now() + 3000;   // let the re-enumeration settle, then the tick reopens (when not yielded)
 });
-// ----- HOST ACTIONS: a user-chosen key triggers a host-side software action (NOT a firmware remap — the key
-// still types whatever it types; the daemon just WATCHES it). Bound in the page's "Host Actions" binder tab,
-// which pushes the registry here so it runs with the page/tab CLOSED. Registry = [{led, action}]; actions:
-//   micToggle    — flip the (single) audio layer's enabled state (one-key "mic/music lighting on/off")
-//   profileNext  — switch to the next saved lighting profile
-//   profilePrev  — switch to the previous saved lighting profile
+// ----- HOST ACTIONS: a user-chosen TRIGGER fires a host-side action (NOT a firmware remap — the key still types
+// whatever it types; the daemon just WATCHES it). Bound in the page's "Host Actions" binder tab, which pushes the
+// registry here so it runs with the page/tab CLOSED. Schema is normalized by host-actions.js:
+//   trigger: key | chord (mods+key) | multitap (N presses in a window) | hold (press for N ms)
+//   action:  micToggle | profileNext | profilePrev | profileSelect(index) | macro(steps) | launch(target)
+const HA = require('./host-actions.js');
 const HOST_ACTIONS_PATH = path.join(__dirname, 'host-actions.json');
 const PROFILES_PATH = path.join(__dirname, 'profiles.json');
 function loadJSON(p) { try { return JSON.parse(fs.readFileSync(p, 'utf8')); } catch { return null; } }
-let hostActions = loadJSON(HOST_ACTIONS_PATH) || [];   // [{led, action}]
+let hostActions = HA.normalize(loadJSON(HOST_ACTIONS_PATH) || []);
 let profiles = loadJSON(PROFILES_PATH) || [];          // [{name, layers, order}] — pushed by the page so cycling works page-closed
 let curProfile = -1;                                   // index of the last-applied profile (best-effort; -1 = unknown)
 function saveHostActions() { try { fs.writeFileSync(HOST_ACTIONS_PATH, JSON.stringify(hostActions)); } catch {} }
-// Migrate the OLD per-layer Mic toggle-hotkey (settings.toggleKeyLed) into a micToggle binding, once.
+// Migrate the OLD per-layer Mic toggle-hotkey (settings.toggleKeyLed) into a key→micToggle binding, once.
 (function migrateToggleKey() {
   try { const cfg = loadConfig();
     if (Array.isArray(cfg)) { const a = cfg.find(x => x && x.type === 'audio' && x.settings && x.settings.toggleKeyLed != null);
-      if (a && !hostActions.some(b => b && b.action === 'micToggle')) { hostActions.push({ led: a.settings.toggleKeyLed, action: 'micToggle' }); saveHostActions(); } }
+      if (a && !hostActions.some(b => b.action.type === 'micToggle')) { hostActions.push({ trigger: { type: 'key', led: a.settings.toggleKeyLed }, action: { type: 'micToggle' } }); saveHostActions(); } }
   } catch {}
 })();
 function toggleAudioLayer() {
+  if (!state) return;
   const L = state.layers.find(l => l && l.type === 'audio' && l.settings); if (!L) return;
   L.enabled = !L.enabled;
   state.lastFlat = null;   // force a resend (a static frame might not otherwise)
@@ -170,29 +171,76 @@ function toggleAudioLayer() {
   syncAudioCapture();   // disabling the audio layer stops capture; enabling restarts it
   log('🎚 host action: audio layer "' + (L.name || '') + '" ' + (L.enabled ? 'ON' : 'OFF'));
 }
+function applyProfile(p, label) {   // shared apply path (cycle + direct-select)
+  if (!p || !Array.isArray(p.layers)) return;
+  try { fs.writeFileSync(CONFIG_PATH, JSON.stringify(p.layers)); } catch {}   // persist so it survives + the page sees it
+  if (!paused && state) { state = E.applyConfig(state, p.layers);   // apply live unless the page holds the device
+    if (state) { state.bri = Math.max(0, Math.min(100, settings.brightness != null ? settings.brightness : 100)) / 100; state.lastFlat = null; } }
+  syncAudioCapture();
+  log('🎚 host action: profile → "' + label + '"');
+}
 function cycleProfile(dir) {
   if (!Array.isArray(profiles) || !profiles.length) { log('🎚 host action: profile cycle — no profiles saved (save some on the Profiles tab)'); return; }
   curProfile = ((curProfile < 0 ? 0 : curProfile + dir) + profiles.length) % profiles.length;
-  const p = profiles[curProfile]; if (!p || !Array.isArray(p.layers)) return;
-  try { fs.writeFileSync(CONFIG_PATH, JSON.stringify(p.layers)); } catch {}   // persist so it survives + the page sees it
-  if (!paused) { state = E.applyConfig(state, p.layers);   // apply live unless the page holds the device
-    if (state) { state.bri = Math.max(0, Math.min(100, settings.brightness != null ? settings.brightness : 100)) / 100; state.lastFlat = null; } }
-  syncAudioCapture();
-  log('🎚 host action: profile → "' + (p.name || ('#' + (curProfile + 1))) + '" (' + (curProfile + 1) + '/' + profiles.length + ')');
+  applyProfile(profiles[curProfile], (profiles[curProfile].name || ('#' + (curProfile + 1))) + ' (' + (curProfile + 1) + '/' + profiles.length + ')');
 }
-function runHostAction(action) {
-  if (action === 'micToggle') return toggleAudioLayer();
-  if (action === 'profileNext') return cycleProfile(1);
-  if (action === 'profilePrev') return cycleProfile(-1);
+function selectProfile(index) {
+  if (!Array.isArray(profiles) || !profiles.length) { log('🎚 host action: profile select — no profiles saved'); return; }
+  if (index < 0 || index >= profiles.length) { log('🎚 host action: profile ' + (index + 1) + ' not saved (only ' + profiles.length + ' exist)'); return; }
+  curProfile = index; applyProfile(profiles[index], profiles[index].name || ('#' + (index + 1)));
 }
-let hostActionAt = 0;
+function playMacro(steps) {
+  if (!Array.isArray(steps) || !steps.length) return;
+  let i = 0; const next = () => { if (i >= steps.length) return; const s = steps[i++];
+    try { uIOhook.keyTap(s.key, Array.isArray(s.mods) ? s.mods : []); } catch {}
+    setTimeout(next, 35); };   // ~35ms between keys so apps register each one
+  next();
+  log('🎚 host action: macro (' + steps.length + ' keys)');
+}
+function launchTarget(target) {
+  if (!target) return;
+  // open a program / file / URL with its default handler. spawn (no shell) + windowsHide → no console flash.
+  // The target is the user's OWN local binding (their machine), so this isn't a trust boundary.
+  try { require('child_process').spawn('cmd.exe', ['/c', 'start', '', target], { stdio: 'ignore', windowsHide: true, detached: true }).unref();
+    log('🎚 host action: launch "' + target + '"'); }
+  catch (e) { log('🎚 host action: launch failed — ' + e.message); }
+}
+function fireHostAction(b) {
+  const a = b.action;
+  if (a.type === 'micToggle') return toggleAudioLayer();
+  if (a.type === 'profileNext') return cycleProfile(1);
+  if (a.type === 'profilePrev') return cycleProfile(-1);
+  if (a.type === 'profileSelect') return selectProfile(a.index | 0);
+  if (a.type === 'macro') return playMacro(a.steps);
+  if (a.type === 'launch') return launchTarget(a.target);
+}
+// per-binding state for the stateful triggers (multitap taps, hold timers) + a fire debounce for key/chord.
+const _haState = new Map();   // binding ref → { taps:[], holdTimer }
+const _haLastFire = new Map();
+function _haReset() { for (const st of _haState.values()) if (st.holdTimer) clearTimeout(st.holdTimer); _haState.clear(); _haLastFire.clear(); }
+function _haDebounceFire(b, now) { if (now - (_haLastFire.get(b) || 0) < 400) return; _haLastFire.set(b, now); fireHostAction(b); }
 uIOhook.on('keydown', e => {
-  if (!state || !Array.isArray(state.layers)) return;
+  const led = UIO2IDX[e.keycode]; if (led === undefined || !hostActions.length) return;
+  const now = Date.now(), mods = { ctrl: e.ctrlKey, alt: e.altKey, shift: e.shiftKey, meta: e.metaKey };
+  for (const b of hostActions) {
+    const t = b.trigger; if (t.led !== led) continue;
+    if (t.type === 'key') { _haDebounceFire(b, now); }
+    else if (t.type === 'chord') { if (HA.chordMatches(t.mods, mods)) _haDebounceFire(b, now); }
+    else if (t.type === 'multitap') {
+      const st = _haState.get(b) || { taps: [] };
+      const last = st.taps[st.taps.length - 1];
+      if (last != null && now - last < 60) continue;   // ignore OS key-repeat (real taps are >60ms apart)
+      const r = HA.tapFires(st.taps, now, t.count, t.windowMs); st.taps = r.taps; _haState.set(b, st);
+      if (r.fire) fireHostAction(b);
+    } else if (t.type === 'hold') {
+      const st = _haState.get(b) || {};
+      if (!st.holdTimer) { st.holdTimer = setTimeout(() => { st.holdTimer = null; fireHostAction(b); }, t.holdMs); _haState.set(b, st); }   // key-repeat keydowns won't re-arm (guarded); keyup cancels
+    }
+  }
+});
+uIOhook.on('keyup', e => {
   const led = UIO2IDX[e.keycode]; if (led === undefined) return;
-  const b = hostActions.find(x => x && x.led === led); if (!b) return;
-  if (Date.now() - hostActionAt < 400) return;   // swallow key-repeat across all host actions
-  hostActionAt = Date.now();
-  runHostAction(b.action);
+  for (const b of hostActions) { if (b.trigger.type === 'hold' && b.trigger.led === led) { const st = _haState.get(b); if (st && st.holdTimer) { clearTimeout(st.holdTimer); st.holdTimer = null; } } }
 });
 uIOhook.start();
 
@@ -590,7 +638,7 @@ const control = {
   listAudioInputs() { return new Promise(r => AC.listInputs((_e, arr) => r(arr))); },
   // Host Actions registry (the page's "Host Actions" binder tab) — key LED index → host-side action.
   getHostActions() { return hostActions; },
-  setHostActions(arr) { hostActions = Array.isArray(arr) ? arr.filter(b => b && b.led != null && b.action) : []; saveHostActions(); },
+  setHostActions(arr) { hostActions = HA.normalize(arr); saveHostActions(); _haReset(); },   // re-normalize + drop stale per-binding trigger state
   // Saved profiles, pushed by the page so profileNext/profilePrev can switch lighting with the page CLOSED.
   setProfiles(arr) { profiles = Array.isArray(arr) ? arr : []; try { fs.writeFileSync(PROFILES_PATH, JSON.stringify(profiles)); } catch {} curProfile = -1; },
   // Latest captured audio frame (system/app) so the open page can preview it + drive the keys in real time.
