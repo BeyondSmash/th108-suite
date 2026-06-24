@@ -131,25 +131,59 @@ uIOhook.on('keydown', e => {
   U.fire(log);
   closeDevice(); nextOpenAt = Date.now() + 3000;   // let the re-enumeration settle, then the tick reopens (when not yielded)
 });
-// Layer-toggle hotkey: a user-chosen key flips an audio layer's enabled state. The page binds it by storing
-// settings.toggleKeyLed = the key's LED index; this runs in the daemon so it works with the page/tab CLOSED
-// (e.g. a one-key "mic lighting on/off"). Reads the bind from in-memory state (no per-keystroke file I/O);
-// only on an actual toggle does it flip live state + persist config.json + start/stop capture.
-let layerToggleAt = 0;
-uIOhook.on('keydown', e => {
-  if (!state || !Array.isArray(state.layers)) return;
-  const led = UIO2IDX[e.keycode]; if (led === undefined) return;
-  const L = state.layers.find(l => l && l.type === 'audio' && l.settings && l.settings.toggleKeyLed === led);
-  if (!L) return;
-  if (Date.now() - layerToggleAt < 400) return;   // swallow key-repeat
-  layerToggleAt = Date.now();
+// ----- HOST ACTIONS: a user-chosen key triggers a host-side software action (NOT a firmware remap — the key
+// still types whatever it types; the daemon just WATCHES it). Bound in the page's "Host Actions" binder tab,
+// which pushes the registry here so it runs with the page/tab CLOSED. Registry = [{led, action}]; actions:
+//   micToggle    — flip the (single) audio layer's enabled state (one-key "mic/music lighting on/off")
+//   profileNext  — switch to the next saved lighting profile
+//   profilePrev  — switch to the previous saved lighting profile
+const HOST_ACTIONS_PATH = path.join(__dirname, 'host-actions.json');
+const PROFILES_PATH = path.join(__dirname, 'profiles.json');
+function loadJSON(p) { try { return JSON.parse(fs.readFileSync(p, 'utf8')); } catch { return null; } }
+let hostActions = loadJSON(HOST_ACTIONS_PATH) || [];   // [{led, action}]
+let profiles = loadJSON(PROFILES_PATH) || [];          // [{name, layers, order}] — pushed by the page so cycling works page-closed
+let curProfile = -1;                                   // index of the last-applied profile (best-effort; -1 = unknown)
+function saveHostActions() { try { fs.writeFileSync(HOST_ACTIONS_PATH, JSON.stringify(hostActions)); } catch {} }
+// Migrate the OLD per-layer Mic toggle-hotkey (settings.toggleKeyLed) into a micToggle binding, once.
+(function migrateToggleKey() {
+  try { const cfg = loadConfig();
+    if (Array.isArray(cfg)) { const a = cfg.find(x => x && x.type === 'audio' && x.settings && x.settings.toggleKeyLed != null);
+      if (a && !hostActions.some(b => b && b.action === 'micToggle')) { hostActions.push({ led: a.settings.toggleKeyLed, action: 'micToggle' }); saveHostActions(); } }
+  } catch {}
+})();
+function toggleAudioLayer() {
+  const L = state.layers.find(l => l && l.type === 'audio' && l.settings); if (!L) return;
   L.enabled = !L.enabled;
   state.lastFlat = null;   // force a resend (a static frame might not otherwise)
   const cfg = loadConfig();   // mirror the flip into config.json so it survives restart + the page sees it
-  if (Array.isArray(cfg)) { const cl = cfg.find(x => x && x.type === 'audio' && x.settings && x.settings.toggleKeyLed === led);
+  if (Array.isArray(cfg)) { const cl = cfg.find(x => x && x.type === 'audio');
     if (cl) { cl.enabled = L.enabled; try { fs.writeFileSync(CONFIG_PATH, JSON.stringify(cfg)); } catch {} } }
   syncAudioCapture();   // disabling the audio layer stops capture; enabling restarts it
-  log('🎚 hotkey: audio layer "' + (L.name || '') + '" ' + (L.enabled ? 'ON' : 'OFF'));
+  log('🎚 host action: audio layer "' + (L.name || '') + '" ' + (L.enabled ? 'ON' : 'OFF'));
+}
+function cycleProfile(dir) {
+  if (!Array.isArray(profiles) || !profiles.length) { log('🎚 host action: profile cycle — no profiles saved (save some on the Profiles tab)'); return; }
+  curProfile = ((curProfile < 0 ? 0 : curProfile + dir) + profiles.length) % profiles.length;
+  const p = profiles[curProfile]; if (!p || !Array.isArray(p.layers)) return;
+  try { fs.writeFileSync(CONFIG_PATH, JSON.stringify(p.layers)); } catch {}   // persist so it survives + the page sees it
+  if (!paused) { state = E.applyConfig(state, p.layers);   // apply live unless the page holds the device
+    if (state) { state.bri = Math.max(0, Math.min(100, settings.brightness != null ? settings.brightness : 100)) / 100; state.lastFlat = null; } }
+  syncAudioCapture();
+  log('🎚 host action: profile → "' + (p.name || ('#' + (curProfile + 1))) + '" (' + (curProfile + 1) + '/' + profiles.length + ')');
+}
+function runHostAction(action) {
+  if (action === 'micToggle') return toggleAudioLayer();
+  if (action === 'profileNext') return cycleProfile(1);
+  if (action === 'profilePrev') return cycleProfile(-1);
+}
+let hostActionAt = 0;
+uIOhook.on('keydown', e => {
+  if (!state || !Array.isArray(state.layers)) return;
+  const led = UIO2IDX[e.keycode]; if (led === undefined) return;
+  const b = hostActions.find(x => x && x.led === led); if (!b) return;
+  if (Date.now() - hostActionAt < 400) return;   // swallow key-repeat across all host actions
+  hostActionAt = Date.now();
+  runHostAction(b.action);
 });
 uIOhook.start();
 
@@ -545,6 +579,11 @@ const control = {
   listAudioApps() { return new Promise(r => AC.listApps((_e, arr) => r(arr))); },
   // List recording (capture) devices for the Mic device picker (one-shot audio-sidecar.ps1 -ListInputs).
   listAudioInputs() { return new Promise(r => AC.listInputs((_e, arr) => r(arr))); },
+  // Host Actions registry (the page's "Host Actions" binder tab) — key LED index → host-side action.
+  getHostActions() { return hostActions; },
+  setHostActions(arr) { hostActions = Array.isArray(arr) ? arr.filter(b => b && b.led != null && b.action) : []; saveHostActions(); },
+  // Saved profiles, pushed by the page so profileNext/profilePrev can switch lighting with the page CLOSED.
+  setProfiles(arr) { profiles = Array.isArray(arr) ? arr : []; try { fs.writeFileSync(PROFILES_PATH, JSON.stringify(profiles)); } catch {} curProfile = -1; },
   // Latest captured audio frame (system/app) so the open page can preview it + drive the keys in real time.
   audioFrame() { return acHandle ? AC.freshOr(acHandle.latest(), Date.now(), 300) : null; },
   // Current media position so the open page can draw the song-progress bar itself while it drives the device.
