@@ -393,16 +393,27 @@
     // Host actions bind by CAPTURING the key you press (its emitted code → LED), NOT a board click. This is what
     // makes a firmware-remapped key work: pressing a Menu key remapped to Pause emits Pause → the same LED the
     // daemon resolves it to. (A board click would bind the key's physical slot, which a remap makes wrong.)
+    let _hostCapture = null;   // the in-progress key-capture (only ONE at a time)
+    function endHostCapture(restore) {
+      if (!_hostCapture) return;
+      document.removeEventListener('keydown', _hostCapture.onKey, true);
+      if (restore && _hostCapture.btn.isConnected) _hostCapture.btn.textContent = _hostCapture.orig;
+      _hostCapture = null;
+    }
     function captureHostKey(item, btn) {
+      endHostCapture(true);   // cancel any other action already awaiting a key → one capture at a time
+      const orig = btn.textContent;
       btn.textContent = 'Press the key to use…  (Esc cancels)';
-      const onKey = ev => { ev.preventDefault(); ev.stopPropagation(); document.removeEventListener('keydown', onKey, true);
-        if (ev.code === 'Escape') { renderGrid(); return; }
+      const onKey = ev => { ev.preventDefault(); ev.stopPropagation(); endHostCapture(false);
+        if (ev.code === 'Escape') { btn.textContent = orig; return; }
         const led = (board && board.ledForCode) ? board.ledForCode(ev.code) : null;
-        if (led == null) { btn.textContent = 'That key isn\'t on the keyboard — try another'; return; }
+        if (led == null) { btn.textContent = 'Not a keyboard key — try another'; return; }
         setHostBinding(item.host, led, (board && board.labelFor) ? board.labelFor(led) : ('LED ' + led)); };
+      _hostCapture = { onKey, btn, orig };
       document.addEventListener('keydown', onKey, true);
     }
     function renderHostGrid() {
+      endHostCapture(false);   // a re-render (e.g. board selection change) drops any pending capture's stale button
       const host = $('bdGrid'); host.textContent = '';
       const list = loadHostActions();
       hostItems.forEach(item => {
