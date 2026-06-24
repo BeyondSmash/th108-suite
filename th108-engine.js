@@ -567,11 +567,12 @@
       if(!cell){ out[o]=out[o+1]=out[o+2]=0; continue; }
       const ph = patHash(idx), fc = GW>1 ? cell[0]/(GW-1) : 0, band = Math.min(31, Math.round(fc*31));
       const be = bands ? bands[band] : gE;                                   // THIS key's frequency energy → spatial spectrum
-      const energy = Math.max(0, Math.min(1, be*0.9 + gE*0.22));             // local density + a small global floor
+      const energy = Math.max(0, Math.min(1, be*1.05 + gE*0.1));             // density mostly per-band; small global floor → INACTIVE frequencies go dark (clear spatial spectrum)
       const tw = 0.5 + 0.5*Math.sin(t*(2.5+ph*5) + ph*6.283), thr = 1-energy;
       let v = tw>thr ? (tw-thr)/Math.max(0.02,energy) : 0;
-      // a per-band transient (its frequency just hit) OR a kick bursts a subset of stars
-      v = Math.min(1, v*(0.5+0.5*be) + (A.bandPop ? A.bandPop[band]*0.6 : 0) + (A.beat>0.45 && ph>0.55 ? A.beat*0.6 : 0));
+      // BRIGHTNESS also rides this band's energy → loud frequencies = brighter stars in their region; a per-band
+      // transient (its frequency just hit) or a kick bursts a subset.
+      v = Math.min(1, v*(0.25+0.75*be) + (A.bandPop ? A.bandPop[band]*0.7 : 0) + (A.beat>0.45 && ph>0.55 ? A.beat*0.55 : 0));
       if(v<0.03){ out[o]=out[o+1]=out[o+2]=0; continue; }
       if(subtract){ if(cb){ cb[k]=v; any=true; } out[o]=out[o+1]=out[o+2]=0; continue; }   // lit star carves below by its brightness, draws dark
       if(mono){ out[o]=mc[0]*v|0; out[o+1]=mc[1]*v|0; out[o+2]=mc[2]*v|0; }
