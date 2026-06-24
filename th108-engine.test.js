@@ -255,6 +255,19 @@ test('Spectrum Bars per-band pipeline: per-band liveliness + transient punch', (
   assert.ok(A.bandPop[10] > before, 'a band transient punches that column');
 });
 
+test('Starfield is spectrum-mapped: bass-only audio lights the left (bass) region far more than the right', () => {
+  const st = E.createState([{ type:'audio', enabled:true, opacity:1, blend:'add', settings:{ style:'sparkle' } }]);
+  const s = st.layers[0].settings, L = st.layers[0];
+  const raw = { bands:new Float32Array(32), level:0.5, beat:0, centroid:0.2 };
+  for(let i=0;i<6;i++) raw.bands[i]=0.9;            // strong bass, silent treble
+  for(let f=0; f<40; f++){ E.applyAudioFeatures(st, raw, s, f*16); E.renderAudio(L, f*16, st); }   // warm up
+  let left=0, right=0;
+  for(let f=40; f<75; f++){ E.applyAudioFeatures(st, raw, s, f*16); E.renderAudio(L, f*16, st);
+    for(let k=0;k<E.NLED;k++){ const cell=E.keyCell(E.INDICES[k]); if(!cell) continue; const o=k*3, b=L.rgb[o]+L.rgb[o+1]+L.rgb[o+2];
+      if(cell[0]<0.34) left+=b; else if(cell[0]>0.66) right+=b; } }
+  assert.ok(left > right*1.5, 'bass content lights the bass (left) region, not a uniform random field');
+});
+
 test('Starfield subtract carves the layers below instead of drawing color', () => {
   const st = E.createState([{ type:'audio', enabled:true, opacity:1, blend:'add', settings:{ style:'sparkle', sparkleFill:'subtract' } }]);
   const L = st.layers[0];
