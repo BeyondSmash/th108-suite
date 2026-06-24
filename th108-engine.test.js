@@ -224,6 +224,16 @@ test('Freeze Animation holds the last live audio frame', () => {
   assert.deepEqual([...La.rgb], [...snap], 'frozen frame held despite silence');
 });
 
+test('activity-paced styles (aurora/sparkle) advance their motion faster when the song is busy', () => {
+  const mk = () => E.createState([{ type:'audio', enabled:true, opacity:1, blend:'add', settings:{ style:'aurora' } }]);
+  const stCalm = mk(), stBusy = mk();
+  stCalm.audio.hit = new Float32Array(32).fill(0);   // calm = no band novelty
+  stBusy.audio.hit = new Float32Array(32).fill(1);   // busy = full band novelty
+  const lc = stCalm.layers[0], lb = stBusy.layers[0];
+  for(let f=0; f<20; f++){ E.renderAudio(lc, f*16, stCalm); E.renderAudio(lb, f*16, stBusy); }
+  assert.ok(lb._acClk > lc._acClk * 1.5, 'busy passage paces motion faster than calm');
+});
+
 test('renderLayer dispatches type audio to renderAudio', () => {
   const L = { type:'audio', enabled:true, opacity:1, blend:'add', settings:{}, rgb:new Uint8Array(E.NLED*3) };
   E.ensureSettings(L);

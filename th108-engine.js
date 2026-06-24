@@ -441,8 +441,8 @@
     else if(style==='pulse') renderPulse(s, out, A, now);
     else if(style==='bloom') renderBloom(s, out, A);
     else if(style==='wave') renderWave(s, out, A, now, L);
-    else if(style==='aurora') renderAurora(s, out, A, now);
-    else if(style==='sparkle') renderSparkle(s, out, A, now);
+    else if(style==='aurora') renderAurora(s, out, A, now, L);
+    else if(style==='sparkle') renderSparkle(s, out, A, now, L);
     else renderBars(s, out, A, now, L);
     // Dynamics / Transparency for the wash styles (pulse/bloom/starfield), mirroring Spectrum Bars but GLOBAL
     // (whole-board, since these aren't per-column meters): a STEADY/sustained passage recedes, a beat pops it
@@ -501,8 +501,20 @@
 
   // ===== abstract / WMP-style visualizers (auto-colored from the spectrum; all fade to dark on silence) =====
   // Aurora: soft vertical color curtains that sway with time and lift/brighten with each column's energy.
-  function renderAurora(s, out, A, now){
-    const t = now/1000;
+  // Activity-paced clock (shared): a per-layer time that advances FASTER when the song is busy (mean of A.hit
+  // band-novelty) and slower when calm — so time-based motion reflects the song's pace, like the waveform's
+  // scroll. Accumulated (not now×speed) so a pace change never jumps the phase. Used by aurora (sway) & sparkle
+  // (twinkle); bloom/bars/pulse have no scrolling motion to pace, so they're left audio-driven.
+  function activityClock(L, A, now){
+    const W = L || A;
+    const dt = W._acT ? Math.min(200, now - W._acT) : 16; W._acT = now;
+    let act=0; if(A.hit){ for(let i=0;i<32;i++) act += A.hit[i]; act/=32; }
+    W._acS = (W._acS==null) ? act : W._acS + (act - W._acS)*0.15;     // smooth the activity measure
+    const speed = 0.7 + Math.min(1, W._acS*3.4)*2.3;                  // 0.7 (calm) … 3.0 (frantic) × real time
+    return (W._acClk = (W._acClk||0) + speed * dt/1000);
+  }
+  function renderAurora(s, out, A, now, L){
+    const t = activityClock(L, A, now);   // sway speed tracks the song's pace
     // Width: thickness of each curtain. Higher width = fatter band → smaller Gaussian falloff factor.
     // Default 50 reproduces the original 2.4 factor exactly; clamp the wide end so it can't flood the whole board.
     const wf = Math.max(0.8, 4.5 - 0.042*(s.auroraWidth==null?50:s.auroraWidth));
@@ -517,9 +529,9 @@
       const c=hsv2rgb(0.45 + A.centroid*0.35 + x*0.12, 0.85, v); out[o]=c[0]|0; out[o+1]=c[1]|0; out[o+2]=c[2]|0; }
   }
   // Starfield: per-key twinkle; louder = more stars lit, kicks burst a subset.
-  function renderSparkle(s, out, A, now){
+  function renderSparkle(s, out, A, now, L){
     // Drive: Volume (default) = star density rides loudness; Beat = bursts of stars pop on kicks.
-    const t = now/1000, energy = Math.max(0, Math.min(1, (s.sparkleDrive==='beat') ? (A.level*0.2 + A.beat*0.9) : (A.level*0.7 + A.beat*0.6)));
+    const t = activityClock(L, A, now), energy = Math.max(0, Math.min(1, (s.sparkleDrive==='beat') ? (A.level*0.2 + A.beat*0.9) : (A.level*0.7 + A.beat*0.6)));   // twinkle rate tracks the song's pace
     const mono = !!s.sparkleMono, mc = mono ? hexToRgb(s.sparkleColor||'#00e0ff') : null;   // mono = one picked color instead of the per-key rainbow
     for(let k=0;k<NLED;k++){ const o=k*3, ph=patHash(INDICES[k]);
       const tw=0.5+0.5*Math.sin(t*(2.5+ph*5) + ph*6.283), thr=1-energy;
