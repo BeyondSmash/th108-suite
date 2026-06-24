@@ -408,9 +408,12 @@
         const duckOf=i=>s.ducks.find(d=>d&&d.layer===i);
         const duckRows=state.layers.map((L2,i)=>({L2,i})).filter(o=>o.i!==myIdx).map(o=>{
           const d=duckOf(o.i), on=!!d, dim=on?d.dim:30;
-          return row('',
-            '<label class="sl" style="margin:0"><input type="checkbox" class="s-duckOn" data-i="'+o.i+'"'+(on?' checked':'')+'> Layer '+(o.i+1)+' · '+esc(o.L2.name)+'</label>'+
-            '<span style="display:flex;gap:6px;align-items:center"><input type="range" class="s-duckDim" data-i="'+o.i+'" min="0" max="100" value="'+dim+'"'+(on?'':' disabled')+' title="Max brightness this layer is allowed while the music is showing"><span class="val s-duckDimV" data-i="'+o.i+'">'+dim+'%</span></span>');
+          // a FLEX row (not the 3-col subgrid) so the slider gets the full width left of the value, not a cramped 84px cell
+          return '<p class="lrow duckrow">'+
+            '<label class="sl duckname" style="margin:0"><input type="checkbox" class="s-duckOn" data-i="'+o.i+'"'+(on?' checked':'')+'> Layer '+(o.i+1)+' · '+esc(o.L2.name)+'</label>'+
+            '<input type="range" class="s-duckDim duckrange" data-i="'+o.i+'" min="0" max="100" value="'+dim+'"'+(on?'':' disabled')+' title="Max brightness this layer is allowed while the music is showing">'+
+            '<span class="val s-duckDimV" data-i="'+o.i+'" style="white-space:nowrap">'+dim+'%</span>'+
+          '</p>';
         }).join('');
         const ap=E.audioParams(s);   // tuner sliders are PER-STYLE (gain/floor/attack/decay/beatSens live in s.ap[style])
         // Copy-from: pull another style's PER-STYLE values into this one. Only Tuning (the ap block) and the
@@ -542,12 +545,46 @@
           if(!Array.isArray(s.ducks)) s.ducks=[];
           if(e.target.checked){ if(!s.ducks.find(d=>d&&d.layer===i)) s.ducks.push({layer:i, dim:sl?+sl.value:30}); if(sl) sl.disabled=false; }
           else { s.ducks=s.ducks.filter(d=>d&&d.layer!==i); if(sl) sl.disabled=true; }
+          const nb=sl&&sl.parentElement.querySelector('input[type=number].numin'); if(nb) nb.disabled=!e.target.checked;   // keep the typable box enabled/disabled with the slider
         }));
         body.querySelectorAll('.s-duckDim').forEach(sl=>sl.addEventListener('input',e=>{
           const i=+e.target.dataset.i, v=+e.target.value, lab=body.querySelector('.s-duckDimV[data-i="'+i+'"]');
           if(lab) lab.textContent=v+'%';
           const d=Array.isArray(s.ducks)&&s.ducks.find(x=>x&&x.layer===i); if(d) d.dim=v;   // only persists once the layer is checked on
         }));
+        // --- Make every slider's value box TYPABLE (one generic pass) ---------------------------------------
+        // Each value display stays as a hidden <span class="s-XV"> that the existing wiring keeps current; we drop
+        // a number input beside it that drives the matching range slider by dispatching its 'input' event — so the
+        // model write + display update run through the code already there. Covers appearance, tuning, dynamics
+        // depth, beat-sensitivity and the duck sliders with no per-slider plumbing. (micGain is a LOG slider, so it
+        // can't show the raw position as a %; handled separately just below.)
+        const typableVal=(rangeEl, spanEl)=>{ if(!rangeEl||!spanEl||spanEl._typable) return; spanEl._typable=true;
+          spanEl.style.display='none';   // the existing up() still writes fmt() here harmlessly; we read the unit from it
+          const wrap=document.createElement('span'); wrap.style.cssText='display:flex;gap:4px;align-items:center;justify-content:flex-end;flex:none';
+          const num=document.createElement('input'); num.type='number'; num.className='numin'; num.style.cssText='width:54px;text-align:right';
+          num.min=rangeEl.min; num.max=rangeEl.max; if(rangeEl.step) num.step=rangeEl.step; num.value=parseFloat(rangeEl.value); num.disabled=rangeEl.disabled;
+          const u=document.createElement('span'); u.className='val'; u.style.cssText='opacity:.6;min-width:6px';
+          wrap.appendChild(num); wrap.appendChild(u); spanEl.parentNode.insertBefore(wrap, spanEl);
+          const setUnit=()=>{ u.textContent=(spanEl.textContent||'').replace(/[-0-9.\s]/g,''); }; setUnit();
+          const lo=parseFloat(rangeEl.min), hi=parseFloat(rangeEl.max), clamp=v=>Math.max(lo,Math.min(hi,v));
+          rangeEl.addEventListener('input',()=>{ if(document.activeElement!==num) num.value=parseFloat(rangeEl.value); num.disabled=rangeEl.disabled; setUnit(); });
+          const drive=()=>{ let v=parseFloat(num.value); if(isNaN(v)) return; rangeEl.value=clamp(v); rangeEl.dispatchEvent(new Event('input',{bubbles:true})); };
+          num.addEventListener('input',drive);
+          num.addEventListener('change',()=>{ let v=parseFloat(num.value); if(isNaN(v)) v=parseFloat(rangeEl.value); v=clamp(v); num.value=v; rangeEl.value=v; rangeEl.dispatchEvent(new Event('input',{bubbles:true})); }); };
+        body.querySelectorAll('span.val').forEach(span=>{ const cls=[...span.classList].find(x=>/^s-.+V$/.test(x)); if(!cls||cls==='s-micGainV') return;
+          const rc=cls.slice(0,-1), range = span.dataset.i!=null ? body.querySelector('input[type=range].'+rc+'[data-i="'+span.dataset.i+'"]') : body.querySelector('input[type=range].'+rc);
+          if(range) typableVal(range, span); });
+        // micGain: log slider (position 0–1000 ↔ 50–7200%). Make the % itself typable with the inverse map.
+        { const el=c('.s-micGain'), span=c('.s-micGainV'); if(el&&span){ span.style.display='none';
+            const wrap=document.createElement('span'); wrap.style.cssText='display:flex;gap:4px;align-items:center;justify-content:flex-end;flex:none';
+            const num=document.createElement('input'); num.type='number'; num.className='numin'; num.style.cssText='width:60px;text-align:right'; num.min=50; num.max=7200; num.step=10; num.value=(s.micGain==null?100:s.micGain);
+            const u=document.createElement('span'); u.className='val'; u.style.cssText='opacity:.6'; u.textContent='%';
+            wrap.appendChild(num); wrap.appendChild(u); span.parentNode.insertBefore(wrap, span);
+            const toPos=g=>Math.round(1000*Math.log(Math.max(50,g)/50)/Math.log(144)), clampG=g=>Math.max(50,Math.min(7200,g));
+            el.addEventListener('input',()=>{ if(document.activeElement!==num) num.value=(s.micGain==null?100:s.micGain); });
+            const drive=()=>{ let g=parseFloat(num.value); if(isNaN(g)) return; s.micGain=clampG(g); el.value=toPos(s.micGain); };
+            num.addEventListener('input',drive);
+            num.addEventListener('change',()=>{ let g=parseFloat(num.value); if(isNaN(g)) g=(s.micGain==null?100:s.micGain); g=clampG(g); num.value=g; s.micGain=g; el.value=toPos(g); }); } }
         { const tb=c('.s-samplePrevToggle'), cv=c('.s-audioPrev'); if(tb&&cv) tb.addEventListener('click',()=>{ s.samplePrevOff=!s.samplePrevOff; cv.style.display=s.samplePrevOff?'none':'block'; tb.textContent=s.samplePrevOff?'Show':'Hide'; scheduleSaveLayers(); }); }   // a button click fires no input/change, so persist explicitly (survives refresh)
         { const tb=c('.s-livePrevToggle'),  cv=c('.s-audioPrevLive'); if(tb&&cv) tb.addEventListener('click',()=>{ s.livePrevOff=!s.livePrevOff; cv.style.display=s.livePrevOff?'none':'block'; tb.textContent=s.livePrevOff?'Show':'Hide'; scheduleSaveLayers(); }); }
         // SAMPLE preview = the deterministic synth (design the look any time, independent of audio).
