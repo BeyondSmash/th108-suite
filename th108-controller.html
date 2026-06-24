@@ -581,6 +581,19 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
        this tab — a browser limit. Reactive-in-every-app comes from the background daemon: close this tab (or never
        Connect) and it takes over within a second.</p>
   </div>
+  <div class="card s2 faqcard" id="faq11" data-pages="faq">
+    <div class="cardbar"><span class="grip">⠿</span></div>
+    <h3>Make a key toggle mic lighting (or cycle profiles) with no side effect</h3>
+    <p><b>Host Actions</b> (Hotkeys → Assign to Key → <b>Host Actions</b> tab) bind a key to a background-app action —
+       Mic/Music lighting on-off, or Profile Next/Prev. They run through the daemon, so they work with this page
+       closed. Click the action, then <b>press the key</b> you want to use — it captures whatever that key sends, so
+       it works even on a firmware-remapped key (and the key still does its normal job too).</p>
+    <p>Want a key to do <i>only</i> the host action and not its normal job — e.g. the <b>Menu</b> key, which otherwise
+       opens the right-click menu? First firmware-remap that key to a do-nothing key: <b>Pause/Break</b> is ideal — it
+       does nothing in Windows and has no indicator light. Then bind the host action by pressing that key (it'll show
+       up as <code>Pause</code>, which is correct — that's what the key now sends). Avoid <b>Scroll Lock</b> and the
+       other lock keys: the firmware forces their indicator LED on (white), which you can't paint over.</p>
+  </div>
   <div class="card s2 faqcard" id="faq3" data-pages="faq">
     <div class="cardbar"><span class="grip">⠿</span></div>
     <h3>You don't need Connect to edit layers.</h3>
