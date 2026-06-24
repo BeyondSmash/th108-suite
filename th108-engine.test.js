@@ -255,6 +255,17 @@ test('Spectrum Bars per-band pipeline: per-band liveliness + transient punch', (
   assert.ok(A.bandPop[10] > before, 'a band transient punches that column');
 });
 
+test('Starfield subtract carves the layers below instead of drawing color', () => {
+  const st = E.createState([{ type:'audio', enabled:true, opacity:1, blend:'add', settings:{ style:'sparkle', sparkleFill:'subtract' } }]);
+  const L = st.layers[0];
+  st.audio.level = 1; st.audio.beat = 1;
+  for(let f=0; f<30; f++) E.renderAudio(L, f*16, st);
+  let lit=0; for(let i=0;i<L.rgb.length;i++) if(L.rgb[i]>0) lit++;
+  let carved=0; if(L._carve) for(let k=0;k<E.NLED;k++) if(L._carve[k]>0) carved++;
+  assert.equal(lit, 0, 'subtract draws no color (silhouette)');
+  assert.ok(carved > 0, 'subtract sets a carve mask on the twinkling stars');
+});
+
 test('renderBloom smooths the drive so the ring glides (fast attack, slow release)', () => {
   const st = E.createState([{ type:'audio', enabled:true, opacity:1, blend:'add', settings:{ style:'bloom' } }]);
   const L = st.layers[0];

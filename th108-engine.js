@@ -467,7 +467,7 @@
     // (whole-board, since these aren't per-column meters): a STEADY/sustained passage recedes, a beat pops it
     // back to full. Dynamics recedes BRIGHTNESS; Transparency recedes per-layer OPACITY so the layers below show
     // through between beats and the effect snaps opaque on a hit (real front/back depth). They stack.
-    if(style==='pulse'||style==='bloom'||style==='sparkle'){
+    if((style==='pulse'||style==='bloom'||style==='sparkle') && !(style==='sparkle' && s.sparkleFill==='subtract')){   // a subtract Starfield carves (sets _carve); the wash dynamics/alpha don't apply to a silhouette
       const dynOn=!!s[style+'Dynamics'], alphaOn=!!s[style+'DynamicsAlpha'];
       if(dynOn||alphaOn){
         const depth=Math.max(0,Math.min(1,(s[style+'DynamicsDepth']==null?60:s[style+'DynamicsDepth'])/100));
@@ -552,13 +552,18 @@
     // Drive: Volume (default) = star density rides loudness; Beat = bursts of stars pop on kicks.
     const t = activityClock(L, A, now), energy = Math.max(0, Math.min(1, (s.sparkleDrive==='beat') ? (A.level*0.2 + A.beat*0.9) : (A.level*0.7 + A.beat*0.6)));   // twinkle rate tracks the song's pace
     const mono = !!s.sparkleMono, mc = mono ? hexToRgb(s.sparkleColor||'#00e0ff') : null;   // mono = one picked color instead of the per-key rainbow
+    const subtract = s.sparkleFill==='subtract';   // Subtract = the twinkling stars carve the layers below into a silhouette instead of drawing their own color
+    let cb = null, any = false;
+    if(subtract && L){ cb = L._carveBuf || (L._carveBuf = new Float32Array(NLED)); cb.fill(0); }
     for(let k=0;k<NLED;k++){ const o=k*3, ph=patHash(INDICES[k]);
       const tw=0.5+0.5*Math.sin(t*(2.5+ph*5) + ph*6.283), thr=1-energy;
       let v = tw>thr ? (tw-thr)/Math.max(0.02,energy) : 0;
       v = Math.min(1, v*(0.6+0.4*A.level) + (A.beat>0.5 && ph>0.6 ? A.beat*0.6 : 0));
       if(v<0.03){ out[o]=out[o+1]=out[o+2]=0; continue; }
+      if(subtract){ if(cb){ cb[k]=v; any=true; } out[o]=out[o+1]=out[o+2]=0; continue; }   // lit star carves below by its brightness, draws dark
       if(mono){ out[o]=mc[0]*v|0; out[o+1]=mc[1]*v|0; out[o+2]=mc[2]*v|0; }
       else { const c=hsv2rgb(ph + t*0.08, 0.9, v); out[o]=c[0]|0; out[o+1]=c[1]|0; out[o+2]=c[2]|0; } }
+    if(L) L._carve = (subtract && any) ? cb : null;
   }
   // Bars: column (GRID col 0..GW-1) → frequency band; each bar fills by that band's magnitude.
   // s.barLayout picks BOTH the horizontal frequency mapping and the vertical fill direction:
@@ -1067,7 +1072,7 @@
         bloomColor:'#ff5a00', bloomColor2:'#ffd000', bloomGrad:false, bloomGradRev:false, bloomDrive:'beat',
         bloomDynamics:false, bloomDynamicsAlpha:false, bloomDynamicsDepth:60,
         waveColor:'#00e0ff', waveColor2:'#ff00aa', waveGrad:false, waveGradRev:false, waveReverse:false, waveAmp:100, waveThick:50, waveDensity:50, waveAdaptive:0, waveDrive:'volume',
-        auroraWidth:50, auroraDrive:'volume', sparkleMono:false, sparkleColor:'#00e0ff', sparkleDrive:'volume',
+        auroraWidth:50, auroraDrive:'volume', sparkleMono:false, sparkleColor:'#00e0ff', sparkleDrive:'volume', sparkleFill:'solid',
         sparkleDynamics:false, sparkleDynamicsAlpha:false, sparkleDynamicsDepth:60,
         cropOn:false, cropFit:true, cropX:0.1, cropY:0.1, cropW:0.8, cropH:0.8 };
       Object.keys(ad).forEach(k=>{ if(s[k]===undefined)s[k]=ad[k]; });

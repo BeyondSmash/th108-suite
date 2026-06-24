@@ -399,9 +399,13 @@
           row('Adaptive Intensity','<span class="srange" style="width:100%"><input type="range" class="s-waveAdaptive" min="0" max="100" value="'+(s.waveAdaptive==null?0:s.waveAdaptive)+'" title="On intense (loud) parts of a song, ramps the line thickness 50%→100% and brightness 100%→200% for that stretch. 0 = off"><i class="tick" style="left:7px"></i></span><span class="val s-waveAdaptiveV"></span>')+
           row('Direction','<label class="sl" style="margin:0"><input type="checkbox" class="s-waveReverse"'+(s.waveReverse?' checked':'')+'> Reverse flow</label><span></span>');
         else if(style==='aurora') html+=driveRow('aurora','volume')+row('Width','<span class="srange" style="width:100%"><input type="range" class="s-auroraWidth" min="0" max="100" value="'+(s.auroraWidth==null?50:s.auroraWidth)+'" title="Thickness of the aurora curtains — higher = fatter, softer bands; lower = thin ribbons"><i class="tick" style="left:calc(7px + (100% - 14px)*0.5)"></i></span><span class="val s-auroraWidthV"></span>');
-        else if(style==='sparkle') html+=driveRow('sparkle','volume')+row('Color Mode','<label class="sl" style="margin:0"><input type="checkbox" class="s-sparkleMono"'+(s.sparkleMono?' checked':'')+'> Single color (off = full RGB rainbow)</label><span></span>')+
-          (s.sparkleMono ? row('Color','<input type="color" class="s-sparkleColor" value="'+(s.sparkleColor||'#00e0ff')+'"><span></span>') : '')+
-          dynRows('sparkle');
+        else if(style==='sparkle'){ const spf=s.sparkleFill||'solid';
+          const spfOpt=[['solid','Solid'],['subtract','Subtract (silhouette)']].map(o=>'<option value="'+o[0]+'"'+(o[0]===spf?' selected':'')+'>'+o[1]+'</option>').join('');
+          html+=driveRow('sparkle','volume')+
+          row('Fill','<select class="s-sparkleFill" title="Solid = colored stars. Subtract = the twinkling stars carve the layers below into a silhouette instead of drawing their own color (the tips of the stars cut through).">'+spfOpt+'</select><span></span>')+
+          (spf==='subtract' ? '' : (row('Color Mode','<label class="sl" style="margin:0"><input type="checkbox" class="s-sparkleMono"'+(s.sparkleMono?' checked':'')+'> Single color (off = full RGB rainbow)</label><span></span>')+
+            (s.sparkleMono ? row('Color','<input type="color" class="s-sparkleColor" value="'+(s.sparkleColor||'#00e0ff')+'"><span></span>') : '')))+
+          dynRows('sparkle'); }
         // Dim-while-active: pick OTHER layers to quiet while this audio layer is emitting, each with its
         // own max-brightness slider — so the music keys read against a darker base. Stored in s.ducks.
         if(!Array.isArray(s.ducks)) s.ducks=[];
@@ -496,6 +500,7 @@
         { const wr=c('.s-waveReverse'); if(wr) wr.addEventListener('change',e=>s.waveReverse=e.target.checked); }
         { const bt=c('.s-barTip'); if(bt) bt.addEventListener('change',e=>{ s.barTip=e.target.value; buildLayerBody(card,L); }); }   // rebuild so the tip-color picker shows/hides
         { const bf=c('.s-barFill'); if(bf) bf.addEventListener('change',e=>{ s.barFill=e.target.value; buildLayerBody(card,L); }); }   // rebuild so the color controls show/hide with solid/subtract
+        { const sf=c('.s-sparkleFill'); if(sf) sf.addEventListener('change',e=>{ s.sparkleFill=e.target.value; buildLayerBody(card,L); }); }   // rebuild so the Starfield color controls show/hide with solid/subtract
         { const bl=c('.s-barLayout'); if(bl) bl.addEventListener('change',e=>s.barLayout=e.target.value); }   // no dependent controls — no rebuild needed
         { const bdy=c('.s-barDynamics'); if(bdy) bdy.addEventListener('change',e=>{ s.barDynamics=e.target.checked; buildLayerBody(card,L); }); }   // rebuild so the depth slider shows/hides
         { const bda=c('.s-barDynamicsAlpha'); if(bda) bda.addEventListener('change',e=>{ s.barDynamicsAlpha=e.target.checked; buildLayerBody(card,L); }); }   // rebuild so the depth slider shows/hides
