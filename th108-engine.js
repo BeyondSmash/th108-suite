@@ -439,7 +439,7 @@
     const style = s.style || 'bars';
     if(style==='bars') renderBars(s, out, A, now, L);
     else if(style==='pulse') renderPulse(s, out, A, now);
-    else if(style==='bloom') renderBloom(s, out, A);
+    else if(style==='bloom') renderBloom(s, out, A, now, L);
     else if(style==='wave') renderWave(s, out, A, now, L);
     else if(style==='aurora') renderAurora(s, out, A, now, L);
     else if(style==='sparkle') renderSparkle(s, out, A, now, L);
@@ -653,7 +653,7 @@
   }
 
   // Bloom: a ring expands from board center as beat decays, gated by audio energy so silence is dark.
-  function renderBloom(s, out, A){
+  function renderBloom(s, out, A, now, L){
     let col0 = hexToRgb(s.bloomColor||'#ff5a00'), col2 = hexToRgb(s.bloomColor2||'#ffd000'); const grad = !!s.bloomGrad;
     if(grad && s.bloomGradRev){ const tmp=col0; col0=col2; col2=tmp; }   // reverse gradient colors
     const cx = (GW-1)/2, cy = (GH-1)/2;
@@ -661,8 +661,15 @@
     // energy leans hard on beat (small level body) so it reads as discrete blooms, not a brightness wash.
     // Drive: Beat (default) = a kick lights the center and the ring expands as it decays; Volume = the ring rides
     // overall loudness (small/bright when loud, expands+dims as it quiets).
-    const sig = (s.bloomDrive==='volume') ? A.level : A.beat;
-    const energy = Math.max(sig, A.level*0.3);
+    // SMOOTH the drive (like the waveform) so the ring glides instead of twitching frame-to-frame. Fast attack
+    // keeps the kick's POP; slow release lets the ring expand smoothly. dt-based → frame-rate independent.
+    const W = L || A;
+    const dt = W._blT ? Math.min(100, now - W._blT) : 16; W._blT = now;
+    const sigRaw = (s.bloomDrive==='volume') ? A.level : A.beat;
+    const aUp = 1-Math.exp(-dt/40), aDn = 1-Math.exp(-dt/260);
+    W._blSig = W._blSig==null ? sigRaw : W._blSig + (sigRaw - W._blSig)*(sigRaw>W._blSig ? aUp : aDn);
+    W._blLvl = W._blLvl==null ? A.level : W._blLvl + (A.level - W._blLvl)*(1-Math.exp(-dt/120));
+    const sig = W._blSig, energy = Math.max(sig, W._blLvl*0.3);
     const radius = (1 - sig) * 1.5;                 // 0 at full drive → grows out as it decays
     for(let k=0;k<NLED;k++){
       const idx = INDICES[k], cell = GRID[idx]; if(!cell) continue;

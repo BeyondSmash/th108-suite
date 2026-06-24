@@ -243,6 +243,16 @@ test('Waveform Adaptive Intensity adds light on loud passages, no-op when off', 
   assert.ok(sum(stOn.layers[0].rgb) > sum(stOff.layers[0].rgb), 'adaptive boosts total light on loud audio');
 });
 
+test('renderBloom smooths the drive so the ring glides (fast attack, slow release)', () => {
+  const st = E.createState([{ type:'audio', enabled:true, opacity:1, blend:'add', settings:{ style:'bloom' } }]);
+  const L = st.layers[0];
+  st.audio.beat = 1; E.renderAudio(L, 0, st);     // kick → drive pops up
+  const peak = L._blSig;
+  st.audio.beat = 0; E.renderAudio(L, 16, st);    // next frame silent → slow release, must not snap to 0
+  assert.ok(peak > 0.5, 'kick pops the smoothed drive');
+  assert.ok(L._blSig > 0.5*peak, 'release glides instead of twitching to 0');
+});
+
 test('renderLayer dispatches type audio to renderAudio', () => {
   const L = { type:'audio', enabled:true, opacity:1, blend:'add', settings:{}, rgb:new Uint8Array(E.NLED*3) };
   E.ensureSettings(L);
@@ -357,10 +367,10 @@ test('renderBloom lights center keys on a beat and is dark with no beat', () => 
   st.audio.beat = 1; st.audio.level = 0.5;
   E.renderAudio(La, 0, st);
   let onBeat=0; for(let i=0;i<La.rgb.length;i++) onBeat+=La.rgb[i];
-  st.audio.beat = 0; st.audio.level = 0; La.rgb.fill(0);
-  E.renderAudio(La, 0, st);
+  st.audio.beat = 0; st.audio.level = 0;
+  for(let f=1; f<=120; f++) E.renderAudio(La, f*16, st);   // sustained silence → the smoothed ring decays to dark
   let noBeat=0; for(let i=0;i<La.rgb.length;i++) noBeat+=La.rgb[i];
-  assert.ok(onBeat > noBeat, 'a beat blooms; silence is dark');
+  assert.ok(onBeat > noBeat, 'a beat blooms; sustained silence settles dark');
 });
 
 test('renderWave lights the traveling line with audio and is dark on silence', () => {
