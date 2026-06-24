@@ -79,9 +79,10 @@
       for(let n=0;n<state.layers.length;n++){
         const L=state.layers[n], card=document.createElement('div');
         card.className='lcard'+(L.enabled?'':' off')+(L.collapsed?' coll':''); card.dataset.n=n;
-        const opt=(arr,sel)=>arr.map(v=>'<option'+(v===sel?' selected':'')+'>'+v+'</option>').join('');
+        const cap=v=>v.charAt(0).toUpperCase()+v.slice(1);   // display label capitalized; the option VALUE stays lowercase (what's stored/compared)
+        const opt=(arr,sel)=>arr.map(v=>'<option value="'+v+'"'+(v===sel?' selected':'')+'>'+cap(v)+'</option>').join('');
         const usedT=new Set(state.layers.filter(o=>o!==L).map(o=>o.type));   // one layer per type → grey out types already taken by another layer
-        const tOpt=TYPES.map(v=>'<option'+(v===L.type?' selected':'')+(usedT.has(v)?' disabled':'')+'>'+v+'</option>').join('');
+        const tOpt=TYPES.map(v=>'<option value="'+v+'"'+(v===L.type?' selected':'')+(usedT.has(v)?' disabled':'')+'>'+cap(v)+'</option>').join('');
         card.innerHTML=
           '<div class="lhead">'+
             '<span class="lgrip" title="drag to change layer level">⠿</span>'+   // drag handle for the page's pointer-based card-drag system (same lift/clone/breach-line as the Home cards)
