@@ -211,6 +211,19 @@ test('renderBars lights bass columns bottom-up from state.audio.bands', () => {
   assert.equal(lit2, 0, 'silence paints black');
 });
 
+test('Freeze Animation holds the last live audio frame', () => {
+  const L = { type:'audio', enabled:true, opacity:1, blend:'add', settings:{}, rgb:new Uint8Array(E.NLED*3) };
+  E.ensureSettings(L);
+  const st = E.createState([L]); const La = st.layers[0];
+  st.audio.bands.fill(0); st.audio.bands[0] = 1;
+  E.renderAudio(La, 0, st);                 // live frame captured into _audFreeze
+  const snap = La.rgb.slice();
+  La.settings.frozen = true;
+  st.audio.bands.fill(0);                    // audio goes silent...
+  E.renderAudio(La, 16, st);                 // ...but frozen → must reproduce the captured frame, not go dark
+  assert.deepEqual([...La.rgb], [...snap], 'frozen frame held despite silence');
+});
+
 test('renderLayer dispatches type audio to renderAudio', () => {
   const L = { type:'audio', enabled:true, opacity:1, blend:'add', settings:{}, rgb:new Uint8Array(E.NLED*3) };
   E.ensureSettings(L);

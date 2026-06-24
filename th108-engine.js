@@ -432,6 +432,7 @@
 
   function renderAudio(L, now, state){
     const s = L.settings, out = L.rgb, A = state.audio;
+    if(s.frozen && L._audFreeze){ out.set(L._audFreeze); L._carve=null; L._alpha=null; return; }   // Freeze Animation: hold the last live frame (works for every audio style; renderAudio runs on real `now`, so it can't use the layer clock that freezes the other layer types)
     if(s.pauseStyle==='twinkle' && A._twk){ renderTwinkleOut(L, out, A, now, s); L._carve=null; L._alpha=null; return; }   // paused: sparkle the frozen frame out
     out.fill(0);
     L._carve = null; L._alpha = null;         // only bars 'subtract' fill sets a carve mask; only bars alpha-recede sets _alpha (both cleared each frame, renderBars re-sets if needed)
@@ -462,6 +463,7 @@
     // (just the bottom row) by the time silence is confirmed. Gating on level vs the running peak holds the
     // snapshot at the last near-full frame, so the whole visualization twinkles out, not only the base row.
     if(A.level >= 0.6*Math.max(A._lpk||0, 0.05)) (L._frozen || (L._frozen = new Float32Array(NLED*3))).set(out);   // ponytail: simple peak gate; a short frame-history ring would track the pre-fade frame even more exactly if needed
+    (L._audFreeze || (L._audFreeze = new Float32Array(out.length))).set(out);   // remember every live frame so Freeze Animation can hold the current one
   }
 
   // Twinkle pause-out: freeze the last live frame (L._frozen) and sparkle each LIT key out individually over
