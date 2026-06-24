@@ -34,6 +34,14 @@ test('normalize drops invalid entries + clamps out-of-range values', () => {
   assert.equal(out[0].action.target, 'notepad.exe');   // trimmed
 });
 
+test('normalize keeps macro steps as KeyboardEvent.code + modifier flags', () => {
+  const out = HA.normalize([{ trigger: { type: 'key', led: 1 }, action: { type: 'macro', steps: [
+    { code: 'KeyC', ctrl: true }, { code: 'KeyV', ctrl: true, shift: false }, { bogus: 1 } ] } }]);
+  assert.deepEqual(out[0].action.steps, [
+    { code: 'KeyC', ctrl: true, alt: false, shift: false, meta: false },
+    { code: 'KeyV', ctrl: true, alt: false, shift: false, meta: false }]);
+});
+
 test('chordMatches is exact (Ctrl+M does not fire a Ctrl+Shift+M binding)', () => {
   const want = { ctrl: true, shift: true };
   assert.ok(HA.chordMatches(want, { ctrl: true, shift: true }));

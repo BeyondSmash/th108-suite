@@ -336,6 +336,21 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
   .bdtabs{ display:flex; gap:4px; flex-wrap:wrap; margin-bottom:10px; border-bottom:1px solid var(--border); padding-bottom:10px; }   /* separate the category tabs from the assignment buttons below */
   #bdGrid{ display:flex; flex-wrap:wrap; gap:6px; }
   #bdGrid .patbtn{ padding:7px 12px; }
+  /* hotkeys: Host Actions builder (the 'host' palette tab) */
+  #bdGrid .haWrap{ flex:1 1 100%; display:flex; flex-direction:column; gap:8px; }
+  .haRow{ display:flex; align-items:center; gap:8px; padding:6px 10px; background:var(--inset); border:1px solid var(--border); border-radius:8px; }
+  .haTrg{ font-weight:600; color:var(--text); }
+  .haArrow{ color:var(--muted); }
+  .haAct{ color:var(--muted); flex:1 1 auto; }
+  .haDel{ flex:0 0 auto; padding:3px 9px; }
+  .haEmpty{ color:var(--muted); font-size:13px; margin:0; padding:4px 2px; }
+  .haBuild{ display:flex; flex-direction:column; gap:9px; padding:11px; background:var(--inset); border:1px solid var(--border); border-radius:8px; margin-top:2px; }
+  .haLine{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+  .haLbl{ color:var(--muted); font-size:13px; }
+  .haBuild select, .haTarget{ font:inherit; background:var(--card); color:var(--text); border:1px solid var(--border); border-radius:8px; padding:4px 8px; }
+  .haTarget{ flex:1 1 240px; min-width:200px; }
+  .haSteps{ color:var(--muted); font-size:13px; }
+  .haBind{ align-self:flex-start; padding:8px 16px; margin-top:2px; }
 
   /* modals (spacebar focus overlay + keymap progress) — bento-styled */
   .modal{ position:fixed; inset:0; z-index:200; display:none; align-items:center; justify-content:center;

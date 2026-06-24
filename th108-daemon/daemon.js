@@ -189,11 +189,19 @@ function selectProfile(index) {
   if (index < 0 || index >= profiles.length) { log('🎚 host action: profile ' + (index + 1) + ' not saved (only ' + profiles.length + ' exist)'); return; }
   curProfile = index; applyProfile(profiles[index], profiles[index].name || ('#' + (index + 1)));
 }
+// KeyboardEvent.code → uiohook keycode, so a page-recorded macro (which speaks KeyboardEvent.code) can be played
+// back through uiohook.keyTap (which speaks libuiohook keycodes). Built from the same table the input hook uses.
+const CODE2UIO = {};
+for (const [name, code] of Object.entries(UIOHOOK_TO_CODE)) { const kc = UiohookKey[name]; if (kc !== undefined) CODE2UIO[code] = kc; }
+CODE2UIO.ContextMenu = 3677; CODE2UIO.Pause = 3653;   // the keys uiohook-napi omits (see RAW_UIO above)
 function playMacro(steps) {
   if (!Array.isArray(steps) || !steps.length) return;
   let i = 0; const next = () => { if (i >= steps.length) return; const s = steps[i++];
-    try { uIOhook.keyTap(s.key, Array.isArray(s.mods) ? s.mods : []); } catch {}
-    setTimeout(next, 35); };   // ~35ms between keys so apps register each one
+    const key = CODE2UIO[s.code];
+    if (key !== undefined) { const mods = [];
+      if (s.ctrl) mods.push(UiohookKey.Ctrl); if (s.shift) mods.push(UiohookKey.Shift); if (s.alt) mods.push(UiohookKey.Alt); if (s.meta) mods.push(UiohookKey.Meta);
+      try { uIOhook.keyTap(key, mods); } catch {} }
+    setTimeout(next, 40); };   // ~40ms between keys so apps register each one
   next();
   log('🎚 host action: macro (' + steps.length + ' keys)');
 }

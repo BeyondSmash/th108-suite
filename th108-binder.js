@@ -367,68 +367,125 @@
         host.appendChild(b);
       });
     }
-    // ---- Host Actions registry (key LED index → daemon action). Stored on the page + pushed to the daemon so it
-    // runs page-closed. One key per action (re-binding moves it). NO firmware write, NO Connect needed. ----
+    // ---- Host Actions registry: a TRIGGER (key / multi-tap / chord / hold) fires an ACTION (mic toggle / profile
+    // next-prev / jump-to-profile / launch / macro). Stored on the page + pushed to the daemon so it runs
+    // page-closed. NO firmware write, NO Connect needed. Bindings capture the key you PRESS (its emitted code →
+    // LED), so a firmware-remapped key resolves to the same LED the daemon watches. ----
     const HOST_KEY = 'th108_host_actions';
-    function loadHostActions() { try { const a = JSON.parse(localStorage.getItem(HOST_KEY) || '[]'); return Array.isArray(a) ? a : []; } catch (_) { return []; } }
-    function pushHostActions(list) { try { fetch('/host-actions', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ actions: list.map(b => ({ led: b.led, action: b.action })) }) }).catch(() => {}); } catch (_) {} }
-    function saveHostActions(list, push) { try { localStorage.setItem(HOST_KEY, JSON.stringify(list)); } catch (_) {} if (push !== false) pushHostActions(list); }
-    function setHostBinding(action, led, label) {
-      const list = loadHostActions().filter(b => b && b.action !== action);   // one key per action
-      if (led != null) list.push({ action, led, label });
-      saveHostActions(list);
-      if (led != null) log('✓ ' + label + ' → ' + (hostItems.find(i => i.host === action) || {}).label + ' (works with this page closed)', 'ok');
-      renderGrid();
+    const haEsc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    const ACT_OPTS = [['micToggle', 'Mic / Music lighting toggle'], ['profileNext', 'Profile → Next'], ['profilePrev', 'Profile → Previous'], ['profileSelect', 'Jump to a profile…'], ['launch', 'Launch a program / file / URL…'], ['macro', 'Run a macro (key sequence)…']];
+    const TRG_OPTS = [['key', 'Single press'], ['multitap', 'Multi-tap (N presses)'], ['chord', 'Chord (modifiers + key)'], ['hold', 'Long-press (hold)']];
+    const MOD_CODE = /^(Control|Shift|Alt|Meta)(Left|Right)$/;   // a lone modifier keydown (skip while waiting for the real key)
+    function loadHostActions() {
+      try { const a = JSON.parse(localStorage.getItem(HOST_KEY) || '[]'); if (!Array.isArray(a)) return [];
+        return a.map(b => {
+          if (b && b.trigger && b.action && typeof b.action === 'object') return b;                                   // new {trigger,action} schema
+          if (b && b.led != null && typeof b.action === 'string') return { trigger: { type: 'key', led: b.led }, action: { type: b.action } };   // migrate the old single-key format
+          return null;
+        }).filter(Boolean);
+      } catch (_) { return []; }
     }
-    // On load, seed the page's display from the daemon (e.g. a migrated Mic toggle-hotkey) if the page has none yet.
+    function pushHostActions(list) { try { fetch('/host-actions', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ actions: list }) }).catch(() => {}); } catch (_) {} }
+    function saveHostActions(list, push) { try { localStorage.setItem(HOST_KEY, JSON.stringify(list)); } catch (_) {} if (push !== false) pushHostActions(list); }
     function seedHostActionsFromDaemon() {
       fetch('/host-actions').then(r => r.json()).then(d => {
-        if (!d || !Array.isArray(d.actions) || !d.actions.length) return;
-        if (loadHostActions().length) return;   // page already has bindings → don't clobber
-        const seeded = d.actions.map(a => ({ action: a.action, led: a.led, label: (board && board.labelFor) ? board.labelFor(a.led) : ('LED ' + a.led) }));
-        saveHostActions(seeded, false);   // don't push back what we just read
+        if (!d || !Array.isArray(d.actions) || !d.actions.length || loadHostActions().length) return;   // don't clobber existing
+        saveHostActions(d.actions, false);   // the daemon returns the normalized {trigger,action} schema — adopt it for display
         if (curTab === 'host') renderGrid();
       }).catch(() => {});
     }
-    // Host actions bind by CAPTURING the key you press (its emitted code → LED), NOT a board click. This is what
-    // makes a firmware-remapped key work: pressing a Menu key remapped to Pause emits Pause → the same LED the
-    // daemon resolves it to. (A board click would bind the key's physical slot, which a remap makes wrong.)
-    let _hostCapture = null;   // the in-progress key-capture (only ONE at a time)
-    function endHostCapture(restore) {
-      if (!_hostCapture) return;
-      document.removeEventListener('keydown', _hostCapture.onKey, true);
-      if (restore && _hostCapture.btn.isConnected) _hostCapture.btn.textContent = _hostCapture.orig;
-      _hostCapture = null;
+    const keyLabel = led => (board && board.labelFor) ? board.labelFor(led) : ('LED ' + led);
+    function describeTrigger(t) {
+      const k = keyLabel(t.led);
+      if (t.type === 'chord') { const m = t.mods || {}; return (m.ctrl ? 'Ctrl+' : '') + (m.shift ? 'Shift+' : '') + (m.alt ? 'Alt+' : '') + (m.meta ? 'Win+' : '') + k; }
+      if (t.type === 'multitap') return (t.count || 2) + '× tap ' + k;
+      if (t.type === 'hold') return 'Hold ' + k + ' ' + (t.holdMs || 500) + 'ms';
+      return 'Press ' + k;
     }
-    function captureHostKey(item, btn) {
-      endHostCapture(true);   // cancel any other action already awaiting a key → one capture at a time
+    function describeAction(a) {
+      if (a.type === 'profileSelect') return 'Jump to profile ' + ((a.index | 0) + 1);
+      if (a.type === 'launch') return 'Launch ' + (a.target || '?');
+      if (a.type === 'macro') return 'Macro (' + ((a.steps || []).length) + ' keys)';
+      return (ACT_OPTS.find(o => o[0] === a.type) || [, a.type])[1];
+    }
+    // the in-progress binding being authored (the builder form's state)
+    let _hb = null;
+    function newBuilder() { return { actType: 'micToggle', triggerType: 'key', count: 2, windowMs: 400, holdMs: 500, profileIndex: 1, target: '', steps: [] }; }
+    let _hostCapture = null, _macroRec = null;
+    function endHostCapture(restore) { if (!_hostCapture) return; document.removeEventListener('keydown', _hostCapture.onKey, true); if (restore && _hostCapture.btn && _hostCapture.btn.isConnected) _hostCapture.btn.textContent = _hostCapture.orig; _hostCapture = null; }
+    function endMacroRecord() { if (!_macroRec) return; document.removeEventListener('keydown', _macroRec.onKey, true); if (_macroRec.btn && _macroRec.btn.isConnected) _macroRec.btn.textContent = '⏺ Record'; _macroRec = null; }
+    function recordMacro(btn, readout) {
+      endHostCapture(true);
+      if (_macroRec) { endMacroRecord(); return; }   // toggle off
+      btn.textContent = '⏹ Stop (recording…)';
+      const onKey = ev => { ev.preventDefault(); ev.stopPropagation();
+        if (ev.code === 'Escape') { endMacroRecord(); return; }
+        if (MOD_CODE.test(ev.code)) return;   // wait for the actual key, not the lone modifier
+        _hb.steps.push({ code: ev.code, ctrl: ev.ctrlKey, alt: ev.altKey, shift: ev.shiftKey, meta: ev.metaKey });
+        if (readout) readout.textContent = _hb.steps.length + ' keys'; };
+      _macroRec = { onKey, btn };
+      document.addEventListener('keydown', onKey, true);
+    }
+    function buildBindingFromKey(ev) {
+      const led = (board && board.ledForCode) ? board.ledForCode(ev.code) : null;
+      if (led == null) return null;
+      const t = { type: _hb.triggerType, led };
+      if (t.type === 'chord') t.mods = { ctrl: ev.ctrlKey, alt: ev.altKey, shift: ev.shiftKey, meta: ev.metaKey };
+      if (t.type === 'multitap') { t.count = _hb.count; t.windowMs = _hb.windowMs; }
+      if (t.type === 'hold') t.holdMs = _hb.holdMs;
+      const a = { type: _hb.actType };
+      if (a.type === 'profileSelect') a.index = Math.max(0, (_hb.profileIndex | 0) - 1);   // UI is 1-based
+      if (a.type === 'launch') a.target = (_hb.target || '').trim();
+      if (a.type === 'macro') a.steps = _hb.steps.slice();
+      return { trigger: t, action: a };
+    }
+    function captureTriggerKey(btn) {
+      if (_hb.actType === 'launch' && !(_hb.target || '').trim()) { $('bdHint').textContent = 'Enter a program path or URL first.'; return; }
+      if (_hb.actType === 'macro' && !_hb.steps.length) { $('bdHint').textContent = 'Record at least one key for the macro first.'; return; }
+      endHostCapture(true); endMacroRecord();
       const orig = btn.textContent;
-      btn.textContent = 'Press the key to use…  (Esc cancels)';
-      const onKey = ev => { ev.preventDefault(); ev.stopPropagation(); endHostCapture(false);
+      btn.textContent = (_hb.triggerType === 'chord' ? 'Press the key COMBO…' : 'Press the trigger key…') + '  (Esc cancels)';
+      const onKey = ev => {
+        if (_hb.triggerType === 'chord' && MOD_CODE.test(ev.code)) return;   // for a chord, wait past the lone modifiers
+        ev.preventDefault(); ev.stopPropagation(); endHostCapture(false);
         if (ev.code === 'Escape') { btn.textContent = orig; return; }
-        const led = (board && board.ledForCode) ? board.ledForCode(ev.code) : null;
-        if (led == null) { btn.textContent = 'Not a keyboard key — try another'; return; }
-        setHostBinding(item.host, led, (board && board.labelFor) ? board.labelFor(led) : ('LED ' + led)); };
+        const b = buildBindingFromKey(ev);
+        if (!b) { btn.textContent = 'Not a keyboard key — try another'; return; }
+        const list = loadHostActions(); list.push(b); saveHostActions(list);
+        log('✓ ' + describeTrigger(b.trigger) + ' → ' + describeAction(b.action) + ' (works page-closed)', 'ok');
+        _hb = newBuilder(); renderGrid(); };
       _hostCapture = { onKey, btn, orig };
       document.addEventListener('keydown', onKey, true);
     }
     function renderHostGrid() {
-      endHostCapture(false);   // a re-render (e.g. board selection change) drops any pending capture's stale button
-      const host = $('bdGrid'); host.textContent = '';
-      const list = loadHostActions();
-      hostItems.forEach(item => {
-        const bound = list.find(b => b && b.action === item.host);
-        const b = document.createElement('button');
-        b.className = 'patbtn';
-        b.textContent = item.label + (bound ? '  ·  ' + bound.label : '');
-        b.title = 'Click, then press the key you want to use for ' + item.label;
-        b.addEventListener('click', () => captureHostKey(item, b));
-        host.appendChild(b);
-        if (bound) { const x = document.createElement('button'); x.className = 'patbtn'; x.style.flex = '0 0 auto';
-          x.textContent = '✕'; x.title = 'Clear binding: ' + item.label;
-          x.addEventListener('click', () => setHostBinding(item.host, null)); host.appendChild(x); }
-      });
-      $('bdHint').textContent = 'Click an action, then PRESS the key you want to use for it — this captures whatever the key sends, so it works even if you\'ve firmware-remapped that key. Runs via the background app (works with this page closed); the key still does its normal thing too.';
+      endHostCapture(false); endMacroRecord();
+      if (!_hb) _hb = newBuilder();
+      const host = $('bdGrid'), list = loadHostActions();
+      let h = '<div class="haWrap">';
+      h += list.length ? list.map((b, i) => '<div class="haRow"><span class="haTrg">' + haEsc(describeTrigger(b.trigger)) + '</span><span class="haArrow">→</span><span class="haAct">' + haEsc(describeAction(b.action)) + '</span><button type="button" class="patbtn haDel" data-i="' + i + '" title="Remove">✕</button></div>').join('')
+        : '<p class="haEmpty">No host actions yet — build one below.</p>';
+      h += '<div class="haBuild"><div class="haLine"><span class="haLbl">Do</span><select class="haActSel">' + ACT_OPTS.map(o => '<option value="' + o[0] + '"' + (o[0] === _hb.actType ? ' selected' : '') + '>' + o[1] + '</option>').join('') + '</select>';
+      if (_hb.actType === 'profileSelect') h += '<span class="haLbl">Profile #</span><input type="number" class="numin haPidx" min="1" max="20" value="' + _hb.profileIndex + '">';
+      if (_hb.actType === 'launch') h += '<input type="text" class="haTarget" placeholder="C:\\path\\app.exe   or   https://…" value="' + haEsc(_hb.target) + '">';
+      if (_hb.actType === 'macro') h += '<button type="button" class="patbtn haRec">⏺ Record</button><span class="haSteps">' + _hb.steps.length + ' keys</span>' + (_hb.steps.length ? '<button type="button" class="patbtn haClr">Clear</button>' : '');
+      h += '</div><div class="haLine"><span class="haLbl">When I</span><select class="haTrgSel">' + TRG_OPTS.map(o => '<option value="' + o[0] + '"' + (o[0] === _hb.triggerType ? ' selected' : '') + '>' + o[1] + '</option>').join('') + '</select>';
+      if (_hb.triggerType === 'multitap') h += '<input type="number" class="numin haCount" min="2" max="8" value="' + _hb.count + '"><span class="haLbl">times within</span><input type="number" class="numin haWin" min="120" max="2000" step="20" value="' + _hb.windowMs + '"><span class="haLbl">ms</span>';
+      if (_hb.triggerType === 'hold') h += '<span class="haLbl">for</span><input type="number" class="numin haHold" min="150" max="3000" step="50" value="' + _hb.holdMs + '"><span class="haLbl">ms</span>';
+      h += '</div><button type="button" class="patbtn haBind">' + (_hb.triggerType === 'chord' ? 'Bind — press the key combo' : 'Bind — press the key') + '</button></div></div>';
+      host.innerHTML = h;
+      host.querySelectorAll('.haDel').forEach(x => x.addEventListener('click', () => { const l = loadHostActions(); l.splice(+x.dataset.i, 1); saveHostActions(l); renderGrid(); }));
+      host.querySelector('.haActSel').addEventListener('change', e => { _hb.actType = e.target.value; renderGrid(); });
+      host.querySelector('.haTrgSel').addEventListener('change', e => { _hb.triggerType = e.target.value; renderGrid(); });
+      const w = (sel, fn) => { const el = host.querySelector(sel); if (el) el.addEventListener('input', fn); };
+      w('.haPidx', e => _hb.profileIndex = +e.target.value || 1);
+      w('.haTarget', e => _hb.target = e.target.value);
+      w('.haCount', e => _hb.count = +e.target.value || 2);
+      w('.haWin', e => _hb.windowMs = +e.target.value || 400);
+      w('.haHold', e => _hb.holdMs = +e.target.value || 500);
+      const rec = host.querySelector('.haRec'); if (rec) rec.addEventListener('click', () => recordMacro(rec, host.querySelector('.haSteps')));
+      const clr = host.querySelector('.haClr'); if (clr) clr.addEventListener('click', () => { _hb.steps = []; renderGrid(); });
+      host.querySelector('.haBind').addEventListener('click', e => captureTriggerKey(e.target));
+      $('bdHint').textContent = 'Build a host action: pick what it does, pick the trigger, then click Bind and press the key (or key combo). It runs via the background app, so it works with this page closed — the key still does its normal job too.';
     }
 
     // modified-key marks: what OUR binder wrote, persisted so the board shows it across reloads

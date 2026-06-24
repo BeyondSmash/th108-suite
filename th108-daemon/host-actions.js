@@ -37,7 +37,7 @@ function normalize(list) {
     if (t.type === 'hold') t.holdMs = clampInt(trigger.holdMs, 500, 150, 3000);
     const a = { type: action.type };
     if (a.type === 'profileSelect') a.index = clampInt(action.index, 0, 0, 99);
-    if (a.type === 'macro') a.steps = Array.isArray(action.steps) ? action.steps.filter(s => s && s.key != null).map(s => ({ key: +s.key, mods: Array.isArray(s.mods) ? s.mods.map(Number) : [] })) : [];
+    if (a.type === 'macro') a.steps = Array.isArray(action.steps) ? action.steps.filter(s => s && typeof s.code === 'string').map(s => ({ code: s.code, ctrl: !!s.ctrl, alt: !!s.alt, shift: !!s.shift, meta: !!s.meta })) : [];   // KeyboardEvent.code steps; daemon maps code→uiohook at play time
     if (a.type === 'launch') a.target = String(action.target || '').trim();
     out.push({ trigger: t, action: a });
   }
