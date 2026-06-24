@@ -114,6 +114,14 @@ for (const [name, code] of Object.entries(UIOHOOK_TO_CODE)) {
   const kc = UiohookKey[name], idx = KEYMAP[code];
   if (kc !== undefined && idx !== undefined) UIO2IDX[kc] = idx;
 }
+// uiohook-napi's UiohookKey OMITS the Apps/Menu key, so it never enters UIO2IDX by name — add it by its raw
+// libuiohook code (VC_CONTEXT_MENU 0x0E5D = 3677, the next code after Meta 3675 / MetaRight 3676). Without this,
+// reactive lighting AND a host action bound to Menu never fire (the daemon can't resolve the keypress to an LED).
+if (KEYMAP.ContextMenu !== undefined) UIO2IDX[3677] = KEYMAP.ContextMenu;
+// DISCOVER: log (once each) any pressed key the daemon couldn't map → tells us the real code to add if a board
+// sends something unexpected (e.g. Menu on a different code than 3677). Cheap; only fires on a genuinely unmapped key.
+const _seenUnmapped = new Set();
+uIOhook.on('keydown', e => { if (UIO2IDX[e.keycode] === undefined && !_seenUnmapped.has(e.keycode)) { _seenUnmapped.add(e.keycode); log('🔍 unmapped key: uiohook keycode ' + e.keycode + ' — add to UIO2IDX to bind it (reactive/host actions)'); } });
 uIOhook.on('keydown', e => { lastKeyAt = Date.now(); if (state) { const i = UIO2IDX[e.keycode]; if (i !== undefined) E.stampKey(state, i); } });
 uIOhook.on('keyup',   e => { if (state) { const i = UIO2IDX[e.keycode]; if (i !== undefined) E.releaseKey(state, i); } });
 // Global recovery hotkey: Ctrl+Alt+End in ANY app = "my lighting broke — fix it" (user request
