@@ -172,7 +172,8 @@
     if(!A.bandsL) A.bandsL = new Float32Array(32);
     if(!A.bandsR) A.bandsR = new Float32Array(32);
     if(!A.bandsRaw) { A.bandsRaw = new Float32Array(32); A.bandsRawL = new Float32Array(32); A.bandsRawR = new Float32Array(32); }
-    const sn = A._snap || (A._snap = { L:0, b:new Float32Array(32), bL:new Float32Array(32), bR:new Float32Array(32), rb:new Float32Array(32), rbL:new Float32Array(32), rbR:new Float32Array(32) });
+    const sn = A._snap || (A._snap = { L:0, b:new Float32Array(32), bL:new Float32Array(32), bR:new Float32Array(32), rb:new Float32Array(32), rbL:new Float32Array(32), rbR:new Float32Array(32), bb:new Float32Array(32) });
+    if(!sn.bb) sn.bb = new Float32Array(32);   // defensive: a pre-existing snapshot from before barBands existed
     let settleF = 0;
     if(silent){
       if(!A._settling){ A._settling = true; A._settleT0 = now; }   // begin the glide from the held (last-loud) snapshot
@@ -202,21 +203,39 @@
       A.bandsRawL[i] = silent ? sn.rbL[i]*settleF : audioEnvelope(A.bandsRawL[i], rbL ? rawClamp(rbL[i]) : r, dt, p.attackMs, p.decayMs);
       A.bandsRawR[i] = silent ? sn.rbR[i]*settleF : audioEnvelope(A.bandsRawR[i], rbR ? rawClamp(rbR[i]) : r, dt, p.attackMs, p.decayMs);
     }
+    // BARS sync: a per-band height that normalizes each band to its OWN recent peak (so a quiet-frequency column
+    // uses its full range = individual life, not a global wall), BLENDED with the global-shape A.bands (keeps the
+    // real bass→treble balance). Each band's pb is its current raw vs its own ~2.5s peak → 0 when that band is
+    // silent (no noise bloom). Respects the Attack/Decay tuners; the instant per-band PUNCH on a hit is added at
+    // render. Spectrum-bars only — other styles keep using A.bands unchanged.
+    if(!A.barBands){ A.barBands = new Float32Array(32); A._bpk = new Float32Array(32); for(let i=0;i<32;i++) A._bpk[i]=0.1; }
+    { const PBMIX = 0.5, bpkFall = Math.exp(-dt/2500);
+      for(let i=0;i<32;i++){
+        const rv = rb ? rawClamp(rb[i]) : 0;
+        A._bpk[i] = rv > A._bpk[i] ? rv : Math.max(rv, A._bpk[i]*bpkFall);   // per-band recent peak, ~2.5s fall
+        const pb = Math.min(1, rv / Math.max(A._bpk[i], 0.04));               // this band vs its OWN peak (0 when it's silent)
+        const tgt = A.bands[i]*(1-PBMIX) + pb*PBMIX;                          // blend global shape + per-band life
+        A.barBands[i] = silent ? sn.bb[i]*settleF : audioEnvelope(A.barBands[i], tgt, dt, p.attackMs, p.decayMs);
+      } }
     // refresh the snapshot from THIS frame while the audio is near its running peak → a later pause settles from
     // the full bars, not the faded tail (gate mirrors the twinkle freeze in renderAudio)
     if(!silent && A.level >= 0.6*Math.max(A._lpk||0, 0.05)){
-      sn.L = A.level; sn.b.set(A.bands); sn.bL.set(A.bandsL); sn.bR.set(A.bandsR); sn.rb.set(A.bandsRaw); sn.rbL.set(A.bandsRawL); sn.rbR.set(A.bandsRawR);
+      sn.L = A.level; sn.b.set(A.bands); sn.bL.set(A.bandsL); sn.bR.set(A.bandsR); sn.rb.set(A.bandsRaw); sn.rbL.set(A.bandsRawL); sn.rbR.set(A.bandsRawR); sn.bb.set(A.barBands);
     }
     // DYNAMICS DEPTH: per-band novelty (positive rise) + the global beat drive a fast-attack/slow-decay "hit"
     // envelope. A band that's been steady → hit decays to 0 → renderBars recedes it; a change/beat pops hit → a
     // bright rebound. This is what gives a sustained-loud wall depth instead of a flat meter. (Spectrum-bars only,
     // gated by s.barDynamics in renderBars; cheap to keep always-updated here.)
-    if(!A.hit){ A.hit = new Float32Array(32); A._novPrev = new Float32Array(32); }
-    const hitDecay = Math.exp(-dt/300);   // rebound fades over ~300ms
+    if(!A.hit){ A.hit = new Float32Array(32); A._novPrev = new Float32Array(32); A.bandPop = new Float32Array(32); }
+    if(!A.bandPop) A.bandPop = new Float32Array(32);
+    const hitDecay = Math.exp(-dt/300), popDecay = Math.exp(-dt/170);   // rebound fades over ~300ms; the punch over ~170ms
     for(let i=0;i<32;i++){
       const nov = A.bands[i] - A._novPrev[i]; A._novPrev[i] = A.bands[i];   // positive frame-to-frame rise = novelty
       const tgt = Math.min(1, Math.max(0, nov)*5 + A.beat*0.6);            // a band jump OR a kick pops the rebound
       A.hit[i] = tgt > A.hit[i] ? tgt : A.hit[i]*hitDecay;                 // instant attack, slow decay
+      // bandPop = a PER-BAND punch (no global-beat term) → only the column whose frequency just hit snaps up
+      const popTgt = Math.min(1, Math.max(0, nov)*6);
+      A.bandPop[i] = popTgt > A.bandPop[i] ? popTgt : A.bandPop[i]*popDecay;
     }
   }
   // Per-VARIANT tuner params (gain/floor/attack/decay/beatSens) so tuning one variant doesn't leak into another.
@@ -592,8 +611,10 @@
       else if(layout==='reverse'){ fc = GW>1 ? 1 - col/(GW-1) : 0; }                                      // treble left → bass right (mirror of standard)
       else { fc = GW>1 ? col/(GW-1) : 0; }                                                                // standard / topdown / centerout: bass left → treble right
       const band = Math.min(31, Math.round(fc*31));
-      const colE = (bandsArr||A.bands)[band];                  // this column's spectrum value (per Layout: stereo = its L/R channel)
+      // spectrum drive uses the per-band enhanced height (individual columns); stereo keeps its own L/R channel bands
+      const colE = (bandsArr===A.bands && A.barBands) ? A.barBands[band] : (bandsArr||A.bands)[band];
       let mag = drive==='volume' ? A.level : drive==='beat' ? A.beat : colE;
+      if(drive==='spectrum' && A.bandPop) mag = Math.min(1, mag + A.bandPop[band]*0.25);   // per-band PUNCH: the column whose frequency just hit snaps up, then settles
       if(useSpread){ const sh = (rawArr||A.bandsRaw)[band]/maxRaw; mag = mag*(0.25 + 1.45*(sh>1?1:sh)); }   // shape volume/beat by the RAW per-column spectrum/stereo → columns rise individually
       if(mag>1) mag=1;
       // --- vertical: fb = fill level from base(1) → tip(steps); litCount = how many levels this bar fills ---

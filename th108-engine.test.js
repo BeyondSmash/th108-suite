@@ -243,6 +243,18 @@ test('Waveform Adaptive Intensity adds light on loud passages, no-op when off', 
   assert.ok(sum(stOn.layers[0].rgb) > sum(stOff.layers[0].rgb), 'adaptive boosts total light on loud audio');
 });
 
+test('Spectrum Bars per-band pipeline: per-band liveliness + transient punch', () => {
+  const st = E.createState([{ type:'audio', enabled:true, opacity:1, blend:'add', settings:{ style:'bars' } }]);
+  const A = st.audio, s = st.layers[0].settings;
+  const raw = { bands:new Float32Array(32), level:0.5, beat:0, centroid:0.5 };
+  raw.bands[2]=0.8; raw.bands[28]=0.2;                       // loud bass + a modest-but-active treble band
+  for(let f=0; f<60; f++) E.applyAudioFeatures(st, raw, s, f*16);
+  assert.ok(A.barBands[28] > 0.2, 'an active treble band gets real height despite the louder bass (per-band liveliness)');
+  const before = A.bandPop[10];
+  raw.bands[10]=0.9; E.applyAudioFeatures(st, raw, s, 60*16);  // a band suddenly jumps
+  assert.ok(A.bandPop[10] > before, 'a band transient punches that column');
+});
+
 test('renderBloom smooths the drive so the ring glides (fast attack, slow release)', () => {
   const st = E.createState([{ type:'audio', enabled:true, opacity:1, blend:'add', settings:{ style:'bloom' } }]);
   const L = st.layers[0];
