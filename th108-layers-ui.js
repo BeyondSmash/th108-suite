@@ -318,7 +318,7 @@
         // tab + mic are captured in-tab via Web Audio. App needs the daemon (it spawns app-capture.exe).
         const sources=[['system','All System Audio',true],['app','Specific App',true],['tab','Specific Tab',true],['mic','Mic / Line-in',true]];   // 'tab' = getDisplayMedia: you pick which tab/window to share (NOT this page — this site emits no sound), so "Specific Tab"
         const srcBubbles=sources.map(o=>{ const dis=!o[2]; return '<label class="sl" style="margin:0'+(dis?';opacity:.4':'')+'"><input type="radio" name="aud-src-'+uid+'" class="s-source" value="'+o[0]+'"'+((o[0]===(s.source||'system'))?' checked':'')+(dis?' disabled':'')+'> '+o[1]+'</label>'; }).join('');
-        const styles=[['bars','Spectrum Bars'],['pulse','Beat Pulse'],['bloom','Radial Bloom'],['wave','Waveform'],['aurora','Aurora'],['sparkle','Starfield']];
+        const styles=[['bars','Spectrum Bars'],['pulse','Beat Pulse'],['bloom','Radial Bloom'],['wave','Waveform'],['aurora','Aurora']];
         const sopt=styles.map(m=>'<option value="'+m[0]+'"'+(m[0]===style?' selected':'')+'>'+m[1]+'</option>').join('');
         const esc=t=>(t||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');
         let html='<div class="ctl">'+
@@ -399,13 +399,6 @@
           row('Adaptive Intensity','<span class="srange" style="width:100%"><input type="range" class="s-waveAdaptive" min="0" max="100" value="'+(s.waveAdaptive==null?0:s.waveAdaptive)+'" title="On intense (loud) parts of a song, ramps the line thickness 50%→100% and brightness 100%→200% for that stretch. 0 = off"><i class="tick" style="left:7px"></i></span><span class="val s-waveAdaptiveV"></span>')+
           row('Direction','<label class="sl" style="margin:0"><input type="checkbox" class="s-waveReverse"'+(s.waveReverse?' checked':'')+'> Reverse flow</label><span></span>');
         else if(style==='aurora') html+=driveRow('aurora','volume')+row('Width','<span class="srange" style="width:100%"><input type="range" class="s-auroraWidth" min="0" max="100" value="'+(s.auroraWidth==null?50:s.auroraWidth)+'" title="Thickness of the aurora curtains — higher = fatter, softer bands; lower = thin ribbons"><i class="tick" style="left:calc(7px + (100% - 14px)*0.5)"></i></span><span class="val s-auroraWidthV"></span>');
-        else if(style==='sparkle'){ const spf=s.sparkleFill||'solid';
-          const spfOpt=[['solid','Solid'],['subtract','Subtract (silhouette)']].map(o=>'<option value="'+o[0]+'"'+(o[0]===spf?' selected':'')+'>'+o[1]+'</option>').join('');
-          html+=driveRow('sparkle','volume')+
-          row('Fill','<select class="s-sparkleFill" title="Solid = colored stars. Subtract = the twinkling stars carve the layers below into a silhouette instead of drawing their own color (the tips of the stars cut through).">'+spfOpt+'</select><span></span>')+
-          (spf==='subtract' ? '' : (row('Color Mode','<label class="sl" style="margin:0"><input type="checkbox" class="s-sparkleMono"'+(s.sparkleMono?' checked':'')+'> Single color (off = full RGB rainbow)</label><span></span>')+
-            (s.sparkleMono ? row('Color','<input type="color" class="s-sparkleColor" value="'+(s.sparkleColor||'#00e0ff')+'"><span></span>') : '')))+
-          dynRows('sparkle'); }
         // Dim-while-active: pick OTHER layers to quiet while this audio layer is emitting, each with its
         // own max-brightness slider — so the music keys read against a darker base. Stored in s.ducks.
         if(!Array.isArray(s.ducks)) s.ducks=[];
@@ -425,7 +418,7 @@
         // Dynamics/Transparency trio mean the same thing across styles — appearance colors/layout are inherently
         // style-specific (a bar layout means nothing to a pulse), and Dim-while-active is one shared layer-level
         // setting — so those aren't offered (nothing to copy). Source list = styles you've actually tuned.
-        const STYLE_LABELS={bars:'Spectrum Bars',pulse:'Beat Pulse',bloom:'Radial Bloom',wave:'Waveform',aurora:'Aurora',sparkle:'Starfield'};
+        const STYLE_LABELS={bars:'Spectrum Bars',pulse:'Beat Pulse',bloom:'Radial Bloom',wave:'Waveform',aurora:'Aurora'};
         const tunedStyles=Object.keys(s.ap||{}).filter(st=>st!==style && STYLE_LABELS[st]);
         const copyCtl = tunedStyles.length ? full('<span style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;flex:1 1 100%;justify-content:center"><span class="val" style="opacity:.7">Copy From</span><select class="s-copyFrom">'+tunedStyles.map(st=>'<option value="'+st+'">'+STYLE_LABELS[st]+'</option>').join('')+'</select><label class="sl" style="margin:0"><input type="checkbox" class="s-copyTuning" checked> Tuning</label><label class="sl" style="margin:0"><input type="checkbox" class="s-copyDyn" checked> Dynamics</label><button type="button" class="s-copyApply" style="flex:none">Apply</button>'+(s._copyUndo?'<button type="button" class="s-copyUndo" style="flex:none" title="revert the last Apply">Undo</button>':'')+'</span>') : '';
         html+=
@@ -479,7 +472,7 @@
           load();
         }
         c('.s-style').addEventListener('change',e=>{ const oldK=E.audioVariantKey(s); s.style=e.target.value; swapVariant(s, oldK, E.audioVariantKey(s)); buildLayerBody(card,L); scheduleSaveLayers(); });   // carry each variant's own Adjust/crop/pause/ducks
-        ['barColorBass','barColorTreble','barTipColor','barGradA','barGradB','pulseColor','pulseColor2','bloomColor','bloomColor2','waveColor','waveColor2','sparkleColor'].forEach(key=>{ const el=c('.s-'+key); if(el) el.addEventListener('input',e=>s[key]=e.target.value); });
+        ['barColorBass','barColorTreble','barTipColor','barGradA','barGradB','pulseColor','pulseColor2','bloomColor','bloomColor2','waveColor','waveColor2'].forEach(key=>{ const el=c('.s-'+key); if(el) el.addEventListener('input',e=>s[key]=e.target.value); });
         // per-style appearance VALUE sliders that write to s directly (not the per-style tuner `ap`): pulse min/max, aurora width
         [['pulseMin','%'],['pulseMax','%'],['auroraWidth',''],['waveAmp','%'],['waveThick','%'],['waveDensity','%'],['waveAdaptive','%'],['micGate','%']].forEach(pair=>{ const key=pair[0], unit=pair[1], el=c('.s-'+key), v=c('.s-'+key+'V'); if(el&&v){ const up=()=>v.textContent=el.value+unit; el.addEventListener('input',()=>{ s[key]=+el.value; up(); }); up(); } });
         // Mic Gain is a LOG slider: position 0..1000 → 50%..7200% (each step a multiplier, so the useful low end isn't crammed at the bottom). The position maps to the real % stored in s.micGain.
@@ -500,19 +493,18 @@
         { const wr=c('.s-waveReverse'); if(wr) wr.addEventListener('change',e=>s.waveReverse=e.target.checked); }
         { const bt=c('.s-barTip'); if(bt) bt.addEventListener('change',e=>{ s.barTip=e.target.value; buildLayerBody(card,L); }); }   // rebuild so the tip-color picker shows/hides
         { const bf=c('.s-barFill'); if(bf) bf.addEventListener('change',e=>{ s.barFill=e.target.value; buildLayerBody(card,L); }); }   // rebuild so the color controls show/hide with solid/subtract
-        { const sf=c('.s-sparkleFill'); if(sf) sf.addEventListener('change',e=>{ s.sparkleFill=e.target.value; buildLayerBody(card,L); }); }   // rebuild so the Starfield color controls show/hide with solid/subtract
         { const bl=c('.s-barLayout'); if(bl) bl.addEventListener('change',e=>s.barLayout=e.target.value); }   // no dependent controls — no rebuild needed
         { const bdy=c('.s-barDynamics'); if(bdy) bdy.addEventListener('change',e=>{ s.barDynamics=e.target.checked; buildLayerBody(card,L); }); }   // rebuild so the depth slider shows/hides
         { const bda=c('.s-barDynamicsAlpha'); if(bda) bda.addEventListener('change',e=>{ s.barDynamicsAlpha=e.target.checked; buildLayerBody(card,L); }); }   // rebuild so the depth slider shows/hides
         { const el=c('.s-barDynamicsDepth'), v=c('.s-barDynamicsDepthV'); if(el&&v){ const up=()=>v.textContent=el.value+'%'; el.addEventListener('input',()=>{ s.barDynamicsDepth=+el.value; up(); }); up(); } }
-        // wash-style Dynamics/Transparency (pulse/bloom/sparkle) — same shape as bars, keyed by prefix
-        ['pulse','bloom','sparkle'].forEach(p=>{
+        // wash-style Dynamics/Transparency (pulse/bloom) — same shape as bars, keyed by prefix
+        ['pulse','bloom'].forEach(p=>{
           ['Dynamics','DynamicsAlpha'].forEach(suf=>{ const el=c('.s-'+p+suf); if(el) el.addEventListener('change',e=>{ s[p+suf]=e.target.checked; buildLayerBody(card,L); }); });   // rebuild so the depth slider shows/hides
           const el=c('.s-'+p+'DynamicsDepth'), v=c('.s-'+p+'DynamicsDepthV'); if(el&&v){ const up=()=>v.textContent=el.value+'%'; el.addEventListener('input',()=>{ s[p+'DynamicsDepth']=+el.value; up(); }); up(); }
         });
         { const ps=c('.s-pauseStyle'); if(ps) ps.addEventListener('change',e=>s.pauseStyle=e.target.value); }   // layer-level pause behavior: linear settle vs twinkle-out
         // Copy-from Apply: clone the chosen style's Tuning (ap) and/or Dynamics trio into THIS style, then rebuild.
-        { const DP={bars:'bar',pulse:'pulse',bloom:'bloom',sparkle:'sparkle'};
+        { const DP={bars:'bar',pulse:'pulse',bloom:'bloom'};
           const btn=c('.s-copyApply'); if(btn) btn.addEventListener('click',()=>{
             const sel=c('.s-copyFrom'); if(!sel||!sel.value) return; const src=sel.value, dst=E.audioVariantKey(s), dp=DP[style];
             const undo={};   // snapshot what we're about to overwrite, so Undo can revert this exact Apply
@@ -530,9 +522,9 @@
         { const bd=c('.s-barDrive'); if(bd) bd.addEventListener('change',e=>{ s.barDrive=e.target.value; buildLayerBody(card,L); }); }   // rebuild so the Spread toggle shows/hides
         { const bsp=c('.s-barSpread'); if(bsp) bsp.addEventListener('change',e=>s.barSpread=e.target.checked); }
         { const bc=c('.s-barColor'); if(bc) bc.addEventListener('change',e=>{ s.barColor=e.target.value; buildLayerBody(card,L); }); }   // rebuild so bass/treble vs gradient vs vu color pickers swap
-        ['pulseGrad','bloomGrad','waveGrad','sparkleMono'].forEach(key=>{ const el=c('.s-'+key); if(el) el.addEventListener('change',e=>{ s[key]=e.target.checked; buildLayerBody(card,L); }); });   // rebuild so the 2nd-color / single-color picker shows/hides
+        ['pulseGrad','bloomGrad','waveGrad'].forEach(key=>{ const el=c('.s-'+key); if(el) el.addEventListener('change',e=>{ s[key]=e.target.checked; buildLayerBody(card,L); }); });   // rebuild so the 2nd-color picker shows/hides
         ['pulseGradRev','bloomGradRev','waveGradRev'].forEach(key=>{ const el=c('.s-'+key); if(el) el.addEventListener('change',e=>s[key]=e.target.checked); });   // swap gradient ends — no rebuild (preview reads s live)
-        ['pulse','bloom','wave','aurora','sparkle'].forEach(p=>{ const el=c('.s-'+p+'Drive'); if(el) el.addEventListener('change',e=>s[p+'Drive']=e.target.value); });   // Volume/Beat drive for the non-bars styles
+        ['pulse','bloom','wave','aurora'].forEach(p=>{ const el=c('.s-'+p+'Drive'); if(el) el.addEventListener('change',e=>s[p+'Drive']=e.target.value); });   // Volume/Beat drive for the non-bars styles
         const slider=(cls,key,fmt,xform,snapTo,tol)=>{ const el=c('.s-'+cls), v=c('.s-'+cls+'V'); if(!el||!v) return; const up=()=>v.textContent=fmt(ap[key]); el.addEventListener('input',e=>{ if(snapTo!=null) snap(el,snapTo,tol==null?4:tol); ap[key]=xform(+el.value); up(); }); up(); };   // writes the PER-STYLE param (ap); tol = snap approach width (smaller on short-range sliders); guard !v so a class mismatch can't crash init
         slider('gain','gain',x=>Math.round(x*100)+'%',v=>v/100,100);
         slider('floor','floor',x=>x+'%',v=>v,5,1);   // 0-40 range → tight snap (±1) so the tick isn't sticky

@@ -461,13 +461,12 @@
     else if(style==='bloom') renderBloom(s, out, A, now, L);
     else if(style==='wave') renderWave(s, out, A, now, L);
     else if(style==='aurora') renderAurora(s, out, A, now, L);
-    else if(style==='sparkle') renderSparkle(s, out, A, now, L);
     else renderBars(s, out, A, now, L);
-    // Dynamics / Transparency for the wash styles (pulse/bloom/starfield), mirroring Spectrum Bars but GLOBAL
+    // Dynamics / Transparency for the wash styles (pulse/bloom), mirroring Spectrum Bars but GLOBAL
     // (whole-board, since these aren't per-column meters): a STEADY/sustained passage recedes, a beat pops it
     // back to full. Dynamics recedes BRIGHTNESS; Transparency recedes per-layer OPACITY so the layers below show
     // through between beats and the effect snaps opaque on a hit (real front/back depth). They stack.
-    if((style==='pulse'||style==='bloom'||style==='sparkle') && !(style==='sparkle' && s.sparkleFill==='subtract')){   // a subtract Starfield carves (sets _carve); the wash dynamics/alpha don't apply to a silhouette
+    if(style==='pulse'||style==='bloom'){
       const dynOn=!!s[style+'Dynamics'], alphaOn=!!s[style+'DynamicsAlpha'];
       if(dynOn||alphaOn){
         const depth=Math.max(0,Math.min(1,(s[style+'DynamicsDepth']==null?60:s[style+'DynamicsDepth'])/100));
@@ -522,8 +521,8 @@
   // Aurora: soft vertical color curtains that sway with time and lift/brighten with each column's energy.
   // Activity-paced clock (shared): a per-layer time that advances FASTER when the song is busy (mean of A.hit
   // band-novelty) and slower when calm — so time-based motion reflects the song's pace, like the waveform's
-  // scroll. Accumulated (not now×speed) so a pace change never jumps the phase. Used by aurora (sway) & sparkle
-  // (twinkle); bloom/bars/pulse have no scrolling motion to pace, so they're left audio-driven.
+  // scroll. Accumulated (not now×speed) so a pace change never jumps the phase. Used by aurora (sway);
+  // bloom/bars/pulse have no scrolling motion to pace, so they're left audio-driven.
   function activityClock(L, A, now){
     const W = L || A;
     const dt = W._acT ? Math.min(200, now - W._acT) : 16; W._acT = now;
@@ -546,39 +545,6 @@
       const v=Math.max(0,Math.min(1, Math.exp(-Math.pow((y-centerY)*wf,2)) * energy));   // no idle floor → dark on silence
       if(v<0.03){ out[o]=out[o+1]=out[o+2]=0; continue; }
       const c=hsv2rgb(0.45 + A.centroid*0.35 + x*0.12, 0.85, v); out[o]=c[0]|0; out[o+1]=c[1]|0; out[o+2]=c[2]|0; }
-  }
-  // Starfield: per-key twinkle; louder = more stars lit, kicks burst a subset.
-  // Starfield: per-key twinkle, but TIED to the spectrum so it represents the song — each key's column maps to a
-  // frequency band (bass left → treble right); that band's energy drives whether the key sparkles (so active
-  // frequencies light up their REGION of the board), its per-band transient pops a burst, and (rainbow mode) its
-  // HUE is the frequency itself (warm bass → cool treble). Drive: Volume = density rides each band's loudness;
-  // Beat = kicks burst a broadband subset. mono = one picked color; subtract = carve a twinkling silhouette.
-  function renderSparkle(s, out, A, now, L){
-    const t = activityClock(L, A, now);   // twinkle rate tracks the song's pace
-    const driveBeat = s.sparkleDrive==='beat';
-    const gE = Math.max(0, Math.min(1, driveBeat ? (A.level*0.25 + A.beat*0.85) : (A.level*0.6 + A.beat*0.45)));   // global energy floor so the field never fully dies mid-song
-    const mono = !!s.sparkleMono, mc = mono ? hexToRgb(s.sparkleColor||'#00e0ff') : null;
-    const subtract = s.sparkleFill==='subtract';
-    const bands = A.barBands || A.bands;   // per-band liveliness (each band vs its own peak) — reuse the bars pipeline
-    let cb = null, any = false;
-    if(subtract && L){ cb = L._carveBuf || (L._carveBuf = new Float32Array(NLED)); cb.fill(0); }
-    for(let k=0;k<NLED;k++){
-      const idx = INDICES[k], cell = GRID[idx]; const o = k*3;
-      if(!cell){ out[o]=out[o+1]=out[o+2]=0; continue; }
-      const ph = patHash(idx), fc = GW>1 ? cell[0]/(GW-1) : 0, band = Math.min(31, Math.round(fc*31));
-      const be = bands ? bands[band] : gE;                                   // THIS key's frequency energy → spatial spectrum
-      const energy = Math.max(0, Math.min(1, be*1.05 + gE*0.1));             // density mostly per-band; small global floor → INACTIVE frequencies go dark (clear spatial spectrum)
-      const tw = 0.5 + 0.5*Math.sin(t*(2.5+ph*5) + ph*6.283), thr = 1-energy;
-      let v = tw>thr ? (tw-thr)/Math.max(0.02,energy) : 0;
-      // BRIGHTNESS also rides this band's energy → loud frequencies = brighter stars in their region; a per-band
-      // transient (its frequency just hit) or a kick bursts a subset.
-      v = Math.min(1, v*(0.25+0.75*be) + (A.bandPop ? A.bandPop[band]*0.7 : 0) + (A.beat>0.45 && ph>0.55 ? A.beat*0.55 : 0));
-      if(v<0.03){ out[o]=out[o+1]=out[o+2]=0; continue; }
-      if(subtract){ if(cb){ cb[k]=v; any=true; } out[o]=out[o+1]=out[o+2]=0; continue; }   // lit star carves below by its brightness, draws dark
-      if(mono){ out[o]=mc[0]*v|0; out[o+1]=mc[1]*v|0; out[o+2]=mc[2]*v|0; }
-      else { const hue = 0.02 + fc*0.66 + (ph-0.5)*0.08; const c=hsv2rgb(hue, 0.9, v); out[o]=c[0]|0; out[o+1]=c[1]|0; out[o+2]=c[2]|0; }   // hue = frequency (bass warm → treble cool) + a little per-key jitter
-    }
-    if(L) L._carve = (subtract && any) ? cb : null;
   }
   // Bars: column (GRID col 0..GW-1) → frequency band; each bar fills by that band's magnitude.
   // s.barLayout picks BOTH the horizontal frequency mapping and the vertical fill direction:
@@ -1087,8 +1053,7 @@
         bloomColor:'#ff5a00', bloomColor2:'#ffd000', bloomGrad:false, bloomGradRev:false, bloomDrive:'beat',
         bloomDynamics:false, bloomDynamicsAlpha:false, bloomDynamicsDepth:60,
         waveColor:'#00e0ff', waveColor2:'#ff00aa', waveGrad:false, waveGradRev:false, waveReverse:false, waveAmp:100, waveThick:50, waveDensity:50, waveAdaptive:0, waveDrive:'volume',
-        auroraWidth:50, auroraDrive:'volume', sparkleMono:false, sparkleColor:'#00e0ff', sparkleDrive:'volume', sparkleFill:'solid',
-        sparkleDynamics:false, sparkleDynamicsAlpha:false, sparkleDynamicsDepth:60,
+        auroraWidth:50, auroraDrive:'volume',
         cropOn:false, cropFit:true, cropX:0.1, cropY:0.1, cropW:0.8, cropH:0.8 };
       Object.keys(ad).forEach(k=>{ if(s[k]===undefined)s[k]=ad[k]; });
       if(s.style==='plasma') s.style='aurora'; else if(s.style==='radial') s.style='bars';   // retired styles → nearest survivor (so an old saved layer doesn't show a blank picker)

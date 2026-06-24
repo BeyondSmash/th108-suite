@@ -224,7 +224,7 @@ test('Freeze Animation holds the last live audio frame', () => {
   assert.deepEqual([...La.rgb], [...snap], 'frozen frame held despite silence');
 });
 
-test('activity-paced styles (aurora/sparkle) advance their motion faster when the song is busy', () => {
+test('activity-paced Aurora advances its motion faster when the song is busy', () => {
   const mk = () => E.createState([{ type:'audio', enabled:true, opacity:1, blend:'add', settings:{ style:'aurora' } }]);
   const stCalm = mk(), stBusy = mk();
   stCalm.audio.hit = new Float32Array(32).fill(0);   // calm = no band novelty
@@ -253,30 +253,6 @@ test('Spectrum Bars per-band pipeline: per-band liveliness + transient punch', (
   const before = A.bandPop[10];
   raw.bands[10]=0.9; E.applyAudioFeatures(st, raw, s, 60*16);  // a band suddenly jumps
   assert.ok(A.bandPop[10] > before, 'a band transient punches that column');
-});
-
-test('Starfield is spectrum-mapped: bass-only audio lights the left (bass) region far more than the right', () => {
-  const st = E.createState([{ type:'audio', enabled:true, opacity:1, blend:'add', settings:{ style:'sparkle' } }]);
-  const s = st.layers[0].settings, L = st.layers[0];
-  const raw = { bands:new Float32Array(32), level:0.5, beat:0, centroid:0.2 };
-  for(let i=0;i<6;i++) raw.bands[i]=0.9;            // strong bass, silent treble
-  for(let f=0; f<40; f++){ E.applyAudioFeatures(st, raw, s, f*16); E.renderAudio(L, f*16, st); }   // warm up
-  let left=0, right=0;
-  for(let f=40; f<75; f++){ E.applyAudioFeatures(st, raw, s, f*16); E.renderAudio(L, f*16, st);
-    for(let k=0;k<E.NLED;k++){ const cell=E.keyCell(E.INDICES[k]); if(!cell) continue; const o=k*3, b=L.rgb[o]+L.rgb[o+1]+L.rgb[o+2];
-      if(cell[0]<0.34) left+=b; else if(cell[0]>0.66) right+=b; } }
-  assert.ok(left > right*1.5, 'bass content lights the bass (left) region, not a uniform random field');
-});
-
-test('Starfield subtract carves the layers below instead of drawing color', () => {
-  const st = E.createState([{ type:'audio', enabled:true, opacity:1, blend:'add', settings:{ style:'sparkle', sparkleFill:'subtract' } }]);
-  const L = st.layers[0];
-  st.audio.level = 1; st.audio.beat = 1;
-  for(let f=0; f<30; f++) E.renderAudio(L, f*16, st);
-  let lit=0; for(let i=0;i<L.rgb.length;i++) if(L.rgb[i]>0) lit++;
-  let carved=0; if(L._carve) for(let k=0;k<E.NLED;k++) if(L._carve[k]>0) carved++;
-  assert.equal(lit, 0, 'subtract draws no color (silhouette)');
-  assert.ok(carved > 0, 'subtract sets a carve mask on the twinkling stars');
 });
 
 test('renderBloom smooths the drive so the ring glides (fast attack, slow release)', () => {
@@ -318,16 +294,6 @@ test('renderPulse Min brightness holds a resting glow at silence', () => {
   E.renderAudio(La, 0, st);
   let lit=0; for(let i=0;i<La.rgb.length;i++) if(La.rgb[i]>0) lit++;
   assert.ok(lit > 0, 'pulseMin=50 keeps the board glowing at silence (default 0 would be dark)');
-});
-
-test('renderSparkle mono uses only the picked color', () => {
-  const L = { type:'audio', enabled:true, opacity:1, blend:'add', settings:{ style:'sparkle', sparkleMono:true, sparkleColor:'#ff0000' }, rgb:new Uint8Array(E.NLED*3) };
-  E.ensureSettings(L); const st = E.createState([L]); const La = st.layers[0];
-  st.audio.level = 1; st.audio.beat = 1; st.audio.bands.fill(0.8);
-  E.renderAudio(La, 50, st);
-  let g=0,b=0,lit=0; for(let k=0;k<E.NLED;k++){ const o=k*3; if(La.rgb[o]>0){lit++;} g+=La.rgb[o+1]; b+=La.rgb[o+2]; }
-  assert.ok(lit > 0, 'mono starfield lights keys');
-  assert.equal(g+b, 0, 'pure red picked color → no green/blue channel anywhere');
 });
 
 test('wash-style Dynamics recedes on steady sound and Transparency sets an alpha mask', () => {
@@ -634,7 +600,7 @@ test('contrast deepens the dips: a sub-peak band reads lower at high contrast', 
 });
 
 test('abstract styles light on sound and go fully dark on silence', () => {
-  for (const style of ['aurora','sparkle']) {
+  for (const style of ['aurora']) {
     const L = { type:'audio', enabled:true, opacity:1, blend:'add', settings:{ style }, rgb:new Uint8Array(E.NLED*3) };
     E.ensureSettings(L); const st = E.createState([L]); const La = st.layers[0];
     st.audio.level = 1; st.audio.beat = 1; st.audio.centroid = 0.6; st.audio.bands.fill(0.8);
