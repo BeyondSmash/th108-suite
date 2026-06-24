@@ -567,8 +567,10 @@
         const typableVal=(rangeEl, spanEl)=>{ if(!rangeEl||!spanEl||spanEl._typable) return; spanEl._typable=true;
           spanEl.style.display='none';   // the existing up() still writes fmt() here harmlessly; we read the unit from it
           const wrap=document.createElement('span'); wrap.style.cssText='display:flex;gap:4px;align-items:center;justify-content:flex-end;flex:none';
-          const num=document.createElement('input'); num.type='number'; num.className='numin'; num.style.cssText='width:54px;text-align:right';
+          const num=document.createElement('input'); num.type='number'; num.className='numin'; num.style.textAlign='right';
           num.min=rangeEl.min; num.max=rangeEl.max; if(rangeEl.step) num.step=rangeEl.step; num.value=parseFloat(rangeEl.value); num.disabled=rangeEl.disabled;
+          const dec=(rangeEl.step&&(''+rangeEl.step).indexOf('.')>=0)?3:0, chars=(''+rangeEl.max).replace('-','').length+dec;
+          num.style.width=Math.max(56, chars*10+28)+'px';   // size to the max value's digits (+decimals) so the spinner never clips the last digit
           const u=document.createElement('span'); u.className='val'; u.style.cssText='opacity:.6;min-width:6px';
           wrap.appendChild(num); wrap.appendChild(u); spanEl.parentNode.insertBefore(wrap, spanEl);
           const setUnit=()=>{ u.textContent=(spanEl.textContent||'').replace(/[-0-9.\s]/g,''); }; setUnit();
@@ -583,7 +585,7 @@
         // micGain: log slider (position 0–1000 ↔ 50–7200%). Make the % itself typable with the inverse map.
         { const el=c('.s-micGain'), span=c('.s-micGainV'); if(el&&span){ span.style.display='none';
             const wrap=document.createElement('span'); wrap.style.cssText='display:flex;gap:4px;align-items:center;justify-content:flex-end;flex:none';
-            const num=document.createElement('input'); num.type='number'; num.className='numin'; num.style.cssText='width:60px;text-align:right'; num.min=50; num.max=7200; num.step=10; num.value=(s.micGain==null?100:s.micGain);
+            const num=document.createElement('input'); num.type='number'; num.className='numin'; num.style.cssText='width:68px;text-align:right'; num.min=50; num.max=7200; num.step=10; num.value=(s.micGain==null?100:s.micGain);
             const u=document.createElement('span'); u.className='val'; u.style.cssText='opacity:.6'; u.textContent='%';
             wrap.appendChild(num); wrap.appendChild(u); span.parentNode.insertBefore(wrap, span);
             const toPos=g=>Math.round(1000*Math.log(Math.max(50,g)/50)/Math.log(144)), clampG=g=>Math.max(50,Math.min(7200,g));
