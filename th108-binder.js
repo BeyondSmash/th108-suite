@@ -396,6 +396,7 @@
     }
     const keyLabel = led => (board && board.labelFor) ? board.labelFor(led) : ('LED ' + led);
     const baseName = t => { t = (t || '').trim(); if (!t) return ''; if (/^[a-z][a-z0-9+.-]*:\/\//i.test(t)) return t; return t.split(/[\\/]/).filter(Boolean).pop() || t; };   // file → its name; URL → the URL
+    const midTrunc = (s, max = 24) => { s = String(s); if (s.length <= max) return s; const tail = 10, head = max - 1 - tail; return s.slice(0, head) + '…' + s.slice(-tail); };   // long names: keep the start + the extension (app-capture-long…Name.exe)
     function describeTrigger(t) {
       const k = keyLabel(t.led);
       if (t.type === 'chord') { const m = t.mods || {}; return (m.ctrl ? 'Ctrl+' : '') + (m.shift ? 'Shift+' : '') + (m.alt ? 'Alt+' : '') + (m.meta ? 'Win+' : '') + k; }
@@ -571,7 +572,7 @@
         : '<p class="haEmpty">No host actions yet — build one below.</p>';
       h += '<div class="haBuild"><div class="haLine"><span class="haLbl">Do</span><select class="haActSel">' + ACT_OPTS.map(o => '<option value="' + o[0] + '"' + (o[0] === _hb.actType ? ' selected' : '') + '>' + o[1] + '</option>').join('') + '</select>';
       if (_hb.actType === 'profileSelect') h += '<span class="haLbl">Profile #</span><input type="number" class="numin haPidx" min="1" max="10" value="' + _hb.profileIndex + '">';
-      if (_hb.actType === 'launch') h += '<span class="haTargetWrap"><input type="text" class="haTarget' + (_hb.target ? ' haHasFile' : '') + '" placeholder="program path or URL" value="' + haEsc(_hb.target) + '"><button type="button" class="patbtn haBrowse" title="Pick a program (.exe) — opens a file dialog via the background app">Choose File</button><span class="haFileOk" title="a file/program is registered"' + (_hb.target ? '' : ' style="display:none"') + '>✓ <span class="haFileName">' + haEsc(baseName(_hb.target)) + '</span></span></span>';
+      if (_hb.actType === 'launch') h += '<span class="haTargetWrap"><input type="text" class="haTarget' + (_hb.target ? ' haHasFile' : '') + '" placeholder="program path or URL" value="' + haEsc(_hb.target) + '"><button type="button" class="patbtn haBrowse" title="Pick a program (.exe) — opens a file dialog via the background app">Choose File</button><span class="haFileOk" title="' + haEsc(_hb.target || 'a file/program is registered') + '"' + (_hb.target ? '' : ' style="display:none"') + '>✓ <span class="haFileName">' + haEsc(midTrunc(baseName(_hb.target))) + '</span></span></span>';
       if (_hb.actType === 'macro') h += '<button type="button" class="patbtn haRec">⏺ Record</button><button type="button" class="patbtn haDelay">+ Delay</button><button type="button" class="patbtn haClr">Clear</button><div class="haStepList"></div>';
       h += '</div><div class="haLine"><span class="haLbl">When I</span><select class="haTrgSel">' + TRG_OPTS.map(o => '<option value="' + o[0] + '"' + (o[0] === _hb.triggerType ? ' selected' : '') + '>' + o[1] + '</option>').join('') + '</select>';
       if (_hb.triggerType === 'multitap') h += '<input type="number" class="numin haCount" min="1" max="10" value="' + _hb.count + '"><span class="haLbl">times within</span><input type="number" class="numin haWin" min="100" max="10000" step="50" value="' + _hb.windowMs + '"><span class="haLbl">ms</span>';
@@ -596,7 +597,7 @@
       wireClampNum('.haPidx', 1, 10, () => _hb.profileIndex, v => _hb.profileIndex = v);
       { const tgt = host.querySelector('.haTarget'), ok = host.querySelector('.haFileOk'), nm = host.querySelector('.haFileName');
         if (tgt) tgt.addEventListener('input', () => { _hb.target = tgt.value; const has = !!_hb.target.trim();
-          tgt.classList.toggle('haHasFile', has); if (ok) ok.style.display = has ? '' : 'none'; if (nm) nm.textContent = baseName(_hb.target); }); }
+          tgt.classList.toggle('haHasFile', has); if (ok) { ok.style.display = has ? '' : 'none'; ok.title = _hb.target || 'a file/program is registered'; } if (nm) nm.textContent = midTrunc(baseName(_hb.target)); }); }
       wireClampNum('.haCount', 1, 10, () => _hb.count, v => _hb.count = v);
       wireClampNum('.haWin', 100, 10000, () => _hb.windowMs, v => _hb.windowMs = v);
       w('.haHold', e => _hb.holdMs = +e.target.value || 500);

@@ -351,7 +351,7 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
   .haTargetWrap{ display:inline-flex; align-items:center; gap:8px; }   /* keep the URL box + Choose File together as one unit (button to the RIGHT of the box, never split) */
   .haTarget{ flex:0 1 220px; min-width:140px; }   /* don't grow → no big empty box to the right */
   .haTarget.haHasFile{ border-color:#3fb950; box-shadow:0 0 0 1px rgba(63,185,80,.45); }   /* a file/program is registered */
-  .haFileOk{ color:#3fb950; font-size:12px; font-weight:600; max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .haFileOk{ color:#3fb950; font-size:12px; font-weight:600; white-space:nowrap; flex:0 0 auto; }   /* don't shrink → short names show fully; long names are mid-truncated in JS (keeps the extension) */
   .haPidx, .haCount{ width:46px; min-width:0; }   /* small counts (profile #, tap count) — 62px numin is sized for 4 digits */
   .haSteps{ color:var(--muted); font-size:13px; }
   /* macro step editor: draggable chips (key combos + delay steps) */
