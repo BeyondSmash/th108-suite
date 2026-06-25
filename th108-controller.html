@@ -744,7 +744,8 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
   <div class="card s6" id="layersPanel" data-pages="lighting">
     <div class="cardbar"><span class="grip">⠿</span><h2>Layer Compositor</h2>
       <span class="aux">card order = layer stack · last card = top layer</span>
-      <label class="aux" style="margin-left:auto;display:inline-flex;align-items:center;gap:7px;cursor:pointer" title="Contrast of the alternating row shading on every layer card — left darkens the row, right brightens it, center is off"><button type="button" id="zebraReset" title="Reset row shading to the default (-60%)" onclick="setZebra(-60)" style="background:none;border:0;color:var(--muted);cursor:pointer;font:inherit;font-size:14px;padding:0;line-height:1">↺</button>Row shading
+      <button type="button" id="isoBtn" style="margin:0 0 0 auto;padding:5px 13px;font-size:12px" title="Float the layer stack as separate isometric key-planes, each glowing live">◳ Isometric View</button>
+      <label class="aux" style="display:inline-flex;align-items:center;gap:7px;cursor:pointer" title="Contrast of the alternating row shading on every layer card — left darkens the row, right brightens it, center is off"><button type="button" id="zebraReset" title="Reset row shading to the default (-60%)" onclick="setZebra(-60)" style="background:none;border:0;color:var(--muted);cursor:pointer;font:inherit;font-size:14px;padding:0;line-height:1">↺</button>Row shading
         <span class="srange" style="width:96px"><input type="range" id="zebraAmt" min="-100" max="100" value="-60" oninput="setZebra(this.value)"><i class="tick" style="left:50%"></i></span>
         <span id="zebraAmtV" class="val" style="min-width:40px">0%</span></label></div>
     <div id="layerCards"></div>
@@ -964,6 +965,7 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
 <script src="th108-daemon-client.js"></script>
 <script src="th108-layers-ui.js"></script>
 <script src="th108-paint-board.js"></script>
+<script src="th108-iso-view.js"></script>
 <script src="th108-gif-panel.js"></script>
 <script src="th108-onboard.js"></script>
 <script src="th108-binder.js"></script>
@@ -1473,6 +1475,10 @@ const LUI=TH108LayersUI.create({
   listAudioInputs: ()=>fetch('/audio/inputs',{cache:'no-store'}).then(r=>r.json()).then(d=>d.inputs||[])   // Mic device picker → daemon's recording devices (audio-sidecar.ps1 -ListInputs)
 });
 LUI.init();   // restore saved layers → ensureSettings backfill → build cards → persist-on-edit listeners on #layersPanel
+
+// Isometric View — floating draggable overlay of the layer stack as separate live key-planes
+const ISO=TH108IsoView.create({ state, engine:TH108Engine, getRunning:()=>running });
+document.getElementById('isoBtn').addEventListener('click',function(){ this.classList.toggle('primary', ISO.toggle()); });
 attachHex(document.getElementById('gifPanel'));   // typeable hex box on the GIF bar-color picker
 // while testing keys, don't let a focused <select> hijack letter presses (type-ahead); keep arrow/enter nav
 document.addEventListener('keydown',e=>{ if(e.target && e.target.tagName==='SELECT' && e.key && e.key.length===1) e.preventDefault(); }, true);
