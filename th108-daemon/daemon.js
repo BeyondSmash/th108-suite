@@ -207,6 +207,7 @@ function playMacro(steps) {
   log('🎚 host action: macro (' + steps.length + ' steps)');
 }
 function launchTarget(target) {
+  target = String(target || '').trim().replace(/^["']+|["']+$/g, '').trim();   // strip surrounding quotes (Copy as path)
   if (!target) return;
   // open a program / file / URL with its default handler. spawn (no shell) + windowsHide → no console flash.
   // The target is the user's OWN local binding (their machine), so this isn't a trust boundary.
@@ -673,6 +674,25 @@ const control = {
         setTimeout(poll, 200);
       };
       poll();
+    });
+  },
+  // Extract an .exe's icon as a PNG data-URL so the page can show it on a Launch binding (the browser can't read
+  // an exe icon; this needs no desktop, unlike the file dialog). Runs from a temp .ps1 (-File) to avoid arg-mangling.
+  appIcon(p) {
+    return new Promise(resolve => {
+      p = (p || '').trim().replace(/^["']+|["']+$/g, '').trim();   // strip surrounding quotes (Copy as path)
+      if (!p || !/\.exe$/i.test(p)) return resolve(null);
+      const psPath = path.join(__dirname, '_appicon.ps1');
+      const ps = ['param([string]$p)', 'Add-Type -AssemblyName System.Drawing',
+        'try { $ic = [System.Drawing.Icon]::ExtractAssociatedIcon($p); $bmp = $ic.ToBitmap(); $ms = New-Object System.IO.MemoryStream; $bmp.Save($ms, [System.Drawing.Imaging.ImageFormat]::Png); [Console]::Out.Write([Convert]::ToBase64String($ms.ToArray())) } catch {}'
+      ].join('\r\n');
+      try { fs.writeFileSync(psPath, ps); } catch { return resolve(null); }
+      try { const proc = _spawn('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', psPath, '-p', p], { windowsHide: true });
+        let out = ''; if (proc.stdout) proc.stdout.on('data', d => out += d);
+        proc.on('close', () => resolve(out.trim() ? ('data:image/png;base64,' + out.trim()) : null));
+        proc.on('error', () => resolve(null));
+        setTimeout(() => { try { proc.kill(); } catch {} resolve(null); }, 8000);
+      } catch { resolve(null); }
     });
   },
   // Latest captured audio frame (system/app) so the open page can preview it + drive the keys in real time.

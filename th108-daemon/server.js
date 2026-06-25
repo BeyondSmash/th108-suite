@@ -91,6 +91,11 @@ function createServer({ control, root, port = 8123, watchdogMs = 12000 }) {
         return sendJson(res, 200, { ok: true });
       }
       if (req.method === 'GET' && u === '/pick-file') return sendJson(res, 200, { path: control.pickFile ? await control.pickFile() : null });   // native OpenFileDialog for the Launch host action (browser can't read real paths)
+      if (req.method === 'POST' && u === '/app-icon') {   // extract an .exe's icon (PNG data-URL) for a Launch binding
+        const b = await readBody(req); let body;
+        try { body = JSON.parse(b || '{}'); } catch { return sendJson(res, 400, { error: 'bad json' }); }
+        return sendJson(res, 200, { icon: control.appIcon ? await control.appIcon(body.path) : null });
+      }
       if (req.method === 'POST' && u === '/profiles') {   // page pushes saved profiles so the daemon can cycle them page-closed
         const b = await readBody(req, 1_048_576); let body;   // profiles carry full layer configs → raise the body cap
         try { body = JSON.parse(b || '{}'); } catch { return sendJson(res, 400, { error: 'bad json' }); }

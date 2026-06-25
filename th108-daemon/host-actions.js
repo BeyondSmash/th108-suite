@@ -42,7 +42,7 @@ function normalize(list) {
       if (s && s.ms != null) return { ms: clampInt(s.ms, 100, 0, 10000) };
       return null;
     }).filter(Boolean) : [];
-    if (a.type === 'launch') a.target = String(action.target || '').trim();
+    if (a.type === 'launch') a.target = String(action.target || '').trim().replace(/^["']+|["']+$/g, '').trim();   // strip surrounding quotes (Windows "Copy as path")
     out.push({ trigger: t, action: a });
   }
   return out;

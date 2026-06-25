@@ -395,7 +395,8 @@
       }).catch(() => {});
     }
     const keyLabel = led => (board && board.labelFor) ? board.labelFor(led) : ('LED ' + led);
-    const baseName = t => { t = (t || '').trim(); if (!t) return ''; if (/^[a-z][a-z0-9+.-]*:\/\//i.test(t)) return t; return t.split(/[\\/]/).filter(Boolean).pop() || t; };   // file → its name; URL → the URL
+    const stripQ = s => String(s || '').trim().replace(/^["']+|["']+$/g, '').trim();   // Windows "Copy as path" wraps in "…"
+    const baseName = t => { t = stripQ(t); if (!t) return ''; if (/^[a-z][a-z0-9+.-]*:\/\//i.test(t)) return t; return t.split(/[\\/]/).filter(Boolean).pop() || t; };   // file → its name; URL → the URL
     const midTrunc = (s, max = 24) => { s = String(s); if (s.length <= max) return s; const tail = 10, head = max - 1 - tail; return s.slice(0, head) + '…' + s.slice(-tail); };   // long names: keep the start + the extension (app-capture-long…Name.exe)
     function describeTrigger(t) {
       const k = keyLabel(t.led);
@@ -410,6 +411,14 @@
       if (a.type === 'macro') return 'Macro (' + ((a.steps || []).length) + ' keys)';
       return (ACT_OPTS.find(o => o[0] === a.type) || [, a.type])[1];
     }
+    // an .exe binding shows its program icon (the daemon extracts it; the browser can't). cached per path.
+    const _appIconCache = {};
+    const loadAppIcon = p => { if (!p) return Promise.resolve(null); if (p in _appIconCache) return Promise.resolve(_appIconCache[p]);
+      return fetch('/app-icon', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ path: p }) })
+        .then(r => r.json()).then(d => (_appIconCache[p] = (d && d.icon) || null)).catch(() => (_appIconCache[p] = null)); };
+    const actionHtml = b => { const t = stripQ(b.action.target);
+      const icon = (b.action.type === 'launch' && /\.exe$/i.test(t)) ? '<img class="haAppIcon" data-path="' + haEsc(t) + '" alt="">' : '';
+      return icon + haEsc(describeAction(b.action)); };
     // the in-progress binding being authored (the builder form's state)
     let _hb = null;
     function newBuilder() { return { actType: 'micToggle', triggerType: 'key', count: 2, windowMs: 400, holdMs: 500, profileIndex: 1, target: '', steps: [] }; }
@@ -508,7 +517,7 @@
       if (t.type === 'hold') t.holdMs = _hb.holdMs;
       const a = { type: _hb.actType };
       if (a.type === 'profileSelect') a.index = Math.max(0, (_hb.profileIndex | 0) - 1);   // UI is 1-based
-      if (a.type === 'launch') a.target = (_hb.target || '').trim();
+      if (a.type === 'launch') a.target = stripQ(_hb.target);
       if (a.type === 'macro') a.steps = _hb.steps.slice();
       return { trigger: t, action: a };
     }
@@ -561,7 +570,7 @@
       const onAccept = () => { if (!code) return; cleanup();
         const t = { type: 'chord', led, mods: capMods }, a = { type: _hb.actType };
         if (a.type === 'profileSelect') a.index = Math.max(0, (_hb.profileIndex | 0) - 1);
-        if (a.type === 'launch') a.target = (_hb.target || '').trim();
+        if (a.type === 'launch') a.target = stripQ(_hb.target);
         if (a.type === 'macro') a.steps = _hb.steps.slice();
         const list = loadHostActions(); list.push({ trigger: t, action: a }); saveHostActions(list);
         log('✓ ' + describeTrigger(t) + ' → ' + describeAction(a) + ' (works page-closed)', 'ok');
@@ -581,7 +590,7 @@
       if (!_hb) _hb = newBuilder();
       const host = $('bdGrid'), list = loadHostActions();
       let h = '<div class="haWrap">';
-      h += list.length ? list.map((b, i) => '<div class="haRow"><span class="haTrg">' + haEsc(describeTrigger(b.trigger)) + '</span><span class="haArrow">→</span><span class="haAct">' + haEsc(describeAction(b.action)) + '</span><button type="button" class="patbtn haDel" data-i="' + i + '" title="Remove">✕</button></div>').join('')
+      h += list.length ? list.map((b, i) => '<div class="haRow"><span class="haTrg">' + haEsc(describeTrigger(b.trigger)) + '</span><span class="haArrow">→</span><span class="haAct">' + actionHtml(b) + '</span><button type="button" class="patbtn haDel" data-i="' + i + '" title="Remove">✕</button></div>').join('')
         : '<p class="haEmpty">No host actions yet — build one below.</p>';
       h += '<div class="haBuild"><div class="haLine"><span class="haLbl">Do</span><select class="haActSel">' + ACT_OPTS.map(o => '<option value="' + o[0] + '"' + (o[0] === _hb.actType ? ' selected' : '') + '>' + o[1] + '</option>').join('') + '</select>';
       if (_hb.actType === 'profileSelect') h += '<span class="haLbl">Profile #</span><input type="number" class="numin haPidx" min="1" max="10" value="' + _hb.profileIndex + '">';
@@ -593,6 +602,7 @@
       h += '</div><button type="button" class="patbtn haBind">' + (_hb.triggerType === 'chord' ? 'Bind — press the key combo' : 'Bind — press the key') + '</button></div></div>';
       host.innerHTML = h;
       host.querySelectorAll('.haDel').forEach(x => x.addEventListener('click', () => { const l = loadHostActions(); l.splice(+x.dataset.i, 1); saveHostActions(l); renderGrid(); }));
+      host.querySelectorAll('.haAppIcon').forEach(img => loadAppIcon(img.dataset.path).then(src => { if (src) img.src = src; else img.remove(); }));   // fill in each .exe icon (or drop the img if none)
       host.querySelector('.haActSel').addEventListener('change', e => { _hb.actType = e.target.value; renderGrid(); });
       host.querySelector('.haTrgSel').addEventListener('change', e => { _hb.triggerType = e.target.value; renderGrid(); });
       const w = (sel, fn) => { const el = host.querySelector(sel); if (el) el.addEventListener('input', fn); };
