@@ -654,18 +654,29 @@ const control = {
   pickFile() {
     return new Promise(resolve => {
       let done = false; const finish = v => { if (!done) { done = true; resolve(v); } };
-      // A hidden TOPMOST owner form forces the dialog in FRONT of a fullscreen browser (a bare ShowDialog from a
-      // background process can open behind it). -WindowStyle Hidden hides the PowerShell console; the GUI dialog
-      // still shows (windowsHide can suppress it, so it's NOT used here).
-      // $d.ShowHelp = $true is the documented fix for OpenFileDialog.ShowDialog HANGING / not rendering when called
-      // from a non-standard host (a background Node→PowerShell process, our exact case — SAPIEN). The hidden topmost
-      // owner form pulls it in front of a fullscreen browser.
-      const ps = "Add-Type -AssemblyName System.Windows.Forms; $o = New-Object System.Windows.Forms.Form; $o.TopMost=$true; $o.ShowInTaskbar=$false; $o.Opacity=0; $o.Show(); $o.Activate(); $d = New-Object System.Windows.Forms.OpenFileDialog; $d.ShowHelp=$true; $d.Filter='Programs (*.exe)|*.exe|All files (*.*)|*.*'; $d.Title='Pick a program for the host action'; $r=$d.ShowDialog($o); $o.Close(); if ($r -eq [System.Windows.Forms.DialogResult]::OK) { [Console]::Out.Write($d.FileName) }";
-      try { const p = _spawn('powershell.exe', ['-NoProfile', '-STA', '-WindowStyle', 'Hidden', '-Command', ps]);
-        let out = ''; if (p.stdout) p.stdout.on('data', d => out += d);
-        p.on('close', () => finish(out.trim() || null)); p.on('error', () => finish(null));
-        setTimeout(() => { try { p.kill(); } catch {} finish(null); }, 120000);   // never hang the request forever
-      } catch { finish(null); }
+      // Run from a temp .ps1 (-File) to sidestep any -Command arg-mangling. $d.ShowHelp=$true is the documented fix
+      // for OpenFileDialog.ShowDialog hanging from a non-standard host; the hidden topmost owner pulls it to front.
+      // Every step is logged to daemon.log so a failure (PS error / 120s hang = no desktop) is diagnosable.
+      const psPath = path.join(__dirname, '_pickfile.ps1');
+      const ps = [
+        'Add-Type -AssemblyName System.Windows.Forms',
+        '$o = New-Object System.Windows.Forms.Form; $o.TopMost=$true; $o.ShowInTaskbar=$false; $o.Opacity=0; $o.Show(); $o.Activate()',
+        '$d = New-Object System.Windows.Forms.OpenFileDialog',
+        "$d.ShowHelp=$true; $d.Filter='Programs (*.exe)|*.exe|All files (*.*)|*.*'; $d.Title='Pick a program for the host action'",
+        '$r = $d.ShowDialog($o); $o.Close()',
+        'if ($r -eq [System.Windows.Forms.DialogResult]::OK) { [Console]::Out.Write($d.FileName) }'
+      ].join('\r\n');
+      log('🗂 pickFile: opening file dialog…');
+      try { fs.writeFileSync(psPath, ps); } catch (e) { log('🗂 pickFile: write failed — ' + e.message); return finish(null); }
+      try {
+        const p = _spawn('powershell.exe', ['-NoProfile', '-STA', '-ExecutionPolicy', 'Bypass', '-WindowStyle', 'Hidden', '-File', psPath]);
+        let out = '', err = '';
+        if (p.stdout) p.stdout.on('data', d => out += d);
+        if (p.stderr) p.stderr.on('data', d => err += d);
+        p.on('close', code => { if (err.trim()) log('🗂 pickFile stderr: ' + err.trim().slice(0, 400)); log('🗂 pickFile: closed (code ' + code + ', ' + (out.trim() ? 'path chosen' : 'no path') + ')'); finish(out.trim() || null); });
+        p.on('error', e => { log('🗂 pickFile: spawn error — ' + e.message); finish(null); });
+        setTimeout(() => { try { p.kill(); } catch {} log('🗂 pickFile: 120s timeout — dialog never returned (likely no desktop access)'); finish(null); }, 120000);
+      } catch (e) { log('🗂 pickFile: exception — ' + e.message); finish(null); }
     });
   },
   // Latest captured audio frame (system/app) so the open page can preview it + drive the keys in real time.
