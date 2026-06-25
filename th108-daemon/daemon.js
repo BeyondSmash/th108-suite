@@ -197,13 +197,14 @@ CODE2UIO.ContextMenu = 3677; CODE2UIO.Pause = 3653;   // the keys uiohook-napi o
 function playMacro(steps) {
   if (!Array.isArray(steps) || !steps.length) return;
   let i = 0; const next = () => { if (i >= steps.length) return; const s = steps[i++];
+    if (s.ms != null) { setTimeout(next, Math.max(0, s.ms)); return; }   // delay step — wait, then continue
     const key = CODE2UIO[s.code];
     if (key !== undefined) { const mods = [];
       if (s.ctrl) mods.push(UiohookKey.Ctrl); if (s.shift) mods.push(UiohookKey.Shift); if (s.alt) mods.push(UiohookKey.Alt); if (s.meta) mods.push(UiohookKey.Meta);
       try { uIOhook.keyTap(key, mods); } catch {} }
-    setTimeout(next, 40); };   // ~40ms between keys so apps register each one
+    setTimeout(next, 40); };   // ~40ms default gap between keys so apps register each one
   next();
-  log('🎚 host action: macro (' + steps.length + ' keys)');
+  log('🎚 host action: macro (' + steps.length + ' steps)');
 }
 function launchTarget(target) {
   if (!target) return;

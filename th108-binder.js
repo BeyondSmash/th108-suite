@@ -414,15 +414,42 @@
     let _hostCapture = null, _macroRec = null;
     function endHostCapture(restore) { if (!_hostCapture) return; document.removeEventListener('keydown', _hostCapture.onKey, true); if (restore && _hostCapture.btn && _hostCapture.btn.isConnected) _hostCapture.btn.textContent = _hostCapture.orig; _hostCapture = null; }
     function endMacroRecord() { if (!_macroRec) return; document.removeEventListener('keydown', _macroRec.onKey, true); if (_macroRec.btn && _macroRec.btn.isConnected) _macroRec.btn.textContent = '⏺ Record'; _macroRec = null; }
-    function recordMacro(btn, readout) {
+    function macroStepLabel(s) {
+      const mods = (s.ctrl ? 'Ctrl+' : '') + (s.shift ? 'Shift+' : '') + (s.alt ? 'Alt+' : '') + (s.meta ? 'Win+' : '');
+      const led = (board && board.ledForCode) ? board.ledForCode(s.code) : null;
+      const k = (led != null && board && board.labelFor) ? board.labelFor(led) : String(s.code).replace(/^Key/, '').replace(/^Digit/, '').replace(/^Numpad/, 'Num ');
+      return mods + k;
+    }
+    // The live macro step list: draggable chips (key combos + delay steps), each removable, delays editable. Updated
+    // in place during recording so the full builder isn't re-rendered (which would stop the recording).
+    function renderMacroSteps(container) {
+      if (!container) return;
+      if (!_hb.steps.length) { container.innerHTML = '<span class="haEmpty" style="padding:2px 0">No keys yet — click Record and press your sequence (Esc stops). Drag chips to reorder; + Delay inserts a pause.</span>'; return; }
+      container.innerHTML = _hb.steps.map((s, i) => s.ms != null
+        ? '<span class="haChip haChipDelay" draggable="true" data-i="' + i + '" title="drag to reorder">⏱ <input type="number" class="haDelayMs" data-i="' + i + '" min="0" max="10000" step="10" value="' + (s.ms | 0) + '"> ms<button type="button" class="haChipX" data-i="' + i + '" title="remove">✕</button></span>'
+        : '<span class="haChip" draggable="true" data-i="' + i + '" title="drag to reorder"><span class="haChipK">' + haEsc(macroStepLabel(s)) + '</span><button type="button" class="haChipX" data-i="' + i + '" title="remove">✕</button></span>').join('');
+      container.querySelectorAll('.haChipX').forEach(x => x.addEventListener('click', e => { e.stopPropagation(); _hb.steps.splice(+x.dataset.i, 1); renderMacroSteps(container); }));
+      container.querySelectorAll('.haDelayMs').forEach(inp => inp.addEventListener('input', () => { const i = +inp.dataset.i; if (_hb.steps[i]) _hb.steps[i].ms = Math.max(0, Math.min(10000, +inp.value || 0)); }));
+      let dragI = null;
+      container.querySelectorAll('.haChip').forEach(chip => {
+        chip.addEventListener('dragstart', e => { dragI = +chip.dataset.i; if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move'; });
+        chip.addEventListener('dragover', e => { e.preventDefault(); chip.classList.add('dragover'); });
+        chip.addEventListener('dragleave', () => chip.classList.remove('dragover'));
+        chip.addEventListener('drop', e => { e.preventDefault(); chip.classList.remove('dragover'); const to = +chip.dataset.i;
+          if (dragI != null && dragI !== to) { const m = _hb.steps.splice(dragI, 1)[0]; _hb.steps.splice(to, 0, m); renderMacroSteps(container); } });
+      });
+    }
+    function recordMacro(btn, container) {
       endHostCapture(true);
       if (_macroRec) { endMacroRecord(); return; }   // toggle off
       btn.textContent = '⏹ Stop (recording…)';
-      const onKey = ev => { ev.preventDefault(); ev.stopPropagation();
+      const onKey = ev => {
+        if (ev.target && (ev.target.tagName === 'INPUT' || ev.target.tagName === 'SELECT')) return;   // typing in a delay field isn't a recorded key
+        ev.preventDefault(); ev.stopPropagation();
         if (ev.code === 'Escape') { endMacroRecord(); return; }
         if (MOD_CODE.test(ev.code)) return;   // wait for the actual key, not the lone modifier
         _hb.steps.push({ code: ev.code, ctrl: ev.ctrlKey, alt: ev.altKey, shift: ev.shiftKey, meta: ev.metaKey });
-        if (readout) readout.textContent = _hb.steps.length + ' keys'; };
+        renderMacroSteps(container); };
       _macroRec = { onKey, btn };
       document.addEventListener('keydown', onKey, true);
     }
@@ -467,7 +494,7 @@
       h += '<div class="haBuild"><div class="haLine"><span class="haLbl">Do</span><select class="haActSel">' + ACT_OPTS.map(o => '<option value="' + o[0] + '"' + (o[0] === _hb.actType ? ' selected' : '') + '>' + o[1] + '</option>').join('') + '</select>';
       if (_hb.actType === 'profileSelect') h += '<span class="haLbl">Profile #</span><input type="number" class="numin haPidx" min="1" max="10" value="' + _hb.profileIndex + '">';
       if (_hb.actType === 'launch') h += '<span class="haTargetWrap"><input type="text" class="haTarget" placeholder="program path or URL" value="' + haEsc(_hb.target) + '"><button type="button" class="patbtn haBrowse" title="Pick a program (.exe) — opens a file dialog via the background app">Choose File</button></span>';
-      if (_hb.actType === 'macro') h += '<button type="button" class="patbtn haRec">⏺ Record</button><span class="haSteps">' + _hb.steps.length + ' keys</span>' + (_hb.steps.length ? '<button type="button" class="patbtn haClr">Clear</button>' : '');
+      if (_hb.actType === 'macro') h += '<button type="button" class="patbtn haRec">⏺ Record</button><button type="button" class="patbtn haDelay">+ Delay</button><button type="button" class="patbtn haClr">Clear</button><div class="haStepList"></div>';
       h += '</div><div class="haLine"><span class="haLbl">When I</span><select class="haTrgSel">' + TRG_OPTS.map(o => '<option value="' + o[0] + '"' + (o[0] === _hb.triggerType ? ' selected' : '') + '>' + o[1] + '</option>').join('') + '</select>';
       if (_hb.triggerType === 'multitap') h += '<input type="number" class="numin haCount" min="2" max="8" value="' + _hb.count + '"><span class="haLbl">times within</span><input type="number" class="numin haWin" min="120" max="2000" step="20" value="' + _hb.windowMs + '"><span class="haLbl">ms</span>';
       if (_hb.triggerType === 'hold') h += '<span class="haLbl">for</span><input type="number" class="numin haHold" min="150" max="3000" step="50" value="' + _hb.holdMs + '"><span class="haLbl">ms</span>';
@@ -485,13 +512,15 @@
       const br = host.querySelector('.haBrowse'); if (br) br.addEventListener('click', () => {
         br.textContent = 'Opening…'; br.disabled = true;   // the daemon pops a native file dialog (blocks until you pick/cancel)
         $('bdHint').textContent = 'A file dialog should open — if you don\'t see it, it may be behind this window (Alt-Tab), or the background app needs restarting.';
-        const reset = msg => { if (br.isConnected) { br.textContent = 'Choose File'; br.disabled = false; } if (msg) $('bdHint').textContent = msg; };
+        const reset = msg => { if (!br.isConnected) return; br.textContent = 'Choose File'; br.disabled = false; if (msg) $('bdHint').textContent = msg; };   // if the user navigated away, don't write a stale message
         const ctrl = new AbortController(), to = setTimeout(() => ctrl.abort(), 125000);
         fetch('/pick-file', { signal: ctrl.signal }).then(r => r.json()).then(d => { clearTimeout(to);
           if (d && d.path) { _hb.target = d.path; renderGrid(); } else reset('No file chosen.'); })
           .catch(() => { clearTimeout(to); reset('Couldn\'t open the file dialog — the background app must be RUNNING (restart it after an update). This doesn\'t need Connect.'); }); });
-      const rec = host.querySelector('.haRec'); if (rec) rec.addEventListener('click', () => recordMacro(rec, host.querySelector('.haSteps')));
-      const clr = host.querySelector('.haClr'); if (clr) clr.addEventListener('click', () => { _hb.steps = []; renderGrid(); });
+      const stepList = host.querySelector('.haStepList'); if (stepList) renderMacroSteps(stepList);
+      const rec = host.querySelector('.haRec'); if (rec) rec.addEventListener('click', () => recordMacro(rec, stepList));
+      const dly = host.querySelector('.haDelay'); if (dly) dly.addEventListener('click', () => { endMacroRecord(); _hb.steps.push({ ms: 200 }); renderMacroSteps(stepList); });
+      const clr = host.querySelector('.haClr'); if (clr) clr.addEventListener('click', () => { endMacroRecord(); _hb.steps = []; renderMacroSteps(stepList); });
       host.querySelector('.haBind').addEventListener('click', e => captureTriggerKey(e.target));
       $('bdHint').textContent = 'Build a host action: pick what it does, pick the trigger, then click Bind and press the key (or key combo). It runs via the background app, so it works with this page closed — the key still does its normal job too.';
     }

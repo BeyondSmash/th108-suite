@@ -34,12 +34,14 @@ test('normalize drops invalid entries + clamps out-of-range values', () => {
   assert.equal(out[0].action.target, 'notepad.exe');   // trimmed
 });
 
-test('normalize keeps macro steps as KeyboardEvent.code + modifier flags', () => {
+test('normalize keeps macro key + delay steps (KeyboardEvent.code + ms)', () => {
   const out = HA.normalize([{ trigger: { type: 'key', led: 1 }, action: { type: 'macro', steps: [
-    { code: 'KeyC', ctrl: true }, { code: 'KeyV', ctrl: true, shift: false }, { bogus: 1 } ] } }]);
+    { code: 'KeyC', ctrl: true }, { ms: 250 }, { code: 'KeyV', ctrl: true, shift: false }, { ms: 99999 }, { bogus: 1 } ] } }]);
   assert.deepEqual(out[0].action.steps, [
     { code: 'KeyC', ctrl: true, alt: false, shift: false, meta: false },
-    { code: 'KeyV', ctrl: true, alt: false, shift: false, meta: false }]);
+    { ms: 250 },
+    { code: 'KeyV', ctrl: true, alt: false, shift: false, meta: false },
+    { ms: 10000 }]);   // ms clamped to max; junk dropped
 });
 
 test('chordMatches is exact (Ctrl+M does not fire a Ctrl+Shift+M binding)', () => {
