@@ -764,7 +764,7 @@ const control = {
         let out = ''; if (proc.stdout) proc.stdout.on('data', d => out += d);
         proc.on('close', () => {
           let arr = []; try { const j = JSON.parse(out.trim() || '[]'); arr = Array.isArray(j) ? j : [j]; } catch { arr = []; }
-          const DENY = new Set(['applicationframehost', 'textinputhost', 'shellexperiencehost', 'startmenuexperiencehost', 'searchhost', 'searchapp', 'lockapp', 'widgets', 'systemsettingsbroker']);   // UWP window-hosts, not real switch targets
+          const DENY = new Set(['applicationframehost', 'textinputhost', 'shellexperiencehost', 'startmenuexperiencehost', 'searchhost', 'searchapp', 'lockapp', 'widgets', 'systemsettings', 'systemsettingsbroker']);   // UWP window-hosts / system artifacts, not real switch targets
           const seen = new Set(), apps = [];
           for (const a of arr) { if (!a || !a.path) continue; if (DENY.has((a.name || '').toLowerCase())) continue; const k = a.path.toLowerCase(); if (seen.has(k)) continue; seen.add(k); apps.push({ path: a.path, name: a.name || '', title: a.title || '' }); }
           apps.sort((x, y) => (x.title || x.name).localeCompare(y.title || y.name));
