@@ -754,6 +754,27 @@ const control = {
       } catch { resolve(null); }
     });
   },
+  // Currently-open apps (processes that own a visible window) for the "pick a running app" dropdown — so the user
+  // doesn't have to type a path. Deduped by exe path; the browser can't enumerate this, only the daemon can.
+  listOpenApps() {
+    return new Promise(resolve => {
+      const ps = "Get-Process | Where-Object { $_.MainWindowHandle -ne 0 -and $_.MainWindowTitle -ne '' } | ForEach-Object { $pp=$null; try { $pp=$_.Path } catch {}; if ($pp) { [pscustomobject]@{ path=$pp; name=$_.ProcessName; title=$_.MainWindowTitle } } } | ConvertTo-Json -Compress";
+      try {
+        const proc = _spawn('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', ps], { windowsHide: true });
+        let out = ''; if (proc.stdout) proc.stdout.on('data', d => out += d);
+        proc.on('close', () => {
+          let arr = []; try { const j = JSON.parse(out.trim() || '[]'); arr = Array.isArray(j) ? j : [j]; } catch { arr = []; }
+          const DENY = new Set(['applicationframehost', 'textinputhost', 'shellexperiencehost', 'startmenuexperiencehost', 'searchhost', 'searchapp', 'lockapp', 'widgets', 'systemsettingsbroker']);   // UWP window-hosts, not real switch targets
+          const seen = new Set(), apps = [];
+          for (const a of arr) { if (!a || !a.path) continue; if (DENY.has((a.name || '').toLowerCase())) continue; const k = a.path.toLowerCase(); if (seen.has(k)) continue; seen.add(k); apps.push({ path: a.path, name: a.name || '', title: a.title || '' }); }
+          apps.sort((x, y) => (x.title || x.name).localeCompare(y.title || y.name));
+          resolve(apps);
+        });
+        proc.on('error', () => resolve([]));
+        setTimeout(() => { try { proc.kill(); } catch {} resolve([]); }, 8000);
+      } catch { resolve([]); }
+    });
+  },
   // Latest captured audio frame (system/app) so the open page can preview it + drive the keys in real time.
   audioFrame() { return acHandle ? AC.freshOr(acHandle.latest(), Date.now(), 300) : null; },
   // Current media position so the open page can draw the song-progress bar itself while it drives the device.

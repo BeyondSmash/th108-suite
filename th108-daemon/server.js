@@ -96,6 +96,7 @@ function createServer({ control, root, port = 8123, watchdogMs = 12000 }) {
         if (control.suppressHostActions) control.suppressHostActions(body.ms || 0);
         return sendJson(res, 200, { ok: true });
       }
+      if (req.method === 'GET' && u === '/open-apps') return sendJson(res, 200, { apps: control.listOpenApps ? await control.listOpenApps() : [] });   // currently-open windowed apps for the "pick a running app" dropdown
       if (req.method === 'GET' && u === '/pick-file') return sendJson(res, 200, { path: control.pickFile ? await control.pickFile() : null });   // native OpenFileDialog for the Launch host action (browser can't read real paths)
       if (req.method === 'POST' && u === '/app-icon') {   // extract an .exe's icon (PNG data-URL) for a Launch binding
         const b = await readBody(req); let body;

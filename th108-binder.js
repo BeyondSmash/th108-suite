@@ -423,6 +423,33 @@
     const loadAppIcon = p => { if (!p) return Promise.resolve(null); if (p in _appIconCache) return Promise.resolve(_appIconCache[p]);
       return fetch('/app-icon', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ path: p }) })
         .then(r => r.json()).then(d => (_appIconCache[p] = (d && d.icon) || null)).catch(() => (_appIconCache[p] = null)); };
+    // "Pick a running app" dropdown: the daemon lists windowed processes (the browser can't), and clicking one fills
+    // the target path — no typing or file-dialog. Icons come from the same per-path extractor.
+    function closeAppPicker() { const m = $('haAppMenu'); if (m) m.remove(); document.removeEventListener('mousedown', _appMenuOutside, true); }
+    function _appMenuOutside(e) { const m = $('haAppMenu'); if (m && !m.contains(e.target)) closeAppPicker(); }
+    async function showAppPicker(btn) {
+      closeAppPicker();
+      const orig = btn.textContent; btn.disabled = true; btn.textContent = 'Loading…';
+      let apps = []; try { apps = ((await fetch('/open-apps').then(r => r.json())) || {}).apps || []; } catch (_) {}
+      btn.disabled = false; btn.textContent = orig;
+      if (!apps.length) { flashHint('No open apps found — is the background app running?'); return; }
+      const menu = document.createElement('div'); menu.className = 'haAppMenu'; menu.id = 'haAppMenu';
+      apps.forEach(a => {
+        const it = document.createElement('button'); it.type = 'button'; it.className = 'haAppItem';
+        it.innerHTML = '<img class="haAppMenuIcon" alt=""><span class="haAppMenuTxt"><span class="haAppMenuT"></span><span class="haAppMenuN"></span></span>';
+        it.querySelector('.haAppMenuT').textContent = a.title || a.name;
+        it.querySelector('.haAppMenuN').textContent = (a.name || '') + '.exe';
+        const img = it.querySelector('.haAppMenuIcon'); loadAppIcon(a.path).then(src => { if (src) img.src = src; else img.remove(); });
+        it.addEventListener('click', () => { _hb.target = a.path; closeAppPicker(); renderGrid(); });
+        menu.appendChild(it);
+      });
+      document.body.appendChild(menu);
+      const r = btn.getBoundingClientRect(); const mw = Math.min(360, window.innerWidth - 16);
+      menu.style.width = mw + 'px';
+      menu.style.left = Math.max(8, Math.min(r.left, window.innerWidth - mw - 8)) + 'px';
+      menu.style.top = (r.bottom + 4) + 'px';
+      setTimeout(() => document.addEventListener('mousedown', _appMenuOutside, true), 0);
+    }
     // a target path/URL rendered BOLD (to stand out from the verb), with the app name (basename minus extension) in yellow.
     const highlightTarget = t => {
       if (/^[a-z][a-z0-9+.-]*:\/\//i.test(t)) return '<b class="haTgt">' + haEsc(t) + '</b>';   // URL: bold whole
@@ -632,7 +659,7 @@
       refresh();
     }
     function renderHostGrid() {
-      endHostCapture(false); endMacroRecord(); if (_chordCancel) _chordCancel();
+      endHostCapture(false); endMacroRecord(); if (_chordCancel) _chordCancel(); closeAppPicker();
       if (!_hb) _hb = newBuilder();
       const host = $('bdGrid'), list = loadHostActions();
       let h = '<div class="haWrap">';
@@ -640,7 +667,7 @@
         : '<p class="haEmpty">No host actions yet — build one below.</p>';
       h += '<div class="haBuild"><div class="haLine"><span class="haLbl">Do</span><select class="haActSel">' + ACT_OPTS.map(o => '<option value="' + o[0] + '"' + (o[0] === _hb.actType ? ' selected' : '') + '>' + o[1] + '</option>').join('') + '</select>';
       if (_hb.actType === 'profileSelect') h += '<span class="haLbl">Profile #</span><input type="number" class="numin haPidx" min="1" max="10" value="' + _hb.profileIndex + '">';
-      if (hasTarget(_hb.actType)) h += '<span class="haTargetWrap"><input type="text" class="haTarget' + (_hb.target ? ' haHasFile' : '') + '" placeholder="program path or URL" value="' + haEsc(_hb.target) + '"><button type="button" class="patbtn haBrowse" title="Pick a program (.exe) — opens a file dialog via the background app">Choose File</button><span class="haFileOk" title="' + haEsc(_hb.target || 'a file/program is registered') + '"' + (_hb.target ? '' : ' style="display:none"') + '>✓ <span class="haFileName">' + haEsc(midTrunc(baseName(_hb.target))) + '</span></span><button type="button" class="patbtn haClearFile" title="clear the registered file"' + (_hb.target ? '' : ' style="display:none"') + '>✕</button></span>';
+      if (hasTarget(_hb.actType)) h += '<span class="haTargetWrap"><input type="text" class="haTarget' + (_hb.target ? ' haHasFile' : '') + '" placeholder="program path or URL" value="' + haEsc(_hb.target) + '"><button type="button" class="patbtn haPick" title="Pick from your currently-open apps">Running app ▾</button><button type="button" class="patbtn haBrowse" title="Pick a program (.exe) — opens a file dialog via the background app">Choose File</button><span class="haFileOk" title="' + haEsc(_hb.target || 'a file/program is registered') + '"' + (_hb.target ? '' : ' style="display:none"') + '>✓ <span class="haFileName">' + haEsc(midTrunc(baseName(_hb.target))) + '</span></span><button type="button" class="patbtn haClearFile" title="clear the registered file"' + (_hb.target ? '' : ' style="display:none"') + '>✕</button></span>';
       if (_hb.actType === 'macro') h += '<button type="button" class="patbtn haRec">⏺ Record</button><button type="button" class="patbtn haDelay">+ Delay</button><button type="button" class="patbtn haClr">Clear</button><div class="haStepList"></div>';
       h += '</div><div class="haLine"><span class="haLbl">When I</span><select class="haTrgSel">' + TRG_OPTS.map(o => '<option value="' + o[0] + '"' + (o[0] === _hb.triggerType ? ' selected' : '') + '>' + o[1] + '</option>').join('') + '</select>';
       if (_hb.triggerType === 'multitap') h += '<input type="number" class="numin haCount" min="1" max="10" value="' + _hb.count + '"><span class="haLbl">times within</span><input type="number" class="numin haWin" min="100" max="10000" step="50" value="' + _hb.windowMs + '"><span class="haLbl">ms</span>';
@@ -675,6 +702,7 @@
       wireClampNum('.haCount', 1, 10, () => _hb.count, v => _hb.count = v);
       wireClampNum('.haWin', 100, 10000, () => _hb.windowMs, v => _hb.windowMs = v);
       w('.haHold', e => _hb.holdMs = +e.target.value || 500);
+      const pk = host.querySelector('.haPick'); if (pk) pk.addEventListener('click', () => showAppPicker(pk));
       const br = host.querySelector('.haBrowse'); if (br) br.addEventListener('click', () => {
         br.textContent = 'Opening…'; br.disabled = true;   // the daemon pops a native file dialog (blocks until you pick/cancel)
         $('bdHint').textContent = 'A file dialog should open — if you don\'t see it, it may be behind this window (Alt-Tab), or the background app needs restarting.';
