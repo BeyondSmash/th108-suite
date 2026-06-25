@@ -33,7 +33,7 @@ function normalize(list) {
     if (!trigger || trigger.led == null || !TRIGGERS.has(trigger.type) || !action || !ACTIONS.has(action.type)) continue;
     const t = { type: trigger.type, led: +trigger.led };
     if (t.type === 'chord') t.mods = pickMods(trigger.mods);
-    if (t.type === 'multitap') { t.count = clampInt(trigger.count, 2, 2, 8); t.windowMs = clampInt(trigger.windowMs, 400, 120, 2000); }
+    if (t.type === 'multitap') { t.count = clampInt(trigger.count, 2, 1, 10); t.windowMs = clampInt(trigger.windowMs, 400, 100, 10000); }
     if (t.type === 'hold') t.holdMs = clampInt(trigger.holdMs, 500, 150, 3000);
     const a = { type: action.type };
     if (a.type === 'profileSelect') a.index = clampInt(action.index, 0, 0, 99);

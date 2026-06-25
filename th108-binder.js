@@ -497,9 +497,10 @@
       if (a.type === 'macro') a.steps = _hb.steps.slice();
       return { trigger: t, action: a };
     }
+    function flashHint(msg) { const el = $('bdHint'); if (!el) return; el.textContent = msg; el.classList.remove('haFlash'); void el.offsetWidth; el.classList.add('haFlash'); setTimeout(() => { if (el.isConnected) el.classList.remove('haFlash'); }, 1000); }
     function captureTriggerKey(btn) {
-      if (_hb.actType === 'launch' && !(_hb.target || '').trim()) { $('bdHint').textContent = 'Enter a program path or URL first.'; return; }
-      if (_hb.actType === 'macro' && !_hb.steps.length) { $('bdHint').textContent = 'Record at least one key for the macro first.'; return; }
+      if (_hb.actType === 'launch' && !(_hb.target || '').trim()) { flashHint('Enter a program path or URL first.'); return; }
+      if (_hb.actType === 'macro' && !_hb.steps.length) { flashHint('Record at least one key for the macro first.'); return; }
       endHostCapture(true); endMacroRecord();
       const orig = btn.textContent;
       btn.textContent = (_hb.triggerType === 'chord' ? 'Press the key COMBO…' : 'Press the trigger key…') + '  (Esc cancels)';
@@ -519,8 +520,8 @@
     // the first key). A chord = modifier key(s) Ctrl/Shift/Alt/Win + ONE regular key — explained in the hint.
     const modStr = m => (m.ctrl ? 'Ctrl+' : '') + (m.shift ? 'Shift+' : '') + (m.alt ? 'Alt+' : '') + (m.meta ? 'Win+' : '');
     function captureChord(btn) {
-      if (_hb.actType === 'launch' && !(_hb.target || '').trim()) { $('bdHint').textContent = 'Enter a program path or URL first.'; return; }
-      if (_hb.actType === 'macro' && !_hb.steps.length) { $('bdHint').textContent = 'Record at least one key for the macro first.'; return; }
+      if (_hb.actType === 'launch' && !(_hb.target || '').trim()) { flashHint('Enter a program path or URL first.'); return; }
+      if (_hb.actType === 'macro' && !_hb.steps.length) { flashHint('Record at least one key for the macro first.'); return; }
       endHostCapture(true); endMacroRecord(); if (_chordCancel) _chordCancel();
       let led = null, code = null, capMods = null, liveMods = { ctrl: false, alt: false, shift: false, meta: false };
       const mkBtn = txt => { const b = document.createElement('button'); b.type = 'button'; b.className = 'patbtn'; b.textContent = txt; b.style.marginLeft = '6px'; return b; };
@@ -566,7 +567,7 @@
       if (_hb.actType === 'launch') h += '<span class="haTargetWrap"><input type="text" class="haTarget" placeholder="program path or URL" value="' + haEsc(_hb.target) + '"><button type="button" class="patbtn haBrowse" title="Pick a program (.exe) — opens a file dialog via the background app">Choose File</button></span>';
       if (_hb.actType === 'macro') h += '<button type="button" class="patbtn haRec">⏺ Record</button><button type="button" class="patbtn haDelay">+ Delay</button><button type="button" class="patbtn haClr">Clear</button><div class="haStepList"></div>';
       h += '</div><div class="haLine"><span class="haLbl">When I</span><select class="haTrgSel">' + TRG_OPTS.map(o => '<option value="' + o[0] + '"' + (o[0] === _hb.triggerType ? ' selected' : '') + '>' + o[1] + '</option>').join('') + '</select>';
-      if (_hb.triggerType === 'multitap') h += '<input type="number" class="numin haCount" min="2" max="8" value="' + _hb.count + '"><span class="haLbl">times within</span><input type="number" class="numin haWin" min="120" max="2000" step="20" value="' + _hb.windowMs + '"><span class="haLbl">ms</span>';
+      if (_hb.triggerType === 'multitap') h += '<input type="number" class="numin haCount" min="1" max="10" value="' + _hb.count + '"><span class="haLbl">times within</span><input type="number" class="numin haWin" min="100" max="10000" step="50" value="' + _hb.windowMs + '"><span class="haLbl">ms</span>';
       if (_hb.triggerType === 'hold') h += '<span class="haLbl">for</span><input type="number" class="numin haHold" min="150" max="3000" step="50" value="' + _hb.holdMs + '"><span class="haLbl">ms</span>';
       h += '</div><button type="button" class="patbtn haBind">' + (_hb.triggerType === 'chord' ? 'Bind — press the key combo' : 'Bind — press the key') + '</button></div></div>';
       host.innerHTML = h;
@@ -574,10 +575,15 @@
       host.querySelector('.haActSel').addEventListener('change', e => { _hb.actType = e.target.value; renderGrid(); });
       host.querySelector('.haTrgSel').addEventListener('change', e => { _hb.triggerType = e.target.value; renderGrid(); });
       const w = (sel, fn) => { const el = host.querySelector(sel); if (el) el.addEventListener('input', fn); };
-      { const pidx = host.querySelector('.haPidx'); if (pidx) { const fix = () => { let v = Math.floor(+pidx.value); if (!isFinite(v)) v = 1; v = Math.max(1, Math.min(10, v)); _hb.profileIndex = v; if (+pidx.value > 10 || +pidx.value < 1) pidx.value = v; }; pidx.addEventListener('input', fix); pidx.addEventListener('blur', () => pidx.value = _hb.profileIndex); } }   // clamp the field to 1–10 the moment a higher value is typed
+      // clamped number box: the MODEL is clamped live (so the binding is always valid), but the FIELD is only
+      // snapped to range on blur — so you can freely backspace/retype (e.g. "1" → clear → "10") without it fighting you.
+      const wireClampNum = (sel, lo, hi, get, set) => { const el = host.querySelector(sel); if (!el) return;
+        el.addEventListener('input', () => { const v = Math.floor(+el.value); if (isFinite(v) && el.value !== '') set(Math.max(lo, Math.min(hi, v))); });
+        el.addEventListener('blur', () => { let v = Math.floor(+el.value); if (!isFinite(v)) v = get(); v = Math.max(lo, Math.min(hi, v)); set(v); el.value = v; }); };
+      wireClampNum('.haPidx', 1, 10, () => _hb.profileIndex, v => _hb.profileIndex = v);
       w('.haTarget', e => _hb.target = e.target.value);
-      w('.haCount', e => _hb.count = +e.target.value || 2);
-      w('.haWin', e => _hb.windowMs = +e.target.value || 400);
+      wireClampNum('.haCount', 1, 10, () => _hb.count, v => _hb.count = v);
+      wireClampNum('.haWin', 100, 10000, () => _hb.windowMs, v => _hb.windowMs = v);
       w('.haHold', e => _hb.holdMs = +e.target.value || 500);
       const br = host.querySelector('.haBrowse'); if (br) br.addEventListener('click', () => {
         br.textContent = 'Opening…'; br.disabled = true;   // the daemon pops a native file dialog (blocks until you pick/cancel)

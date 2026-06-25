@@ -367,6 +367,8 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
   .haChipX:hover{ color:var(--text); }
   .haDelayMs{ width:52px; font:inherit; background:var(--card); color:var(--text); border:1px solid var(--border); border-radius:5px; padding:1px 4px; }
   .haChordOut{ margin-left:auto; padding:4px 12px; border-radius:7px; background:var(--card); border:1px solid var(--accent); color:var(--text); font-weight:600; font-size:13px; }   /* chord live readout, pushed far right */
+  @keyframes haHintFlash{ 0%{ background:rgba(245,197,66,.45); color:#f5c542 } 100%{ background:transparent } }
+  #bdHint.haFlash{ animation:haHintFlash 1s ease-out; border-radius:6px; padding:2px 6px; margin:10px -6px 0; }   /* flash the validation hint yellow for 1s to draw the eye */
   .haBind{ padding:8px 16px; }
 
   /* modals (spacebar focus overlay + keymap progress) — bento-styled */

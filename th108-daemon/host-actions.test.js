@@ -29,8 +29,8 @@ test('normalize drops invalid entries + clamps out-of-range values', () => {
     { trigger: { type: 'multitap', led: 1, count: 99, windowMs: 9 }, action: { type: 'launch', target: '  notepad.exe ' } },
   ]);
   assert.equal(out.length, 1);
-  assert.equal(out[0].trigger.count, 8);          // clamped to max
-  assert.equal(out[0].trigger.windowMs, 120);     // clamped to min
+  assert.equal(out[0].trigger.count, 10);         // clamped to max (1–10)
+  assert.equal(out[0].trigger.windowMs, 100);     // clamped to min (100–10000)
   assert.equal(out[0].action.target, 'notepad.exe');   // trimmed
 });
 
