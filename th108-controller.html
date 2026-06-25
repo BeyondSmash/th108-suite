@@ -368,8 +368,8 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
   @keyframes haShake{ 0%,100%{transform:translateX(0)} 20%{transform:translateX(-3px)} 40%{transform:translateX(3px)} 60%{transform:translateX(-2px)} 80%{transform:translateX(2px)} }
   .haChip.reject{ animation:haShake .33s; border-color:#f85149; box-shadow:0 0 0 2px rgba(248,81,73,.5); color:#f85149; }   /* "at the cap — remove one" */
   .haChipK{ font-weight:600; }
-  .haChipX{ display:inline-flex; align-items:center; justify-content:center; width:15px; height:15px; border:none; background:none; color:var(--muted); cursor:pointer; padding:0; font-size:12px; line-height:1; }   /* flex-center the x glyph in a fixed box (baseline+padding drifts it up-left) */
-  .haChipX:hover{ color:var(--text); }
+  .haChipX{ display:inline-flex; align-items:center; justify-content:center; width:16px; height:16px; border:none; background:none; box-shadow:none; border-radius:4px; margin:0; padding:0; color:var(--muted); cursor:pointer; font-size:13px; line-height:1; transition:none; }   /* full reset of the global button{} (its margin + box-shadow were shoving the x off-center) */
+  .haChipX:hover{ color:var(--text); background:rgba(255,255,255,.09); box-shadow:none; transform:none; }
   .haDelayMs{ width:52px; font:inherit; background:var(--card); color:var(--text); border:1px solid var(--border); border-radius:5px; padding:1px 4px; }
   .haChordOut{ margin-left:auto; padding:4px 12px; border-radius:7px; background:var(--card); border:1px solid var(--accent); color:var(--text); font-weight:600; font-size:13px; }   /* chord live readout, pushed far right */
   @keyframes haHintFlash{ 0%{ background:rgba(245,197,66,.45); color:#f5c542 } 100%{ background:transparent } }
