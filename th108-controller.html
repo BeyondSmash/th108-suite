@@ -453,10 +453,17 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
   <!-- ========== HOME ========== -->
   <div class="card s3" id="bioCard" data-pages="home">
     <div class="cardbar"><span class="grip">⠿</span>
-      <span id="setupPathWrap" onpointerdown="event.stopPropagation()" style="display:none;margin-left:auto;align-items:center;gap:7px;font-size:11.5px;color:var(--muted)">
-        <span style="opacity:.7">setup.cmd</span>
-        <code id="setupPathTxt" title="full path to setup.cmd — run it (or your TH108 Lighting desktop shortcut) to start the daemon" style="font-family:ui-monospace,SFMono-Regular,Menlo,monospace;background:var(--inset);padding:2px 7px;border-radius:6px;user-select:all;cursor:text;max-width:340px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></code>
-        <button id="setupPathCopy" style="margin:0;padding:2px 9px;font-size:11.5px" title="copy the full path to the clipboard">⧉ Copy</button>
+      <span id="setupPathWrap" onpointerdown="event.stopPropagation()" style="display:none;margin-left:auto;flex-direction:column;align-items:flex-end;gap:4px;font-size:11.5px;color:var(--muted)">
+        <span style="display:inline-flex;align-items:center;gap:7px">
+          <span style="opacity:.7">setup.cmd</span>
+          <code id="setupPathTxt" title="full path to setup.cmd — run it (or your TH108 Lighting desktop shortcut) to start the daemon" style="font-family:ui-monospace,SFMono-Regular,Menlo,monospace;background:var(--inset);padding:2px 7px;border-radius:6px;user-select:all;cursor:text;max-width:340px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></code>
+          <button id="setupPathCopy" style="margin:0;padding:2px 9px;font-size:11.5px" title="copy the full path to the clipboard">⧉ Copy</button>
+        </span>
+        <span style="display:inline-flex;align-items:center;gap:7px">
+          <span style="opacity:.7">start-tray.vbs</span>
+          <code id="trayPathTxt" title="full path to start-tray.vbs — after 'Exit Tray', run this to relaunch the tray (loads updates / restarts the background app)" style="font-family:ui-monospace,SFMono-Regular,Menlo,monospace;background:var(--inset);padding:2px 7px;border-radius:6px;user-select:all;cursor:text;max-width:340px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></code>
+          <button id="trayPathCopy" style="margin:0;padding:2px 9px;font-size:11.5px" title="copy the full path to the clipboard">⧉ Copy</button>
+        </span>
       </span>
     </div>
     <div class="avatar">⌨️</div>

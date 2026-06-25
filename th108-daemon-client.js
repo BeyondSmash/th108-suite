@@ -125,8 +125,9 @@ window.TH108DaemonClient = (function () {
           const r = await fetch('/status', { cache: 'no-store' }); if (!r.ok) throw 0;
           const s = await r.json(); alive = true;
           // bio-card grab-bar: show the real setup.cmd path (from the daemon) + the copy button
-          const spTxt = document.getElementById('setupPathTxt'), spWrap = document.getElementById('setupPathWrap');
+          const spTxt = document.getElementById('setupPathTxt'), spWrap = document.getElementById('setupPathWrap'), trTxt = document.getElementById('trayPathTxt');
           if (spTxt && spWrap && s.setupPath) { if (spTxt.textContent !== s.setupPath) spTxt.textContent = s.setupPath; spWrap.style.display = 'inline-flex'; }
+          if (trTxt && s.setupPath) { const t = s.setupPath.replace(/setup\.cmd$/i, 'th108-daemon\\start-tray.vbs'); if (trTxt.textContent !== t) trTxt.textContent = t; }   // start-tray.vbs sits in th108-daemon/ next to setup.cmd
           st.textContent = 'daemon: running · ' + (s.paused ? 'yielded to this page' : (s.deviceConnected ? 'driving the keyboard — layer edits here apply LIVE, no Connect needed' : 'waiting for the keyboard'));
           auto.disabled = false; quit.disabled = false; if (restart) restart.disabled = false;
           // state rides /status; don't fight a click in progress. A daemon built before this setting
@@ -350,12 +351,12 @@ window.TH108DaemonClient = (function () {
         } catch (_) { log('onboard mask change failed', 'err'); npMaskEl.checked = !npMaskEl.checked; }
         setTimeout(() => { npMaskEl.disabled = false; }, 1500);   // it cycles the keyboard once — brief settle
       });
-      const spCopy = document.getElementById('setupPathCopy'), spTxtEl = document.getElementById('setupPathTxt');
-      if (spCopy && spTxtEl) spCopy.addEventListener('click', async (e) => {
-        e.stopPropagation();   // don't let the click start a card drag
-        try { await navigator.clipboard.writeText(spTxtEl.textContent || ''); const o = spCopy.textContent; spCopy.textContent = '✓ Copied'; setTimeout(() => { spCopy.textContent = o; }, 1200); }
-        catch (_) { log('clipboard blocked — select the path and copy manually', 'err'); }
-      });
+      const copyPath = (btnId, txtId) => { const btn = document.getElementById(btnId), txt = document.getElementById(txtId);
+        if (btn && txt) btn.addEventListener('click', async (e) => { e.stopPropagation();   // don't let the click start a card drag
+          try { await navigator.clipboard.writeText(txt.textContent || ''); const o = btn.textContent; btn.textContent = '✓ Copied'; setTimeout(() => { btn.textContent = o; }, 1200); }
+          catch (_) { log('clipboard blocked — select the path and copy manually', 'err'); } }); };
+      copyPath('setupPathCopy', 'setupPathTxt');
+      copyPath('trayPathCopy', 'trayPathTxt');
       quit.addEventListener('click', async () => {
         if (!confirm('Quit the background daemon?\n\nAlways-on lighting and reactive-anywhere stop until setup.cmd or your next login starts it again. This page keeps working as-is.')) return;
         try { await fetch('/quit', { method: 'POST' }); log('daemon quit', 'dim'); } catch (_) {}
