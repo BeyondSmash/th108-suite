@@ -657,7 +657,10 @@ const control = {
       // A hidden TOPMOST owner form forces the dialog in FRONT of a fullscreen browser (a bare ShowDialog from a
       // background process can open behind it). -WindowStyle Hidden hides the PowerShell console; the GUI dialog
       // still shows (windowsHide can suppress it, so it's NOT used here).
-      const ps = "Add-Type -AssemblyName System.Windows.Forms; $o = New-Object System.Windows.Forms.Form; $o.TopMost=$true; $o.ShowInTaskbar=$false; $o.Opacity=0; $o.Show(); $o.Activate(); $d = New-Object System.Windows.Forms.OpenFileDialog; $d.Filter='Programs (*.exe)|*.exe|All files (*.*)|*.*'; $d.Title='Pick a program for the host action'; $r=$d.ShowDialog($o); $o.Close(); if ($r -eq [System.Windows.Forms.DialogResult]::OK) { [Console]::Out.Write($d.FileName) }";
+      // $d.ShowHelp = $true is the documented fix for OpenFileDialog.ShowDialog HANGING / not rendering when called
+      // from a non-standard host (a background Node→PowerShell process, our exact case — SAPIEN). The hidden topmost
+      // owner form pulls it in front of a fullscreen browser.
+      const ps = "Add-Type -AssemblyName System.Windows.Forms; $o = New-Object System.Windows.Forms.Form; $o.TopMost=$true; $o.ShowInTaskbar=$false; $o.Opacity=0; $o.Show(); $o.Activate(); $d = New-Object System.Windows.Forms.OpenFileDialog; $d.ShowHelp=$true; $d.Filter='Programs (*.exe)|*.exe|All files (*.*)|*.*'; $d.Title='Pick a program for the host action'; $r=$d.ShowDialog($o); $o.Close(); if ($r -eq [System.Windows.Forms.DialogResult]::OK) { [Console]::Out.Write($d.FileName) }";
       try { const p = _spawn('powershell.exe', ['-NoProfile', '-STA', '-WindowStyle', 'Hidden', '-Command', ps]);
         let out = ''; if (p.stdout) p.stdout.on('data', d => out += d);
         p.on('close', () => finish(out.trim() || null)); p.on('error', () => finish(null));
