@@ -466,7 +466,7 @@
         : '<p class="haEmpty">No host actions yet — build one below.</p>';
       h += '<div class="haBuild"><div class="haLine"><span class="haLbl">Do</span><select class="haActSel">' + ACT_OPTS.map(o => '<option value="' + o[0] + '"' + (o[0] === _hb.actType ? ' selected' : '') + '>' + o[1] + '</option>').join('') + '</select>';
       if (_hb.actType === 'profileSelect') h += '<span class="haLbl">Profile #</span><input type="number" class="numin haPidx" min="1" max="20" value="' + _hb.profileIndex + '">';
-      if (_hb.actType === 'launch') h += '<input type="text" class="haTarget" placeholder="C:\\path\\app.exe   or   https://…" value="' + haEsc(_hb.target) + '"><button type="button" class="patbtn haBrowse" title="Pick a program (.exe) — opens a file dialog via the background app">Browse…</button>';
+      if (_hb.actType === 'launch') h += '<input type="text" class="haTarget" placeholder="program path or URL" value="' + haEsc(_hb.target) + '"><button type="button" class="patbtn haBrowse" title="Pick a program (.exe) — opens a file dialog via the background app">Choose File</button>';
       if (_hb.actType === 'macro') h += '<button type="button" class="patbtn haRec">⏺ Record</button><span class="haSteps">' + _hb.steps.length + ' keys</span>' + (_hb.steps.length ? '<button type="button" class="patbtn haClr">Clear</button>' : '');
       h += '</div><div class="haLine"><span class="haLbl">When I</span><select class="haTrgSel">' + TRG_OPTS.map(o => '<option value="' + o[0] + '"' + (o[0] === _hb.triggerType ? ' selected' : '') + '>' + o[1] + '</option>').join('') + '</select>';
       if (_hb.triggerType === 'multitap') h += '<input type="number" class="numin haCount" min="2" max="8" value="' + _hb.count + '"><span class="haLbl">times within</span><input type="number" class="numin haWin" min="120" max="2000" step="20" value="' + _hb.windowMs + '"><span class="haLbl">ms</span>';
@@ -484,8 +484,11 @@
       w('.haHold', e => _hb.holdMs = +e.target.value || 500);
       const br = host.querySelector('.haBrowse'); if (br) br.addEventListener('click', () => {
         br.textContent = 'Opening…'; br.disabled = true;   // the daemon pops a native file dialog (blocks until you pick/cancel)
-        fetch('/pick-file').then(r => r.json()).then(d => { if (d && d.path) { _hb.target = d.path; renderGrid(); } else { br.textContent = 'Browse…'; br.disabled = false; } })
-          .catch(() => { br.textContent = 'Browse… (needs the app running)'; br.disabled = false; }); });
+        const reset = msg => { if (br.isConnected) { br.textContent = 'Choose File'; br.disabled = false; } if (msg) $('bdHint').textContent = msg; };
+        const ctrl = new AbortController(), to = setTimeout(() => ctrl.abort(), 125000);
+        fetch('/pick-file', { signal: ctrl.signal }).then(r => r.json()).then(d => { clearTimeout(to);
+          if (d && d.path) { _hb.target = d.path; renderGrid(); } else reset('No file chosen.'); })
+          .catch(() => { clearTimeout(to); reset('Couldn\'t open the file dialog — the background app must be RUNNING (restart it after an update). This doesn\'t need Connect.'); }); });
       const rec = host.querySelector('.haRec'); if (rec) rec.addEventListener('click', () => recordMacro(rec, host.querySelector('.haSteps')));
       const clr = host.querySelector('.haClr'); if (clr) clr.addEventListener('click', () => { _hb.steps = []; renderGrid(); });
       host.querySelector('.haBind').addEventListener('click', e => captureTriggerKey(e.target));

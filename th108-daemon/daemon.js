@@ -653,11 +653,16 @@ const control = {
   // (a user-session process) can pop a Windows OpenFileDialog and return the chosen path. STA-threaded for the GUI.
   pickFile() {
     return new Promise(resolve => {
-      const ps = "Add-Type -AssemblyName System.Windows.Forms; $d = New-Object System.Windows.Forms.OpenFileDialog; $d.Filter = 'Programs (*.exe)|*.exe|All files (*.*)|*.*'; $d.Title = 'Pick a program for the host action'; $d.Topmost = $true; if ($d.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { [Console]::Out.Write($d.FileName) }";
-      try { const p = _spawn('powershell.exe', ['-NoProfile', '-STA', '-Command', ps], { windowsHide: true });
-        let out = ''; p.stdout.on('data', d => out += d);
-        p.on('close', () => resolve(out.trim() || null)); p.on('error', () => resolve(null));
-      } catch { resolve(null); }
+      let done = false; const finish = v => { if (!done) { done = true; resolve(v); } };
+      // A hidden TOPMOST owner form forces the dialog in FRONT of a fullscreen browser (a bare ShowDialog from a
+      // background process can open behind it). -WindowStyle Hidden hides the PowerShell console; the GUI dialog
+      // still shows (windowsHide can suppress it, so it's NOT used here).
+      const ps = "Add-Type -AssemblyName System.Windows.Forms; $o = New-Object System.Windows.Forms.Form; $o.TopMost=$true; $o.ShowInTaskbar=$false; $o.Opacity=0; $o.Show(); $o.Activate(); $d = New-Object System.Windows.Forms.OpenFileDialog; $d.Filter='Programs (*.exe)|*.exe|All files (*.*)|*.*'; $d.Title='Pick a program for the host action'; $r=$d.ShowDialog($o); $o.Close(); if ($r -eq [System.Windows.Forms.DialogResult]::OK) { [Console]::Out.Write($d.FileName) }";
+      try { const p = _spawn('powershell.exe', ['-NoProfile', '-STA', '-WindowStyle', 'Hidden', '-Command', ps]);
+        let out = ''; if (p.stdout) p.stdout.on('data', d => out += d);
+        p.on('close', () => finish(out.trim() || null)); p.on('error', () => finish(null));
+        setTimeout(() => { try { p.kill(); } catch {} finish(null); }, 120000);   // never hang the request forever
+      } catch { finish(null); }
     });
   },
   // Latest captured audio frame (system/app) so the open page can preview it + drive the keys in real time.
