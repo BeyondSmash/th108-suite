@@ -345,6 +345,9 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
   .haAppIcon{ width:16px; height:16px; vertical-align:-3px; margin-right:6px; border-radius:3px; }   /* program icon on a Launch binding */
   .haTgt{ color:var(--text); font-weight:600; }   /* the path/URL, bold + brighter so it stands out from the verb */
   .haAppName{ color:#f5c542; }                     /* the app name (before the extension) in yellow for a quick glance */
+  .haTgtBox{ display:inline-flex; align-items:center; padding:2px 8px; background:var(--inset); border:1px solid var(--border); border-radius:6px; max-width:100%; overflow:hidden; }
+  .haTgtCopy{ display:inline-flex; align-items:center; justify-content:center; width:22px; height:20px; border:none; background:none; box-shadow:none; border-radius:5px; margin:0 0 0 6px; padding:0; color:var(--muted); cursor:pointer; font-size:13px; line-height:1; }
+  .haTgtCopy:hover{ color:var(--text); background:rgba(255,255,255,.09); box-shadow:none; transform:none; }
   .haDel{ flex:0 0 auto; padding:3px 9px; }
   .haEmpty{ color:var(--muted); font-size:13px; margin:0; padding:4px 2px; }
   .haBuild{ display:flex; flex-direction:row; flex-wrap:wrap; align-items:center; gap:8px 14px; padding:11px; background:var(--inset); border:1px solid var(--border); border-radius:8px; margin-top:2px; }

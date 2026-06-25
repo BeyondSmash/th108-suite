@@ -428,7 +428,7 @@
     const actionHtml = b => { const a = b.action;
       if (hasTarget(a.type)) { const t = stripQ(a.target), verb = a.type === 'focusApp' ? 'Switch to ' : 'Launch ';
         const icon = /\.exe$/i.test(t) ? '<img class="haAppIcon" data-path="' + haEsc(t) + '" alt="">' : '';
-        return icon + haEsc(verb) + (t ? highlightTarget(t) : '?'); }
+        return icon + haEsc(verb) + (t ? '<span class="haTgtBox">' + highlightTarget(t) + '</span><button type="button" class="haTgtCopy" data-path="' + haEsc(t) + '" title="copy the path">⧉</button>' : '?'); }
       return haEsc(describeAction(a)); };
     // the in-progress binding being authored (the builder form's state)
     let _hb = null;
@@ -614,6 +614,8 @@
       host.innerHTML = h;
       host.querySelectorAll('.haDel').forEach(x => x.addEventListener('click', () => { const l = loadHostActions(); l.splice(+x.dataset.i, 1); saveHostActions(l); renderGrid(); }));
       host.querySelectorAll('.haAppIcon').forEach(img => loadAppIcon(img.dataset.path).then(src => { if (src) img.src = src; else img.remove(); }));   // fill in each .exe icon (or drop the img if none)
+      host.querySelectorAll('.haTgtCopy').forEach(btn => btn.addEventListener('click', async e => { e.stopPropagation();
+        try { await navigator.clipboard.writeText(btn.dataset.path || ''); const o = btn.textContent; btn.textContent = '✓'; setTimeout(() => { if (btn.isConnected) btn.textContent = o; }, 1000); } catch (_) {} }));
       host.querySelector('.haActSel').addEventListener('change', e => { _hb.actType = e.target.value; renderGrid(); });
       host.querySelector('.haTrgSel').addEventListener('change', e => { _hb.triggerType = e.target.value; renderGrid(); });
       const w = (sel, fn) => { const el = host.querySelector(sel); if (el) el.addEventListener('input', fn); };
