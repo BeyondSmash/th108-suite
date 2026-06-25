@@ -355,8 +355,8 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
   .haPidx, .haCount{ width:46px; min-width:0; }   /* small counts (profile #, tap count) — 62px numin is sized for 4 digits */
   .haSteps{ color:var(--muted); font-size:13px; }
   /* macro step editor: draggable chips (key combos + delay steps) */
-  .haRec{ color:#3fb950; }              /* Record = green */
-  .haRec.recording{ color:#f85149; }    /* Stop (recording) = red */
+  .haRec{ color:#f85149; }                 /* Record = red */
+  .haRec.recording{ color:#f5a623; }       /* Stop (recording) = yellow-orange */
   .haStepList{ display:flex; flex-wrap:wrap; gap:6px; flex:1 1 100%; margin-top:4px; }
   .haChip{ display:inline-flex; align-items:center; gap:5px; padding:3px 5px 3px 9px; background:var(--card); border:1px solid var(--border); border-radius:7px; font-size:12px; cursor:grab; user-select:none; }
   .haChip.haChipDelay{ background:var(--inset); color:var(--muted); }
