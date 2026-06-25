@@ -239,7 +239,9 @@ function ensureFocusHost() {
     "      if ($p -eq ':MIN') { $h = [W]::GetForegroundWindow(); if ($h -ne [IntPtr]::Zero) { [W]::ShowWindow($h, 6) | Out-Null } }",          // 6 = SW_MINIMIZE (always minimizes, no toggle)
     "      elseif ($p -eq ':MAX') { $h = [W]::GetForegroundWindow(); if ($h -ne [IntPtr]::Zero) { [W]::ShowWindow($h, 3) | Out-Null } }",       // 3 = SW_MAXIMIZE
     "      elseif ($p -eq ':RESTORE') { $h = [W]::GetForegroundWindow(); if ($h -ne [IntPtr]::Zero) { [W]::ShowWindow($h, 9) | Out-Null } }",   // 9 = SW_RESTORE (unmaximize)
-    '      else { $proc = Get-Process | Where-Object { $_.MainWindowHandle -ne 0 -and (try { $_.Path -eq $p } catch { $false }) } | Select-Object -First 1',
+    '      else {',
+    '        $proc = $null',     // inline try/catch in Where-Object is PS7-only; Windows PowerShell 5.1 needs a foreach with try/catch STATEMENTS ($_.Path throws on protected processes)
+    '        foreach ($pr in (Get-Process)) { if ($pr.MainWindowHandle -eq 0) { continue }; $pp = $null; try { $pp = $pr.Path } catch {}; if ($pp -eq $p) { $proc = $pr; break } }',
     '        if ($proc) { [W]::ShowWindowAsync($proc.MainWindowHandle, 9) | Out-Null; [W]::keybd_event(0xA4,0,0,[IntPtr]::Zero); [W]::keybd_event(0xA4,0,2,[IntPtr]::Zero); [W]::SetForegroundWindow($proc.MainWindowHandle) | Out-Null }',
     '        else { Start-Process -FilePath $p } } } catch {} }',
     '  }',

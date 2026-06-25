@@ -535,6 +535,26 @@
       return { trigger: t, action: a };
     }
     function flashHint(msg) { const el = $('bdHint'); if (!el) return; el.textContent = msg; el.classList.remove('haFlash'); void el.offsetWidth; el.classList.add('haFlash'); setTimeout(() => { if (el.isConnected) el.classList.remove('haFlash'); }, 1000); }
+    // A new trigger collides with an existing one ON THE SAME PHYSICAL KEY when the bare press would fire both:
+    // two non-chord triggers always collide; two chords only with identical modifiers; a chord and a bare key
+    // don't (the modifiers keep them apart). Returns the existing binding to name in the warning, or null.
+    const chordModsEq = (a, b) => { a = a || {}; b = b || {}; return !!a.ctrl === !!b.ctrl && !!a.alt === !!b.alt && !!a.shift === !!b.shift && !!a.meta === !!b.meta; };
+    function findKeyConflict(list, trig) {
+      return list.find(b => { const o = b && b.trigger; if (!o || o.led !== trig.led) return false;
+        const oc = o.type === 'chord', nc = trig.type === 'chord';
+        if (oc !== nc) return false;
+        if (oc && nc) return chordModsEq(o.mods, trig.mods);
+        return true; }) || null;
+    }
+    function showBindConflict(btn, existing) {
+      if (!btn) return;
+      btn.classList.remove('haConflictBtn'); void btn.offsetWidth; btn.classList.add('haConflictBtn');   // red stroke + reuse haShake
+      setTimeout(() => { if (btn.isConnected) btn.classList.remove('haConflictBtn'); }, 600);
+      let msg = btn.parentNode && btn.parentNode.querySelector('.haConflictMsg');
+      if (!msg) { msg = document.createElement('span'); msg.className = 'haConflictMsg'; btn.after(msg); }
+      msg.textContent = 'Conflict — that key is already assigned to "' + describeAction(existing.action) + '". Clear the other one first if you want to rebind that key.';
+      clearTimeout(showBindConflict._t); showBindConflict._t = setTimeout(() => { if (msg.isConnected) msg.remove(); }, 7000);
+    }
     function captureTriggerKey(btn) {
       if (hasTarget(_hb.actType) && !(_hb.target || '').trim()) { flashHint('Enter a program path or URL first.'); return; }
       if (_hb.actType === 'macro' && !_hb.steps.length) { flashHint('Record at least one key for the macro first.'); return; }
@@ -547,7 +567,10 @@
         if (ev.code === 'Escape') { btn.textContent = orig; return; }
         const b = buildBindingFromKey(ev);
         if (!b) { btn.textContent = 'Not a keyboard key — try another'; return; }
-        const list = loadHostActions(); list.push(b); saveHostActions(list);
+        const list = loadHostActions();
+        const conflict = findKeyConflict(list, b.trigger);
+        if (conflict) { btn.textContent = orig; showBindConflict(btn, conflict); return; }   // don't bind a second action onto an already-assigned key
+        list.push(b); saveHostActions(list);
         log('✓ ' + describeTrigger(b.trigger) + ' → ' + describeAction(b.action) + ' (works page-closed)', 'ok');
         _hb = newBuilder(); renderGrid(); };
       _hostCapture = { onKey, btn, orig };
@@ -580,12 +603,16 @@
         led = l; code = ev.code; capMods = { ctrl: ev.ctrlKey || latch.ctrl, alt: ev.altKey || latch.alt, shift: ev.shiftKey || latch.shift, meta: ev.metaKey || latch.meta };
         btn.disabled = false; refresh(); };
       const onUp = ev => { const mk = MODK[ev.code]; if (!mk) return; if (clearT[mk]) clearTimeout(clearT[mk]); clearT[mk] = setTimeout(() => { latch[mk] = false; clearT[mk] = null; if (!code) refresh(); }, 80); };   // delay release so a fake shift up/down around a numpad key doesn't drop the latch
-      const onAccept = () => { if (!code) return; cleanup();
-        const t = { type: 'chord', led, mods: capMods }, a = { type: _hb.actType };
+      const onAccept = () => { if (!code) return;
+        const t = { type: 'chord', led, mods: capMods }, list = loadHostActions();
+        const conflict = findKeyConflict(list, t);
+        if (conflict) { showBindConflict(btn, conflict); return; }   // leave the capture open (Clear/Cancel still available)
+        cleanup();
+        const a = { type: _hb.actType };
         if (a.type === 'profileSelect') a.index = Math.max(0, (_hb.profileIndex | 0) - 1);
         if (hasTarget(a.type)) a.target = stripQ(_hb.target);
         if (a.type === 'macro') a.steps = _hb.steps.slice();
-        const list = loadHostActions(); list.push({ trigger: t, action: a }); saveHostActions(list);
+        list.push({ trigger: t, action: a }); saveHostActions(list);
         log('✓ ' + describeTrigger(t) + ' → ' + describeAction(a) + ' (works page-closed)', 'ok');
         _hb = newBuilder(); renderGrid(); };
       function cleanup() { document.removeEventListener('keydown', onDown, true); document.removeEventListener('keyup', onUp, true);
