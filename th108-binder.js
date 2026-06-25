@@ -418,9 +418,18 @@
     const loadAppIcon = p => { if (!p) return Promise.resolve(null); if (p in _appIconCache) return Promise.resolve(_appIconCache[p]);
       return fetch('/app-icon', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ path: p }) })
         .then(r => r.json()).then(d => (_appIconCache[p] = (d && d.icon) || null)).catch(() => (_appIconCache[p] = null)); };
-    const actionHtml = b => { const t = stripQ(b.action.target);
-      const icon = (hasTarget(b.action.type) && /\.exe$/i.test(t)) ? '<img class="haAppIcon" data-path="' + haEsc(t) + '" alt="">' : '';
-      return icon + haEsc(describeAction(b.action)); };
+    // a target path/URL rendered BOLD (to stand out from the verb), with the app name (basename minus extension) in yellow.
+    const highlightTarget = t => {
+      if (/^[a-z][a-z0-9+.-]*:\/\//i.test(t)) return '<b class="haTgt">' + haEsc(t) + '</b>';   // URL: bold whole
+      const base = baseName(t), dir = t.slice(0, t.length - base.length);
+      const dot = base.lastIndexOf('.'), name = dot > 0 ? base.slice(0, dot) : base, ext = dot > 0 ? base.slice(dot) : '';
+      return '<b class="haTgt">' + haEsc(dir) + '<span class="haAppName">' + haEsc(name) + '</span>' + haEsc(ext) + '</b>';
+    };
+    const actionHtml = b => { const a = b.action;
+      if (hasTarget(a.type)) { const t = stripQ(a.target), verb = a.type === 'focusApp' ? 'Switch to ' : 'Launch ';
+        const icon = /\.exe$/i.test(t) ? '<img class="haAppIcon" data-path="' + haEsc(t) + '" alt="">' : '';
+        return icon + haEsc(verb) + (t ? highlightTarget(t) : '?'); }
+      return haEsc(describeAction(a)); };
     // the in-progress binding being authored (the builder form's state)
     let _hb = null;
     function newBuilder() { return { actType: 'micToggle', triggerType: 'key', count: 2, windowMs: 400, holdMs: 500, profileIndex: 1, target: '', steps: [] }; }

@@ -222,9 +222,9 @@ function focusApp(target) {
   const psPath = path.join(__dirname, '_focusapp.ps1');
   const ps = ['param([string]$p)',
     'Add-Type @"', 'using System; using System.Runtime.InteropServices;',
-    'public class W { [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h); [DllImport("user32.dll")] public static extern bool ShowWindowAsync(IntPtr h, int n); }', '"@',
+    'public class W { [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h); [DllImport("user32.dll")] public static extern bool ShowWindowAsync(IntPtr h, int n); [DllImport("user32.dll")] public static extern void keybd_event(byte k, byte s, uint f, IntPtr e); }', '"@',
     '$proc = Get-Process | Where-Object { $_.MainWindowHandle -ne 0 -and (try { $_.Path -eq $p } catch { $false }) } | Select-Object -First 1',
-    'if ($proc) { [W]::ShowWindowAsync($proc.MainWindowHandle, 9) | Out-Null; [W]::SetForegroundWindow($proc.MainWindowHandle) | Out-Null } else { Start-Process -FilePath $p }'
+    'if ($proc) { [W]::ShowWindowAsync($proc.MainWindowHandle, 9) | Out-Null; [W]::keybd_event(0xA4,0,0,[IntPtr]::Zero); [W]::keybd_event(0xA4,0,2,[IntPtr]::Zero); [W]::SetForegroundWindow($proc.MainWindowHandle) | Out-Null } else { Start-Process -FilePath $p }'
   ].join('\r\n');
   try { fs.writeFileSync(psPath, ps); _spawn('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', psPath, '-p', target], { windowsHide: true }).unref(); log('🎚 host action: switch to "' + target + '"'); }
   catch (e) { log('🎚 host action: switch-to failed — ' + e.message); }
