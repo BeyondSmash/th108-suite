@@ -13,7 +13,7 @@
 //                 'macro'         { steps:[{key, mods}] }    — play a keystroke sequence (uiohook codes)
 //                 'launch'        { target }                 — open a program / file / URL
 
-const ACTIONS = new Set(['micToggle', 'profileNext', 'profilePrev', 'profileSelect', 'macro', 'launch']);
+const ACTIONS = new Set(['micToggle', 'profileNext', 'profilePrev', 'profileSelect', 'macro', 'launch', 'focusApp', 'winMin', 'winMax']);
 const TRIGGERS = new Set(['key', 'chord', 'multitap', 'hold']);
 
 function clampInt(v, def, lo, hi) { v = Math.round(+v); if (!isFinite(v)) return def; return Math.max(lo, Math.min(hi, v)); }
@@ -42,7 +42,7 @@ function normalize(list) {
       if (s && s.ms != null) return { ms: clampInt(s.ms, 100, 0, 10000) };
       return null;
     }).filter(Boolean) : [];
-    if (a.type === 'launch') a.target = String(action.target || '').trim().replace(/^["']+|["']+$/g, '').trim();   // strip surrounding quotes (Windows "Copy as path")
+    if (a.type === 'launch' || a.type === 'focusApp') a.target = String(action.target || '').trim().replace(/^["']+|["']+$/g, '').trim();   // strip surrounding quotes (Windows "Copy as path")
     out.push({ trigger: t, action: a });
   }
   return out;

@@ -373,7 +373,8 @@
     // LED), so a firmware-remapped key resolves to the same LED the daemon watches. ----
     const HOST_KEY = 'th108_host_actions';
     const haEsc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-    const ACT_OPTS = [['micToggle', 'Mic / Music lighting toggle'], ['profileNext', 'Profile → Next'], ['profilePrev', 'Profile → Previous'], ['profileSelect', 'Jump to a profile…'], ['launch', 'Launch a program / file / URL…'], ['macro', 'Run a macro (key sequence)…']];
+    const ACT_OPTS = [['micToggle', 'Mic / Music lighting toggle'], ['profileNext', 'Profile → Next'], ['profilePrev', 'Profile → Previous'], ['profileSelect', 'Jump to a profile…'], ['launch', 'Launch a program / file / URL…'], ['focusApp', 'Switch to a program (focus or launch)…'], ['winMin', 'Minimize active window'], ['winMax', 'Maximize active window'], ['macro', 'Run a macro (key sequence)…']];
+    const hasTarget = t => t === 'launch' || t === 'focusApp';   // actions that take a program/URL target
     const TRG_OPTS = [['key', 'Single press'], ['multitap', 'Multi-tap (N presses)'], ['chord', 'Chord (modifiers + key)'], ['hold', 'Long-press (hold)']];
     const MOD_CODE = /^(Control|Shift|Alt|Meta)(Left|Right)$/;   // a lone modifier keydown (skip while waiting for the real key)
     function loadHostActions() {
@@ -408,6 +409,7 @@
     function describeAction(a) {
       if (a.type === 'profileSelect') return 'Jump to profile ' + ((a.index | 0) + 1);
       if (a.type === 'launch') return 'Launch ' + (a.target || '?');
+      if (a.type === 'focusApp') return 'Switch to ' + (a.target || '?');
       if (a.type === 'macro') return 'Macro (' + ((a.steps || []).length) + ' keys)';
       return (ACT_OPTS.find(o => o[0] === a.type) || [, a.type])[1];
     }
@@ -417,7 +419,7 @@
       return fetch('/app-icon', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ path: p }) })
         .then(r => r.json()).then(d => (_appIconCache[p] = (d && d.icon) || null)).catch(() => (_appIconCache[p] = null)); };
     const actionHtml = b => { const t = stripQ(b.action.target);
-      const icon = (b.action.type === 'launch' && /\.exe$/i.test(t)) ? '<img class="haAppIcon" data-path="' + haEsc(t) + '" alt="">' : '';
+      const icon = (hasTarget(b.action.type) && /\.exe$/i.test(t)) ? '<img class="haAppIcon" data-path="' + haEsc(t) + '" alt="">' : '';
       return icon + haEsc(describeAction(b.action)); };
     // the in-progress binding being authored (the builder form's state)
     let _hb = null;
@@ -517,13 +519,13 @@
       if (t.type === 'hold') t.holdMs = _hb.holdMs;
       const a = { type: _hb.actType };
       if (a.type === 'profileSelect') a.index = Math.max(0, (_hb.profileIndex | 0) - 1);   // UI is 1-based
-      if (a.type === 'launch') a.target = stripQ(_hb.target);
+      if (hasTarget(a.type)) a.target = stripQ(_hb.target);
       if (a.type === 'macro') a.steps = _hb.steps.slice();
       return { trigger: t, action: a };
     }
     function flashHint(msg) { const el = $('bdHint'); if (!el) return; el.textContent = msg; el.classList.remove('haFlash'); void el.offsetWidth; el.classList.add('haFlash'); setTimeout(() => { if (el.isConnected) el.classList.remove('haFlash'); }, 1000); }
     function captureTriggerKey(btn) {
-      if (_hb.actType === 'launch' && !(_hb.target || '').trim()) { flashHint('Enter a program path or URL first.'); return; }
+      if (hasTarget(_hb.actType) && !(_hb.target || '').trim()) { flashHint('Enter a program path or URL first.'); return; }
       if (_hb.actType === 'macro' && !_hb.steps.length) { flashHint('Record at least one key for the macro first.'); return; }
       endHostCapture(true); endMacroRecord();
       const orig = btn.textContent;
@@ -544,7 +546,7 @@
     // the first key). A chord = modifier key(s) Ctrl/Shift/Alt/Win + ONE regular key — explained in the hint.
     const modStr = m => (m.ctrl ? 'Ctrl+' : '') + (m.shift ? 'Shift+' : '') + (m.alt ? 'Alt+' : '') + (m.meta ? 'Win+' : '');
     function captureChord(btn) {
-      if (_hb.actType === 'launch' && !(_hb.target || '').trim()) { flashHint('Enter a program path or URL first.'); return; }
+      if (hasTarget(_hb.actType) && !(_hb.target || '').trim()) { flashHint('Enter a program path or URL first.'); return; }
       if (_hb.actType === 'macro' && !_hb.steps.length) { flashHint('Record at least one key for the macro first.'); return; }
       endHostCapture(true); endMacroRecord(); if (_chordCancel) _chordCancel();
       let led = null, code = null, capMods = null;
@@ -570,7 +572,7 @@
       const onAccept = () => { if (!code) return; cleanup();
         const t = { type: 'chord', led, mods: capMods }, a = { type: _hb.actType };
         if (a.type === 'profileSelect') a.index = Math.max(0, (_hb.profileIndex | 0) - 1);
-        if (a.type === 'launch') a.target = stripQ(_hb.target);
+        if (hasTarget(a.type)) a.target = stripQ(_hb.target);
         if (a.type === 'macro') a.steps = _hb.steps.slice();
         const list = loadHostActions(); list.push({ trigger: t, action: a }); saveHostActions(list);
         log('✓ ' + describeTrigger(t) + ' → ' + describeAction(a) + ' (works page-closed)', 'ok');
@@ -594,7 +596,7 @@
         : '<p class="haEmpty">No host actions yet — build one below.</p>';
       h += '<div class="haBuild"><div class="haLine"><span class="haLbl">Do</span><select class="haActSel">' + ACT_OPTS.map(o => '<option value="' + o[0] + '"' + (o[0] === _hb.actType ? ' selected' : '') + '>' + o[1] + '</option>').join('') + '</select>';
       if (_hb.actType === 'profileSelect') h += '<span class="haLbl">Profile #</span><input type="number" class="numin haPidx" min="1" max="10" value="' + _hb.profileIndex + '">';
-      if (_hb.actType === 'launch') h += '<span class="haTargetWrap"><input type="text" class="haTarget' + (_hb.target ? ' haHasFile' : '') + '" placeholder="program path or URL" value="' + haEsc(_hb.target) + '"><button type="button" class="patbtn haBrowse" title="Pick a program (.exe) — opens a file dialog via the background app">Choose File</button><span class="haFileOk" title="' + haEsc(_hb.target || 'a file/program is registered') + '"' + (_hb.target ? '' : ' style="display:none"') + '>✓ <span class="haFileName">' + haEsc(midTrunc(baseName(_hb.target))) + '</span></span><button type="button" class="patbtn haClearFile" title="clear the registered file"' + (_hb.target ? '' : ' style="display:none"') + '>✕</button></span>';
+      if (hasTarget(_hb.actType)) h += '<span class="haTargetWrap"><input type="text" class="haTarget' + (_hb.target ? ' haHasFile' : '') + '" placeholder="program path or URL" value="' + haEsc(_hb.target) + '"><button type="button" class="patbtn haBrowse" title="Pick a program (.exe) — opens a file dialog via the background app">Choose File</button><span class="haFileOk" title="' + haEsc(_hb.target || 'a file/program is registered') + '"' + (_hb.target ? '' : ' style="display:none"') + '>✓ <span class="haFileName">' + haEsc(midTrunc(baseName(_hb.target))) + '</span></span><button type="button" class="patbtn haClearFile" title="clear the registered file"' + (_hb.target ? '' : ' style="display:none"') + '>✕</button></span>';
       if (_hb.actType === 'macro') h += '<button type="button" class="patbtn haRec">⏺ Record</button><button type="button" class="patbtn haDelay">+ Delay</button><button type="button" class="patbtn haClr">Clear</button><div class="haStepList"></div>';
       h += '</div><div class="haLine"><span class="haLbl">When I</span><select class="haTrgSel">' + TRG_OPTS.map(o => '<option value="' + o[0] + '"' + (o[0] === _hb.triggerType ? ' selected' : '') + '>' + o[1] + '</option>').join('') + '</select>';
       if (_hb.triggerType === 'multitap') h += '<input type="number" class="numin haCount" min="1" max="10" value="' + _hb.count + '"><span class="haLbl">times within</span><input type="number" class="numin haWin" min="100" max="10000" step="50" value="' + _hb.windowMs + '"><span class="haLbl">ms</span>';

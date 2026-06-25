@@ -215,6 +215,20 @@ function launchTarget(target) {
     log('🎚 host action: launch "' + target + '"'); }
   catch (e) { log('🎚 host action: launch failed — ' + e.message); }
 }
+function winKey(code) { const k = CODE2UIO[code]; if (k === undefined) return; try { uIOhook.keyTap(k, [UiohookKey.Meta]); } catch {} }   // Win+<key> (Win+Down minimize, Win+Up maximize)
+function focusApp(target) {
+  target = String(target || '').trim().replace(/^["']+|["']+$/g, '').trim(); if (!target) return;
+  // focus the running program's main window (restore if minimized); launch it if not running.
+  const psPath = path.join(__dirname, '_focusapp.ps1');
+  const ps = ['param([string]$p)',
+    'Add-Type @"', 'using System; using System.Runtime.InteropServices;',
+    'public class W { [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h); [DllImport("user32.dll")] public static extern bool ShowWindowAsync(IntPtr h, int n); }', '"@',
+    '$proc = Get-Process | Where-Object { $_.MainWindowHandle -ne 0 -and (try { $_.Path -eq $p } catch { $false }) } | Select-Object -First 1',
+    'if ($proc) { [W]::ShowWindowAsync($proc.MainWindowHandle, 9) | Out-Null; [W]::SetForegroundWindow($proc.MainWindowHandle) | Out-Null } else { Start-Process -FilePath $p }'
+  ].join('\r\n');
+  try { fs.writeFileSync(psPath, ps); _spawn('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', psPath, '-p', target], { windowsHide: true }).unref(); log('🎚 host action: switch to "' + target + '"'); }
+  catch (e) { log('🎚 host action: switch-to failed — ' + e.message); }
+}
 function fireHostAction(b) {
   const a = b.action;
   if (a.type === 'micToggle') return toggleAudioLayer();
@@ -223,6 +237,9 @@ function fireHostAction(b) {
   if (a.type === 'profileSelect') return selectProfile(a.index | 0);
   if (a.type === 'macro') return playMacro(a.steps);
   if (a.type === 'launch') return launchTarget(a.target);
+  if (a.type === 'focusApp') return focusApp(a.target);
+  if (a.type === 'winMin') return winKey('ArrowDown');
+  if (a.type === 'winMax') return winKey('ArrowUp');
 }
 // per-binding state for the stateful triggers (multitap taps, hold timers) + a fire debounce for key/chord.
 const _haState = new Map();   // binding ref → { taps:[], holdTimer }
