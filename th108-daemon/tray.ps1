@@ -134,5 +134,27 @@ $timer.Add_Tick({
 })
 $timer.Start()
 
+# FILE PICKER on behalf of the daemon. The daemon is a hidden background process and can't put a window on the
+# desktop (its OpenFileDialog hangs), but the TRAY has a real message loop + GUI, so it CAN. The daemon writes
+# _pickreq.txt; we show the OpenFileDialog here and write the chosen path (empty = cancel) to _pickresult.txt.
+$script:pickReq = Join-Path $here '_pickreq.txt'
+$script:pickRes = Join-Path $here '_pickresult.txt'
+$pickTimer = New-Object System.Windows.Forms.Timer
+$pickTimer.Interval = 250
+$pickTimer.Add_Tick({
+  if (-not (Test-Path $script:pickReq)) { return }
+  Remove-Item $script:pickReq -Force -ErrorAction SilentlyContinue
+  $path = ''
+  try {
+    $o = New-Object System.Windows.Forms.Form; $o.TopMost = $true; $o.ShowInTaskbar = $false; $o.Opacity = 0; $o.Show(); $o.Activate()
+    $d = New-Object System.Windows.Forms.OpenFileDialog
+    $d.Filter = 'Programs (*.exe)|*.exe|All files (*.*)|*.*'; $d.Title = 'Pick a program for the host action'
+    $r = $d.ShowDialog($o); $o.Close()
+    if ($r -eq [System.Windows.Forms.DialogResult]::OK) { $path = $d.FileName }
+  } catch { $path = '' }
+  Set-Content -LiteralPath $script:pickRes -Value $path -NoNewline -Encoding UTF8
+})
+$pickTimer.Start()
+
 Start-Daemon   # launching the tray means "I want my lighting" - bring the daemon up if it is down
 [System.Windows.Forms.Application]::Run()
