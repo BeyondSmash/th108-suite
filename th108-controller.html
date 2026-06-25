@@ -350,6 +350,7 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
   .haBuild select, .haTarget{ font:inherit; background:var(--card); color:var(--text); border:1px solid var(--border); border-radius:8px; padding:4px 8px; }
   .haTargetWrap{ display:inline-flex; align-items:center; gap:8px; }   /* keep the URL box + Choose File together as one unit (button to the RIGHT of the box, never split) */
   .haTarget{ flex:0 1 220px; min-width:140px; }   /* don't grow → no big empty box to the right */
+  .haPidx, .haCount{ width:46px; min-width:0; }   /* small counts (profile #, tap count) — 62px numin is sized for 4 digits */
   .haSteps{ color:var(--muted); font-size:13px; }
   .haBind{ padding:8px 16px; }
 
