@@ -457,19 +457,32 @@
       });
       wireMacroContainer(container);
     }
-    function clearDropMarks(container) { container.querySelectorAll('.haChip').forEach(c => c.classList.remove('dropbefore', 'dropafter')); }
-    // Container-level drag handling (attached ONCE): compute the insertion gap from the cursor X, mark it with the
-    // orange drop-line, and on drop move the dragged step there (insert-between, not swap).
+    function clearDropMarks(container) { container.querySelectorAll('.haChip').forEach(c => c.classList.remove('dropbefore', 'dropafter', 'swaptarget')); }
+    // Container-level drag handling (attached ONCE). Default = gap-insert with the orange drop-line. EXCEPTION:
+    // dragging a DELAY onto a gap that already has a delay isn't an insert (one-per-gap) — it's a SWAP, so we
+    // highlight that existing delay instead of the orange line, and on drop swap the two delays' positions.
     function wireMacroContainer(container) {
       if (container._haWired) return; container._haWired = true;
-      const gapAt = x => { const chips = [...container.querySelectorAll('.haChip')]; clearDropMarks(container);
+      const computeDrop = x => {
+        const chips = [...container.querySelectorAll('.haChip')];
+        const dragging = _macroDragI != null ? _hb.steps[_macroDragI] : null;
+        if (dragging && dragging.ms != null) {   // dragging a delay → is the cursor over a DIFFERENT delay? then swap
+          for (const c of chips) { const r = c.getBoundingClientRect(); if (x >= r.left && x <= r.right) {
+            const idx = +c.dataset.i; if (idx !== _macroDragI && _hb.steps[idx] && _hb.steps[idx].ms != null) return { swap: idx, chip: c };
+            break; } }
+        }
         let to = chips.length; for (let i = 0; i < chips.length; i++) { const r = chips[i].getBoundingClientRect(); if (x < r.left + r.width / 2) { to = i; break; } }
-        if (to >= chips.length) { if (chips.length) chips[chips.length - 1].classList.add('dropafter'); } else chips[to].classList.add('dropbefore');
-        return to; };
-      container.addEventListener('dragover', e => { e.preventDefault(); gapAt(e.clientX); });
-      container.addEventListener('drop', e => { e.preventDefault(); const to = gapAt(e.clientX); clearDropMarks(container);
+        return { to, chips };
+      };
+      container.addEventListener('dragover', e => { e.preventDefault(); clearDropMarks(container); const d = computeDrop(e.clientX);
+        if (d.swap != null) d.chip.classList.add('swaptarget');
+        else if (d.to >= d.chips.length) { if (d.chips.length) d.chips[d.chips.length - 1].classList.add('dropafter'); }
+        else d.chips[d.to].classList.add('dropbefore'); });
+      container.addEventListener('drop', e => { e.preventDefault(); const d = computeDrop(e.clientX); clearDropMarks(container);
         if (_macroDragI == null) return; const from = _macroDragI; _macroDragI = null;
-        const m = _hb.steps.splice(from, 1)[0]; let t = to; if (t > from) t--; _hb.steps.splice(Math.max(0, t), 0, m); renderMacroSteps(container); });
+        if (d.swap != null) { const tmp = _hb.steps[from]; _hb.steps[from] = _hb.steps[d.swap]; _hb.steps[d.swap] = tmp; }   // swap the two delays
+        else { const m = _hb.steps.splice(from, 1)[0]; let t = d.to; if (t > from) t--; _hb.steps.splice(Math.max(0, t), 0, m); }
+        renderMacroSteps(container); });
     }
     function recordMacro(btn, container) {
       endHostCapture(true);
