@@ -523,21 +523,26 @@
       if (_hb.actType === 'launch' && !(_hb.target || '').trim()) { flashHint('Enter a program path or URL first.'); return; }
       if (_hb.actType === 'macro' && !_hb.steps.length) { flashHint('Record at least one key for the macro first.'); return; }
       endHostCapture(true); endMacroRecord(); if (_chordCancel) _chordCancel();
-      let led = null, code = null, capMods = null, liveMods = { ctrl: false, alt: false, shift: false, meta: false };
+      let led = null, code = null, capMods = null;
+      const latch = { ctrl: false, alt: false, shift: false, meta: false }, clearT = {};
+      const MODK = { ControlLeft: 'ctrl', ControlRight: 'ctrl', ShiftLeft: 'shift', ShiftRight: 'shift', AltLeft: 'alt', AltRight: 'alt', MetaLeft: 'meta', MetaRight: 'meta' };
       const mkBtn = txt => { const b = document.createElement('button'); b.type = 'button'; b.className = 'patbtn'; b.textContent = txt; b.style.marginLeft = '6px'; return b; };
       const clearB = mkBtn('Clear'), cancelB = mkBtn('Cancel');
       const out = document.createElement('span'); out.className = 'haChordOut';   // the LIVE readout, inline (far right), not in the descriptor
       btn.after(clearB); clearB.after(cancelB); cancelB.after(out);
       btn.textContent = 'Accept'; btn.disabled = true;
       $('bdHint').textContent = 'A chord = hold modifier key(s) — Ctrl, Shift, Alt or Win — then press ONE regular key, all together. Then Accept (Clear re-does it, Cancel exits).';
-      const refresh = () => out.textContent = code ? (modStr(capMods) + ((board && board.labelFor) ? board.labelFor(led) : code)) : (modStr(liveMods) ? modStr(liveMods) + '…' : 'press your combo');
+      const refresh = () => out.textContent = code ? (modStr(capMods) + ((board && board.labelFor) ? board.labelFor(led) : code)) : (modStr(latch) ? modStr(latch) + '…' : 'press your combo');
       const onDown = ev => { ev.preventDefault(); ev.stopPropagation();
         if (ev.code === 'Escape') { cleanup(); renderGrid(); return; }
-        liveMods = { ctrl: ev.ctrlKey, alt: ev.altKey, shift: ev.shiftKey, meta: ev.metaKey };
-        if (MOD_CODE.test(ev.code)) { refresh(); return; }   // a held modifier — show it live, keep waiting for the key
+        const mk = MODK[ev.code];
+        if (mk) { latch[mk] = true; if (clearT[mk]) { clearTimeout(clearT[mk]); clearT[mk] = null; } refresh(); return; }   // a held modifier — latch it
         const l = (board && board.ledForCode) ? board.ledForCode(ev.code) : null; if (l == null) { refresh(); return; }
-        led = l; code = ev.code; capMods = liveMods; btn.disabled = false; refresh(); };
-      const onUp = ev => { liveMods = { ctrl: ev.ctrlKey, alt: ev.altKey, shift: ev.shiftKey, meta: ev.metaKey }; if (!code) refresh(); };
+        // capture with the LATCHED modifiers OR'd with the event's — resists Windows' numpad "fake shift" (it reports
+        // shiftKey:false on a Shift+Numpad press), so Shift+Numpad 0-9 / . chords register the Shift correctly.
+        led = l; code = ev.code; capMods = { ctrl: ev.ctrlKey || latch.ctrl, alt: ev.altKey || latch.alt, shift: ev.shiftKey || latch.shift, meta: ev.metaKey || latch.meta };
+        btn.disabled = false; refresh(); };
+      const onUp = ev => { const mk = MODK[ev.code]; if (!mk) return; if (clearT[mk]) clearTimeout(clearT[mk]); clearT[mk] = setTimeout(() => { latch[mk] = false; clearT[mk] = null; if (!code) refresh(); }, 80); };   // delay release so a fake shift up/down around a numpad key doesn't drop the latch
       const onAccept = () => { if (!code) return; cleanup();
         const t = { type: 'chord', led, mods: capMods }, a = { type: _hb.actType };
         if (a.type === 'profileSelect') a.index = Math.max(0, (_hb.profileIndex | 0) - 1);
@@ -547,6 +552,7 @@
         log('✓ ' + describeTrigger(t) + ' → ' + describeAction(a) + ' (works page-closed)', 'ok');
         _hb = newBuilder(); renderGrid(); };
       function cleanup() { document.removeEventListener('keydown', onDown, true); document.removeEventListener('keyup', onUp, true);
+        Object.keys(clearT).forEach(k => clearT[k] && clearTimeout(clearT[k]));
         [clearB, cancelB, out].forEach(el => { if (el.isConnected) el.remove(); }); _chordCancel = null; }
       _chordCancel = cleanup;
       btn.addEventListener('click', onAccept);
