@@ -582,11 +582,17 @@
       host.querySelector('.haActSel').addEventListener('change', e => { _hb.actType = e.target.value; renderGrid(); });
       host.querySelector('.haTrgSel').addEventListener('change', e => { _hb.triggerType = e.target.value; renderGrid(); });
       const w = (sel, fn) => { const el = host.querySelector(sel); if (el) el.addEventListener('input', fn); };
-      // clamped number box: the MODEL is clamped live (so the binding is always valid), but the FIELD is only
-      // snapped to range on blur — so you can freely backspace/retype (e.g. "1" → clear → "10") without it fighting you.
+      // clamped number box: the MAX is enforced live (you can't type past it), but the MIN is only applied on blur —
+      // so multi-digit entry below the min works (e.g. typing "5" toward "500" with min 100) and you can backspace
+      // to empty and retype. The stored MODEL is always within [lo,hi] even while the field shows a transient value.
       const wireClampNum = (sel, lo, hi, get, set) => { const el = host.querySelector(sel); if (!el) return;
-        el.addEventListener('input', () => { const v = Math.floor(+el.value); if (isFinite(v) && el.value !== '') set(Math.max(lo, Math.min(hi, v))); });
-        el.addEventListener('blur', () => { let v = Math.floor(+el.value); if (!isFinite(v)) v = get(); v = Math.max(lo, Math.min(hi, v)); set(v); el.value = v; }); };
+        el.addEventListener('input', () => {
+          if (el.value === '') return;                                  // allow empty mid-edit
+          let v = Math.floor(+el.value);
+          if (!isFinite(v)) { el.value = ''; return; }
+          if (v > hi) { v = hi; el.value = String(v); }                 // hard-cap the MAX immediately
+          set(Math.max(lo, Math.min(hi, v))); });
+        el.addEventListener('blur', () => { let v = Math.floor(+el.value); if (!isFinite(v) || el.value === '') v = get(); v = Math.max(lo, Math.min(hi, v)); set(v); el.value = v; }); };
       wireClampNum('.haPidx', 1, 10, () => _hb.profileIndex, v => _hb.profileIndex = v);
       { const tgt = host.querySelector('.haTarget'), ok = host.querySelector('.haFileOk'), nm = host.querySelector('.haFileName');
         if (tgt) tgt.addEventListener('input', () => { _hb.target = tgt.value; const has = !!_hb.target.trim();
