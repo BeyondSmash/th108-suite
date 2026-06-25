@@ -649,6 +649,17 @@ const control = {
   setHostActions(arr) { hostActions = HA.normalize(arr); saveHostActions(); _haReset(); },   // re-normalize + drop stale per-binding trigger state
   // Saved profiles, pushed by the page so profileNext/profilePrev can switch lighting with the page CLOSED.
   setProfiles(arr) { profiles = Array.isArray(arr) ? arr : []; try { fs.writeFileSync(PROFILES_PATH, JSON.stringify(profiles)); } catch {} curProfile = -1; },
+  // Native file picker for the "Launch" host action — the browser can't see real filesystem paths, but the daemon
+  // (a user-session process) can pop a Windows OpenFileDialog and return the chosen path. STA-threaded for the GUI.
+  pickFile() {
+    return new Promise(resolve => {
+      const ps = "Add-Type -AssemblyName System.Windows.Forms; $d = New-Object System.Windows.Forms.OpenFileDialog; $d.Filter = 'Programs (*.exe)|*.exe|All files (*.*)|*.*'; $d.Title = 'Pick a program for the host action'; $d.Topmost = $true; if ($d.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { [Console]::Out.Write($d.FileName) }";
+      try { const p = _spawn('powershell.exe', ['-NoProfile', '-STA', '-Command', ps], { windowsHide: true });
+        let out = ''; p.stdout.on('data', d => out += d);
+        p.on('close', () => resolve(out.trim() || null)); p.on('error', () => resolve(null));
+      } catch { resolve(null); }
+    });
+  },
   // Latest captured audio frame (system/app) so the open page can preview it + drive the keys in real time.
   audioFrame() { return acHandle ? AC.freshOr(acHandle.latest(), Date.now(), 300) : null; },
   // Current media position so the open page can draw the song-progress bar itself while it drives the device.
