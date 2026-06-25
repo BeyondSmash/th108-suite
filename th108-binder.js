@@ -373,7 +373,7 @@
     // LED), so a firmware-remapped key resolves to the same LED the daemon watches. ----
     const HOST_KEY = 'th108_host_actions';
     const haEsc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-    const ACT_OPTS = [['micToggle', 'Mic / Music lighting toggle'], ['profileNext', 'Profile → Next'], ['profilePrev', 'Profile → Previous'], ['profileSelect', 'Jump to a profile…'], ['launch', 'Launch a program / file / URL…'], ['focusApp', 'Switch to a program (focus or launch)…'], ['winMin', 'Minimize active window'], ['winMax', 'Maximize active window'], ['macro', 'Run a macro (key sequence)…']];
+    const ACT_OPTS = [['micToggle', 'Mic / Music lighting toggle'], ['profileNext', 'Profile → Next'], ['profilePrev', 'Profile → Previous'], ['profileSelect', 'Jump to a profile…'], ['launch', 'Launch a program / file / URL…'], ['focusApp', 'Switch to a program (focus or launch)…'], ['winMin', 'Minimize active window'], ['winMax', 'Maximize active window'], ['winRestore', 'Restore / unmaximize active window'], ['macro', 'Run a macro (key sequence)…']];
     const hasTarget = t => t === 'launch' || t === 'focusApp';   // actions that take a program/URL target
     const TRG_OPTS = [['key', 'Single press'], ['multitap', 'Multi-tap (N presses)'], ['chord', 'Chord (modifiers + key)'], ['hold', 'Long-press (hold)']];
     const MOD_CODE = /^(Control|Shift|Alt|Meta)(Left|Right)$/;   // a lone modifier keydown (skip while waiting for the real key)

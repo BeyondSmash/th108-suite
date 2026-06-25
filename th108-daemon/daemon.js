@@ -215,35 +215,46 @@ function launchTarget(target) {
     log('🎚 host action: launch "' + target + '"'); }
   catch (e) { log('🎚 host action: launch failed — ' + e.message); }
 }
-function winKey(code) { const k = CODE2UIO[code]; if (k === undefined) return; try { uIOhook.keyTap(k, [UiohookKey.Meta]); } catch {} }   // Win+<key> (Win+Down minimize, Win+Up maximize)
+function winCmd(cmd) { try { ensureFocusHost(); fs.writeFileSync(FOCUS_REQ, cmd); } catch {} }   // window op on the FOREGROUND window via the warm host (reliable Win32 ShowWindow, no Win+Down toggle)
 // A WARM, persistent PowerShell that focuses windows on demand (reads a path per line from stdin). Spawning a
 // fresh PowerShell per press cost ~300ms (cold CLR + Add-Type); this pays that ONCE so repeated "Switch to" is
 // near-instant. Lazily started on first use (or pre-warmed at startup if a focusApp binding exists).
 let _focusPS = null;
+const FOCUS_REQ = path.join(__dirname, '_focusreq.txt');
 function ensureFocusHost() {
-  if (_focusPS && _focusPS.stdin && _focusPS.stdin.writable) return _focusPS;
+  if (_focusPS) return _focusPS;
   const psPath = path.join(__dirname, '_focushost.ps1');
+  // Reliable IPC: the host POLLS a request file (stdin reading from a piped PS was the regression). The daemon
+  // writes the target path to _focusreq.txt; the host reads+deletes it and focuses (Alt tap satisfies the
+  // foreground lock; launches if not running).
   const ps = ['Add-Type @"', 'using System; using System.Runtime.InteropServices;',
-    'public class W { [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h); [DllImport("user32.dll")] public static extern bool ShowWindowAsync(IntPtr h, int n); [DllImport("user32.dll")] public static extern void keybd_event(byte k, byte s, uint f, IntPtr e); }', '"@',
+    'public class W { [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h); [DllImport("user32.dll")] public static extern bool ShowWindowAsync(IntPtr h, int n); [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr h, int n); [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow(); [DllImport("user32.dll")] public static extern void keybd_event(byte k, byte s, uint f, IntPtr e); }', '"@',
+    '$req = Join-Path $PSScriptRoot "_focusreq.txt"',
     'while ($true) {',
-    '  $p = [Console]::In.ReadLine(); if ($p -eq $null) { break }',
-    "  $p = $p.Trim('\"').Trim(); if ($p -eq '') { continue }",
-    '  try { $proc = Get-Process | Where-Object { $_.MainWindowHandle -ne 0 -and (try { $_.Path -eq $p } catch { $false }) } | Select-Object -First 1',
-    '    if ($proc) { [W]::ShowWindowAsync($proc.MainWindowHandle, 9) | Out-Null; [W]::keybd_event(0xA4,0,0,[IntPtr]::Zero); [W]::keybd_event(0xA4,0,2,[IntPtr]::Zero); [W]::SetForegroundWindow($proc.MainWindowHandle) | Out-Null }',
-    '    else { Start-Process -FilePath $p } } catch {}',
+    '  if (Test-Path -LiteralPath $req) {',
+    "    $p = ''; try { $p = [System.IO.File]::ReadAllText($req) } catch {}",
+    '    Remove-Item -LiteralPath $req -Force -ErrorAction SilentlyContinue',
+    '    $p = $p.Trim().Trim([char]34).Trim()',
+    "    if ($p -ne '') { try {",
+    "      if ($p -eq ':MIN') { $h = [W]::GetForegroundWindow(); if ($h -ne [IntPtr]::Zero) { [W]::ShowWindow($h, 6) | Out-Null } }",          // 6 = SW_MINIMIZE (always minimizes, no toggle)
+    "      elseif ($p -eq ':MAX') { $h = [W]::GetForegroundWindow(); if ($h -ne [IntPtr]::Zero) { [W]::ShowWindow($h, 3) | Out-Null } }",       // 3 = SW_MAXIMIZE
+    "      elseif ($p -eq ':RESTORE') { $h = [W]::GetForegroundWindow(); if ($h -ne [IntPtr]::Zero) { [W]::ShowWindow($h, 9) | Out-Null } }",   // 9 = SW_RESTORE (unmaximize)
+    '      else { $proc = Get-Process | Where-Object { $_.MainWindowHandle -ne 0 -and (try { $_.Path -eq $p } catch { $false }) } | Select-Object -First 1',
+    '        if ($proc) { [W]::ShowWindowAsync($proc.MainWindowHandle, 9) | Out-Null; [W]::keybd_event(0xA4,0,0,[IntPtr]::Zero); [W]::keybd_event(0xA4,0,2,[IntPtr]::Zero); [W]::SetForegroundWindow($proc.MainWindowHandle) | Out-Null }',
+    '        else { Start-Process -FilePath $p } } } catch {} }',
+    '  }',
+    '  Start-Sleep -Milliseconds 70',
     '}'].join('\r\n');
   try { fs.writeFileSync(psPath, ps); } catch { return null; }
-  try { _focusPS = _spawn('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-WindowStyle', 'Hidden', '-File', psPath], { windowsHide: true, stdio: ['pipe', 'ignore', 'ignore'] });
+  try { _focusPS = _spawn('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-WindowStyle', 'Hidden', '-File', psPath], { windowsHide: true, stdio: 'ignore' });
     _focusPS.on('exit', () => { _focusPS = null; }); _focusPS.on('error', () => { _focusPS = null; });
   } catch { _focusPS = null; }
   return _focusPS;
 }
 function focusApp(target) {
   target = String(target || '').trim().replace(/^["']+|["']+$/g, '').trim(); if (!target) return;
-  try { const ps = ensureFocusHost();
-    if (ps && ps.stdin && ps.stdin.writable) { ps.stdin.write(target + '\n'); log('🎚 host action: switch to "' + target + '"'); }
-    else log('🎚 host action: switch-to host unavailable');
-  } catch (e) { log('🎚 host action: switch-to failed — ' + e.message); }
+  try { ensureFocusHost(); fs.writeFileSync(FOCUS_REQ, target); log('🎚 host action: switch to "' + target + '"'); }
+  catch (e) { log('🎚 host action: switch-to failed — ' + e.message); }
 }
 function fireHostAction(b) {
   const a = b.action;
@@ -254,8 +265,9 @@ function fireHostAction(b) {
   if (a.type === 'macro') return playMacro(a.steps);
   if (a.type === 'launch') return launchTarget(a.target);
   if (a.type === 'focusApp') return focusApp(a.target);
-  if (a.type === 'winMin') return winKey('ArrowDown');
-  if (a.type === 'winMax') return winKey('ArrowUp');
+  if (a.type === 'winMin') return winCmd(':MIN');
+  if (a.type === 'winMax') return winCmd(':MAX');
+  if (a.type === 'winRestore') return winCmd(':RESTORE');
 }
 // per-binding state for the stateful triggers (multitap taps, hold timers) + a fire debounce for key/chord.
 const _haState = new Map();   // binding ref → { taps:[], holdTimer }
@@ -898,4 +910,4 @@ process.on('SIGTERM', shutdown);
 
 registerUrlScheme();   // make th108://start | th108://restart links work from the controller page
 console.log('▶ TH108 daemon running (config:', loadConfig() ? 'loaded' : 'none yet', ')');
-setTimeout(() => { try { if (Array.isArray(hostActions) && hostActions.some(b => b && b.action && b.action.type === 'focusApp')) ensureFocusHost(); } catch {} }, 1500);   // pre-warm the focus host so the FIRST "Switch to" is fast too
+setTimeout(() => { try { if (Array.isArray(hostActions) && hostActions.some(b => b && b.action && ['focusApp', 'winMin', 'winMax', 'winRestore'].includes(b.action.type))) ensureFocusHost(); } catch {} }, 1500);   // pre-warm the focus host so the FIRST window/switch action is fast too

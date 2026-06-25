@@ -13,7 +13,7 @@
 //                 'macro'         { steps:[{key, mods}] }    — play a keystroke sequence (uiohook codes)
 //                 'launch'        { target }                 — open a program / file / URL
 
-const ACTIONS = new Set(['micToggle', 'profileNext', 'profilePrev', 'profileSelect', 'macro', 'launch', 'focusApp', 'winMin', 'winMax']);
+const ACTIONS = new Set(['micToggle', 'profileNext', 'profilePrev', 'profileSelect', 'macro', 'launch', 'focusApp', 'winMin', 'winMax', 'winRestore']);
 const TRIGGERS = new Set(['key', 'chord', 'multitap', 'hold']);
 
 function clampInt(v, def, lo, hi) { v = Math.round(+v); if (!isFinite(v)) return def; return Math.max(lo, Math.min(hi, v)); }
