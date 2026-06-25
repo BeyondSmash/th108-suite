@@ -345,7 +345,9 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
   .haAppIcon{ width:16px; height:16px; vertical-align:-3px; margin-right:6px; border-radius:3px; }   /* program icon on a Launch binding */
   .haTgt{ color:var(--text); font-weight:600; }   /* the path/URL, bold + brighter so it stands out from the verb */
   .haAppName{ color:#f5c542; }                     /* the app name (before the extension) in yellow for a quick glance */
-  .haTgtBox{ display:inline-flex; align-items:center; padding:2px 8px; background:var(--inset); border:1px solid var(--border); border-radius:6px; max-width:100%; overflow:hidden; }
+  .haTgtBox{ display:inline-flex; align-items:center; padding:2px 8px; background:rgba(0,0,0,.28); border:1px solid var(--border); border-radius:6px; max-width:100%; overflow:hidden; }   /* darker than the row so it reads as a distinct field */
+  #haToast{ position:fixed; bottom:26px; left:50%; transform:translateX(-50%) translateY(10px); background:var(--card); color:var(--text); border:1px solid var(--border); border-radius:10px; padding:9px 16px; font-size:13px; font-weight:600; box-shadow:0 8px 26px rgba(0,0,0,.38); opacity:0; pointer-events:none; transition:opacity .2s ease, transform .2s ease; z-index:200; }
+  #haToast.show{ opacity:1; transform:translateX(-50%) translateY(0); }
   .haTgtCopy{ display:inline-flex; align-items:center; justify-content:center; width:22px; height:20px; border:none; background:none; box-shadow:none; border-radius:5px; margin:0 0 0 6px; padding:0; color:var(--muted); cursor:pointer; font-size:13px; line-height:1; }
   .haTgtCopy:hover{ color:var(--text); background:rgba(255,255,255,.09); box-shadow:none; transform:none; }
   .haDel{ flex:0 0 auto; padding:3px 9px; }

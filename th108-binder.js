@@ -396,6 +396,8 @@
       }).catch(() => {});
     }
     const keyLabel = led => (board && board.labelFor) ? board.labelFor(led) : ('LED ' + led);
+    const haToast = msg => { let t = document.getElementById('haToast'); if (!t) { t = document.createElement('div'); t.id = 'haToast'; document.body.appendChild(t); }
+      t.textContent = msg; t.classList.add('show'); clearTimeout(t._timer); t._timer = setTimeout(() => t.classList.remove('show'), 1600); };
     const stripQ = s => String(s || '').trim().replace(/^["']+|["']+$/g, '').trim();   // Windows "Copy as path" wraps in "…"
     const baseName = t => { t = stripQ(t); if (!t) return ''; if (/^[a-z][a-z0-9+.-]*:\/\//i.test(t)) return t; return t.split(/[\\/]/).filter(Boolean).pop() || t; };   // file → its name; URL → the URL
     const midTrunc = (s, max = 24) => { s = String(s); if (s.length <= max) return s; const tail = 10, head = max - 1 - tail; return s.slice(0, head) + '…' + s.slice(-tail); };   // long names: keep the start + the extension (app-capture-long…Name.exe)
@@ -615,7 +617,7 @@
       host.querySelectorAll('.haDel').forEach(x => x.addEventListener('click', () => { const l = loadHostActions(); l.splice(+x.dataset.i, 1); saveHostActions(l); renderGrid(); }));
       host.querySelectorAll('.haAppIcon').forEach(img => loadAppIcon(img.dataset.path).then(src => { if (src) img.src = src; else img.remove(); }));   // fill in each .exe icon (or drop the img if none)
       host.querySelectorAll('.haTgtCopy').forEach(btn => btn.addEventListener('click', async e => { e.stopPropagation();
-        try { await navigator.clipboard.writeText(btn.dataset.path || ''); const o = btn.textContent; btn.textContent = '✓'; setTimeout(() => { if (btn.isConnected) btn.textContent = o; }, 1000); } catch (_) {} }));
+        try { await navigator.clipboard.writeText(btn.dataset.path || ''); const o = btn.textContent; btn.textContent = '✓'; setTimeout(() => { if (btn.isConnected) btn.textContent = o; }, 1000); haToast('Copied path to clipboard'); } catch (_) { haToast('Clipboard blocked'); } }));
       host.querySelector('.haActSel').addEventListener('change', e => { _hb.actType = e.target.value; renderGrid(); });
       host.querySelector('.haTrgSel').addEventListener('change', e => { _hb.triggerType = e.target.value; renderGrid(); });
       const w = (sel, fn) => { const el = host.querySelector(sel); if (el) el.addEventListener('input', fn); };
