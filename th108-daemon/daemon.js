@@ -228,8 +228,10 @@ function ensureFocusHost() {
   // writes the target path to _focusreq.txt; the host reads+deletes it and focuses (Alt tap satisfies the
   // foreground lock; launches if not running).
   const ps = ['Add-Type @"', 'using System; using System.Runtime.InteropServices;',
-    'public class W { [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h); [DllImport("user32.dll")] public static extern bool ShowWindowAsync(IntPtr h, int n); [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr h, int n); [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow(); [DllImport("user32.dll")] public static extern void keybd_event(byte k, byte s, uint f, IntPtr e); }', '"@',
+    'public class W { [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h); [DllImport("user32.dll")] public static extern bool ShowWindowAsync(IntPtr h, int n); [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr h, int n); [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow(); [DllImport("user32.dll")] public static extern bool IsIconic(IntPtr h); [DllImport("user32.dll")] public static extern bool IsWindow(IntPtr h); [DllImport("user32.dll")] public static extern void keybd_event(byte k, byte s, uint f, IntPtr e); }', '"@',
     '$req = Join-Path $PSScriptRoot "_focusreq.txt"',
+    '$prev = [IntPtr]::Zero',   // the window we switched AWAY from, so a re-press toggles back to it
+    'function FocusWin($h) { if ([int64]$h -eq 0) { return }; if ([W]::IsIconic($h)) { [W]::ShowWindow($h, 9) | Out-Null }; [W]::keybd_event(0xA4,0,0,[IntPtr]::Zero); [W]::keybd_event(0xA4,0,2,[IntPtr]::Zero); [W]::SetForegroundWindow($h) | Out-Null }',   // restore ONLY if minimized (keeps maximized state — no unmaximize); alt-tap beats the foreground lock
     'while ($true) {',
     '  if (Test-Path -LiteralPath $req) {',
     "    $p = ''; try { $p = [System.IO.File]::ReadAllText($req) } catch {}",
@@ -242,7 +244,9 @@ function ensureFocusHost() {
     '      else {',
     '        $proc = $null',     // inline try/catch in Where-Object is PS7-only; Windows PowerShell 5.1 needs a foreach with try/catch STATEMENTS ($_.Path throws on protected processes)
     '        foreach ($pr in (Get-Process)) { if ($pr.MainWindowHandle -eq 0) { continue }; $pp = $null; try { $pp = $pr.Path } catch {}; if ($pp -eq $p) { $proc = $pr; break } }',
-    '        if ($proc) { [W]::ShowWindowAsync($proc.MainWindowHandle, 9) | Out-Null; [W]::keybd_event(0xA4,0,0,[IntPtr]::Zero); [W]::keybd_event(0xA4,0,2,[IntPtr]::Zero); [W]::SetForegroundWindow($proc.MainWindowHandle) | Out-Null }',
+    '        if ($proc) { $target = $proc.MainWindowHandle; $cur = [W]::GetForegroundWindow()',
+    '          if ([int64]$cur -eq [int64]$target) { if ([int64]$prev -ne 0 -and [W]::IsWindow($prev) -and [int64]$prev -ne [int64]$target) { FocusWin $prev } }',   // already on the app -> toggle back to the previous window
+    '          else { $prev = $cur; FocusWin $target } }',   // remember where we came from, then switch
     '        else { Start-Process -FilePath $p } } } catch {} }',
     '  }',
     '  Start-Sleep -Milliseconds 70',
