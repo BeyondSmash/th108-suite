@@ -90,6 +90,12 @@ function createServer({ control, root, port = 8123, watchdogMs = 12000 }) {
         if (control.setHostActions) control.setHostActions(body.actions || []);
         return sendJson(res, 200, { ok: true });
       }
+      if (req.method === 'POST' && u === '/ha-suppress') {   // page is mid key-bind: pause action firing (ms>0 to arm, 0 to clear) so the pressed key doesn't run its current binding
+        const b = await readBody(req); let body;
+        try { body = JSON.parse(b || '{}'); } catch { return sendJson(res, 400, { error: 'bad json' }); }
+        if (control.suppressHostActions) control.suppressHostActions(body.ms || 0);
+        return sendJson(res, 200, { ok: true });
+      }
       if (req.method === 'GET' && u === '/pick-file') return sendJson(res, 200, { path: control.pickFile ? await control.pickFile() : null });   // native OpenFileDialog for the Launch host action (browser can't read real paths)
       if (req.method === 'POST' && u === '/app-icon') {   // extract an .exe's icon (PNG data-URL) for a Launch binding
         const b = await readBody(req); let body;

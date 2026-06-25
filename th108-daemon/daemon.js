@@ -279,10 +279,16 @@ function fireHostAction(b) {
 const _haState = new Map();   // binding ref → { taps:[], holdTimer }
 const _haLastFire = new Map();
 function _haReset() { for (const st of _haState.values()) if (st.holdTimer) clearTimeout(st.holdTimer); _haState.clear(); _haLastFire.clear(); }
+// While the page is in key-capture (binding a key), it suppresses host-action firing so the key being pressed
+// doesn't ALSO run whatever it's already bound to (which would yank a window around mid-bind). TTL-guarded so a
+// page that closes mid-capture can't wedge actions off forever.
+let _haSuppressUntil = 0;
+function setHaSuppress(ms) { _haSuppressUntil = ms > 0 ? Date.now() + Math.min(ms, 60000) : 0; }
 function _haDebounceFire(b, now) { if (now - (_haLastFire.get(b) || 0) < 400) return; _haLastFire.set(b, now); fireHostAction(b); }
 uIOhook.on('keydown', e => {
   const led = UIO2IDX[e.keycode]; if (led === undefined || !hostActions.length) return;
-  const now = Date.now(), mods = { ctrl: e.ctrlKey, alt: e.altKey, shift: e.shiftKey, meta: e.metaKey };
+  const now = Date.now(); if (now < _haSuppressUntil) return;   // page is mid-bind: don't fire the key's existing action
+  const mods = { ctrl: e.ctrlKey, alt: e.altKey, shift: e.shiftKey, meta: e.metaKey };
   for (const b of hostActions) {
     const t = b.trigger; if (t.led !== led) continue;
     if (t.type === 'key') { _haDebounceFire(b, now); }
@@ -700,6 +706,8 @@ const control = {
   // Host Actions registry (the page's "Host Actions" binder tab) — key LED index → host-side action.
   getHostActions() { return hostActions; },
   setHostActions(arr) { hostActions = HA.normalize(arr); saveHostActions(); _haReset(); },   // re-normalize + drop stale per-binding trigger state
+  suppressHostActions(ms) { setHaSuppress(+ms || 0); },   // page mid-bind: pause action firing so the pressed key doesn't run its current binding
+
   // Saved profiles, pushed by the page so profileNext/profilePrev can switch lighting with the page CLOSED.
   setProfiles(arr) { profiles = Array.isArray(arr) ? arr : []; try { fs.writeFileSync(PROFILES_PATH, JSON.stringify(profiles)); } catch {} curProfile = -1; },
   // Native file picker for the "Launch" host action — the browser can't see real filesystem paths, but the daemon

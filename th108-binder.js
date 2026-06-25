@@ -387,6 +387,9 @@
       } catch (_) { return []; }
     }
     function pushHostActions(list) { try { fetch('/host-actions', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ actions: list }) }).catch(() => {}); } catch (_) {} }
+    // While capturing a key (bind / chord / macro record), tell the daemon to pause action firing so the pressed
+    // key doesn't ALSO run whatever it's currently bound to (yanking a window mid-bind). 20s arm; cleared on end.
+    function suppressHostActions(on) { try { fetch('/ha-suppress', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ms: on ? 20000 : 0 }) }).catch(() => {}); } catch (_) {} }
     function saveHostActions(list, push) { try { localStorage.setItem(HOST_KEY, JSON.stringify(list)); } catch (_) {} if (push !== false) pushHostActions(list); }
     function seedHostActionsFromDaemon() {
       fetch('/host-actions').then(r => r.json()).then(d => {
@@ -436,8 +439,8 @@
     let _hb = null;
     function newBuilder() { return { actType: 'micToggle', triggerType: 'key', count: 2, windowMs: 400, holdMs: 500, profileIndex: 1, target: '', steps: [] }; }
     let _hostCapture = null, _macroRec = null, _macroDragI = null, _chordCancel = null;
-    function endHostCapture(restore) { if (!_hostCapture) return; document.removeEventListener('keydown', _hostCapture.onKey, true); if (restore && _hostCapture.btn && _hostCapture.btn.isConnected) _hostCapture.btn.textContent = _hostCapture.orig; _hostCapture = null; }
-    function endMacroRecord() { if (!_macroRec) return; document.removeEventListener('keydown', _macroRec.onKey, true); if (_macroRec.btn && _macroRec.btn.isConnected) { _macroRec.btn.textContent = '⏺ Record'; _macroRec.btn.classList.remove('recording'); } _macroRec = null; }
+    function endHostCapture(restore) { if (!_hostCapture) return; document.removeEventListener('keydown', _hostCapture.onKey, true); if (restore && _hostCapture.btn && _hostCapture.btn.isConnected) _hostCapture.btn.textContent = _hostCapture.orig; _hostCapture = null; suppressHostActions(false); }
+    function endMacroRecord() { if (!_macroRec) return; document.removeEventListener('keydown', _macroRec.onKey, true); if (_macroRec.btn && _macroRec.btn.isConnected) { _macroRec.btn.textContent = '⏺ Record'; _macroRec.btn.classList.remove('recording'); } _macroRec = null; suppressHostActions(false); }
     function macroStepLabel(s) {
       const mods = (s.ctrl ? 'Ctrl+' : '') + (s.shift ? 'Shift+' : '') + (s.alt ? 'Alt+' : '') + (s.meta ? 'Win+' : '');
       const led = (board && board.ledForCode) ? board.ledForCode(s.code) : null;
@@ -509,6 +512,7 @@
     function recordMacro(btn, container) {
       endHostCapture(true);
       if (_macroRec) { endMacroRecord(); return; }   // toggle off
+      suppressHostActions(true);   // recorded keys shouldn't fire their own host actions
       btn.textContent = '⏹ Stop (recording…)'; btn.classList.add('recording');
       const onKey = ev => {
         if (ev.target && (ev.target.tagName === 'INPUT' || ev.target.tagName === 'SELECT')) return;   // typing in a delay field isn't a recorded key
@@ -559,6 +563,7 @@
       if (hasTarget(_hb.actType) && !(_hb.target || '').trim()) { flashHint('Enter a program path or URL first.'); return; }
       if (_hb.actType === 'macro' && !_hb.steps.length) { flashHint('Record at least one key for the macro first.'); return; }
       endHostCapture(true); endMacroRecord();
+      suppressHostActions(true);   // the key you press to bind shouldn't fire its current action mid-bind
       const orig = btn.textContent;
       btn.textContent = (_hb.triggerType === 'chord' ? 'Press the key COMBO…' : 'Press the trigger key…') + '  (Esc cancels)';
       const onKey = ev => {
@@ -583,6 +588,7 @@
       if (hasTarget(_hb.actType) && !(_hb.target || '').trim()) { flashHint('Enter a program path or URL first.'); return; }
       if (_hb.actType === 'macro' && !_hb.steps.length) { flashHint('Record at least one key for the macro first.'); return; }
       endHostCapture(true); endMacroRecord(); if (_chordCancel) _chordCancel();
+      suppressHostActions(true);   // the combo you press to bind shouldn't fire its current action mid-bind
       let led = null, code = null, capMods = null;
       const latch = { ctrl: false, alt: false, shift: false, meta: false }, clearT = {};
       const MODK = { ControlLeft: 'ctrl', ControlRight: 'ctrl', ShiftLeft: 'shift', ShiftRight: 'shift', AltLeft: 'alt', AltRight: 'alt', MetaLeft: 'meta', MetaRight: 'meta' };
@@ -617,7 +623,7 @@
         _hb = newBuilder(); renderGrid(); };
       function cleanup() { document.removeEventListener('keydown', onDown, true); document.removeEventListener('keyup', onUp, true);
         Object.keys(clearT).forEach(k => clearT[k] && clearTimeout(clearT[k]));
-        [clearB, cancelB, out].forEach(el => { if (el.isConnected) el.remove(); }); _chordCancel = null; }
+        [clearB, cancelB, out].forEach(el => { if (el.isConnected) el.remove(); }); _chordCancel = null; suppressHostActions(false); }
       _chordCancel = cleanup;
       btn.addEventListener('click', onAccept);
       clearB.addEventListener('click', () => { led = code = capMods = null; btn.disabled = true; refresh(); });
