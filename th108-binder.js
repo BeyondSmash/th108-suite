@@ -411,7 +411,7 @@
     // the in-progress binding being authored (the builder form's state)
     let _hb = null;
     function newBuilder() { return { actType: 'micToggle', triggerType: 'key', count: 2, windowMs: 400, holdMs: 500, profileIndex: 1, target: '', steps: [] }; }
-    let _hostCapture = null, _macroRec = null, _macroDragI = null;
+    let _hostCapture = null, _macroRec = null, _macroDragI = null, _chordCancel = null;
     function endHostCapture(restore) { if (!_hostCapture) return; document.removeEventListener('keydown', _hostCapture.onKey, true); if (restore && _hostCapture.btn && _hostCapture.btn.isConnected) _hostCapture.btn.textContent = _hostCapture.orig; _hostCapture = null; }
     function endMacroRecord() { if (!_macroRec) return; document.removeEventListener('keydown', _macroRec.onKey, true); if (_macroRec.btn && _macroRec.btn.isConnected) _macroRec.btn.textContent = '⏺ Record'; _macroRec = null; }
     function macroStepLabel(s) {
@@ -511,8 +511,42 @@
       _hostCapture = { onKey, btn, orig };
       document.addEventListener('keydown', onKey, true);
     }
+    // Chord capture: a LIVE readout of held modifiers + the pressed key, with Accept / Clear (instead of auto-binding
+    // the first key). A chord = modifier key(s) Ctrl/Shift/Alt/Win + ONE regular key — explained in the hint.
+    const modStr = m => (m.ctrl ? 'Ctrl+' : '') + (m.shift ? 'Shift+' : '') + (m.alt ? 'Alt+' : '') + (m.meta ? 'Win+' : '');
+    function captureChord(btn) {
+      if (_hb.actType === 'launch' && !(_hb.target || '').trim()) { $('bdHint').textContent = 'Enter a program path or URL first.'; return; }
+      if (_hb.actType === 'macro' && !_hb.steps.length) { $('bdHint').textContent = 'Record at least one key for the macro first.'; return; }
+      endHostCapture(true); endMacroRecord(); if (_chordCancel) _chordCancel();
+      let led = null, code = null, capMods = null, liveMods = { ctrl: false, alt: false, shift: false, meta: false };
+      const clear = document.createElement('button'); clear.type = 'button'; clear.className = 'patbtn'; clear.textContent = 'Clear'; clear.style.marginLeft = '6px';
+      btn.after(clear); btn.textContent = 'Accept'; btn.disabled = true;
+      const shown = () => code ? (modStr(capMods) + ((board && board.labelFor) ? board.labelFor(led) : code)) : (modStr(liveMods) ? modStr(liveMods) + '…' : '(press your combo)');
+      const hint = () => $('bdHint').textContent = 'A chord = hold modifier key(s) — Ctrl, Shift, Alt or Win — then press ONE regular key, all together. Pressed: ' + shown() + (code ? '   → Accept it, or press a different combo / Clear.' : '');
+      const onDown = ev => { ev.preventDefault(); ev.stopPropagation();
+        if (ev.code === 'Escape') { cancel(); renderGrid(); return; }
+        liveMods = { ctrl: ev.ctrlKey, alt: ev.altKey, shift: ev.shiftKey, meta: ev.metaKey };
+        if (MOD_CODE.test(ev.code)) { hint(); return; }   // a held modifier — show it live, keep waiting for the key
+        const l = (board && board.ledForCode) ? board.ledForCode(ev.code) : null; if (l == null) { hint(); return; }
+        led = l; code = ev.code; capMods = liveMods; btn.disabled = false; hint(); };
+      const onUp = ev => { liveMods = { ctrl: ev.ctrlKey, alt: ev.altKey, shift: ev.shiftKey, meta: ev.metaKey }; if (!code) hint(); };
+      const onAccept = () => { if (!code) return; cancel();
+        const t = { type: 'chord', led, mods: capMods }, a = { type: _hb.actType };
+        if (a.type === 'profileSelect') a.index = Math.max(0, (_hb.profileIndex | 0) - 1);
+        if (a.type === 'launch') a.target = (_hb.target || '').trim();
+        if (a.type === 'macro') a.steps = _hb.steps.slice();
+        const list = loadHostActions(); list.push({ trigger: t, action: a }); saveHostActions(list);
+        log('✓ ' + describeTrigger(t) + ' → ' + describeAction(a) + ' (works page-closed)', 'ok');
+        _hb = newBuilder(); renderGrid(); };
+      function cancel() { document.removeEventListener('keydown', onDown, true); document.removeEventListener('keyup', onUp, true); btn.removeEventListener('click', onAccept); if (clear.isConnected) clear.remove(); _chordCancel = null; }
+      _chordCancel = cancel;
+      btn.addEventListener('click', onAccept);
+      clear.addEventListener('click', () => { led = code = capMods = null; btn.disabled = true; hint(); });
+      document.addEventListener('keydown', onDown, true); document.addEventListener('keyup', onUp, true);
+      hint();
+    }
     function renderHostGrid() {
-      endHostCapture(false); endMacroRecord();
+      endHostCapture(false); endMacroRecord(); if (_chordCancel) _chordCancel();
       if (!_hb) _hb = newBuilder();
       const host = $('bdGrid'), list = loadHostActions();
       let h = '<div class="haWrap">';
@@ -550,7 +584,7 @@
         const g = firstFreeGap(); if (g < 0) { $('bdHint').textContent = (macroKeyCount() < 2 ? 'Record at least 2 keys, then a delay can go between them.' : 'Every gap already has a delay (one per gap).'); return; }
         _hb.steps.splice(g, 0, { ms: 200 }); renderMacroSteps(stepList); });
       const clr = host.querySelector('.haClr'); if (clr) clr.addEventListener('click', () => { endMacroRecord(); _hb.steps = []; renderMacroSteps(stepList); });
-      host.querySelector('.haBind').addEventListener('click', e => captureTriggerKey(e.target));
+      host.querySelector('.haBind').addEventListener('click', e => (_hb.triggerType === 'chord' ? captureChord(e.target) : captureTriggerKey(e.target)));
       $('bdHint').textContent = 'Build a host action: pick what it does, pick the trigger, then click Bind and press the key (or key combo). It runs via the background app, so it works with this page closed — the key still does its normal job too.';
     }
 
