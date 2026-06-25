@@ -356,7 +356,10 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
   .haStepList{ display:flex; flex-wrap:wrap; gap:6px; flex:1 1 100%; margin-top:4px; }
   .haChip{ display:inline-flex; align-items:center; gap:5px; padding:3px 5px 3px 9px; background:var(--card); border:1px solid var(--border); border-radius:7px; font-size:12px; cursor:grab; user-select:none; }
   .haChip.haChipDelay{ background:var(--inset); color:var(--muted); }
-  .haChip.dragover{ box-shadow:0 0 0 2px var(--accent); }
+  .haChip.dragging{ opacity:.45; }
+  .haChip.dropbefore{ box-shadow:-3px 0 0 0 #f59e0b; }   /* orange insertion line to the LEFT (drops here) */
+  .haChip.dropafter{ box-shadow:3px 0 0 0 #f59e0b; }     /* orange insertion line to the RIGHT (drops at end) */
+  .haSeq{ color:var(--muted); font-size:12px; align-self:center; padding:0 1px; }
   .haChipK{ font-weight:600; }
   .haChipX{ border:none; background:none; color:var(--muted); cursor:pointer; padding:0 1px; font-size:12px; line-height:1; }
   .haChipX:hover{ color:var(--text); }

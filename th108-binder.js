@@ -411,7 +411,7 @@
     // the in-progress binding being authored (the builder form's state)
     let _hb = null;
     function newBuilder() { return { actType: 'micToggle', triggerType: 'key', count: 2, windowMs: 400, holdMs: 500, profileIndex: 1, target: '', steps: [] }; }
-    let _hostCapture = null, _macroRec = null;
+    let _hostCapture = null, _macroRec = null, _macroDragI = null;
     function endHostCapture(restore) { if (!_hostCapture) return; document.removeEventListener('keydown', _hostCapture.onKey, true); if (restore && _hostCapture.btn && _hostCapture.btn.isConnected) _hostCapture.btn.textContent = _hostCapture.orig; _hostCapture = null; }
     function endMacroRecord() { if (!_macroRec) return; document.removeEventListener('keydown', _macroRec.onKey, true); if (_macroRec.btn && _macroRec.btn.isConnected) _macroRec.btn.textContent = '⏺ Record'; _macroRec = null; }
     function macroStepLabel(s) {
@@ -420,24 +420,50 @@
       const k = (led != null && board && board.labelFor) ? board.labelFor(led) : String(s.code).replace(/^Key/, '').replace(/^Digit/, '').replace(/^Numpad/, 'Num ');
       return mods + k;
     }
-    // The live macro step list: draggable chips (key combos + delay steps), each removable, delays editable. Updated
-    // in place during recording so the full builder isn't re-rendered (which would stop the recording).
+    const MACRO_MAX_KEYS = 16;
+    function macroKeyCount() { return _hb.steps.filter(s => s.code != null).length; }
+    // Enforce the rules: a delay lives only BETWEEN two keys, at most one per gap (no leading/trailing/adjacent delays).
+    function cleanSteps() {
+      const out = [];
+      for (const s of _hb.steps) {
+        if (s.ms != null) { if (out.length && out[out.length - 1].code != null) out.push(s); }   // delay only right after a key
+        else out.push(s);
+      }
+      while (out.length && out[out.length - 1].ms != null) out.pop();   // drop a trailing delay
+      _hb.steps = out;
+    }
+    function firstFreeGap() { for (let i = 1; i < _hb.steps.length; i++) if (_hb.steps[i - 1].code != null && _hb.steps[i].code != null) return i; return -1; }
+    // The live macro step list: draggable chips with ">" separators (key combos + delay steps). Delays drag BETWEEN
+    // keys (gap insertion, orange drop-line), never swap. Updated in place during recording so the builder isn't
+    // re-rendered (which would stop the recording).
     function renderMacroSteps(container) {
       if (!container) return;
-      if (!_hb.steps.length) { container.innerHTML = '<span class="haEmpty" style="padding:2px 0">No keys yet — click Record and press your sequence (Esc stops). Drag chips to reorder; + Delay inserts a pause.</span>'; return; }
+      cleanSteps();
+      if (!_hb.steps.length) { container.innerHTML = '<span class="haEmpty" style="padding:2px 0">No keys yet — click Record and press your sequence (Esc stops). “+ Delay” inserts a pause between two keys; drag chips to reorder.</span>'; wireMacroContainer(container); return; }
       container.innerHTML = _hb.steps.map((s, i) => s.ms != null
-        ? '<span class="haChip haChipDelay" draggable="true" data-i="' + i + '" title="drag to reorder">⏱ <input type="number" class="haDelayMs" data-i="' + i + '" min="0" max="10000" step="10" value="' + (s.ms | 0) + '"> ms<button type="button" class="haChipX" data-i="' + i + '" title="remove">✕</button></span>'
-        : '<span class="haChip" draggable="true" data-i="' + i + '" title="drag to reorder"><span class="haChipK">' + haEsc(macroStepLabel(s)) + '</span><button type="button" class="haChipX" data-i="' + i + '" title="remove">✕</button></span>').join('');
+        ? '<span class="haChip haChipDelay" draggable="true" data-i="' + i + '" title="drag between keys">⏱ <input type="number" class="haDelayMs" data-i="' + i + '" min="0" max="10000" step="10" value="' + (s.ms | 0) + '"> ms<button type="button" class="haChipX" data-i="' + i + '" title="remove">✕</button></span>'
+        : '<span class="haChip" draggable="true" data-i="' + i + '" title="drag to reorder"><span class="haChipK">' + haEsc(macroStepLabel(s)) + '</span><button type="button" class="haChipX" data-i="' + i + '" title="remove">✕</button></span>').join('<span class="haSeq">›</span>');
       container.querySelectorAll('.haChipX').forEach(x => x.addEventListener('click', e => { e.stopPropagation(); _hb.steps.splice(+x.dataset.i, 1); renderMacroSteps(container); }));
       container.querySelectorAll('.haDelayMs').forEach(inp => inp.addEventListener('input', () => { const i = +inp.dataset.i; if (_hb.steps[i]) _hb.steps[i].ms = Math.max(0, Math.min(10000, +inp.value || 0)); }));
-      let dragI = null;
       container.querySelectorAll('.haChip').forEach(chip => {
-        chip.addEventListener('dragstart', e => { dragI = +chip.dataset.i; if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move'; });
-        chip.addEventListener('dragover', e => { e.preventDefault(); chip.classList.add('dragover'); });
-        chip.addEventListener('dragleave', () => chip.classList.remove('dragover'));
-        chip.addEventListener('drop', e => { e.preventDefault(); chip.classList.remove('dragover'); const to = +chip.dataset.i;
-          if (dragI != null && dragI !== to) { const m = _hb.steps.splice(dragI, 1)[0]; _hb.steps.splice(to, 0, m); renderMacroSteps(container); } });
+        chip.addEventListener('dragstart', e => { _macroDragI = +chip.dataset.i; chip.classList.add('dragging'); if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move'; });
+        chip.addEventListener('dragend', () => { chip.classList.remove('dragging'); clearDropMarks(container); _macroDragI = null; });
       });
+      wireMacroContainer(container);
+    }
+    function clearDropMarks(container) { container.querySelectorAll('.haChip').forEach(c => c.classList.remove('dropbefore', 'dropafter')); }
+    // Container-level drag handling (attached ONCE): compute the insertion gap from the cursor X, mark it with the
+    // orange drop-line, and on drop move the dragged step there (insert-between, not swap).
+    function wireMacroContainer(container) {
+      if (container._haWired) return; container._haWired = true;
+      const gapAt = x => { const chips = [...container.querySelectorAll('.haChip')]; clearDropMarks(container);
+        let to = chips.length; for (let i = 0; i < chips.length; i++) { const r = chips[i].getBoundingClientRect(); if (x < r.left + r.width / 2) { to = i; break; } }
+        if (to >= chips.length) { if (chips.length) chips[chips.length - 1].classList.add('dropafter'); } else chips[to].classList.add('dropbefore');
+        return to; };
+      container.addEventListener('dragover', e => { e.preventDefault(); gapAt(e.clientX); });
+      container.addEventListener('drop', e => { e.preventDefault(); const to = gapAt(e.clientX); clearDropMarks(container);
+        if (_macroDragI == null) return; const from = _macroDragI; _macroDragI = null;
+        const m = _hb.steps.splice(from, 1)[0]; let t = to; if (t > from) t--; _hb.steps.splice(Math.max(0, t), 0, m); renderMacroSteps(container); });
     }
     function recordMacro(btn, container) {
       endHostCapture(true);
@@ -448,6 +474,7 @@
         ev.preventDefault(); ev.stopPropagation();
         if (ev.code === 'Escape') { endMacroRecord(); return; }
         if (MOD_CODE.test(ev.code)) return;   // wait for the actual key, not the lone modifier
+        if (macroKeyCount() >= MACRO_MAX_KEYS) { endMacroRecord(); $('bdHint').textContent = 'Macro is capped at ' + MACRO_MAX_KEYS + ' keys.'; return; }
         _hb.steps.push({ code: ev.code, ctrl: ev.ctrlKey, alt: ev.altKey, shift: ev.shiftKey, meta: ev.metaKey });
         renderMacroSteps(container); };
       _macroRec = { onKey, btn };
@@ -504,7 +531,7 @@
       host.querySelector('.haActSel').addEventListener('change', e => { _hb.actType = e.target.value; renderGrid(); });
       host.querySelector('.haTrgSel').addEventListener('change', e => { _hb.triggerType = e.target.value; renderGrid(); });
       const w = (sel, fn) => { const el = host.querySelector(sel); if (el) el.addEventListener('input', fn); };
-      w('.haPidx', e => _hb.profileIndex = +e.target.value || 1);
+      { const pidx = host.querySelector('.haPidx'); if (pidx) { pidx.addEventListener('input', () => _hb.profileIndex = Math.max(1, Math.min(10, +pidx.value || 1))); pidx.addEventListener('change', () => pidx.value = _hb.profileIndex); } }   // clamp 1–10 even if typed higher
       w('.haTarget', e => _hb.target = e.target.value);
       w('.haCount', e => _hb.count = +e.target.value || 2);
       w('.haWin', e => _hb.windowMs = +e.target.value || 400);
@@ -519,7 +546,9 @@
           .catch(() => { clearTimeout(to); reset('Couldn\'t open the file dialog — the background app must be RUNNING (restart it after an update). This doesn\'t need Connect.'); }); });
       const stepList = host.querySelector('.haStepList'); if (stepList) renderMacroSteps(stepList);
       const rec = host.querySelector('.haRec'); if (rec) rec.addEventListener('click', () => recordMacro(rec, stepList));
-      const dly = host.querySelector('.haDelay'); if (dly) dly.addEventListener('click', () => { endMacroRecord(); _hb.steps.push({ ms: 200 }); renderMacroSteps(stepList); });
+      const dly = host.querySelector('.haDelay'); if (dly) dly.addEventListener('click', () => { endMacroRecord(); cleanSteps();
+        const g = firstFreeGap(); if (g < 0) { $('bdHint').textContent = (macroKeyCount() < 2 ? 'Record at least 2 keys, then a delay can go between them.' : 'Every gap already has a delay (one per gap).'); return; }
+        _hb.steps.splice(g, 0, { ms: 200 }); renderMacroSteps(stepList); });
       const clr = host.querySelector('.haClr'); if (clr) clr.addEventListener('click', () => { endMacroRecord(); _hb.steps = []; renderMacroSteps(stepList); });
       host.querySelector('.haBind').addEventListener('click', e => captureTriggerKey(e.target));
       $('bdHint').textContent = 'Build a host action: pick what it does, pick the trigger, then click Bind and press the key (or key combo). It runs via the background app, so it works with this page closed — the key still does its normal job too.';
