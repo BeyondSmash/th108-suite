@@ -216,18 +216,34 @@ function launchTarget(target) {
   catch (e) { log('🎚 host action: launch failed — ' + e.message); }
 }
 function winKey(code) { const k = CODE2UIO[code]; if (k === undefined) return; try { uIOhook.keyTap(k, [UiohookKey.Meta]); } catch {} }   // Win+<key> (Win+Down minimize, Win+Up maximize)
+// A WARM, persistent PowerShell that focuses windows on demand (reads a path per line from stdin). Spawning a
+// fresh PowerShell per press cost ~300ms (cold CLR + Add-Type); this pays that ONCE so repeated "Switch to" is
+// near-instant. Lazily started on first use (or pre-warmed at startup if a focusApp binding exists).
+let _focusPS = null;
+function ensureFocusHost() {
+  if (_focusPS && _focusPS.stdin && _focusPS.stdin.writable) return _focusPS;
+  const psPath = path.join(__dirname, '_focushost.ps1');
+  const ps = ['Add-Type @"', 'using System; using System.Runtime.InteropServices;',
+    'public class W { [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h); [DllImport("user32.dll")] public static extern bool ShowWindowAsync(IntPtr h, int n); [DllImport("user32.dll")] public static extern void keybd_event(byte k, byte s, uint f, IntPtr e); }', '"@',
+    'while ($true) {',
+    '  $p = [Console]::In.ReadLine(); if ($p -eq $null) { break }',
+    "  $p = $p.Trim('\"').Trim(); if ($p -eq '') { continue }",
+    '  try { $proc = Get-Process | Where-Object { $_.MainWindowHandle -ne 0 -and (try { $_.Path -eq $p } catch { $false }) } | Select-Object -First 1',
+    '    if ($proc) { [W]::ShowWindowAsync($proc.MainWindowHandle, 9) | Out-Null; [W]::keybd_event(0xA4,0,0,[IntPtr]::Zero); [W]::keybd_event(0xA4,0,2,[IntPtr]::Zero); [W]::SetForegroundWindow($proc.MainWindowHandle) | Out-Null }',
+    '    else { Start-Process -FilePath $p } } catch {}',
+    '}'].join('\r\n');
+  try { fs.writeFileSync(psPath, ps); } catch { return null; }
+  try { _focusPS = _spawn('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-WindowStyle', 'Hidden', '-File', psPath], { windowsHide: true, stdio: ['pipe', 'ignore', 'ignore'] });
+    _focusPS.on('exit', () => { _focusPS = null; }); _focusPS.on('error', () => { _focusPS = null; });
+  } catch { _focusPS = null; }
+  return _focusPS;
+}
 function focusApp(target) {
   target = String(target || '').trim().replace(/^["']+|["']+$/g, '').trim(); if (!target) return;
-  // focus the running program's main window (restore if minimized); launch it if not running.
-  const psPath = path.join(__dirname, '_focusapp.ps1');
-  const ps = ['param([string]$p)',
-    'Add-Type @"', 'using System; using System.Runtime.InteropServices;',
-    'public class W { [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h); [DllImport("user32.dll")] public static extern bool ShowWindowAsync(IntPtr h, int n); [DllImport("user32.dll")] public static extern void keybd_event(byte k, byte s, uint f, IntPtr e); }', '"@',
-    '$proc = Get-Process | Where-Object { $_.MainWindowHandle -ne 0 -and (try { $_.Path -eq $p } catch { $false }) } | Select-Object -First 1',
-    'if ($proc) { [W]::ShowWindowAsync($proc.MainWindowHandle, 9) | Out-Null; [W]::keybd_event(0xA4,0,0,[IntPtr]::Zero); [W]::keybd_event(0xA4,0,2,[IntPtr]::Zero); [W]::SetForegroundWindow($proc.MainWindowHandle) | Out-Null } else { Start-Process -FilePath $p }'
-  ].join('\r\n');
-  try { fs.writeFileSync(psPath, ps); _spawn('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', psPath, '-p', target], { windowsHide: true }).unref(); log('🎚 host action: switch to "' + target + '"'); }
-  catch (e) { log('🎚 host action: switch-to failed — ' + e.message); }
+  try { const ps = ensureFocusHost();
+    if (ps && ps.stdin && ps.stdin.writable) { ps.stdin.write(target + '\n'); log('🎚 host action: switch to "' + target + '"'); }
+    else log('🎚 host action: switch-to host unavailable');
+  } catch (e) { log('🎚 host action: switch-to failed — ' + e.message); }
 }
 function fireHostAction(b) {
   const a = b.action;
@@ -867,6 +883,7 @@ function shutdown(code = 0) {
   // children first guarantees no orphans even if the cleanup below hangs.
   try { if (npHandle) npHandle.stop(); } catch {}   // kill the now-playing sidecar
   try { if (acHandle) acHandle.stop(); } catch {}   // kill the audio-capture sidecar (app-capture.exe / audio-sidecar.ps1)
+  try { if (_focusPS) _focusPS.kill(); } catch {}   // stop the warm focus-host PowerShell
   try { if (dwProc) dwProc.kill(); } catch {}        // kill the display-off watcher
   try { if (device && send && !muteLogged) { const off = []; INDICES.forEach(i => off.push(i, 0, 0, 0)); send(off); } } catch {}   // best-effort blackout (fire-and-forget; skip on a muted board)
   setTimeout(() => process.exit(code), 1500).unref();   // backstop
@@ -881,3 +898,4 @@ process.on('SIGTERM', shutdown);
 
 registerUrlScheme();   // make th108://start | th108://restart links work from the controller page
 console.log('▶ TH108 daemon running (config:', loadConfig() ? 'loaded' : 'none yet', ')');
+setTimeout(() => { try { if (Array.isArray(hostActions) && hostActions.some(b => b && b.action && b.action.type === 'focusApp')) ensureFocusHost(); } catch {} }, 1500);   // pre-warm the focus host so the FIRST "Switch to" is fast too
