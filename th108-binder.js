@@ -433,6 +433,10 @@
       _hb.steps = out;
     }
     function firstFreeGap() { for (let i = 1; i < _hb.steps.length; i++) if (_hb.steps[i - 1].code != null && _hb.steps[i].code != null) return i; return -1; }
+    function lastIndexOfType(isDelay) { for (let i = _hb.steps.length - 1; i >= 0; i--) { const s = _hb.steps[i]; if (isDelay ? s.ms != null : s.code != null) return i; } return -1; }
+    // "can't add — at the cap" feedback: the last node of that type shakes + flashes red so the user knows to remove one.
+    function jiggleChip(container, idx) { if (!container || idx < 0) return; const chip = container.querySelector('.haChip[data-i="' + idx + '"]'); if (!chip) return;
+      chip.classList.remove('reject'); void chip.offsetWidth; chip.classList.add('reject'); setTimeout(() => chip.classList.remove('reject'), 600); }
     // The live macro step list: draggable chips with ">" separators (key combos + delay steps). Delays drag BETWEEN
     // keys (gap insertion, orange drop-line), never swap. Updated in place during recording so the builder isn't
     // re-rendered (which would stop the recording).
@@ -474,7 +478,7 @@
         ev.preventDefault(); ev.stopPropagation();
         if (ev.code === 'Escape') { endMacroRecord(); return; }
         if (MOD_CODE.test(ev.code)) return;   // wait for the actual key, not the lone modifier
-        if (macroKeyCount() >= MACRO_MAX_KEYS) { endMacroRecord(); $('bdHint').textContent = 'Macro is capped at ' + MACRO_MAX_KEYS + ' keys.'; return; }
+        if (macroKeyCount() >= MACRO_MAX_KEYS) { jiggleChip(container, lastIndexOfType(false)); $('bdHint').textContent = 'Macro is capped at ' + MACRO_MAX_KEYS + ' keys — remove one to add another.'; return; }
         _hb.steps.push({ code: ev.code, ctrl: ev.ctrlKey, alt: ev.altKey, shift: ev.shiftKey, meta: ev.metaKey });
         renderMacroSteps(container); };
       _macroRec = { onKey, btn };
@@ -581,7 +585,9 @@
       const stepList = host.querySelector('.haStepList'); if (stepList) renderMacroSteps(stepList);
       const rec = host.querySelector('.haRec'); if (rec) rec.addEventListener('click', () => recordMacro(rec, stepList));
       const dly = host.querySelector('.haDelay'); if (dly) dly.addEventListener('click', () => { endMacroRecord(); cleanSteps();
-        const g = firstFreeGap(); if (g < 0) { $('bdHint').textContent = (macroKeyCount() < 2 ? 'Record at least 2 keys, then a delay can go between them.' : 'Every gap already has a delay (one per gap).'); return; }
+        const g = firstFreeGap();
+        if (g < 0) { if (macroKeyCount() < 2) { $('bdHint').textContent = 'Record at least 2 keys, then a delay can go between them.'; }
+          else { jiggleChip(stepList, lastIndexOfType(true)); $('bdHint').textContent = 'Every gap already has a delay (one per gap) — remove one to add another.'; } return; }
         _hb.steps.splice(g, 0, { ms: 200 }); renderMacroSteps(stepList); });
       const clr = host.querySelector('.haClr'); if (clr) clr.addEventListener('click', () => { endMacroRecord(); _hb.steps = []; renderMacroSteps(stepList); });
       host.querySelector('.haBind').addEventListener('click', e => (_hb.triggerType === 'chord' ? captureChord(e.target) : captureTriggerKey(e.target)));

@@ -360,6 +360,8 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
   .haChip.dropbefore{ box-shadow:-3px 0 0 0 #f59e0b; }   /* orange insertion line to the LEFT (drops here) */
   .haChip.dropafter{ box-shadow:3px 0 0 0 #f59e0b; }     /* orange insertion line to the RIGHT (drops at end) */
   .haSeq{ color:var(--muted); font-size:12px; align-self:center; padding:0 1px; }
+  @keyframes haShake{ 0%,100%{transform:translateX(0)} 20%{transform:translateX(-3px)} 40%{transform:translateX(3px)} 60%{transform:translateX(-2px)} 80%{transform:translateX(2px)} }
+  .haChip.reject{ animation:haShake .33s; border-color:#f85149; box-shadow:0 0 0 2px rgba(248,81,73,.5); color:#f85149; }   /* "at the cap — remove one" */
   .haChipK{ font-weight:600; }
   .haChipX{ border:none; background:none; color:var(--muted); cursor:pointer; padding:0 1px; font-size:12px; line-height:1; }
   .haChipX:hover{ color:var(--text); }
