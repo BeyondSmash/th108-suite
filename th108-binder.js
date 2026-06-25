@@ -523,18 +523,21 @@
       if (_hb.actType === 'macro' && !_hb.steps.length) { $('bdHint').textContent = 'Record at least one key for the macro first.'; return; }
       endHostCapture(true); endMacroRecord(); if (_chordCancel) _chordCancel();
       let led = null, code = null, capMods = null, liveMods = { ctrl: false, alt: false, shift: false, meta: false };
-      const clear = document.createElement('button'); clear.type = 'button'; clear.className = 'patbtn'; clear.textContent = 'Clear'; clear.style.marginLeft = '6px';
-      btn.after(clear); btn.textContent = 'Accept'; btn.disabled = true;
-      const shown = () => code ? (modStr(capMods) + ((board && board.labelFor) ? board.labelFor(led) : code)) : (modStr(liveMods) ? modStr(liveMods) + '…' : '(press your combo)');
-      const hint = () => $('bdHint').textContent = 'A chord = hold modifier key(s) — Ctrl, Shift, Alt or Win — then press ONE regular key, all together. Pressed: ' + shown() + (code ? '   → Accept it, or press a different combo / Clear.' : '');
+      const mkBtn = txt => { const b = document.createElement('button'); b.type = 'button'; b.className = 'patbtn'; b.textContent = txt; b.style.marginLeft = '6px'; return b; };
+      const clearB = mkBtn('Clear'), cancelB = mkBtn('Cancel');
+      const out = document.createElement('span'); out.className = 'haChordOut';   // the LIVE readout, inline (far right), not in the descriptor
+      btn.after(clearB); clearB.after(cancelB); cancelB.after(out);
+      btn.textContent = 'Accept'; btn.disabled = true;
+      $('bdHint').textContent = 'A chord = hold modifier key(s) — Ctrl, Shift, Alt or Win — then press ONE regular key, all together. Then Accept (Clear re-does it, Cancel exits).';
+      const refresh = () => out.textContent = code ? (modStr(capMods) + ((board && board.labelFor) ? board.labelFor(led) : code)) : (modStr(liveMods) ? modStr(liveMods) + '…' : 'press your combo');
       const onDown = ev => { ev.preventDefault(); ev.stopPropagation();
-        if (ev.code === 'Escape') { cancel(); renderGrid(); return; }
+        if (ev.code === 'Escape') { cleanup(); renderGrid(); return; }
         liveMods = { ctrl: ev.ctrlKey, alt: ev.altKey, shift: ev.shiftKey, meta: ev.metaKey };
-        if (MOD_CODE.test(ev.code)) { hint(); return; }   // a held modifier — show it live, keep waiting for the key
-        const l = (board && board.ledForCode) ? board.ledForCode(ev.code) : null; if (l == null) { hint(); return; }
-        led = l; code = ev.code; capMods = liveMods; btn.disabled = false; hint(); };
-      const onUp = ev => { liveMods = { ctrl: ev.ctrlKey, alt: ev.altKey, shift: ev.shiftKey, meta: ev.metaKey }; if (!code) hint(); };
-      const onAccept = () => { if (!code) return; cancel();
+        if (MOD_CODE.test(ev.code)) { refresh(); return; }   // a held modifier — show it live, keep waiting for the key
+        const l = (board && board.ledForCode) ? board.ledForCode(ev.code) : null; if (l == null) { refresh(); return; }
+        led = l; code = ev.code; capMods = liveMods; btn.disabled = false; refresh(); };
+      const onUp = ev => { liveMods = { ctrl: ev.ctrlKey, alt: ev.altKey, shift: ev.shiftKey, meta: ev.metaKey }; if (!code) refresh(); };
+      const onAccept = () => { if (!code) return; cleanup();
         const t = { type: 'chord', led, mods: capMods }, a = { type: _hb.actType };
         if (a.type === 'profileSelect') a.index = Math.max(0, (_hb.profileIndex | 0) - 1);
         if (a.type === 'launch') a.target = (_hb.target || '').trim();
@@ -542,12 +545,14 @@
         const list = loadHostActions(); list.push({ trigger: t, action: a }); saveHostActions(list);
         log('✓ ' + describeTrigger(t) + ' → ' + describeAction(a) + ' (works page-closed)', 'ok');
         _hb = newBuilder(); renderGrid(); };
-      function cancel() { document.removeEventListener('keydown', onDown, true); document.removeEventListener('keyup', onUp, true); btn.removeEventListener('click', onAccept); if (clear.isConnected) clear.remove(); _chordCancel = null; }
-      _chordCancel = cancel;
+      function cleanup() { document.removeEventListener('keydown', onDown, true); document.removeEventListener('keyup', onUp, true);
+        [clearB, cancelB, out].forEach(el => { if (el.isConnected) el.remove(); }); _chordCancel = null; }
+      _chordCancel = cleanup;
       btn.addEventListener('click', onAccept);
-      clear.addEventListener('click', () => { led = code = capMods = null; btn.disabled = true; hint(); });
+      clearB.addEventListener('click', () => { led = code = capMods = null; btn.disabled = true; refresh(); });
+      cancelB.addEventListener('click', () => { cleanup(); renderGrid(); });
       document.addEventListener('keydown', onDown, true); document.addEventListener('keyup', onUp, true);
-      hint();
+      refresh();
     }
     function renderHostGrid() {
       endHostCapture(false); endMacroRecord(); if (_chordCancel) _chordCancel();
@@ -569,7 +574,7 @@
       host.querySelector('.haActSel').addEventListener('change', e => { _hb.actType = e.target.value; renderGrid(); });
       host.querySelector('.haTrgSel').addEventListener('change', e => { _hb.triggerType = e.target.value; renderGrid(); });
       const w = (sel, fn) => { const el = host.querySelector(sel); if (el) el.addEventListener('input', fn); };
-      { const pidx = host.querySelector('.haPidx'); if (pidx) { pidx.addEventListener('input', () => _hb.profileIndex = Math.max(1, Math.min(10, +pidx.value || 1))); pidx.addEventListener('change', () => pidx.value = _hb.profileIndex); } }   // clamp 1–10 even if typed higher
+      { const pidx = host.querySelector('.haPidx'); if (pidx) { const fix = () => { let v = Math.floor(+pidx.value); if (!isFinite(v)) v = 1; v = Math.max(1, Math.min(10, v)); _hb.profileIndex = v; if (+pidx.value > 10 || +pidx.value < 1) pidx.value = v; }; pidx.addEventListener('input', fix); pidx.addEventListener('blur', () => pidx.value = _hb.profileIndex); } }   // clamp the field to 1–10 the moment a higher value is typed
       w('.haTarget', e => _hb.target = e.target.value);
       w('.haCount', e => _hb.count = +e.target.value || 2);
       w('.haWin', e => _hb.windowMs = +e.target.value || 400);
