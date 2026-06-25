@@ -344,13 +344,13 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
   .haAct{ color:var(--muted); flex:1 1 auto; }
   .haDel{ flex:0 0 auto; padding:3px 9px; }
   .haEmpty{ color:var(--muted); font-size:13px; margin:0; padding:4px 2px; }
-  .haBuild{ display:flex; flex-direction:column; gap:9px; padding:11px; background:var(--inset); border:1px solid var(--border); border-radius:8px; margin-top:2px; }
-  .haLine{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+  .haBuild{ display:flex; flex-direction:row; flex-wrap:wrap; align-items:center; gap:8px; padding:11px; background:var(--inset); border:1px solid var(--border); border-radius:8px; margin-top:2px; }
+  .haLine{ display:contents; }   /* its children flow into the single haBuild row */
   .haLbl{ color:var(--muted); font-size:13px; }
   .haBuild select, .haTarget{ font:inherit; background:var(--card); color:var(--text); border:1px solid var(--border); border-radius:8px; padding:4px 8px; }
-  .haTarget{ flex:1 1 240px; min-width:200px; }
+  .haTarget{ flex:1 1 220px; min-width:180px; }
   .haSteps{ color:var(--muted); font-size:13px; }
-  .haBind{ align-self:flex-start; padding:8px 16px; margin-top:2px; }
+  .haBind{ padding:8px 16px; }
 
   /* modals (spacebar focus overlay + keymap progress) — bento-styled */
   .modal{ position:fixed; inset:0; z-index:200; display:none; align-items:center; justify-content:center;
