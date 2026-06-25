@@ -415,7 +415,7 @@
     function newBuilder() { return { actType: 'micToggle', triggerType: 'key', count: 2, windowMs: 400, holdMs: 500, profileIndex: 1, target: '', steps: [] }; }
     let _hostCapture = null, _macroRec = null, _macroDragI = null, _chordCancel = null;
     function endHostCapture(restore) { if (!_hostCapture) return; document.removeEventListener('keydown', _hostCapture.onKey, true); if (restore && _hostCapture.btn && _hostCapture.btn.isConnected) _hostCapture.btn.textContent = _hostCapture.orig; _hostCapture = null; }
-    function endMacroRecord() { if (!_macroRec) return; document.removeEventListener('keydown', _macroRec.onKey, true); if (_macroRec.btn && _macroRec.btn.isConnected) _macroRec.btn.textContent = '⏺ Record'; _macroRec = null; }
+    function endMacroRecord() { if (!_macroRec) return; document.removeEventListener('keydown', _macroRec.onKey, true); if (_macroRec.btn && _macroRec.btn.isConnected) { _macroRec.btn.textContent = '⏺ Record'; _macroRec.btn.classList.remove('recording'); } _macroRec = null; }
     function macroStepLabel(s) {
       const mods = (s.ctrl ? 'Ctrl+' : '') + (s.shift ? 'Shift+' : '') + (s.alt ? 'Alt+' : '') + (s.meta ? 'Win+' : '');
       const led = (board && board.ledForCode) ? board.ledForCode(s.code) : null;
@@ -487,7 +487,7 @@
     function recordMacro(btn, container) {
       endHostCapture(true);
       if (_macroRec) { endMacroRecord(); return; }   // toggle off
-      btn.textContent = '⏹ Stop (recording…)';
+      btn.textContent = '⏹ Stop (recording…)'; btn.classList.add('recording');
       const onKey = ev => {
         if (ev.target && (ev.target.tagName === 'INPUT' || ev.target.tagName === 'SELECT')) return;   // typing in a delay field isn't a recorded key
         ev.preventDefault(); ev.stopPropagation();
