@@ -596,7 +596,8 @@
         el.addEventListener('blur', () => { let v = Math.floor(+el.value); if (!isFinite(v) || el.value === '') v = get(); v = Math.max(lo, Math.min(hi, v)); set(v); el.value = v; }); };
       wireClampNum('.haPidx', 1, 10, () => _hb.profileIndex, v => _hb.profileIndex = v);
       { const tgt = host.querySelector('.haTarget'), ok = host.querySelector('.haFileOk'), nm = host.querySelector('.haFileName');
-        if (tgt && tgt.value) requestAnimationFrame(() => { if (document.activeElement !== tgt) tgt.scrollLeft = 1e6; });   // show the END (filename) of a long path, not the start
+        if (tgt) { const toEnd = () => requestAnimationFrame(() => { if (document.activeElement !== tgt) tgt.scrollLeft = 1e6; });   // show the END (filename), not the C:\ start
+          if (tgt.value) toEnd(); tgt.addEventListener('blur', toEnd); }   // re-scroll on blur (the browser snaps it back to the start otherwise)
         if (tgt) tgt.addEventListener('input', () => { _hb.target = tgt.value; const has = !!_hb.target.trim();
           tgt.classList.toggle('haHasFile', has); if (ok) { ok.style.display = has ? '' : 'none'; ok.title = _hb.target || 'a file/program is registered'; } if (nm) nm.textContent = midTrunc(baseName(_hb.target)); }); }
       wireClampNum('.haCount', 1, 10, () => _hb.count, v => _hb.count = v);
