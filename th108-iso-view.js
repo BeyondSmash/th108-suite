@@ -41,8 +41,7 @@
     panel.innerHTML =
       '<div class="iso-head"><span class="iso-grip">⠿</span><b>Isometric View</b>' +
       '<span class="iso-spacer"></span>' +
-      '<button type="button" class="iso-wmax" hidden title="Maximize the pop-out window to fill the screen (minimize it from the taskbar; ⤢ Reset size restores)">⛶ Maximize</button>' +
-      '<button type="button" class="iso-rs" hidden title="Reset the pop-out window to the default size">⤢ Reset size</button>' +
+      '<button type="button" class="iso-rs" hidden title="Reset the pop-out window to the default size (use the window\'s own buttons to minimize / maximize)">⤢ Reset size</button>' +
       '<button type="button" class="iso-pop" title="Pop out into a separate, resizable window">' +
         '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px"><path d="M21 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h6"/><path d="m21 3-9 9"/><path d="M15 3h6v6"/></svg>Pop out</button>' +
       '<button type="button" class="iso-popin" hidden title="Pop back into the page">' +
@@ -271,13 +270,13 @@
       // edge falloff: elliptical vignette (bright center → black edges) so the noise feathers, not a hard box
       _actx.save(); _actx.translate(SW/2,SH/2); _actx.scale(1,SH/SW);
       const g=_actx.createRadialGradient(0,0,0,0,0,SW*0.5);
-      g.addColorStop(0,'#fff'); g.addColorStop(0.28,'#fff'); g.addColorStop(1,'#000');   // smaller bright core → more falloff
+      g.addColorStop(0,'#fff'); g.addColorStop(0.15,'#fff'); g.addColorStop(0.82,'#000'); g.addColorStop(1,'#000');   // reach full black BEFORE the edge → no hard rectangle edge
       _actx.fillStyle=g; _actx.fillRect(-SW,-SW,2*SW,2*SW); _actx.restore();
       _actx.globalCompositeOperation='source-over';
       return _aur;
     }
     const SLABS=[[0.55,0.17,7],[0.9,0.20,12],[1.45,0.12,19]];   // [scale, baseAlpha, scrollSpeed] — 3 parallax sheets
-    const NSHEETS=8;   // overlapping footprint sheets per gap → a continuous volumetric glow (not discrete bands)
+    const NSHEETS=8, AURA_M=0.82;   // sheets per gap; AURA_M = half-extent of the footprint (>0.5 → extends past the keys so the feathered edges fall OUTSIDE them, not on the keyboard boundary)
     function drawAura(tSec, cx, cy, byOf, AMP){
       if(!auraReady || auraI<=0) return;
       // each aura fills the gap between two planes (or around a focused plane) with stacked footprint glow-sheets,
@@ -295,16 +294,16 @@
         // 0 at each plane) → reads as ONE continuous volumetric glow, not a few discrete squished layers. Each
         // sheet seeded differently so the noise doesn't align into visible bands.
         for(let n=0;n<NSHEETS;n++){ const fr=(n+0.5)/NSHEETS, by=sp.lo+span*fr, sl=SLABS[n%SLABS.length];
-          const sc=sl[0], bell=0.4+0.6*Math.sin(fr*Math.PI);   // raised floor → no fully-dark trough between gaps (kills the dark band)
+          const sc=sl[0], bell=0.55+0.45*Math.sin(fr*Math.PI);   // higher floor → adjacent gaps overlap at the planes (no dark band between auras)
           const w=dir*(0.16+sl[2]*0.012), ph=sdx*0.013+n*0.9;   // circular drift: same freq for x & y → seamless loop (no scroll seam)
           const ox=Math.cos(tSec*w+ph)*40, oy=Math.sin(tSec*w+ph)*26, cover=300+sc*120;
           // DEFORM: warp each sheet's corner heights by the same wave (per-sheet phase via jw) so the sheets
           // undulate and cross instead of sitting as parallel lines, and the glow conforms to the key wave.
           const jw=gi+n*0.2, dA=AMP*0.5, wA=dA*waveFn(0,0,jw,tSec), wB=dA*waveFn(1,0,jw,tSec), wC=dA*waveFn(0,1,jw,tSec);   // gentle conform — full amplitude/phase spread the sheets apart and diluted the glow
-          const P00=proj(-BW0/2,-BD/2,by+wA,cx,cy), P10=proj(BW0/2,-BD/2,by+wB,cx,cy), P01=proj(-BW0/2,BD/2,by+wC,cx,cy);
+          const P00=proj(-BW0*AURA_M,-BD*AURA_M,by+wA,cx,cy), P10=proj(BW0*AURA_M,-BD*AURA_M,by+wB,cx,cy), P01=proj(-BW0*AURA_M,BD*AURA_M,by+wC,cx,cy);
           const ux=(P10[0]-P00[0])/SW, uy=(P10[1]-P00[1])/SW, vx=(P01[0]-P00[0])/SH, vy=(P01[1]-P00[1])/SH;
           const tex=tintSlab(col, ox, oy, cover);
-          ctx.globalAlpha=0.13*bell*auraI*ls*(0.82+0.18*Math.sin(tSec*1.1+gi*1.7+n));   // 8 sheets → slightly lower per-sheet alpha (keeps overall prominence)
+          ctx.globalAlpha=0.11*bell*auraI*ls*(0.82+0.18*Math.sin(tSec*1.1+gi*1.7+n));   // lower per-sheet alpha (bigger footprint → more overlap, keeps overall prominence)
           ctx.setTransform(SS*ux,SS*uy,SS*vx,SS*vy, SS*P00[0], SS*P00[1]);   // affine: SW×SH rect → a footprint sheet (×SS supersample)
           ctx.drawImage(tex,0,0,SW,SH);
         }
@@ -326,16 +325,14 @@
       const labelStr = pl => (pl.num?pl.num+' · ':'')+pl.name+(pl.off?'  (off)':'')+(pl.sys&&!lock.known?'  (press a key)':'');
       ctx.font='600 11px '+FAM;
       let maxLW=0; for(const pl of P0){ const w=ctx.measureText(labelStr(pl)).width; if(w>maxLW)maxLW=w; }
-      const labelRight=8+maxLW;   // labels right-aligned end here; the longest one starts at x=8 → never cut off
       // layout pass: bbox of plane backdrops at cx=cy=0
       let minX=1e9,maxX=-1e9,minY=1e9,maxY=-1e9;
       for(let j=0;j<N;j++){ const by=byOf(j);
         for(const c of [proj(-BW0/2,-BD/2,by,0,0),proj(BW0/2,-BD/2,by,0,0),proj(BW0/2,BD/2,by,0,0),proj(-BW0/2,BD/2,by,0,0)]){
           if(c[0]<minX)minX=c[0]; if(c[0]>maxX)maxX=c[0]; if(c[1]<minY)minY=c[1]; if(c[1]>maxY)maxY=c[1]; } }
-      // place the board after the label column. Docked + board ~fills the width → tight left-anchor (labels close).
-      // Popped (wide window) or lots of spare room → center it in the available space so it doesn't hug the left.
-      const LBGAP=16, RMARG=14, region=CW-(labelRight+LBGAP)-RMARG, content=maxX-minX, popped=panel.classList.contains('popped');
-      const cx=((popped||region>content+40) ? (labelRight+LBGAP)+(region-content)/2 : labelRight+LBGAP)-minX, cy=(CH-(maxY-minY))/2-minY;
+      // center the labels + board as ONE unit so the labels always sit close to the board (docked OR maximized — no big gap)
+      const LBGAP=16, unitW=(maxX-minX)+LBGAP+maxLW, unitLeft=Math.max(8,(CW-unitW)/2);
+      const labelRight=unitLeft+maxLW, cx=labelRight+LBGAP-minX, cy=(CH-(maxY-minY))/2-minY;
 
       if(glass){
         if(panel.classList.contains('popped')){   // a pop-out window has NO page behind it to see through (backdrop-filter can't reach the desktop) → paint a frosted dark-glass sheen so Glass still reads
@@ -368,7 +365,9 @@
             ctx.fillStyle=pl.off?'rgba('+cr+','+cg+','+cb+',.22)':'rgb('+cr+','+cg+','+cb+')'; ctx.fill(); ctx.shadowBlur=0; }
           else if(showKeys){ ctx.shadowBlur=0; ctx.fillStyle='rgba(150,160,175,.10)'; ctx.fill();   // inactive key → a faint keycap + outline so the layout reads
             ctx.strokeStyle='rgba(180,190,205,.17)'; ctx.lineWidth=1; ctx.stroke(); }
-          if(mask && mask[r.k]>0.15){ const m=proj((r.u-0.5)*BW0,(r.v-0.5)*BD,by+wz,cx,cy);   // silhouetted/carving key
+          if(mask && mask[r.k]>0.15){   // silhouetted/carving key → black it out (it removes light from below), then a red minus on top
+            ctx.shadowBlur=0; ctx.fillStyle='#000'; ctx.fill();   // re-fill the same key quad black
+            const m=proj((r.u-0.5)*BW0,(r.v-0.5)*BD,by+wz,cx,cy);
             ctx.fillStyle=RED; ctx.font='700 '+Math.max(9,11*zoom/100)+'px '+FAM; ctx.textAlign='center'; ctx.textBaseline='middle';
             ctx.fillText('−', m[0], m[1]); }
         }
@@ -394,7 +393,7 @@
 
     // ---- pop-out window + loop ----
     let raf=0, rafWin=window, popWin=null;
-    const popEl=$('.iso-pop'), popinEl=$('.iso-popin'), rsEl=$('.iso-rs'), wmaxEl=$('.iso-wmax');
+    const popEl=$('.iso-pop'), popinEl=$('.iso-popin'), rsEl=$('.iso-rs');
     function schedule(){ rafWin=popWin||window; raf=rafWin.requestAnimationFrame(tick); }
     function tick(now){ if(panel.hidden){ raf=0; return; }
       try{ if(getRunning()){ for(const L of state.layers) if(!L.enabled) E.renderLayer(L,now,state); }
@@ -416,7 +415,7 @@
       copyVars(d.documentElement); d.body.appendChild(panel); panel.classList.add('popped');
       w.addEventListener('resize',onPopResize); w.addEventListener('keydown',onDown,true); w.addEventListener('keyup',onUp,true);
       w.addEventListener('pagehide',popIn);
-      popEl.hidden=true; popinEl.hidden=false; rsEl.hidden=false; wmaxEl.hidden=false;
+      popEl.hidden=true; popinEl.hidden=false; rsEl.hidden=false;
       if(raf){ try{ rafWin.cancelAnimationFrame(raf); }catch(_){} raf=0; } schedule();   // drive from the child window (focused → not rAF-throttled)
       w.requestAnimationFrame(fitPop);
     }
@@ -424,13 +423,12 @@
       try{ w.removeEventListener('resize',onPopResize); }catch(_){}
       try{ document.body.appendChild(panel); }catch(_){}
       panel.classList.remove('popped'); sizeCanvas(DEF_W,DEF_H);
-      popEl.hidden=false; popinEl.hidden=true; rsEl.hidden=true; wmaxEl.hidden=true;
+      popEl.hidden=false; popinEl.hidden=true; rsEl.hidden=true;
       try{ w.close(); }catch(_){}
       raf=0; if(!panel.hidden) schedule();   // child rAF is dead; reschedule on the parent
     }
-    function resetSize(){ if(!popWin) return; try{ popWin.resizeTo(780,640); }catch(_){} onPopResize(); }   // restore to the default size
-    function winMaximize(){ if(!popWin) return; try{ popWin.moveTo(0,0); popWin.resizeTo(popWin.screen.availWidth, popWin.screen.availHeight); }catch(_){} onPopResize(); }   // fill the screen
-    popEl.addEventListener('click',popOut); popinEl.addEventListener('click',popIn); rsEl.addEventListener('click',resetSize); wmaxEl.addEventListener('click',winMaximize);
+    function resetSize(){ if(!popWin) return; try{ popWin.resizeTo(780,640); popWin.moveTo(Math.max(0,(popWin.screen.availWidth-780)/2), Math.max(0,(popWin.screen.availHeight-640)/2)); }catch(_){} onPopResize(); }   // restore + recenter to the default size (use the OS restore button to un-maximize)
+    popEl.addEventListener('click',popOut); popinEl.addEventListener('click',popIn); rsEl.addEventListener('click',resetSize);
 
     function open(){ if(!panel.hidden) return; panel.hidden=false; buildLegend();
       window.addEventListener('keydown',onDown,true); window.addEventListener('keyup',onUp,true);
