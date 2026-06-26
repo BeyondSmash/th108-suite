@@ -209,7 +209,7 @@
     // silent (no noise bloom). Respects the Attack/Decay tuners; the instant per-band PUNCH on a hit is added at
     // render. Spectrum-bars only — other styles keep using A.bands unchanged.
     if(!A.barBands){ A.barBands = new Float32Array(32); A._bpk = new Float32Array(32); for(let i=0;i<32;i++) A._bpk[i]=0.1; }
-    { const PBMIX = 0.5, bpkFall = Math.exp(-dt/2500);
+    { const PBMIX = 0.34, bpkFall = Math.exp(-dt/2500);   // blend weight of the per-band-own-peak term (flat, no contrast) vs the contrasty global shape. LOWER = bars recede more in quiet passages (was 0.5 → 0.34 for more dynamics); raise back toward 0.5 if columns feel too dead.
       for(let i=0;i<32;i++){
         const rv = rb ? rawClamp(rb[i]) : 0;
         A._bpk[i] = rv > A._bpk[i] ? rv : Math.max(rv, A._bpk[i]*bpkFall);   // per-band recent peak, ~2.5s fall
