@@ -248,18 +248,16 @@
         q.x+=(q.vx+q.px*sway)*dt/1000; q.y+=(q.vy+q.py*sway)*dt/1000; q.vx*=0.993; q.vy*=0.993;
         const t=q.life/q.max; if(t>=1){ P.splice(i,1); continue; }
         const tw=0.35+0.65*(0.5+0.5*Math.sin(q.life*q.tw+q.seed));   // fast twinkle
-        const a=Math.sin(t*Math.PI)*0.95*tw, r=q.sz*partSize;
-        ctx.fillStyle='rgba('+q.col[0]+','+q.col[1]+','+q.col[2]+','+a+')'; ctx.beginPath(); ctx.arc(q.x,q.y,r,0,TAU); ctx.fill();   // sharp dust core
-        const g=ctx.createRadialGradient(q.x,q.y,0,q.x,q.y,r*2.4);   // tiny soft halo
-        g.addColorStop(0,'rgba('+q.col[0]+','+q.col[1]+','+q.col[2]+','+(a*0.5)+')'); g.addColorStop(1,'rgba('+q.col[0]+','+q.col[1]+','+q.col[2]+',0)');
-        ctx.fillStyle=g; ctx.beginPath(); ctx.arc(q.x,q.y,r*2.4,0,TAU); ctx.fill(); }
+        const a=Math.sin(t*Math.PI)*0.95*tw, r=q.sz*partSize, cs='rgba('+q.col[0]+','+q.col[1]+','+q.col[2]+',';
+        ctx.fillStyle=cs+(a*0.32)+')'; ctx.beginPath(); ctx.arc(q.x,q.y,r*2.3,0,TAU); ctx.fill();   // faint halo (plain fill — no per-particle gradient = much cheaper)
+        ctx.fillStyle=cs+a+')'; ctx.beginPath(); ctx.arc(q.x,q.y,r,0,TAU); ctx.fill(); }   // bright core
       ctx.globalCompositeOperation='source-over';
     }
     // ===== AURA: a soft SCREEN-SPACE colour field (one big blob per layer) modulated by drifting noise =====
     // No rectangular geometry → no edges, seams or bands. Rendered low-res then upscaled (natural blur).
     const auraImg=new Image(); let auraReady=false; auraImg.onload=()=>{ auraReady=true; }; auraImg.src='iso-aura-noise.png';
     const _glow=document.createElement('canvas'), _gctx=_glow.getContext('2d');
-    const GLOWS=0.42;   // glow render scale (low-res → soft + cheap)
+    const GLOWS=0.36;   // glow render scale (low-res → soft + cheap)
     function drawAura(tSec){
       if(!auraReady || auraI<=0) return;
       const gw=Math.max(2,Math.round(CW*GLOWS)), gh=Math.max(2,Math.round(CH*GLOWS));
@@ -269,11 +267,14 @@
       //    edgeless glow that fills the gaps. Uses the temporally-smoothed plane colour → no keypress twitch.
       _gctx.globalCompositeOperation='lighter';
       for(let i=0;i<_planes.length;i++){ const pl=_planes[i], col=pl.col; if(!col) continue;
-        const bx=pl.cx*GLOWS, by=pl.cy*GLOWS, r=Math.max(10, pl.hw*GLOWS*1.05);
-        const lum=(0.299*col[0]+0.587*col[1]+0.114*col[2])/255, ls=0.5+0.5*(1-lum*0.7), a=0.5*auraI*ls;
-        const g=_gctx.createRadialGradient(bx,by,0, bx,by, r);
-        g.addColorStop(0,'rgba('+col[0]+','+col[1]+','+col[2]+','+a+')'); g.addColorStop(1,'rgba('+col[0]+','+col[1]+','+col[2]+',0)');
-        _gctx.fillStyle=g; _gctx.save(); _gctx.translate(bx,by); _gctx.scale(1.45,0.95); _gctx.beginPath(); _gctx.arc(0,0,r,0,TAU); _gctx.fill(); _gctx.restore();
+        const bx=pl.cx*GLOWS, by=pl.cy*GLOWS, r=Math.max(8, pl.hw*GLOWS*0.95), c='rgba('+col[0]+','+col[1]+','+col[2]+',';
+        const lum=(0.299*col[0]+0.587*col[1]+0.114*col[2])/255, ls=0.5+0.5*(1-lum*0.7), a=0.8*auraI*ls;
+        // a wide-but-short ellipse hugging the layer, with a fast falloff → the glow CLINGS to the keyboard stack
+        // and the panel edges/corners stay dark (not a full-viewport wash). Blobs overlap vertically into one field.
+        _gctx.save(); _gctx.translate(bx,by); _gctx.scale(1.1,0.34);
+        const g=_gctx.createRadialGradient(0,0,0, 0,0, r);
+        g.addColorStop(0,c+a+')'); g.addColorStop(0.5,c+(a*0.32)+')'); g.addColorStop(1,c+'0)');
+        _gctx.fillStyle=g; _gctx.beginPath(); _gctx.arc(0,0,r,0,TAU); _gctx.fill(); _gctx.restore();
       }
       // 2) modulate with one big slowly-drifting noise (gentle multiply, floor-raised to 0.5 so it TEXTURES rather
       //    than carves) → volumetric wisps with no hard edges; circular drift = seamless loop.
