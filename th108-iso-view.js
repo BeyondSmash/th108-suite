@@ -32,7 +32,7 @@
     const onUp   = e => { updLock(e); if(!getRunning()){ const i=KEYMAP[e.code]; if(i!==undefined) E.releaseKey(state,i); } };
 
     // ---- view params ----
-    let yaw = 22*D2R, pitch = 58*D2R, zoom = 100, gap = 46, enhanced = false, focusIdx = null, auraI = 0.8;
+    let yaw = 22*D2R, pitch = 58*D2R, zoom = 100, gap = 46, enhanced = false, focusIdx = null, auraI = 0.8, faceOn = false;
     const ISO_PITCH = 58*D2R, FACE_PITCH = 89*D2R;   // isometric tilt vs front-flat (top-down)
 
     // ---- panel chrome ----
@@ -52,7 +52,9 @@
         '<label class="iso-gl">Gap<input type="range" class="iso-gapr" min="14" max="90" value="46"></label>' +
         '<button type="button" class="iso-enh" title="Wave + rising stardust + aura wisps">✨ Enhanced</button>' +
         '<label class="iso-gl iso-al" style="display:none" title="Aura glow intensity">Aura<input type="range" class="iso-aint" min="0" max="150" value="80"></label>' +
-        '<button type="button" class="iso-face" hidden title="Tilt the focused layer front-flat vs isometric">Face-on</button>' +
+        '<button type="button" class="iso-face" title="Tilt the board front-flat (keys facing you) vs isometric">Face-on</button>' +
+        '<span class="iso-lock" hidden title="Tilt is locked while Face-on is active — the board faces you flat. Click Face-on again to unlock and tilt freely (you can still spin/yaw).">' +
+          '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></span>' +
       '</div>' +
       '<canvas class="iso-cv"></canvas>' +
       '<div class="iso-legend"></div>' +
@@ -99,7 +101,7 @@
     sizeCanvas(DEF_W, DEF_H);
     const $ = s => panel.querySelector(s);
     const zoomEl=$('.iso-zoom'), zvalEl=$('.iso-zval'), gapEl=$('.iso-gapr'), enhEl=$('.iso-enh'), aintEl=$('.iso-aint'),
-          backEl=$('.iso-back'), faceEl=$('.iso-face'), legendEl=$('.iso-legend'), readEl=$('.iso-read');
+          backEl=$('.iso-back'), faceEl=$('.iso-face'), lockEl=$('.iso-lock'), legendEl=$('.iso-legend'), readEl=$('.iso-read');
     zoomEl.addEventListener('input', e=>{ zoom=+e.target.value; zvalEl.textContent=zoom+'%'; });
     gapEl.addEventListener('input', e=>{ gap=+e.target.value; });
     aintEl.addEventListener('input', e=>{ auraI=+e.target.value/100; });
@@ -107,8 +109,9 @@
     // (used for reactive lighting / nav) don't yank a slider. Arrow keys still fine-adjust.
     [zoomEl,gapEl,aintEl].forEach(el=> el.addEventListener('keydown', e=>{ if(e.key==='Home'||e.key==='End'||e.key==='PageUp'||e.key==='PageDown') e.preventDefault(); }));
     enhEl.addEventListener('click', ()=>{ enhanced=!enhanced; enhEl.classList.toggle('on',enhanced); aintEl.parentElement.style.display=enhanced?'':'none'; });
-    backEl.addEventListener('click', ()=>{ focusIdx=null; backEl.hidden=true; faceEl.hidden=true; pitch=ISO_PITCH; yaw=22*D2R; buildLegend(); });
-    faceEl.addEventListener('click', ()=>{ const face=pitch<FACE_PITCH-0.05; pitch=face?FACE_PITCH:ISO_PITCH; if(face) yaw=0; faceEl.classList.toggle('on',face); });
+    backEl.addEventListener('click', ()=>{ focusIdx=null; backEl.hidden=true; if(!faceOn){ pitch=ISO_PITCH; yaw=22*D2R; } buildLegend(); });
+    // Face-on: snap to a flat front-facing (top-down) view AND lock tilt (so a drag can't knock it off); yaw still spins.
+    faceEl.addEventListener('click', ()=>{ faceOn=!faceOn; pitch=faceOn?FACE_PITCH:ISO_PITCH; if(faceOn) yaw=0; faceEl.classList.toggle('on',faceOn); lockEl.hidden=!faceOn; });
 
     // ---- drag the panel by its header ----
     const head = $('.iso-head'); let dg=null;
@@ -127,7 +130,7 @@
       cv.setPointerCapture(e.pointerId); e.preventDefault(); });
     cv.addEventListener('pointermove', e=>{ if(!rot) return; const dx=e.clientX-rot.x, dy=e.clientY-rot.y;
       rot.moved=Math.max(rot.moved,Math.abs(dx)+Math.abs(dy));
-      yaw=rot.y0 + dx*0.7*D2R; pitch=Math.max(8*D2R, Math.min(90*D2R, rot.p0 + dy*0.5*D2R));
+      yaw=rot.y0 + dx*0.7*D2R; if(!faceOn) pitch=Math.max(8*D2R, Math.min(90*D2R, rot.p0 + dy*0.5*D2R));   // Face-on locks tilt
       cv.classList.toggle('drag', rot.moved>4); });
     cv.addEventListener('pointerup', e=>{ if(!rot) return; const click=rot.moved<=4; const mv=rot; rot=null; cv.classList.remove('drag');
       if(click) clickAt(mv.px, mv.py); });
@@ -161,7 +164,7 @@
       return out;
     }
     function planeList(){ const g=gather(); if(focusIdx==null) return g; const f=g.find(p=>p.id===focusIdx); return f?[f]:g; }
-    function focusTo(id){ focusIdx=(focusIdx===id)?null:id; backEl.hidden=(focusIdx==null); faceEl.hidden=(focusIdx==null); if(focusIdx==null) pitch=ISO_PITCH; buildLegend(); }
+    function focusTo(id){ focusIdx=(focusIdx===id)?null:id; backEl.hidden=(focusIdx==null); if(focusIdx==null && !faceOn) pitch=ISO_PITCH; buildLegend(); }
 
     // ---- legend chips (focus on click; power dot toggles enabled, mirrored to the compositor) ----
     function buildLegend(){ legendEl.innerHTML='';
@@ -226,25 +229,25 @@
       _actx.globalCompositeOperation='source-over';
       return _aur;
     }
-    const SLABS=[[0.55,0.17,7],[0.9,0.20,12],[1.45,0.12,19]];   // [scale, baseAlpha, scrollSpeed] — 3 parallax depth slabs
-    const ADEP=0.5;   // aura covers only the mid 50% of the board depth → leaves falloff space to the planes above/below
+    const SLABS=[[0.55,0.17,7],[0.9,0.20,12],[1.45,0.12,19]];   // [scale, baseAlpha, scrollSpeed] — 3 parallax slabs (spread in DEPTH → volume)
     function drawAura(tSec, cx, cy, byOf){
       if(!auraReady || auraI<=0) return;
-      // aura "spots": one glow plane per gap (multi-layer), or one on the plane itself when a single layer is focused
+      // each aura is a VERTICAL CURTAIN filling the gap between two planes (board width × gap height) so it stays
+      // visible at flat angles instead of collapsing to a thin sliver. Focus = one curtain around the plane.
       const spots=[];
-      if(_planes.length>=2){ for(let i=1;i<_planes.length;i++){ const col=_planes[i-1].col||_planes[i].col; if(col) spots.push({by:(byOf(i-1)+byOf(i))/2, col}); } }
-      else if(_planes.length===1 && _planes[0].col) spots.push({by:byOf(0), col:_planes[0].col});
+      if(_planes.length>=2){ for(let i=1;i<_planes.length;i++){ const col=_planes[i-1].col||_planes[i].col; if(col) spots.push({lo:byOf(i-1),hi:byOf(i), col}); } }
+      else if(_planes.length===1 && _planes[0].col){ const b=byOf(0); spots.push({lo:b-gap*0.45,hi:b+gap*0.45, col:_planes[0].col}); }
       if(!spots.length) return;
       ctx.globalCompositeOperation='lighter';
       let gi=0;
-      for(const sp of spots){ gi++; const col=sp.col, byMid=sp.by;
-        const P00=proj(-BW0/2,-BD*ADEP/2,byMid,cx,cy), P10=proj(BW0/2,-BD*ADEP/2,byMid,cx,cy), P01=proj(-BW0/2,BD*ADEP/2,byMid,cx,cy);
-        const ux=(P10[0]-P00[0])/SW, uy=(P10[1]-P00[1])/SW, vx=(P01[0]-P00[0])/SH, vy=(P01[1]-P00[1])/SH;
-        const lum=(0.299*col[0]+0.587*col[1]+0.114*col[2])/255, ls=0.5+0.5*(1-lum*0.7);   // tame white/bright so it doesn't dominate the colored auras
-        for(const [sc,baseA,spd] of SLABS){
+      for(const sp of spots){ gi++; const col=sp.col;
+        const lum=(0.299*col[0]+0.587*col[1]+0.114*col[2])/255, ls=0.5+0.5*(1-lum*0.7);   // tame white/bright vs the colored auras
+        for(let si=0;si<SLABS.length;si++){ const sc=SLABS[si][0], baseA=SLABS[si][1], spd=SLABS[si][2], z=(si-1)*BD*0.32;   // z spreads the slabs across the board depth → volume
+          const P00=proj(-BW0/2,z,sp.lo,cx,cy), P10=proj(BW0/2,z,sp.lo,cx,cy), P01=proj(-BW0/2,z,sp.hi,cx,cy);   // U = board width, V = the gap height (vertical curtain)
+          const ux=(P10[0]-P00[0])/SW, uy=(P10[1]-P00[1])/SW, vx=(P01[0]-P00[0])/SH, vy=(P01[1]-P00[1])/SH;
           const tex=tintSlab(col, tSec*spd, tSec*spd*0.25, sc);
-          ctx.globalAlpha=baseA*auraI*ls*(0.7+0.3*Math.sin(tSec*1.1+gi*1.7+sc));
-          ctx.setTransform(SS*ux,SS*uy,SS*vx,SS*vy, SS*P00[0], SS*P00[1]);   // affine: SW×SH rect → the gap parallelogram (×SS supersample)
+          ctx.globalAlpha=baseA*auraI*ls*(0.7+0.3*Math.sin(tSec*1.1+gi*1.7+si));
+          ctx.setTransform(SS*ux,SS*uy,SS*vx,SS*vy, SS*P00[0], SS*P00[1]);   // affine: SW×SH rect → the gap curtain (×SS supersample)
           ctx.drawImage(tex,0,0,SW,SH);
         }
       }
@@ -259,18 +262,22 @@
       const AMP = enhanced ? gap*0.20 : 0;
       // height of plane index within the drawn set, centered
       const byOf = j => (j-(N-1)/2)*gap;
+      // measure the widest label first so the board can sit just right of a column wide enough to never clip them
+      ctx.setTransform(SS,0,0,SS,0,0);
+      const FAM=getComputedStyle(document.body).fontFamily||'system-ui,sans-serif';
+      const labelStr = pl => (pl.num?pl.num+' · ':'')+pl.name+(pl.off?'  (off)':'')+(pl.sys&&!lock.known?'  (press a key)':'');
+      ctx.font='600 11px '+FAM;
+      let maxLW=0; for(const pl of P0){ const w=ctx.measureText(labelStr(pl)).width; if(w>maxLW)maxLW=w; }
+      const labelRight=8+maxLW;   // labels right-aligned end here; the longest one starts at x=8 → never cut off
       // layout pass: bbox of plane backdrops at cx=cy=0
       let minX=1e9,maxX=-1e9,minY=1e9,maxY=-1e9;
       for(let j=0;j<N;j++){ const by=byOf(j);
         for(const c of [proj(-BW0/2,-BD/2,by,0,0),proj(BW0/2,-BD/2,by,0,0),proj(BW0/2,BD/2,by,0,0),proj(-BW0/2,BD/2,by,0,0)]){
           if(c[0]<minX)minX=c[0]; if(c[0]>maxX)maxX=c[0]; if(c[1]<minY)minY=c[1]; if(c[1]>maxY)maxY=c[1]; } }
-      // reserve a left gutter for the plane labels and a small right margin → board centers in the remaining
-      // space (shifts right, fills the empty area, gives the labels room).
-      const LGUT=112, RMARG=14, cx=LGUT+((CW-LGUT-RMARG)-(maxX-minX))/2-minX, cy=(CH-(maxY-minY))/2-minY;
+      // anchor the board's left edge just right of the label column (small gap) so the labels sit close to it
+      const LBGAP=16, cx=labelRight+LBGAP-minX, cy=(CH-(maxY-minY))/2-minY;
 
-      ctx.setTransform(SS,0,0,SS,0,0);
       ctx.fillStyle='#0d1117'; ctx.fillRect(0,0,CW,CH);
-      const FAM=getComputedStyle(document.body).fontFamily||'system-ui,sans-serif';
 
       _planes=[];
       for(let j=0;j<N;j++){ const pl=P0[j], by=byOf(j), rep=avgColor(pl.rgb);
@@ -304,7 +311,9 @@
 
       // LABELS (numbered), decluttered into a tidy left column: sort by screen height, enforce a min vertical
       // spacing so they spread apart instead of piling up when planes crowd (e.g. when the board is rotated).
-      const LB=P0.map((pl,j)=>({pl, y:_planes[j].cy})).sort((a,b)=>a.y-b.y);
+      // sort by STACK HEIGHT (not screen-Y) so the order is stable — at 90° tilt all planes share a screen-Y and a
+      // Y-sort flips the list. Height-descending = top plane (System) first, matching the visual order at every angle.
+      const LB=P0.map((pl,j)=>({pl, j, y:_planes[j].cy})).sort((a,b)=>byOf(b.j)-byOf(a.j));
       const MINSP=15;
       for(let k=1;k<LB.length;k++) if(LB[k].y-LB[k-1].y<MINSP) LB[k].y=LB[k-1].y+MINSP;
       if(LB.length){ const ov=LB[LB.length-1].y-(CH-8); if(ov>0) for(const L of LB) L.y-=ov;
@@ -312,7 +321,7 @@
       ctx.font='600 11px '+FAM; ctx.textAlign='right'; ctx.textBaseline='middle';
       for(const L of LB){ const pl=L.pl;
         ctx.fillStyle=pl.sys?'rgba(190,170,230,.95)':(pl.off?'rgba(139,148,158,.55)':'rgba(230,237,243,.92)');
-        ctx.fillText((pl.num?pl.num+' · ':'')+pl.name+(pl.off?'  (off)':'')+(pl.sys&&!lock.known?'  (press a key)':''), LGUT-8, L.y); }
+        ctx.fillText(labelStr(pl), labelRight, L.y); }
       readEl.textContent = 'zoom '+zoom+'% · yaw '+Math.round(((yaw/D2R)%360+360)%360)+'° · tilt '+Math.round(pitch/D2R)+'° · gap '+gap;
     }
 
