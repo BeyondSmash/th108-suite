@@ -32,8 +32,8 @@
     const onUp   = e => { updLock(e); if(!getRunning()){ const i=KEYMAP[e.code]; if(i!==undefined) E.releaseKey(state,i); } };
 
     // ---- view params ----
-    let yaw = 22*D2R, pitch = 58*D2R, zoom = 100, gap = 46, enhanced = false, focusIdx = null, auraI = 0.8, faceOn = false, showKeys = true, partSize = 0.55, glass = false;
-    const ISO_PITCH = 58*D2R, FACE_PITCH = 89*D2R;   // isometric tilt vs front-flat (top-down)
+    let yaw = 40*D2R, pitch = 22*D2R, zoom = 100, gap = 50, enhanced = false, focusIdx = null, auraI = 0.8, faceOn = false, showKeys = true, partSize = 0.55, glass = false, waveStyle = 'ripple';
+    const ISO_PITCH = 22*D2R, FACE_PITCH = 89*D2R;   // isometric tilt vs front-flat (top-down)
 
     // ---- panel chrome ----
     const panel = document.createElement('div'); panel.className = 'iso-panel'; panel.hidden = true;
@@ -50,12 +50,16 @@
       '<div class="iso-ctl">' +
         '<button type="button" class="iso-back" hidden>‹ Back</button>' +
         '<span class="iso-zwrap" title="Zoom — tell me the % to bake as default"><input type="range" class="iso-zoom" min="40" max="240" value="100"><small class="iso-zval">100%</small></span>' +
-        '<label class="iso-gl">Gap<input type="range" class="iso-gapr" min="14" max="90" value="46"></label>' +
+        '<label class="iso-gl">Gap<input type="range" class="iso-gapr" min="14" max="90" value="50"></label>' +
         '<button type="button" class="iso-keys on" title="Show the inactive/unused keys so the full keyboard layout reads (esp. face-on / top-down)">⌨ Keys</button>' +
         '<button type="button" class="iso-glass" title="Swap the window background between solid and frosted glass (the page shows through, refracted)">🫧 Glass</button>' +
         '<button type="button" class="iso-enh" title="Wave + rising stardust + aura wisps">✨ Enhanced</button>' +
         '<label class="iso-gl iso-efx" style="display:none" title="Aura glow intensity">Aura<input type="range" class="iso-aint" min="0" max="150" value="80"></label>' +
         '<label class="iso-gl iso-efx" style="display:none" title="Stardust size"><input type="range" class="iso-psz" min="40" max="280" value="55"><small class="iso-pszv" style="font-size:10px;color:var(--muted,#8b949e)">Dust 55%</small></label>' +
+        '<select class="iso-wave iso-efx" style="display:none" title="Enhanced wave pattern">' +
+          '<option value="ripple">〜 Ripple</option><option value="waveX">→ Wave X</option><option value="waveY">↓ Wave Y</option>' +
+          '<option value="radial">◎ Radial</option><option value="twist">⟳ Twist</option><option value="swirl">🌀 Swirl</option>' +
+          '<option value="bounce">↕ Bounce</option><option value="scatter">⁘ Scatter</option></select>' +
         '<button type="button" class="iso-face" title="Tilt the board front-flat (keys facing you) vs isometric">Face-on</button>' +
         '<span class="iso-lock" hidden title="Tilt is locked while Face-on is active — the board faces you flat. Click Face-on again to unlock and tilt freely (you can still spin/yaw).">' +
           '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></span>' +
@@ -86,6 +90,7 @@
         '.iso-ctl button:hover,.iso-head>button.iso-pop:hover,.iso-head>button.iso-popin:hover,.iso-head>button.iso-rs:hover,.iso-head>button.iso-wmax:hover{background:rgba(255,255,255,.13);border-color:rgba(255,255,255,.22)}' +
         '.iso-ctl button:active,.iso-head>button.iso-pop:active,.iso-head>button.iso-popin:active,.iso-head>button.iso-rs:active,.iso-head>button.iso-wmax:active{transform:translateY(1px)}' +
         '.iso-ctl button.on{background:var(--blue,#58a6ff);border-color:transparent;color:#0d1117;box-shadow:0 2px 10px rgba(88,166,255,.35)}' +
+        '.iso-ctl select.iso-wave{margin:0;padding:5px 8px;font-size:12px;font-weight:600;border-radius:8px;border:1px solid rgba(255,255,255,.10);background:rgba(255,255,255,.06);color:var(--fg,#e6edf3);cursor:pointer}' +
         '.iso-zwrap{display:inline-flex;flex-direction:column;align-items:center;gap:1px}' +
         '.iso-zwrap input{width:120px}.iso-zval{font-size:11px;color:var(--muted,#8b949e)}' +
         '.iso-gl{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--muted,#8b949e)}.iso-gl input{width:90px}' +
@@ -111,24 +116,41 @@
     sizeCanvas(DEF_W, DEF_H);
     const $ = s => panel.querySelector(s);
     const zoomEl=$('.iso-zoom'), zvalEl=$('.iso-zval'), gapEl=$('.iso-gapr'), enhEl=$('.iso-enh'), aintEl=$('.iso-aint'), keysEl=$('.iso-keys'),
-          pszEl=$('.iso-psz'), pszvEl=$('.iso-pszv'), glassEl=$('.iso-glass'),
+          pszEl=$('.iso-psz'), pszvEl=$('.iso-pszv'), glassEl=$('.iso-glass'), waveEl=$('.iso-wave'),
           backEl=$('.iso-back'), faceEl=$('.iso-face'), lockEl=$('.iso-lock'), legendEl=$('.iso-legend'), readEl=$('.iso-read');
-    keysEl.addEventListener('click', ()=>{ showKeys=!showKeys; keysEl.classList.toggle('on',showKeys); });
-    glassEl.addEventListener('click', ()=>{ glass=!glass; glassEl.classList.toggle('on',glass); panel.classList.toggle('glass',glass); });   // frosted-glass window: page shows through (draw() clears the canvas instead of dark-filling)
-    pszEl.addEventListener('input', e=>{ partSize=+e.target.value/100; pszvEl.textContent='Dust '+e.target.value+'%'; });
+    // ---- persistence: remember the view settings between sessions ----
+    const SKEY='th108_iso_view';
+    function saveSettings(){ try{ localStorage.setItem(SKEY, JSON.stringify({yaw,pitch,zoom,gap,enhanced,auraI,partSize,glass,showKeys,faceOn,waveStyle})); }catch(_){ } }
+    let _saveT=0; function saveSoon(){ clearTimeout(_saveT); _saveT=setTimeout(saveSettings, 350); }
+    function loadSettings(){ let s; try{ s=JSON.parse(localStorage.getItem(SKEY)); }catch(_){ } if(!s||typeof s!=='object') return;
+      if(typeof s.yaw==='number') yaw=s.yaw; if(typeof s.pitch==='number') pitch=s.pitch;
+      if(typeof s.zoom==='number') zoom=s.zoom; if(typeof s.gap==='number') gap=s.gap;
+      if(typeof s.auraI==='number') auraI=s.auraI; if(typeof s.partSize==='number') partSize=s.partSize;
+      enhanced=!!s.enhanced; glass=!!s.glass; showKeys=s.showKeys!==false; faceOn=!!s.faceOn; if(typeof s.waveStyle==='string') waveStyle=s.waveStyle; }
+    function syncControls(){   // push the (possibly restored) state into the UI controls
+      zoomEl.value=zoom; zvalEl.textContent=zoom+'%'; gapEl.value=gap; aintEl.value=Math.round(auraI*100);
+      pszEl.value=Math.round(partSize*100); pszvEl.textContent='Dust '+Math.round(partSize*100)+'%'; waveEl.value=waveStyle;
+      enhEl.classList.toggle('on',enhanced); panel.querySelectorAll('.iso-efx').forEach(el=>el.style.display=enhanced?'':'none');
+      keysEl.classList.toggle('on',showKeys); glassEl.classList.toggle('on',glass); panel.classList.toggle('glass',glass);
+      faceEl.classList.toggle('on',faceOn); lockEl.hidden=!faceOn; }
+    keysEl.addEventListener('click', ()=>{ showKeys=!showKeys; keysEl.classList.toggle('on',showKeys); saveSoon(); });
+    glassEl.addEventListener('click', ()=>{ glass=!glass; glassEl.classList.toggle('on',glass); panel.classList.toggle('glass',glass); saveSoon(); });   // frosted-glass window: page shows through (draw() clears the canvas instead of dark-filling)
+    pszEl.addEventListener('input', e=>{ partSize=+e.target.value/100; pszvEl.textContent='Dust '+e.target.value+'%'; saveSoon(); });
+    waveEl.addEventListener('change', e=>{ waveStyle=e.target.value; saveSoon(); });
     // keys must NOT interact with the iso UI (Enter was re-toggling the focused Face-on button) — blur any control
     // after a click so it never holds keyboard focus. Reactive still reacts (that's a window-level key listener).
-    panel.addEventListener('click', e=>{ const t=e.target.closest('button,input'); if(t&&t.blur) t.blur(); });
-    zoomEl.addEventListener('input', e=>{ zoom=+e.target.value; zvalEl.textContent=zoom+'%'; });
-    gapEl.addEventListener('input', e=>{ gap=+e.target.value; });
-    aintEl.addEventListener('input', e=>{ auraI=+e.target.value/100; });
+    panel.addEventListener('click', e=>{ const t=e.target.closest('button,input,select'); if(t&&t.blur) t.blur(); });
+    zoomEl.addEventListener('input', e=>{ zoom=+e.target.value; zvalEl.textContent=zoom+'%'; saveSoon(); });
+    gapEl.addEventListener('input', e=>{ gap=+e.target.value; saveSoon(); });
+    aintEl.addEventListener('input', e=>{ auraI=+e.target.value/100; saveSoon(); });
     // Home/End/PageUp/PageDown natively jam a focused range input to min/max — block them so those keys
     // (used for reactive lighting / nav) don't yank a slider. Arrow keys still fine-adjust.
     [zoomEl,gapEl,aintEl,pszEl].forEach(el=> el.addEventListener('keydown', e=>{ if(e.key==='Home'||e.key==='End'||e.key==='PageUp'||e.key==='PageDown') e.preventDefault(); }));
-    enhEl.addEventListener('click', ()=>{ enhanced=!enhanced; enhEl.classList.toggle('on',enhanced); panel.querySelectorAll('.iso-efx').forEach(el=>el.style.display=enhanced?'':'none'); });
-    backEl.addEventListener('click', ()=>{ focusIdx=null; backEl.hidden=true; if(!faceOn){ pitch=ISO_PITCH; yaw=22*D2R; } buildLegend(); });
+    enhEl.addEventListener('click', ()=>{ enhanced=!enhanced; enhEl.classList.toggle('on',enhanced); panel.querySelectorAll('.iso-efx').forEach(el=>el.style.display=enhanced?'':'none'); saveSoon(); });
+    backEl.addEventListener('click', ()=>{ focusIdx=null; backEl.hidden=true; if(!faceOn){ pitch=ISO_PITCH; yaw=40*D2R; } buildLegend(); saveSoon(); });
     // Face-on: snap to a flat front-facing (top-down) view AND lock tilt (so a drag can't knock it off); yaw still spins.
-    faceEl.addEventListener('click', ()=>{ faceOn=!faceOn; pitch=faceOn?FACE_PITCH:ISO_PITCH; if(faceOn) yaw=0; faceEl.classList.toggle('on',faceOn); lockEl.hidden=!faceOn; });
+    faceEl.addEventListener('click', ()=>{ faceOn=!faceOn; pitch=faceOn?FACE_PITCH:ISO_PITCH; if(faceOn) yaw=0; faceEl.classList.toggle('on',faceOn); lockEl.hidden=!faceOn; saveSoon(); });
+    loadSettings(); syncControls();
 
     // ---- drag the panel by its header ----
     const head = $('.iso-head'); let dg=null;
@@ -154,7 +176,7 @@
       }
       cv.classList.toggle('drag', rot.moved>4); });
     cv.addEventListener('pointerup', e=>{ if(!rot) return; const click=rot.moved<=4; const mv=rot; rot=null; cv.classList.remove('drag');
-      if(click) clickAt(mv.px, mv.py); });
+      if(click) clickAt(mv.px, mv.py); saveSoon(); });   // persist the new orientation/focus
     const hitX=e=>{ const b=cv.getBoundingClientRect(); return (e.clientX-b.left)*CW/b.width; };
     const hitY=e=>{ const b=cv.getBoundingClientRect(); return (e.clientY-b.top)*CH/b.height; };
 
@@ -169,6 +191,19 @@
       const rx=bx*cY - bz*sY, rz=bx*sY + bz*cY;
       const up=by*cP - rz*sP, depth=by*sP + rz*cP;
       return [ cx + rx*Z, cy - up*Z, depth ];
+    }
+    // enhanced-wave height offset per key (u,v normalized; j = plane index; t seconds) — selectable styles
+    function waveFn(u,v,j,t){
+      switch(waveStyle){
+        case 'waveX': return Math.sin(u*TAU*1.5 - t*2.2 + j*0.4);
+        case 'waveY': return Math.sin(v*TAU*1.6 - t*2.2 + j*0.4);
+        case 'radial': { const dx=u-0.5,dy=v-0.5; return Math.sin(Math.hypot(dx,dy)*TAU*2.4 - t*2.4); }
+        case 'twist': return Math.sin(Math.atan2(v-0.5,u-0.5)*3 + (u-0.5)*4 + t*1.8);
+        case 'swirl': { const dx=u-0.5,dy=v-0.5; return Math.sin(Math.atan2(dy,dx)*2 + Math.hypot(dx,dy)*TAU*2 - t*2.2); }
+        case 'bounce': return Math.sin(t*2.6 + j*0.9);
+        case 'scatter': { const h=Math.sin((u*127.1+v*311.7)*43.758); return Math.sin((h-Math.floor(h))*TAU + t*2.4); }
+        default: return Math.sin((u*2+v)*TAU + t*1.7 + j*0.6);   // 'ripple'
+      }
     }
 
     function avgColor(rgb){ let r=0,g=0,b=0,n=0; for(let k=0;k<NLED;k++){ const t=k*3, L=rgb[t]+rgb[t+1]+rgb[t+2]; if(L>24){ r+=rgb[t];g+=rgb[t+1];b+=rgb[t+2];n++; } } return n?[r/n|0,g/n|0,b/n|0]:null; }
@@ -236,11 +271,12 @@
     const auraImg=new Image(); let auraReady=false; auraImg.onload=()=>{ auraReady=true; }; auraImg.src='iso-aura-noise.png';
     const _aur=document.createElement('canvas'), _actx=_aur.getContext('2d');
     const SW=190, SH=58;   // fixed slab resolution → affine-mapped onto each gap's board-oriented parallelogram so the aura rotates WITH the planes
-    function tintSlab(col,ox,oy,sc){   // feathered, tinted noise at SW×SH; drawAura maps it onto the gap parallelogram
+    function tintSlab(col,ox,oy,cover){   // feathered, tinted noise at SW×SH; drawAura maps it onto the gap parallelogram
       _aur.width=SW; _aur.height=SH;
       _actx.globalCompositeOperation='source-over'; _actx.clearRect(0,0,SW,SH);
-      const iw=256*sc, ih=256*sc;
-      for(let yy=(oy%ih)-ih; yy<SH; yy+=ih) for(let xx=(ox%iw)-iw; xx<SW; xx+=iw) _actx.drawImage(auraImg,xx,yy,iw,ih);
+      // ONE cover-sized draw (no tiling) → there are no repeated copies and no scroll-wrap seam, so the animation
+      // loops cleanly. ox/oy drift the noise within the cover margin (a small circular path = seamless loop).
+      _actx.drawImage(auraImg, (SW-cover)/2+ox, (SH-cover)/2+oy, cover, cover);
       _actx.globalCompositeOperation='multiply'; _actx.fillStyle='rgb('+col[0]+','+col[1]+','+col[2]+')'; _actx.fillRect(0,0,SW,SH);
       // edge falloff: elliptical vignette (bright center → black edges) so the noise feathers, not a hard box
       _actx.save(); _actx.translate(SW/2,SH/2); _actx.scale(1,SH/SW);
@@ -269,11 +305,13 @@
         // 0 at each plane) → reads as ONE continuous volumetric glow, not a few discrete squished layers. Each
         // sheet seeded differently so the noise doesn't align into visible bands.
         for(let n=0;n<NSHEETS;n++){ const fr=(n+0.5)/NSHEETS, by=sp.lo+span*fr, sl=SLABS[n%SLABS.length];
-          const sc=sl[0], spd=sl[2], bell=Math.sin(fr*Math.PI);
+          const sc=sl[0], bell=0.4+0.6*Math.sin(fr*Math.PI);   // raised floor → no fully-dark trough between gaps (kills the dark band)
+          const w=dir*(0.16+sl[2]*0.012), ph=sdx*0.013+n*0.9;   // circular drift: same freq for x & y → seamless loop (no scroll seam)
+          const ox=Math.cos(tSec*w+ph)*40, oy=Math.sin(tSec*w+ph)*26, cover=300+sc*120;
           const P00=proj(-BW0/2,-BD/2,by,cx,cy), P10=proj(BW0/2,-BD/2,by,cx,cy), P01=proj(-BW0/2,BD/2,by,cx,cy);
           const ux=(P10[0]-P00[0])/SW, uy=(P10[1]-P00[1])/SW, vx=(P01[0]-P00[0])/SH, vy=(P01[1]-P00[1])/SH;
-          const tex=tintSlab(col, dir*tSec*spd+sdx+n*53, tSec*spd*0.25+sdy+n*31, sc);
-          ctx.globalAlpha=0.14*bell*auraI*ls*(0.82+0.18*Math.sin(tSec*1.1+gi*1.7+n));
+          const tex=tintSlab(col, ox, oy, cover);
+          ctx.globalAlpha=0.168*bell*auraI*ls*(0.82+0.18*Math.sin(tSec*1.1+gi*1.7+n));   // 0.14→0.168 (+20% more prominent)
           ctx.setTransform(SS*ux,SS*uy,SS*vx,SS*vy, SS*P00[0], SS*P00[1]);   // affine: SW×SH rect → a footprint sheet (×SS supersample)
           ctx.drawImage(tex,0,0,SW,SH);
         }
@@ -322,7 +360,7 @@
           ctx.fillStyle = pl.sys?'rgba(120,90,160,.10)':(pl.off?'rgba(120,130,150,.05)':'rgba(90,110,140,.09)'); ctx.fill(); }
 
         for(const r of RECTS){ const t=r.k*3, cr=rgb[t],cg=rgb[t+1],cb=rgb[t+2], lum=0.299*cr+0.587*cg+0.114*cb;
-          const wz = AMP*Math.sin((r.u*2 + r.v)*TAU + tSec*1.7 + j*0.6);   // enhanced wave: ripple key heights
+          const wz = AMP*waveFn(r.u, r.v, j, tSec);   // enhanced wave: selectable key-height ripple
           const bx0=(r.u-r.hw-0.5)*BW0, bx1=(r.u+r.hw-0.5)*BW0, bz0=(r.v-r.hh-0.5)*BD, bz1=(r.v+r.hh-0.5)*BD;
           const cor=[proj(bx0,bz0,by+wz,cx,cy),proj(bx1,bz0,by+wz,cx,cy),proj(bx1,bz1,by+wz,cx,cy),proj(bx0,bz1,by+wz,cx,cy)];
           ctx.beginPath(); ctx.moveTo(cor[0][0],cor[0][1]); for(let i=1;i<4;i++) ctx.lineTo(cor[i][0],cor[i][1]); ctx.closePath();
