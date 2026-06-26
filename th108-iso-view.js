@@ -1,166 +1,311 @@
 // th108-iso-view.js — "Isometric View": a draggable floating overlay that shows the layer stack as
-// separate isometric key-planes, each glowing in sync with its layer's live per-key buffer (L.rgb).
-// window.TH108IsoView.create({state, engine, getRunning}) -> { toggle, open, close, isOpen }.
-// Self-contained: builds its own panel on <body>, runs its own rAF while open, NO hardware writes
-// (it only READS each layer's rgb — composeFrame/renderLayer are pure). Mirrors th108-paint-board's
-// reuse of engine.keyCell geometry; it never touches the keymap binder or the keyboard loop.
+// separate 3D key-planes, each glowing in sync with its layer's live per-key buffer (L.rgb).
+// window.TH108IsoView.create({state, engine, getRunning, onLayersChanged, onState}) -> { toggle, open, close, isOpen }.
+// Self-contained (builds its own panel on <body>, own rAF while open); READS layer buffers only — no HID
+// writes (composeFrame/renderLayer are pure). Reuses engine.keyCell geometry like th108-paint-board.
+//
+// View: orthographic 3D — yaw (spin) + pitch (tilt) rotate by click-dragging the canvas; zoom + gap +
+// "Enhanced" (wave + stardust + aura) are controls. Click a plane/legend chip to FOCUS one layer (Back to
+// return; Face-on tilts it front-flat). Per-layer on/off toggles mirror to the compositor cards. The top
+// "System" plane shows firmware-forced lock keys (white when the lock is ON). Carved/silhouetted keys get
+// a red "−" (subtract-blend or reactive-isolate keys remove light from the layers below).
 (function (root) {
   'use strict';
 
-  // firmware-forced lock keys (LED indices) — these light WHITE on the board while their lock is ON,
-  // overriding host lighting (confirmed unbeatable by 0x32 paint — see the NumLock roadmap item). The
-  // "System" plane visualizes exactly that override so you can see it vs the host layers.
   const LOCKS = [ {code:'NumLock', led:29}, {code:'CapsLock', led:48}, {code:'ScrollLock', led:100} ];
+  const RED = '#FF3E3E', TAU = Math.PI*2, D2R = Math.PI/180;
 
   function create(opts) {
     const E = opts.engine, state = opts.state, getRunning = opts.getRunning || (()=>false);
-    const INDICES = E.INDICES, NLED = INDICES.length;
+    const onLayersChanged = opts.onLayersChanged || (()=>{});
+    const onState = opts.onState || (()=>{});
+    const extraPlanes = opts.extraPlanes || (()=>[]);   // host-supplied synthetic planes (e.g. Song-progress, future AI/subagent layer) → [{name, rgb}]
+    const INDICES = E.INDICES, NLED = INDICES.length, KEYMAP = E.KEYMAP;
 
-    // browser can't poll lock-LED state; we learn it from key events' getModifierState (resolves on the
-    // first keypress). Until then it's UNKNOWN → the System plane shows neutral, not a guessed state.
+    // ---- firmware lock state (browser can't poll the lock LEDs — learn it from key events) ----
     const lock = { NumLock:false, CapsLock:false, ScrollLock:false, known:false };
-    const onKey = e => { if (!e.getModifierState) return; lock.known = true;
-      lock.NumLock = e.getModifierState('NumLock'); lock.CapsLock = e.getModifierState('CapsLock');
-      lock.ScrollLock = e.getModifierState('ScrollLock'); };
+    function updLock(e){ if(!e.getModifierState) return; lock.known = true;
+      lock.NumLock=e.getModifierState('NumLock'); lock.CapsLock=e.getModifierState('CapsLock'); lock.ScrollLock=e.getModifierState('ScrollLock'); }
+    // while open + NOT driving, stamp keys into state.react so the Reactive plane reacts to typing in the
+    // preview (the page's own keydown handler only stamps while it's driving the board).
+    const onDown = e => { updLock(e); if(!getRunning() && !e.repeat){ const i=KEYMAP[e.code]; if(i!==undefined) E.stampKey(state,i); } };
+    const onUp   = e => { updLock(e); if(!getRunning()){ const i=KEYMAP[e.code]; if(i!==undefined) E.releaseKey(state,i); } };
 
-    // ----- panel chrome -----
+    // ---- view params ----
+    let yaw = 22*D2R, pitch = 58*D2R, zoom = 100, gap = 46, enhanced = false, focusIdx = null;
+    const ISO_PITCH = 58*D2R, FACE_PITCH = 89*D2R;   // isometric tilt vs front-flat (top-down)
+
+    // ---- panel chrome ----
     const panel = document.createElement('div'); panel.className = 'iso-panel'; panel.hidden = true;
     panel.innerHTML =
       '<div class="iso-head"><span class="iso-grip">⠿</span><b>Isometric View</b>' +
-      '<label class="iso-gap" title="Vertical gap between the stacked layer planes">Gap' +
-      '<input type="range" class="iso-gapr" min="14" max="90" value="46"></label>' +
+      '<span class="iso-spacer"></span>' +
+      '<button type="button" class="iso-rs" hidden title="Reset window to the default size">⤢ Reset size</button>' +
+      '<button type="button" class="iso-pop" title="Pop out into a separate, resizable window">⧉ Pop out</button>' +
+      '<button type="button" class="iso-popin" hidden title="Pop back into the page">⧈ Pop in</button>' +
       '<button type="button" class="iso-x" title="Close">✕</button></div>' +
+      '<div class="iso-ctl">' +
+        '<button type="button" class="iso-back" hidden>‹ Back</button>' +
+        '<span class="iso-zwrap" title="Zoom — tell me the % to bake as default"><input type="range" class="iso-zoom" min="40" max="240" value="100"><small class="iso-zval">100%</small></span>' +
+        '<label class="iso-gl">Gap<input type="range" class="iso-gapr" min="14" max="90" value="46"></label>' +
+        '<button type="button" class="iso-enh" title="Wave + rising stardust + aura wisps">✨ Enhanced</button>' +
+        '<button type="button" class="iso-face" hidden title="Tilt the focused layer front-flat vs isometric">Face-on</button>' +
+      '</div>' +
       '<canvas class="iso-cv"></canvas>' +
-      '<div class="iso-foot">Each plane = one layer (bottom→top), glowing live. Top “System” plane = ' +
-      'firmware-forced lock keys (white = lock ON, overrides host lighting).</div>';
+      '<div class="iso-legend"></div>' +
+      '<div class="iso-foot"><span class="iso-read"></span> · drag the view to rotate · click a layer to focus. ' +
+      'Top “System” plane = firmware-forced lock keys (white = lock ON). Red “−” = key carves the layers below.</div>';
     if (!document.getElementById('iso-view-css')) {
       const st = document.createElement('style'); st.id = 'iso-view-css';
       st.textContent =
-        '.iso-panel{position:fixed;left:50%;top:90px;transform:translateX(-50%);z-index:60;width:540px;' +
+        '.iso-panel{position:fixed;left:50%;top:84px;transform:translateX(-50%);z-index:60;width:600px;' +
         'background:var(--card,#161b22);border:1px solid var(--line,#30363d);border-radius:12px;' +
         'box-shadow:0 18px 50px rgba(0,0,0,.5);font:inherit;color:var(--fg,#e6edf3)}' +
         '.iso-head{display:flex;align-items:center;gap:10px;padding:9px 12px;border-bottom:1px solid var(--line,#30363d);cursor:grab;user-select:none}' +
-        '.iso-head.drag{cursor:grabbing}.iso-grip{color:var(--muted,#8b949e)}.iso-head b{font-size:14px}' +
-        '.iso-gap{margin-left:auto;display:inline-flex;align-items:center;gap:7px;font-size:12px;color:var(--muted,#8b949e);cursor:default}' +
-        '.iso-gapr{width:96px}.iso-x{background:none;border:0;color:var(--muted,#8b949e);font-size:15px;cursor:pointer;line-height:1;padding:2px 4px}' +
-        '.iso-x:hover{color:var(--fg,#e6edf3)}.iso-cv{display:block;width:516px;height:392px;margin:10px auto 2px}' +
-        '.iso-foot{padding:4px 12px 11px;font-size:11px;color:var(--muted,#8b949e);line-height:1.45}';
+        '.iso-head.drag{cursor:grabbing}.iso-grip{color:var(--muted,#8b949e)}.iso-head b{font-size:14px}.iso-spacer{margin-left:auto}' +
+        '.iso-x{display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:50%;' +
+        'background:none;border:0;color:var(--muted,#8b949e);font-size:13px;line-height:1;cursor:pointer;padding:0;margin:0}' +
+        '.iso-x:hover{color:var(--fg,#e6edf3);background:rgba(255,255,255,.06)}' +
+        '.iso-head>button.iso-pop,.iso-head>button.iso-popin,.iso-head>button.iso-rs{margin:0;padding:4px 10px;font-size:11.5px;' +
+        'background:rgba(255,255,255,.05);box-shadow:inset 0 0 0 1px var(--line,#30363d);color:var(--fg,#e6edf3)}' +
+        '.iso-panel.popped{position:static;left:0;top:0;transform:none;width:100%;height:100vh;border:0;border-radius:0;box-shadow:none;display:flex;flex-direction:column}' +
+        '.iso-panel.popped .iso-head{cursor:default}.iso-panel.popped .iso-grip{display:none}' +
+        '.iso-panel.popped .iso-cv{flex:1 1 auto;width:100%;height:auto;min-height:120px;margin:6px 0 2px}' +
+        '.iso-ctl{display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:8px 12px 4px}' +
+        '.iso-ctl button{margin:0;padding:4px 11px;font-size:12px;box-shadow:0 0 0 1px var(--line,#30363d)}' +
+        '.iso-ctl button.on{background:var(--blue,#58a6ff);color:#0d1117;box-shadow:none}' +
+        '.iso-zwrap{display:inline-flex;flex-direction:column;align-items:center;gap:1px}' +
+        '.iso-zwrap input{width:120px}.iso-zval{font-size:11px;color:var(--muted,#8b949e)}' +
+        '.iso-gl{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--muted,#8b949e)}.iso-gl input{width:90px}' +
+        '.iso-cv{display:block;width:576px;height:392px;margin:6px auto 2px;touch-action:none;cursor:grab}.iso-cv.drag{cursor:grabbing}' +
+        '.iso-legend{display:flex;flex-wrap:wrap;gap:6px;padding:4px 12px 2px}' +
+        '.iso-chip{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;padding:3px 8px;border-radius:999px;' +
+        'background:rgba(255,255,255,.05);box-shadow:inset 0 0 0 1px var(--line,#30363d);cursor:pointer;user-select:none}' +
+        '.iso-chip.foc{box-shadow:inset 0 0 0 1px var(--blue,#58a6ff)}.iso-chip.off{opacity:.5}' +
+        '.iso-chip .pw{width:13px;height:13px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:9px;' +
+        'box-shadow:inset 0 0 0 1px var(--muted,#8b949e)}.iso-chip.on .pw{background:#3fb950;box-shadow:none;color:#0d1117}' +
+        '.iso-foot{padding:4px 12px 11px;font-size:11px;color:var(--muted,#8b949e);line-height:1.45}.iso-read{color:var(--fg,#e6edf3)}';
       document.head.appendChild(st);
     }
     document.body.appendChild(panel);
 
     const cv = panel.querySelector('.iso-cv'), ctx = cv.getContext('2d');
-    const SS = 2, CW = 516, CH = 392;
-    cv.width = CW * SS; cv.height = CH * SS;
-    let gap = 46;
-    panel.querySelector('.iso-gapr').addEventListener('input', e => { gap = +e.target.value; });
+    const SS = 2, DEF_W = 576, DEF_H = 392;
+    let CW = DEF_W, CH = DEF_H;
+    function sizeCanvas(w,h){ CW=Math.max(160,Math.round(w)); CH=Math.max(120,Math.round(h)); cv.width=CW*SS; cv.height=CH*SS; }
+    sizeCanvas(DEF_W, DEF_H);
+    const $ = s => panel.querySelector(s);
+    const zoomEl=$('.iso-zoom'), zvalEl=$('.iso-zval'), gapEl=$('.iso-gapr'), enhEl=$('.iso-enh'),
+          backEl=$('.iso-back'), faceEl=$('.iso-face'), legendEl=$('.iso-legend'), readEl=$('.iso-read');
+    zoomEl.addEventListener('input', e=>{ zoom=+e.target.value; zvalEl.textContent=zoom+'%'; });
+    gapEl.addEventListener('input', e=>{ gap=+e.target.value; });
+    enhEl.addEventListener('click', ()=>{ enhanced=!enhanced; enhEl.classList.toggle('on',enhanced); });
+    backEl.addEventListener('click', ()=>{ focusIdx=null; backEl.hidden=true; faceEl.hidden=true; pitch=ISO_PITCH; yaw=22*D2R; buildLegend(); });
+    faceEl.addEventListener('click', ()=>{ const face=pitch<FACE_PITCH-0.05; pitch=face?FACE_PITCH:ISO_PITCH; if(face) yaw=0; faceEl.classList.toggle('on',face); });
 
-    // ----- drag the panel by its header -----
-    const head = panel.querySelector('.iso-head');
-    let dg = null;
-    head.addEventListener('pointerdown', e => {
-      if (e.target.closest('.iso-x, .iso-gap')) return;        // close button + slider aren't drag zones
-      const r = panel.getBoundingClientRect();
-      panel.style.transform = 'none'; panel.style.left = r.left + 'px'; panel.style.top = r.top + 'px';
-      dg = { dx: e.clientX - r.left, dy: e.clientY - r.top }; head.classList.add('drag');
-      head.setPointerCapture(e.pointerId); e.preventDefault();
-    });
-    head.addEventListener('pointermove', e => { if (!dg) return;
-      panel.style.left = Math.max(0, e.clientX - dg.dx) + 'px';
-      panel.style.top  = Math.max(0, e.clientY - dg.dy) + 'px'; });
-    head.addEventListener('pointerup', () => { dg = null; head.classList.remove('drag'); });
+    // ---- drag the panel by its header ----
+    const head = $('.iso-head'); let dg=null;
+    head.addEventListener('pointerdown', e=>{ if(e.target.closest('.iso-x')) return;
+      const r=panel.getBoundingClientRect(); panel.style.transform='none'; panel.style.left=r.left+'px'; panel.style.top=r.top+'px';
+      dg={dx:e.clientX-r.left,dy:e.clientY-r.top}; head.classList.add('drag'); head.setPointerCapture(e.pointerId); e.preventDefault(); });
+    head.addEventListener('pointermove', e=>{ if(!dg) return;
+      const maxL=Math.max(0,window.innerWidth-panel.offsetWidth), maxT=Math.max(0,window.innerHeight-panel.offsetHeight);
+      panel.style.left=Math.min(maxL,Math.max(0,e.clientX-dg.dx))+'px';
+      panel.style.top =Math.min(maxT,Math.max(0,e.clientY-dg.dy))+'px'; });   // clamp to all four viewport edges
+    head.addEventListener('pointerup', ()=>{ dg=null; head.classList.remove('drag'); });
 
-    // ----- isometric projection: board (u,v)∈[0,1]² on plane p → screen px.
-    // u = horizontal (0 left), v = depth (0 back/top of board). AX horizontal, AY sheared down-right
-    // → each plane is a parallelogram; planes lift straight up by `gap` (classic exploded-layers look).
-    const BW = 372, aspect = E.BOARDW / E.BOARDH, BH = (BW / aspect) * 0.5, SHEAR = BH * 1.05;
-    const proj = (u, v, p, ox, oy) => [ ox + u*BW + v*SHEAR, oy + v*BH - p*gap ];
+    // ---- rotate by dragging the canvas (small move = a click → focus the plane under it) ----
+    let rot=null;
+    cv.addEventListener('pointerdown', e=>{ rot={x:e.clientX,y:e.clientY,y0:yaw,p0:pitch,moved:0,px:hitX(e),py:hitY(e)};
+      cv.setPointerCapture(e.pointerId); e.preventDefault(); });
+    cv.addEventListener('pointermove', e=>{ if(!rot) return; const dx=e.clientX-rot.x, dy=e.clientY-rot.y;
+      rot.moved=Math.max(rot.moved,Math.abs(dx)+Math.abs(dy));
+      yaw=rot.y0 + dx*0.7*D2R; pitch=Math.max(8*D2R, Math.min(90*D2R, rot.p0 + dy*0.5*D2R));
+      cv.classList.toggle('drag', rot.moved>4); });
+    cv.addEventListener('pointerup', e=>{ if(!rot) return; const click=rot.moved<=4; const mv=rot; rot=null; cv.classList.remove('drag');
+      if(click) clickAt(mv.px, mv.py); });
+    const hitX=e=>{ const b=cv.getBoundingClientRect(); return (e.clientX-b.left)*CW/b.width; };
+    const hitY=e=>{ const b=cv.getBoundingClientRect(); return (e.clientY-b.top)*CH/b.height; };
 
-    // key rects from keyCell (normalized center+size), inset slightly so tiles don't touch
-    const RECTS = INDICES.map((led, k) => { const c = E.keyCell(led); return c ? { k,
-      u0:c[0]-c[2]*0.46, u1:c[0]+c[2]*0.46, v0:c[1]-c[3]*0.46, v1:c[1]+c[3]*0.46 } : null; }).filter(Boolean);
-    const LOCK_K = LOCKS.map(L => ({ ...L, k: INDICES.indexOf(L.led) })).filter(L => L.k >= 0);
+    // ---- geometry: board (u,v)∈[0,1]² + height by → orthographic screen px ----
+    const BW0=360, BD=BW0*(E.BOARDH/E.BOARDW);   // board width / depth in px (keeps keys ~square)
+    const RECTS = INDICES.map((led,k)=>{ const c=E.keyCell(led); return c ? { k, u:c[0], v:c[1], hw:c[2]*0.46, hh:c[3]*0.46 } : null; }).filter(Boolean);
+    const LOCK_K = LOCKS.map(L=>({...L, k:INDICES.indexOf(L.led)})).filter(L=>L.k>=0);
+    const sysRgb = new Uint8Array(NLED*3);
 
-    // synthetic rgb for the System plane: white at a locked key, else 0 (transparent/dim)
-    const sysRgb = new Uint8Array(NLED * 3);
-    function fillSysRgb() { sysRgb.fill(0);
-      if (!lock.known) return;                                  // unknown → leave all 0 (neutral tiles)
-      for (const L of LOCK_K) if (lock[L.code]) { sysRgb[L.k*3]=255; sysRgb[L.k*3+1]=255; sysRgb[L.k*3+2]=255; } }
-
-    // planes to draw, bottom→top: each layer, then the System plane on top
-    function planes() {
-      const ps = state.layers.map((L,i) => ({ rgb:L.rgb, name:L.name||('Layer '+(i+1)), off:!L.enabled }));
-      fillSysRgb();
-      ps.push({ rgb:sysRgb, name:'System', off:false, sys:true });
-      return ps;
+    function proj(bx,bz,by,cx,cy){
+      const cY=Math.cos(yaw),sY=Math.sin(yaw),cP=Math.cos(pitch),sP=Math.sin(pitch), Z=zoom/100;
+      const rx=bx*cY - bz*sY, rz=bx*sY + bz*cY;
+      const up=by*cP - rz*sP, depth=by*sP + rz*cP;
+      return [ cx + rx*Z, cy - up*Z, depth ];
     }
 
-    function projcorners(r, p, ox, oy) {
-      return [ proj(r.u0,r.v0,p,ox,oy), proj(r.u1,r.v0,p,ox,oy), proj(r.u1,r.v1,p,ox,oy), proj(r.u0,r.v1,p,ox,oy) ]; }
+    function avgColor(rgb){ let r=0,g=0,b=0,n=0; for(let k=0;k<NLED;k++){ const t=k*3, L=rgb[t]+rgb[t+1]+rgb[t+2]; if(L>24){ r+=rgb[t];g+=rgb[t+1];b+=rgb[t+2];n++; } } return n?[r/n|0,g/n|0,b/n|0]:null; }
+    function carveMask(L){ if(L._carve) return L._carve; if(L.type==='reactive'&&L.settings&&L.settings.isolate&&L._inten) return L._inten; return null; }
 
-    function draw() {
-      const P = planes(), N = P.length;
-      // center the whole stack: measure extents at ox=oy=0
-      let minX=1e9,maxX=-1e9,minY=1e9,maxY=-1e9;
-      for (let p=0;p<N;p++) for (const c of [proj(0,0,p,0,0), proj(1,0,p,0,0), proj(1,1,p,0,0), proj(0,1,p,0,0)]) {
-        if(c[0]<minX)minX=c[0]; if(c[0]>maxX)maxX=c[0]; if(c[1]<minY)minY=c[1]; if(c[1]>maxY)maxY=c[1]; }
-      const LGUT = 98;   // left gutter reserved for the right-aligned plane labels
-      const ox = LGUT + (CW-LGUT-(maxX-minX))/2 - minX, oy = (CH-(maxY-minY))/2 - minY;
+    function fillSysRgb(){ sysRgb.fill(0); if(!lock.known) return;
+      for(const L of LOCK_K) if(lock[L.code]){ sysRgb[L.k*3]=255; sysRgb[L.k*3+1]=255; sysRgb[L.k*3+2]=255; } }
 
-      ctx.setTransform(SS,0,0,SS,0,0);
-      ctx.fillStyle = '#0d1117'; ctx.fillRect(0,0,CW,CH);   // canvas backdrop (slightly darker than the card)
+    // ordered plane descriptors: real layers (numbered, toggleable) → host extras (Song-progress, AI…) → System
+    function gather(){ fillSysRgb();
+      const out = state.layers.map((L,i)=>({L, i, id:i, num:i+1, name:L.name||('Layer '+(i+1)), rgb:L.rgb, off:!L.enabled, toggle:true, sys:false}));
+      let xi=0; for(const ex of extraPlanes()) if(ex && ex.rgb) out.push({L:null, i:-1, id:'x'+(xi++), num:0, name:ex.name||'Extra', rgb:ex.rgb, off:false, toggle:false, sys:false});
+      out.push({L:null, i:-1, id:'sys', num:0, name:'System', rgb:sysRgb, off:false, toggle:false, sys:true});
+      return out;
+    }
+    function planeList(){ const g=gather(); if(focusIdx==null) return g; const f=g.find(p=>p.id===focusIdx); return f?[f]:g; }
+    function focusTo(id){ focusIdx=(focusIdx===id)?null:id; backEl.hidden=(focusIdx==null); faceEl.hidden=(focusIdx==null); if(focusIdx==null) pitch=ISO_PITCH; buildLegend(); }
 
-      const FAM = getComputedStyle(document.body).fontFamily || 'system-ui, sans-serif';
-      for (let p=0;p<N;p++) {                                  // bottom→top so upper planes occlude
-        const pl = P[p], rgb = pl.rgb;
-        // faint plane backdrop quad so an all-dark layer still reads as a board
-        const bg = [proj(0,0,p,ox,oy), proj(1,0,p,ox,oy), proj(1,1,p,ox,oy), proj(0,1,p,ox,oy)];
-        ctx.beginPath(); ctx.moveTo(bg[0][0],bg[0][1]); for(let i=1;i<4;i++) ctx.lineTo(bg[i][0],bg[i][1]); ctx.closePath();
-        ctx.fillStyle = pl.sys ? 'rgba(120,90,160,.10)' : (pl.off ? 'rgba(120,130,150,.05)' : 'rgba(90,110,140,.09)');
-        ctx.fill();
-        // keys
-        ctx.shadowBlur = 0;
-        for (const r of RECTS) {
-          const t = r.k*3, cr=rgb[t], cg=rgb[t+1], cb=rgb[t+2], lum = 0.299*cr+0.587*cg+0.114*cb;
-          const cor = projcorners(r, p, ox, oy);
-          ctx.beginPath(); ctx.moveTo(cor[0][0],cor[0][1]); for(let i=1;i<4;i++) ctx.lineTo(cor[i][0],cor[i][1]); ctx.closePath();
-          if (lum > 6) {                                        // lit key: its color, glow scaled by brightness
-            ctx.shadowBlur = pl.off ? 0 : Math.min(14, lum/14); ctx.shadowColor = 'rgb('+cr+','+cg+','+cb+')';
-            ctx.fillStyle = pl.off ? 'rgba('+cr+','+cg+','+cb+',.22)' : 'rgb('+cr+','+cg+','+cb+')';   // off layers ghost subordinate to the live ones
-          } else {                                              // dark key: faint tile so the board shape reads
-            ctx.shadowBlur = 0; ctx.fillStyle = 'rgba(150,160,175,.07)';
-          }
-          ctx.fill();
-        }
-        ctx.shadowBlur = 0;
-        // plane label at the back-left corner
-        const lp = proj(0, -0.04, p, ox, oy);
-        ctx.font = '600 11px '+FAM; ctx.textAlign='right'; ctx.textBaseline='middle';
-        ctx.fillStyle = pl.sys ? 'rgba(190,170,230,.95)' : (pl.off ? 'rgba(139,148,158,.55)' : 'rgba(230,237,243,.92)');
-        ctx.fillText(pl.name + (pl.off?'  (off)':'') + (pl.sys && !lock.known ? '  (press a key)':''), lp[0]-8, lp[1]);
+    // ---- legend chips (focus on click; power dot toggles enabled, mirrored to the compositor) ----
+    function buildLegend(){ legendEl.innerHTML='';
+      for(const p of gather()){ const chip=document.createElement('span');
+        chip.className='iso-chip'+(p.off?' off':' on')+((focusIdx===p.id)?' foc':'');
+        chip.innerHTML=(p.num?'<b>'+p.num+'</b> ':'')+'<span class="nm"></span>'+(p.toggle?'<span class="pw" title="toggle layer">⏻</span>':'');
+        chip.querySelector('.nm').textContent=p.name;
+        chip.addEventListener('click', e=>{ if(p.toggle && e.target.closest('.pw')){ p.L.enabled=!p.L.enabled; onLayersChanged(); buildLegend(); return; } focusTo(p.id); });
+        legendEl.appendChild(chip);
       }
     }
+    function clickAt(px,py){ for(let i=_planes.length-1;i>=0;i--){ if(inQuad(px,py,_planes[i].quad)){ focusTo(_planes[i].id); return; } } }
+    function inQuad(px,py,q){ let s=0; for(let i=0;i<4;i++){ const a=q[i], b=q[(i+1)%4];
+      const cr=(b[0]-a[0])*(py-a[1])-(b[1]-a[1])*(px-a[0]); const sg=cr>0?1:cr<0?-1:0; if(sg){ if(s&&sg!==s) return false; s=sg; } } return true; }
 
-    // ----- live loop while open: keep every layer's rgb fresh, then draw -----
-    let raf = 0;
-    function tick(now) {
-      if (panel.hidden) { raf = 0; return; }
-      try {
-        if (getRunning()) { for (const L of state.layers) if (!L.enabled) E.renderLayer(L, now, state); }
-        else { for (const L of state.layers) E.renderLayer(L, now, state); }   // idle: keyboard loop isn't rendering — do it here (read-only, no HID)
-        draw();
-      } catch(_){ }
-      raf = requestAnimationFrame(tick);
+    // ---- enhanced FX: rising stardust particles ----
+    const P=[]; let _planes=[];
+    function spawnParticles(dt){
+      if(focusIdx!=null || _planes.length<2) return;
+      const rate = 60*dt/1000;   // small dust → spawn more of them
+      let n = rate + (Math.random()<(rate%1)?1:0);
+      for(let s=0;s<n;s++){ const gi=1+((Math.random()*(_planes.length-1))|0); const lo=_planes[gi-1], hi=_planes[gi];
+        const col = lo.col || hi.col || [150,170,210];
+        P.push({ x:lo.cx + (Math.random()-0.5)*lo.hw*1.7, y:lo.cy + (Math.random()-0.5)*10,
+                 vy:-(12+Math.random()*20), life:0, max:0.8+Math.random()*1.0, col,
+                 sz:0.45+Math.random()*0.7, seed:Math.random()*TAU, tw:14+Math.random()*16 }); }   // sz tiny; seed/tw = per-dust twinkle phase+rate
+      if(P.length>320) P.splice(0,P.length-320);
+    }
+    function drawParticles(dt){
+      ctx.globalCompositeOperation='lighter';
+      for(let i=P.length-1;i>=0;i--){ const q=P[i]; q.life+=dt/1000; q.y+=q.vy*dt/1000; q.x+=Math.sin(q.life*1.5+q.seed)*0.25; q.vy*=0.993;
+        const t=q.life/q.max; if(t>=1){ P.splice(i,1); continue; }
+        const tw=0.35+0.65*(0.5+0.5*Math.sin(q.life*q.tw+q.seed));   // fast twinkle
+        const a=Math.sin(t*Math.PI)*0.95*tw, r=q.sz;
+        ctx.fillStyle='rgba('+q.col[0]+','+q.col[1]+','+q.col[2]+','+a+')'; ctx.beginPath(); ctx.arc(q.x,q.y,r,0,TAU); ctx.fill();   // sharp dust core
+        const g=ctx.createRadialGradient(q.x,q.y,0,q.x,q.y,r*2.4);   // tiny soft halo
+        g.addColorStop(0,'rgba('+q.col[0]+','+q.col[1]+','+q.col[2]+','+(a*0.5)+')'); g.addColorStop(1,'rgba('+q.col[0]+','+q.col[1]+','+q.col[2]+',0)');
+        ctx.fillStyle=g; ctx.beginPath(); ctx.arc(q.x,q.y,r*2.4,0,TAU); ctx.fill(); }
+      ctx.globalCompositeOperation='source-over';
+    }
+    function drawAura(tSec){
+      if(focusIdx!=null) return;
+      ctx.globalCompositeOperation='lighter';
+      for(let i=1;i<_planes.length;i++){ const lo=_planes[i-1], hi=_planes[i], col=lo.col||hi.col; if(!col) continue;
+        const mx=(lo.cx+hi.cx)/2, my=(lo.cy+hi.cy)/2, rad=Math.max(40,lo.hw*0.55), a=0.10+0.05*Math.sin(tSec*1.3+i);
+        const g=ctx.createRadialGradient(mx,my,0,mx,my,rad);
+        g.addColorStop(0,'rgba('+col[0]+','+col[1]+','+col[2]+','+a+')'); g.addColorStop(1,'rgba('+col[0]+','+col[1]+','+col[2]+',0)');
+        ctx.fillStyle=g; ctx.beginPath(); ctx.ellipse(mx,my,rad*1.7,rad,0,0,TAU); ctx.fill(); }
+      ctx.globalCompositeOperation='source-over';
     }
 
-    function open() { if (!panel.hidden) return; panel.hidden = false;
-      window.addEventListener('keydown', onKey, true); window.addEventListener('keyup', onKey, true);
-      if (!raf) raf = requestAnimationFrame(tick); }
-    function close() { panel.hidden = true;
-      window.removeEventListener('keydown', onKey, true); window.removeEventListener('keyup', onKey, true);
-      if (raf) { cancelAnimationFrame(raf); raf = 0; } }
-    function toggle() { panel.hidden ? open() : close(); return !panel.hidden; }
-    panel.querySelector('.iso-x').addEventListener('click', close);
+    // ---- main draw ----
+    let _last=0;
+    function draw(now){
+      const dt=Math.min(80, _last?now-_last:16); _last=now; const tSec=now/1000;
+      const P0=planeList(), N=P0.length;
+      const AMP = enhanced ? gap*0.20 : 0;
+      // height of plane index within the drawn set, centered
+      const byOf = j => (j-(N-1)/2)*gap;
+      // layout pass: bbox of plane backdrops at cx=cy=0
+      let minX=1e9,maxX=-1e9,minY=1e9,maxY=-1e9;
+      for(let j=0;j<N;j++){ const by=byOf(j);
+        for(const c of [proj(-BW0/2,-BD/2,by,0,0),proj(BW0/2,-BD/2,by,0,0),proj(BW0/2,BD/2,by,0,0),proj(-BW0/2,BD/2,by,0,0)]){
+          if(c[0]<minX)minX=c[0]; if(c[0]>maxX)maxX=c[0]; if(c[1]<minY)minY=c[1]; if(c[1]>maxY)maxY=c[1]; } }
+      const cx=(CW-(maxX-minX))/2-minX, cy=(CH-(maxY-minY))/2-minY;
+
+      ctx.setTransform(SS,0,0,SS,0,0);
+      ctx.fillStyle='#0d1117'; ctx.fillRect(0,0,CW,CH);
+      const FAM=getComputedStyle(document.body).fontFamily||'system-ui,sans-serif';
+
+      _planes=[];
+      for(let j=0;j<N;j++){ const pl=P0[j], by=byOf(j), rep=avgColor(pl.rgb);
+        const bg=[proj(-BW0/2,-BD/2,by,cx,cy),proj(BW0/2,-BD/2,by,cx,cy),proj(BW0/2,BD/2,by,cx,cy),proj(-BW0/2,BD/2,by,cx,cy)];
+        _planes.push({ quad:bg.map(c=>[c[0],c[1]]), id:pl.id, sys:pl.sys, col:rep,
+          cx:(bg[0][0]+bg[2][0])/2, cy:(bg[0][1]+bg[2][1])/2, hw:Math.abs(bg[1][0]-bg[0][0])/2+Math.abs(bg[2][0]-bg[1][0])/2 });
+      }
+      if(enhanced) drawAura(tSec);
+
+      for(let j=0;j<N;j++){ const pl=P0[j], rgb=pl.rgb, by=byOf(j), mask=pl.L?carveMask(pl.L):null;
+        const bgq=_planes[j].quad;
+        ctx.beginPath(); ctx.moveTo(bgq[0][0],bgq[0][1]); for(let i=1;i<4;i++) ctx.lineTo(bgq[i][0],bgq[i][1]); ctx.closePath();
+        ctx.fillStyle = pl.sys?'rgba(120,90,160,.10)':(pl.off?'rgba(120,130,150,.05)':'rgba(90,110,140,.09)'); ctx.fill();
+
+        for(const r of RECTS){ const t=r.k*3, cr=rgb[t],cg=rgb[t+1],cb=rgb[t+2], lum=0.299*cr+0.587*cg+0.114*cb;
+          const wz = AMP*Math.sin((r.u*2 + r.v)*TAU + tSec*1.7 + j*0.6);   // enhanced wave: ripple key heights
+          const bx0=(r.u-r.hw-0.5)*BW0, bx1=(r.u+r.hw-0.5)*BW0, bz0=(r.v-r.hh-0.5)*BD, bz1=(r.v+r.hh-0.5)*BD;
+          const cor=[proj(bx0,bz0,by+wz,cx,cy),proj(bx1,bz0,by+wz,cx,cy),proj(bx1,bz1,by+wz,cx,cy),proj(bx0,bz1,by+wz,cx,cy)];
+          ctx.beginPath(); ctx.moveTo(cor[0][0],cor[0][1]); for(let i=1;i<4;i++) ctx.lineTo(cor[i][0],cor[i][1]); ctx.closePath();
+          if(lum>6){ ctx.shadowBlur=pl.off?0:Math.min(14,lum/14); ctx.shadowColor='rgb('+cr+','+cg+','+cb+')';
+            ctx.fillStyle=pl.off?'rgba('+cr+','+cg+','+cb+',.22)':'rgb('+cr+','+cg+','+cb+')'; }
+          else { ctx.shadowBlur=0; ctx.fillStyle='rgba(150,160,175,.07)'; }
+          ctx.fill(); ctx.shadowBlur=0;
+          if(mask && mask[r.k]>0.15){ const m=proj((r.u-0.5)*BW0,(r.v-0.5)*BD,by+wz,cx,cy);   // silhouetted/carving key
+            ctx.fillStyle=RED; ctx.font='700 '+Math.max(9,11*zoom/100)+'px '+FAM; ctx.textAlign='center'; ctx.textBaseline='middle';
+            ctx.fillText('−', m[0], m[1]); }
+        }
+        // plane label (numbered), at the back-left corner
+        const lp=proj(-BW0/2, -BD/2-14, by, cx, cy);
+        ctx.font='600 11px '+FAM; ctx.textAlign='right'; ctx.textBaseline='middle';
+        ctx.fillStyle = pl.sys?'rgba(190,170,230,.95)':(pl.off?'rgba(139,148,158,.55)':'rgba(230,237,243,.92)');
+        ctx.fillText((pl.num?pl.num+' · ':'')+pl.name+(pl.off?'  (off)':'')+(pl.sys&&!lock.known?'  (press a key)':''), lp[0]-6, lp[1]);
+      }
+
+      if(enhanced){ spawnParticles(dt); drawParticles(dt); } else if(P.length) P.length=0;
+      readEl.textContent = 'zoom '+zoom+'% · yaw '+Math.round(((yaw/D2R)%360+360)%360)+'° · tilt '+Math.round(pitch/D2R)+'° · gap '+gap;
+    }
+
+    // ---- pop-out window + loop ----
+    let raf=0, rafWin=window, popWin=null;
+    const popEl=$('.iso-pop'), popinEl=$('.iso-popin'), rsEl=$('.iso-rs');
+    function schedule(){ rafWin=popWin||window; raf=rafWin.requestAnimationFrame(tick); }
+    function tick(now){ if(panel.hidden){ raf=0; return; }
+      try{ if(getRunning()){ for(const L of state.layers) if(!L.enabled) E.renderLayer(L,now,state); }
+           else { for(const L of state.layers) E.renderLayer(L,now,state); }
+           draw(now); }catch(_){}
+      schedule();
+    }
+    function fitPop(){ if(popWin) sizeCanvas(cv.clientWidth, cv.clientHeight); }
+    const onPopResize=()=>{ if(popWin) popWin.requestAnimationFrame(fitPop); };
+    function copyVars(el){ const cs=getComputedStyle(document.documentElement);
+      ['--card','--line','--fg','--muted','--blue','--text','--accent','--mint','--ring'].forEach(v=>{ const val=cs.getPropertyValue(v); if(val) el.style.setProperty(v,val); }); }
+    function popOut(){ if(popWin) return;
+      const w=window.open('','th108iso','popup,width=720,height=600'); if(!w){ alert('Pop-out blocked — allow popups for this page, then try again.'); return; }
+      popWin=w; const d=w.document; d.title='Isometric View — th108'; d.body.style.margin='0'; d.body.style.background='#0d1117';
+      const css=document.getElementById('iso-view-css'); if(css){ const c=css.cloneNode(true); c.id='iso-view-css-pop'; d.head.appendChild(c); }
+      copyVars(d.documentElement); d.body.appendChild(panel); panel.classList.add('popped');
+      w.addEventListener('resize',onPopResize); w.addEventListener('keydown',onDown,true); w.addEventListener('keyup',onUp,true);
+      w.addEventListener('pagehide',popIn);
+      popEl.hidden=true; popinEl.hidden=false; rsEl.hidden=false;
+      if(raf){ try{ rafWin.cancelAnimationFrame(raf); }catch(_){} raf=0; } schedule();   // drive from the child window (focused → not rAF-throttled)
+      w.requestAnimationFrame(fitPop);
+    }
+    function popIn(){ if(!popWin) return; const w=popWin; popWin=null;
+      try{ w.removeEventListener('resize',onPopResize); }catch(_){}
+      try{ document.body.appendChild(panel); }catch(_){}
+      panel.classList.remove('popped'); sizeCanvas(DEF_W,DEF_H);
+      popEl.hidden=false; popinEl.hidden=true; rsEl.hidden=true;
+      try{ w.close(); }catch(_){}
+      raf=0; if(!panel.hidden) schedule();   // child rAF is dead; reschedule on the parent
+    }
+    function resetSize(){ if(popWin){ popWin.resizeTo(720,600); onPopResize(); } }
+    popEl.addEventListener('click',popOut); popinEl.addEventListener('click',popIn); rsEl.addEventListener('click',resetSize);
+
+    function open(){ if(!panel.hidden) return; panel.hidden=false; buildLegend();
+      window.addEventListener('keydown',onDown,true); window.addEventListener('keyup',onUp,true);
+      if(!raf) schedule(); onState(true); }
+    function close(){ if(panel.hidden) return; if(popWin) popIn(); panel.hidden=true; P.length=0;
+      window.removeEventListener('keydown',onDown,true); window.removeEventListener('keyup',onUp,true);
+      if(raf){ try{ rafWin.cancelAnimationFrame(raf); }catch(_){} raf=0; } onState(false); }
+    function toggle(){ panel.hidden?open():close(); return !panel.hidden; }
+    $('.iso-x').addEventListener('click', close);
 
     return { toggle, open, close, isOpen:()=>!panel.hidden };
   }

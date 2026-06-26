@@ -1477,8 +1477,31 @@ const LUI=TH108LayersUI.create({
 LUI.init();   // restore saved layers → ensureSettings backfill → build cards → persist-on-edit listeners on #layersPanel
 
 // Isometric View — floating draggable overlay of the layer stack as separate live key-planes
-const ISO=TH108IsoView.create({ state, engine:TH108Engine, getRunning:()=>running });
-document.getElementById('isoBtn').addEventListener('click',function(){ this.classList.toggle('primary', ISO.toggle()); });
+const _npPlaneRgb=new Uint8Array(TH108Engine.NLED*3);
+function isoExtraPlanes(){   // Song-progress bar (keys 1-0 / numpad) as its own plane when enabled, + the track-change flash keys
+  const on=document.getElementById('npBar'); if(!on||!on.checked) return [];
+  const ms=_npPos; if(!ms||!ms.hasMedia) return [];
+  _npPlaneRgb.fill(0);
+  const keys=(((document.getElementById('npBarKeys')||{}).value)==='numpad')?NP_NUMPAD:NP_DIGITS;
+  const [br,bg,bb]=TH108Engine.hexToRgb(((document.getElementById('npBarColor')||{}).value)||'#11ff00');
+  const f=Math.max(0,Math.min(100,+((document.getElementById('npBarBright')||{}).value)||60))/100;
+  const grad=((document.getElementById('npBarGrad')||{}).value)||'solid';
+  const fit=!!((document.getElementById('npBarGradFit')||{}).checked);
+  const lit=Math.round((ms.progress||0)*keys.length), span=(fit?lit:keys.length)-1;
+  for(let i=0;i<lit && i<keys.length;i++){ let b=0; if(grad&&grad!=='solid'&&span>0){ const p=i/span; b=grad==='fromWhite'?1-p:p; }
+    const o=keys[i]*3; _npPlaneRgb[o]=((br+(255-br)*b)*f)|0; _npPlaneRgb[o+1]=((bg+(255-bg)*b)*f)|0; _npPlaneRgb[o+2]=((bb+(255-bb)*b)*f)|0; }
+  // "Flash keys 1-0 on track change" → demo it in the preview as a gentle pulse in the flash color (the real flash is a 150ms daemon event we can't observe here)
+  const fl=document.getElementById('npFlash');
+  if(fl&&fl.checked){ const [fr,fg,fb]=TH108Engine.hexToRgb(((document.getElementById('npFlashColor')||{}).value)||'#ffd000');
+    const pulse=(0.15+0.2*(0.5+0.5*Math.sin(performance.now()/650)));
+    for(let i=0;i<keys.length;i++){ const o=keys[i]*3; _npPlaneRgb[o]=Math.max(_npPlaneRgb[o],fr*pulse|0); _npPlaneRgb[o+1]=Math.max(_npPlaneRgb[o+1],fg*pulse|0); _npPlaneRgb[o+2]=Math.max(_npPlaneRgb[o+2],fb*pulse|0); } }
+  return [{name:'Song progress', rgb:_npPlaneRgb}];
+}
+const ISO=TH108IsoView.create({ state, engine:TH108Engine, getRunning:()=>running,
+  extraPlanes: isoExtraPlanes,
+  onLayersChanged: ()=>{ try{ LUI.buildCards(); LUI.scheduleSave(); }catch(_){ } },   // iso-view layer toggle → rebuild the compositor cards + persist
+  onState: (open)=>{ document.getElementById('isoBtn').classList.toggle('primary', open); } });   // keep the button lit only while the panel is open (incl. ✕ close)
+document.getElementById('isoBtn').addEventListener('click',()=>ISO.toggle());
 attachHex(document.getElementById('gifPanel'));   // typeable hex box on the GIF bar-color picker
 // while testing keys, don't let a focused <select> hijack letter presses (type-ahead); keep arrow/enter nav
 document.addEventListener('keydown',e=>{ if(e.target && e.target.tagName==='SELECT' && e.key && e.key.length===1) e.preventDefault(); }, true);
