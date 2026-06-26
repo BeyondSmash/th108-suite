@@ -41,7 +41,7 @@
     panel.innerHTML =
       '<div class="iso-head"><span class="iso-grip">⠿</span><b>Isometric View</b>' +
       '<span class="iso-spacer"></span>' +
-      '<button type="button" class="iso-wmax" hidden title="Maximize / restore the pop-out window">⛶</button>' +
+      '<button type="button" class="iso-wmax" hidden title="Maximize the pop-out window to fill the screen (minimize it from the taskbar; ⤢ Reset size restores)">⛶ Maximize</button>' +
       '<button type="button" class="iso-rs" hidden title="Reset the pop-out window to the default size">⤢ Reset size</button>' +
       '<button type="button" class="iso-pop" title="Pop out into a separate, resizable window">' +
         '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px"><path d="M21 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h6"/><path d="m21 3-9 9"/><path d="M15 3h6v6"/></svg>Pop out</button>' +
@@ -393,7 +393,7 @@
     }
 
     // ---- pop-out window + loop ----
-    let raf=0, rafWin=window, popWin=null, winMax=false;
+    let raf=0, rafWin=window, popWin=null;
     const popEl=$('.iso-pop'), popinEl=$('.iso-popin'), rsEl=$('.iso-rs'), wmaxEl=$('.iso-wmax');
     function schedule(){ rafWin=popWin||window; raf=rafWin.requestAnimationFrame(tick); }
     function tick(now){ if(panel.hidden){ raf=0; return; }
@@ -406,15 +406,11 @@
     const onPopResize=()=>{ if(popWin) popWin.requestAnimationFrame(fitPop); };
     function copyVars(el){ const cs=getComputedStyle(document.documentElement);
       ['--card','--line','--fg','--muted','--blue','--text','--accent','--mint','--ring'].forEach(v=>{ const val=cs.getPropertyValue(v); if(val) el.style.setProperty(v,val); }); }
-    async function popOut(){ if(popWin) return;
-      let w=null;
-      try{
-        if(window.documentPictureInPicture && window.documentPictureInPicture.requestWindow)
-          w = await window.documentPictureInPicture.requestWindow({ width:720, height:600 });   // Document Picture-in-Picture: a real resizable, always-on-top window NOT subject to popup blocking (Chromium — WebHID already requires it)
-        else
-          w = window.open('','th108iso','popup,width=720,height=600');                          // fallback for older Chromium
-      }catch(_){ w=null; }
-      if(!w){ readEl.textContent='Pop-out unavailable — update Chromium or allow popups'; return; }
+    function popOut(){ if(popWin) return;
+      // a real OS popup window → appears in the taskbar and the OS provides minimize / maximize / close
+      // (Document PiP is always-on-top with no taskbar entry and no min/max chrome, so it can't do this).
+      const w = window.open('','th108iso','popup,width=780,height=640');
+      if(!w){ readEl.textContent='Pop-out blocked — allow popups for this page, then try again'; return; }
       popWin=w; const d=w.document; try{ d.title='Isometric View — th108'; }catch(_){} d.body.style.margin='0'; d.body.style.background='#0d1117';
       const css=document.getElementById('iso-view-css'); if(css){ const c=css.cloneNode(true); c.id='iso-view-css-pop'; d.head.appendChild(c); }
       copyVars(d.documentElement); d.body.appendChild(panel); panel.classList.add('popped');
@@ -428,15 +424,12 @@
       try{ w.removeEventListener('resize',onPopResize); }catch(_){}
       try{ document.body.appendChild(panel); }catch(_){}
       panel.classList.remove('popped'); sizeCanvas(DEF_W,DEF_H);
-      popEl.hidden=false; popinEl.hidden=true; rsEl.hidden=true; wmaxEl.hidden=true; winMax=false; wmaxEl.classList.remove('on');
+      popEl.hidden=false; popinEl.hidden=true; rsEl.hidden=true; wmaxEl.hidden=true;
       try{ w.close(); }catch(_){}
       raf=0; if(!panel.hidden) schedule();   // child rAF is dead; reschedule on the parent
     }
-    // resizeTo on a PiP window needs a user activation — fine, these run from a real button click.
-    function resetSize(){ if(!popWin) return; try{ popWin.resizeTo(720,600); }catch(_){} winMax=false; wmaxEl.classList.remove('on'); onPopResize(); }
-    function winMaximize(){ if(!popWin) return; winMax=!winMax;
-      try{ if(winMax) popWin.resizeTo(popWin.screen.availWidth, popWin.screen.availHeight); else popWin.resizeTo(720,600); }catch(_){}
-      wmaxEl.classList.toggle('on',winMax); onPopResize(); }
+    function resetSize(){ if(!popWin) return; try{ popWin.resizeTo(780,640); }catch(_){} onPopResize(); }   // restore to the default size
+    function winMaximize(){ if(!popWin) return; try{ popWin.moveTo(0,0); popWin.resizeTo(popWin.screen.availWidth, popWin.screen.availHeight); }catch(_){} onPopResize(); }   // fill the screen
     popEl.addEventListener('click',popOut); popinEl.addEventListener('click',popIn); rsEl.addEventListener('click',resetSize); wmaxEl.addEventListener('click',winMaximize);
 
     function open(){ if(!panel.hidden) return; panel.hidden=false; buildLegend();
