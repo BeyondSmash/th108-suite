@@ -32,7 +32,7 @@
     const onUp   = e => { updLock(e); if(!getRunning()){ const i=KEYMAP[e.code]; if(i!==undefined) E.releaseKey(state,i); } };
 
     // ---- view params ----
-    let yaw = 22*D2R, pitch = 58*D2R, zoom = 100, gap = 46, enhanced = false, focusIdx = null, auraI = 0.8, faceOn = false, showKeys = true, partSize = 1, glass = false;
+    let yaw = 22*D2R, pitch = 58*D2R, zoom = 100, gap = 46, enhanced = false, focusIdx = null, auraI = 0.8, faceOn = false, showKeys = true, partSize = 0.55, glass = false;
     const ISO_PITCH = 58*D2R, FACE_PITCH = 89*D2R;   // isometric tilt vs front-flat (top-down)
 
     // ---- panel chrome ----
@@ -55,7 +55,7 @@
         '<button type="button" class="iso-glass" title="Swap the window background between solid and frosted glass (the page shows through, refracted)">🫧 Glass</button>' +
         '<button type="button" class="iso-enh" title="Wave + rising stardust + aura wisps">✨ Enhanced</button>' +
         '<label class="iso-gl iso-efx" style="display:none" title="Aura glow intensity">Aura<input type="range" class="iso-aint" min="0" max="150" value="80"></label>' +
-        '<label class="iso-gl iso-efx" style="display:none" title="Stardust size"><input type="range" class="iso-psz" min="40" max="280" value="100"><small class="iso-pszv" style="font-size:10px;color:var(--muted,#8b949e)">Dust 100%</small></label>' +
+        '<label class="iso-gl iso-efx" style="display:none" title="Stardust size"><input type="range" class="iso-psz" min="40" max="280" value="55"><small class="iso-pszv" style="font-size:10px;color:var(--muted,#8b949e)">Dust 55%</small></label>' +
         '<button type="button" class="iso-face" title="Tilt the board front-flat (keys facing you) vs isometric">Face-on</button>' +
         '<span class="iso-lock" hidden title="Tilt is locked while Face-on is active — the board faces you flat. Click Face-on again to unlock and tilt freely (you can still spin/yaw).">' +
           '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></span>' +
@@ -251,7 +251,7 @@
       return _aur;
     }
     const SLABS=[[0.55,0.17,7],[0.9,0.20,12],[1.45,0.12,19]];   // [scale, baseAlpha, scrollSpeed] — 3 parallax sheets
-    const HFRAC=[0.3,0.5,0.7];   // heights across the gap for the stacked footprint glow-sheets
+    const NSHEETS=6;   // overlapping footprint sheets per gap → a continuous volumetric glow (not discrete bands)
     function drawAura(tSec, cx, cy, byOf){
       if(!auraReady || auraI<=0) return;
       // each aura fills the gap between two planes (or around a focused plane) with stacked footprint glow-sheets,
@@ -265,14 +265,16 @@
       for(const sp of spots){ gi++; const col=sp.col, span=sp.hi-sp.lo;
         const lum=(0.299*col[0]+0.587*col[1]+0.114*col[2])/255, ls=0.5+0.5*(1-lum*0.7);   // tame white/bright vs the colored auras
         const sdx=gi*167.3, sdy=gi*97.1, dir=(gi%2)?1:-1;   // per-gap seed: different start offset + alternating scroll direction so layers don't move in lockstep
-        // stack a few full-footprint (width×depth) glow sheets across the gap height → a gap-filling volume that
-        // reads from ANY angle: a width-only curtain vanishes edge-on, a single footprint vanishes at low pitch.
-        for(let si=0;si<SLABS.length;si++){ const sc=SLABS[si][0], baseA=SLABS[si][1], spd=SLABS[si][2], by=sp.lo+span*HFRAC[si];
+        // MANY overlapping full-footprint sheets across the gap, alpha bell-weighted (brightest mid-gap, fading to
+        // 0 at each plane) → reads as ONE continuous volumetric glow, not a few discrete squished layers. Each
+        // sheet seeded differently so the noise doesn't align into visible bands.
+        for(let n=0;n<NSHEETS;n++){ const fr=(n+0.5)/NSHEETS, by=sp.lo+span*fr, sl=SLABS[n%SLABS.length];
+          const sc=sl[0], spd=sl[2], bell=Math.sin(fr*Math.PI);
           const P00=proj(-BW0/2,-BD/2,by,cx,cy), P10=proj(BW0/2,-BD/2,by,cx,cy), P01=proj(-BW0/2,BD/2,by,cx,cy);
           const ux=(P10[0]-P00[0])/SW, uy=(P10[1]-P00[1])/SW, vx=(P01[0]-P00[0])/SH, vy=(P01[1]-P00[1])/SH;
-          const tex=tintSlab(col, dir*tSec*spd+sdx, tSec*spd*0.25+sdy, sc);
-          ctx.globalAlpha=baseA*auraI*ls*(0.7+0.3*Math.sin(tSec*1.1+gi*1.7+si));
-          ctx.setTransform(SS*ux,SS*uy,SS*vx,SS*vy, SS*P00[0], SS*P00[1]);   // affine: SW×SH rect → the gap curtain (×SS supersample)
+          const tex=tintSlab(col, dir*tSec*spd+sdx+n*53, tSec*spd*0.25+sdy+n*31, sc);
+          ctx.globalAlpha=0.14*bell*auraI*ls*(0.82+0.18*Math.sin(tSec*1.1+gi*1.7+n));
+          ctx.setTransform(SS*ux,SS*uy,SS*vx,SS*vy, SS*P00[0], SS*P00[1]);   // affine: SW×SH rect → a footprint sheet (×SS supersample)
           ctx.drawImage(tex,0,0,SW,SH);
         }
       }
@@ -315,9 +317,9 @@
       if(enhanced) drawAura(tSec, cx, cy, byOf);
 
       for(let j=0;j<N;j++){ const pl=P0[j], rgb=pl.rgb, by=byOf(j), mask=pl.L?carveMask(pl.L):null;
-        const bgq=_planes[j].quad;
-        ctx.beginPath(); ctx.moveTo(bgq[0][0],bgq[0][1]); for(let i=1;i<4;i++) ctx.lineTo(bgq[i][0],bgq[i][1]); ctx.closePath();
-        ctx.fillStyle = pl.sys?'rgba(120,90,160,.10)':(pl.off?'rgba(120,130,150,.05)':'rgba(90,110,140,.09)'); ctx.fill();
+        if(showKeys){ const bgq=_planes[j].quad;   // the per-layer plane backdrop is part of "show keys" → hidden too when Keys is off (only lit keys float)
+          ctx.beginPath(); ctx.moveTo(bgq[0][0],bgq[0][1]); for(let i=1;i<4;i++) ctx.lineTo(bgq[i][0],bgq[i][1]); ctx.closePath();
+          ctx.fillStyle = pl.sys?'rgba(120,90,160,.10)':(pl.off?'rgba(120,130,150,.05)':'rgba(90,110,140,.09)'); ctx.fill(); }
 
         for(const r of RECTS){ const t=r.k*3, cr=rgb[t],cg=rgb[t+1],cb=rgb[t+2], lum=0.299*cr+0.587*cg+0.114*cb;
           const wz = AMP*Math.sin((r.u*2 + r.v)*TAU + tSec*1.7 + j*0.6);   // enhanced wave: ripple key heights
