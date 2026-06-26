@@ -257,35 +257,46 @@
     // No rectangular geometry → no edges, seams or bands. Rendered low-res then upscaled (natural blur).
     const auraImg=new Image(); let auraReady=false; auraImg.onload=()=>{ auraReady=true; }; auraImg.src='iso-aura-noise.png';
     const _glow=document.createElement('canvas'), _gctx=_glow.getContext('2d');
+    const _gapBox=[]; let _gapReady=false;   // per-gap glow regions (glow-space bboxes), composited BETWEEN the planes
     const GLOWS=0.36;   // glow render scale (low-res → soft + cheap)
+    // Render the noise-swirled colour field for each GAP into the offscreen _glow (NOT to the scene). The main loop
+    // then composites each gap's region between its two planes (compositeGap) so the glow lives IN the gaps and the
+    // layer above occludes it → volumetric depth, not a flat backdrop.
     function drawAura(tSec){
+      _gapReady=false;
       if(!auraReady || auraI<=0) return;
       const gw=Math.max(2,Math.round(CW*GLOWS)), gh=Math.max(2,Math.round(CH*GLOWS));
       if(_glow.width!==gw) _glow.width=gw; if(_glow.height!==gh) _glow.height=gh;
       _gctx.setTransform(1,0,0,1,0,0); _gctx.globalAlpha=1; _gctx.globalCompositeOperation='source-over'; _gctx.clearRect(0,0,gw,gh);
-      // 1) colour field: one large elliptical blob per plane (additive) → overlapping blobs make a continuous,
-      //    edgeless glow that fills the gaps. Uses the temporally-smoothed plane colour → no keypress twitch.
+      _gapBox.length=0;
+      // 1) one soft elliptical blob PER GAP (board-wide × gap-tall) at the gap midpoint; smoothed colour, additive.
       _gctx.globalCompositeOperation='lighter';
-      for(let i=0;i<_planes.length;i++){ const pl=_planes[i], col=pl.col; if(!col) continue;
-        const bx=pl.cx*GLOWS, by=pl.cy*GLOWS, r=Math.max(8, pl.hw*GLOWS*0.82), c='rgba('+col[0]+','+col[1]+','+col[2]+',';
-        const lum=(0.299*col[0]+0.587*col[1]+0.114*col[2])/255, ls=0.5+0.5*(1-lum*0.7), a=1.05*auraI*ls;   // brighter to offset the stronger noise carving
-        // a wide-but-short ellipse hugging the layer, with a fast falloff → the glow CLINGS to the keyboard stack
-        // and the panel edges/corners stay dark (not a full-viewport wash). Blobs overlap vertically into one field.
-        _gctx.save(); _gctx.translate(bx,by); _gctx.scale(1.0,0.3);
-        const g=_gctx.createRadialGradient(0,0,0, 0,0, r);
-        g.addColorStop(0,c+a+')'); g.addColorStop(0.5,c+(a*0.32)+')'); g.addColorStop(1,c+'0)');
-        _gctx.fillStyle=g; _gctx.beginPath(); _gctx.arc(0,0,r,0,TAU); _gctx.fill(); _gctx.restore();
+      for(let i=1;i<_planes.length;i++){ const lo=_planes[i-1], hi=_planes[i], col=lo.col||hi.col; if(!col) continue;
+        const cxm=(lo.cx+hi.cx)/2*GLOWS, cym=(lo.cy+hi.cy)/2*GLOWS, c='rgba('+col[0]+','+col[1]+','+col[2]+',';
+        const rx=Math.max(8, lo.hw*GLOWS), ry=Math.max(5, Math.abs(hi.cy-lo.cy)*GLOWS*0.42);   // <0.5*gap so adjacent gaps don't overlap → each gap's bbox is isolated (no seam)
+        const lum=(0.299*col[0]+0.587*col[1]+0.114*col[2])/255, ls=0.5+0.5*(1-lum*0.7), a=1.25*auraI*ls;
+        _gctx.save(); _gctx.translate(cxm,cym); _gctx.scale(1, ry/rx);
+        const g=_gctx.createRadialGradient(0,0,0, 0,0, rx);
+        g.addColorStop(0,c+a+')'); g.addColorStop(0.35,c+(a*0.55)+')'); g.addColorStop(0.7,c+(a*0.16)+')'); g.addColorStop(1,c+'0)');   // gradual falloff → soft band edges
+        _gctx.fillStyle=g; _gctx.beginPath(); _gctx.arc(0,0,rx,0,TAU); _gctx.fill(); _gctx.restore();
+        const x0=Math.max(0,Math.floor(cxm-rx)), y0=Math.max(0,Math.floor(cym-ry)), x1=Math.min(gw,Math.ceil(cxm+rx)), y1=Math.min(gh,Math.ceil(cym+ry));   // tight bbox = exactly the blob (it fades to 0 at the edge → no hard rectangle)
+        _gapBox[i]={x:x0,y:y0,w:x1-x0,h:y1-y0};
       }
       // 2) modulate with TWO counter-ROTATING noise layers (multiply) → a continuous swirling flow (no ping-pong,
-      //    no seam) with parallax depth, and strong enough contrast to read as volumetric cloud, not a flat wash.
+      //    no seam) with parallax depth, strong enough to read as volumetric cloud.
       _gctx.globalCompositeOperation='multiply';
       const M=Math.max(gw,gh);
-      _gctx.save(); _gctx.translate(gw/2,gh/2); _gctx.rotate(tSec*0.05);  const n1=M*1.7; _gctx.globalAlpha=0.7; _gctx.drawImage(auraImg,-n1/2,-n1/2,n1,n1); _gctx.restore();   // large, slow, CW
-      _gctx.save(); _gctx.translate(gw/2,gh/2); _gctx.rotate(-tSec*0.085+1); const n2=M*1.3; _gctx.globalAlpha=0.55; _gctx.drawImage(auraImg,-n2/2,-n2/2,n2,n2); _gctx.restore();   // smaller, faster, CCW → parallax swirl
+      _gctx.save(); _gctx.translate(gw/2,gh/2); _gctx.rotate(tSec*0.05);  const n1=M*1.7; _gctx.globalAlpha=0.7; _gctx.drawImage(auraImg,-n1/2,-n1/2,n1,n1); _gctx.restore();
+      _gctx.save(); _gctx.translate(gw/2,gh/2); _gctx.rotate(-tSec*0.085+1); const n2=M*1.3; _gctx.globalAlpha=0.55; _gctx.drawImage(auraImg,-n2/2,-n2/2,n2,n2); _gctx.restore();
       _gctx.globalAlpha=1; _gctx.globalCompositeOperation='source-over';
-      // 3) composite onto the scene (additive, upscaled → smooth blur)
+      _gapReady=true;
+    }
+    // composite gap i's glow region (between plane i-1 and i) — called BETWEEN those two plane draws so the upper
+    // layer occludes it (the glow sits IN the gap, behind the keys above).
+    function compositeGap(i){
+      if(!_gapReady) return; const b=_gapBox[i]; if(!b||b.w<=0||b.h<=0) return;
       ctx.setTransform(SS,0,0,SS,0,0); ctx.imageSmoothingEnabled=true; ctx.globalCompositeOperation='lighter';
-      ctx.drawImage(_glow, 0,0,gw,gh, 0,0,CW,CH);
+      ctx.drawImage(_glow, b.x,b.y,b.w,b.h, b.x/GLOWS,b.y/GLOWS,b.w/GLOWS,b.h/GLOWS);
       ctx.globalCompositeOperation='source-over';
     }
 
@@ -336,6 +347,7 @@
       if(enhanced) drawAura(tSec);
 
       for(let j=0;j<N;j++){ const pl=P0[j], rgb=pl.rgb, by=byOf(j), mask=pl.L?carveMask(pl.L):null;
+        if(enhanced && j>0) compositeGap(j);   // glow in the gap below this plane, drawn BEFORE it → this layer occludes it (depth)
         if(showKeys){ const bgq=_planes[j].quad;   // the per-layer plane backdrop is part of "show keys" → hidden too when Keys is off (only lit keys float)
           ctx.beginPath(); ctx.moveTo(bgq[0][0],bgq[0][1]); for(let i=1;i<4;i++) ctx.lineTo(bgq[i][0],bgq[i][1]); ctx.closePath();
           ctx.fillStyle = pl.sys?'rgba(120,90,160,.10)':(pl.off?'rgba(120,130,150,.05)':'rgba(90,110,140,.09)'); ctx.fill(); }
