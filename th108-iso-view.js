@@ -339,7 +339,14 @@
       const LBGAP=16, RMARG=14, region=CW-(labelRight+LBGAP)-RMARG, content=maxX-minX, popped=panel.classList.contains('popped');
       const cx=((popped||region>content+40) ? (labelRight+LBGAP)+(region-content)/2 : labelRight+LBGAP)-minX, cy=(CH-(maxY-minY))/2-minY;
 
-      if(glass) ctx.clearRect(0,0,CW,CH); else { ctx.fillStyle='#0d1117'; ctx.fillRect(0,0,CW,CH); }   // glass mode: transparent canvas so the frosted panel (and page) shows through
+      if(glass){
+        if(panel.classList.contains('popped')){   // a pop-out window has NO page behind it to see through (backdrop-filter can't reach the desktop) → paint a frosted dark-glass sheen so Glass still reads
+          ctx.fillStyle='#12161d'; ctx.fillRect(0,0,CW,CH);
+          const gg=ctx.createLinearGradient(0,0,0,CH);
+          gg.addColorStop(0,'rgba(130,150,185,0.12)'); gg.addColorStop(0.4,'rgba(70,85,110,0.03)'); gg.addColorStop(1,'rgba(0,0,0,0.12)');
+          ctx.fillStyle=gg; ctx.fillRect(0,0,CW,CH);
+        } else ctx.clearRect(0,0,CW,CH);   // docked: transparent canvas → the frosted panel shows the page through it
+      } else { ctx.fillStyle='#0d1117'; ctx.fillRect(0,0,CW,CH); }
 
       _planes=[];
       for(let j=0;j<N;j++){ const pl=P0[j], by=byOf(j), rep=avgColor(pl.rgb);
