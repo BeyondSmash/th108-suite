@@ -33,7 +33,7 @@
 
     // ---- view params ----
     let yaw = 40*D2R, pitch = 22*D2R, zoom = 100, gap = 50, enhanced = false, focusIdx = null, auraI = 0.8, faceOn = false, showKeys = true, partSize = 0.55, glass = false, waveStyle = 'ripple';
-    const waveFreqs = { ripple:0.8, waveX:1.3 };   // baked default frequency per wave style (each editable via the slider)
+    const waveFreqs = { ripple:0.8, waveX:1.3 };   // baked frequency per wave style
     const ISO_PITCH = 22*D2R, FACE_PITCH = 89*D2R;   // isometric tilt vs front-flat (top-down)
 
     // ---- panel chrome ----
@@ -51,15 +51,13 @@
       '<div class="iso-ctl">' +
         '<button type="button" class="iso-back" hidden>‹ Back</button>' +
         '<span class="iso-zwrap" title="Zoom — tell me the % to bake as default"><input type="range" class="iso-zoom" min="40" max="240" value="100"><small class="iso-zval">100%</small></span>' +
-        '<label class="iso-gl">Gap<input type="range" class="iso-gapr" min="14" max="90" value="50"></label>' +
+        '<label class="iso-gl">Gap<input type="range" class="iso-gapr" min="14" max="55" value="50"></label>' +
         '<button type="button" class="iso-keys on" title="Show the inactive/unused keys so the full keyboard layout reads (esp. face-on / top-down)">⌨ Keys</button>' +
         '<button type="button" class="iso-glass" title="Swap the window background between solid and frosted glass (the page shows through, refracted)">🫧 Glass</button>' +
         '<button type="button" class="iso-enh" title="Wave + rising stardust + aura wisps">✨ Enhanced</button>' +
         '<label class="iso-gl iso-efx" style="display:none" title="Aura glow intensity">Aura<input type="range" class="iso-aint" min="0" max="150" value="80"></label>' +
-        '<label class="iso-gl iso-efx" style="display:none" title="Stardust size"><input type="range" class="iso-psz" min="40" max="280" value="55"><small class="iso-pszv" style="font-size:10px;color:var(--muted,#8b949e)">Dust 55%</small></label>' +
         '<select class="iso-wave iso-efx" style="display:none" title="Enhanced wave pattern">' +
           '<option value="ripple">〜 Ripple</option><option value="waveX">→ Wave X</option></select>' +
-        '<label class="iso-gl iso-efx" style="display:none" title="Wave frequency"><input type="range" class="iso-wfreq" min="5" max="80" value="20"><small class="iso-wfv" style="font-size:10px;color:var(--muted,#8b949e)">Freq 2.0</small></label>' +
         '<button type="button" class="iso-face" title="Tilt the board front-flat (keys facing you) vs isometric">Face-on</button>' +
         '<span class="iso-lock" hidden title="Tilt is locked while Face-on is active — the board faces you flat. Click Face-on again to unlock and tilt freely (you can still spin/yaw).">' +
           '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></span>' +
@@ -71,7 +69,7 @@
     if (!document.getElementById('iso-view-css')) {
       const st = document.createElement('style'); st.id = 'iso-view-css';
       st.textContent =
-        '.iso-panel{position:fixed;left:50%;top:84px;transform:translateX(-50%);z-index:60;width:600px;' +
+        '.iso-panel{position:fixed;left:50%;top:84px;transform:translateX(-50%);z-index:60;width:760px;' +
         'background:var(--card,#161b22);border:1px solid var(--line,#30363d);border-radius:12px;' +
         'box-shadow:0 18px 50px rgba(0,0,0,.5);font:inherit;color:var(--fg,#e6edf3)}' +
         '.iso-head{display:flex;align-items:center;gap:10px;padding:9px 12px;border-bottom:1px solid var(--line,#30363d);cursor:grab;user-select:none}' +
@@ -94,7 +92,7 @@
         '.iso-zwrap{display:inline-flex;flex-direction:column;align-items:center;gap:1px}' +
         '.iso-zwrap input{width:120px}.iso-zval{font-size:11px;color:var(--muted,#8b949e)}' +
         '.iso-gl{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--muted,#8b949e)}.iso-gl input{width:90px}' +
-        '.iso-cv{display:block;width:576px;height:392px;margin:6px auto 2px;touch-action:none;cursor:grab}.iso-cv.drag{cursor:grabbing}' +
+        '.iso-cv{display:block;width:720px;height:392px;margin:6px auto 2px;touch-action:none;cursor:grab}.iso-cv.drag{cursor:grabbing}' +
         '.iso-legend{display:flex;flex-wrap:wrap;gap:6px;padding:4px 12px 2px}' +
         '.iso-chip{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;padding:3px 8px;border-radius:999px;' +
         'background:rgba(255,255,255,.05);box-shadow:inset 0 0 0 1px var(--line,#30363d);cursor:pointer;user-select:none}' +
@@ -110,37 +108,32 @@
     document.body.appendChild(panel);
 
     const cv = panel.querySelector('.iso-cv'), ctx = cv.getContext('2d');
-    const SS = 2, DEF_W = 576, DEF_H = 392;
+    const SS = 2, DEF_W = 720, DEF_H = 392;
     let CW = DEF_W, CH = DEF_H;
     function sizeCanvas(w,h){ CW=Math.max(160,Math.round(w)); CH=Math.max(120,Math.round(h)); cv.width=CW*SS; cv.height=CH*SS; }
     sizeCanvas(DEF_W, DEF_H);
     const $ = s => panel.querySelector(s);
     const zoomEl=$('.iso-zoom'), zvalEl=$('.iso-zval'), gapEl=$('.iso-gapr'), enhEl=$('.iso-enh'), aintEl=$('.iso-aint'), keysEl=$('.iso-keys'),
-          pszEl=$('.iso-psz'), pszvEl=$('.iso-pszv'), glassEl=$('.iso-glass'), waveEl=$('.iso-wave'), wfreqEl=$('.iso-wfreq'), wfvEl=$('.iso-wfv'),
+          glassEl=$('.iso-glass'), waveEl=$('.iso-wave'),
           backEl=$('.iso-back'), faceEl=$('.iso-face'), lockEl=$('.iso-lock'), legendEl=$('.iso-legend'), readEl=$('.iso-read');
     // ---- persistence: remember the view settings between sessions ----
     const SKEY='th108_iso_view';
-    function saveSettings(){ try{ localStorage.setItem(SKEY, JSON.stringify({yaw,pitch,zoom,gap,enhanced,auraI,partSize,glass,showKeys,faceOn,waveStyle,waveFreqs})); }catch(_){ } }
+    function saveSettings(){ try{ localStorage.setItem(SKEY, JSON.stringify({yaw,pitch,zoom,gap,enhanced,auraI,glass,showKeys,faceOn,waveStyle})); }catch(_){ } }
     let _saveT=0; function saveSoon(){ clearTimeout(_saveT); _saveT=setTimeout(saveSettings, 350); }
     function loadSettings(){ let s; try{ s=JSON.parse(localStorage.getItem(SKEY)); }catch(_){ } if(!s||typeof s!=='object') return;
       if(typeof s.yaw==='number') yaw=s.yaw; if(typeof s.pitch==='number') pitch=s.pitch;
-      if(typeof s.zoom==='number') zoom=s.zoom; if(typeof s.gap==='number') gap=s.gap;
-      if(typeof s.auraI==='number') auraI=s.auraI; if(typeof s.partSize==='number') partSize=s.partSize;
-      if(s.waveFreqs && typeof s.waveFreqs==='object'){ if(typeof s.waveFreqs.ripple==='number') waveFreqs.ripple=s.waveFreqs.ripple; if(typeof s.waveFreqs.waveX==='number') waveFreqs.waveX=s.waveFreqs.waveX; }
+      if(typeof s.zoom==='number') zoom=s.zoom; if(typeof s.gap==='number') gap=Math.min(55,Math.max(14,s.gap));   // clamp to the slider range
+      if(typeof s.auraI==='number') auraI=s.auraI;
       enhanced=!!s.enhanced; glass=!!s.glass; showKeys=s.showKeys!==false; faceOn=!!s.faceOn; if(s.waveStyle==='ripple'||s.waveStyle==='waveX') waveStyle=s.waveStyle; }
     function syncControls(){   // push the (possibly restored) state into the UI controls
       zoomEl.value=zoom; zvalEl.textContent=zoom+'%'; gapEl.value=gap; aintEl.value=Math.round(auraI*100);
-      pszEl.value=Math.round(partSize*100); pszvEl.textContent='Dust '+Math.round(partSize*100)+'%'; waveEl.value=waveStyle;
-      syncFreqSlider();
+      waveEl.value=waveStyle;
       enhEl.classList.toggle('on',enhanced); panel.querySelectorAll('.iso-efx').forEach(el=>el.style.display=enhanced?'':'none');
       keysEl.classList.toggle('on',showKeys); glassEl.classList.toggle('on',glass); panel.classList.toggle('glass',glass);
       faceEl.classList.toggle('on',faceOn); lockEl.hidden=!faceOn; }
-    function syncFreqSlider(){ const f=waveFreqs[waveStyle]||1; wfreqEl.value=Math.round(f*10); wfvEl.textContent='Freq '+f.toFixed(1); }
-    wfreqEl.addEventListener('input', e=>{ waveFreqs[waveStyle]=+e.target.value/10; wfvEl.textContent='Freq '+waveFreqs[waveStyle].toFixed(1); saveSoon(); });
     keysEl.addEventListener('click', ()=>{ showKeys=!showKeys; keysEl.classList.toggle('on',showKeys); saveSoon(); });
     glassEl.addEventListener('click', ()=>{ glass=!glass; glassEl.classList.toggle('on',glass); panel.classList.toggle('glass',glass); saveSoon(); });   // frosted-glass window: page shows through (draw() clears the canvas instead of dark-filling)
-    pszEl.addEventListener('input', e=>{ partSize=+e.target.value/100; pszvEl.textContent='Dust '+e.target.value+'%'; saveSoon(); });
-    waveEl.addEventListener('change', e=>{ waveStyle=e.target.value; syncFreqSlider(); saveSoon(); });
+    waveEl.addEventListener('change', e=>{ waveStyle=e.target.value; saveSoon(); });
     // keys must NOT interact with the iso UI (Enter was re-toggling the focused Face-on button) — blur any control
     // after a click so it never holds keyboard focus. Reactive still reacts (that's a window-level key listener).
     panel.addEventListener('click', e=>{ const t=e.target.closest('button,input'); if(t&&t.blur) t.blur(); });   // NOT select — blurring it mid-click closed the dropdown (had to hold to pick)
@@ -149,7 +142,7 @@
     aintEl.addEventListener('input', e=>{ auraI=+e.target.value/100; saveSoon(); });
     // Home/End/PageUp/PageDown natively jam a focused range input to min/max — block them so those keys
     // (used for reactive lighting / nav) don't yank a slider. Arrow keys still fine-adjust.
-    [zoomEl,gapEl,aintEl,pszEl,wfreqEl].forEach(el=> el.addEventListener('keydown', e=>{ if(e.key==='Home'||e.key==='End'||e.key==='PageUp'||e.key==='PageDown') e.preventDefault(); }));
+    [zoomEl,gapEl,aintEl].forEach(el=> el.addEventListener('keydown', e=>{ if(e.key==='Home'||e.key==='End'||e.key==='PageUp'||e.key==='PageDown') e.preventDefault(); }));
     enhEl.addEventListener('click', ()=>{ enhanced=!enhanced; enhEl.classList.toggle('on',enhanced); panel.querySelectorAll('.iso-efx').forEach(el=>el.style.display=enhanced?'':'none'); saveSoon(); });
     backEl.addEventListener('click', ()=>{ focusIdx=null; backEl.hidden=true; if(!faceOn){ pitch=ISO_PITCH; yaw=40*D2R; } buildLegend(); saveSoon(); });
     // Face-on: snap to a flat front-facing (top-down) view AND lock tilt (so a drag can't knock it off); yaw still spins.
@@ -284,8 +277,8 @@
       return _aur;
     }
     const SLABS=[[0.55,0.17,7],[0.9,0.20,12],[1.45,0.12,19]];   // [scale, baseAlpha, scrollSpeed] — 3 parallax sheets
-    const NSHEETS=6;   // overlapping footprint sheets per gap → a continuous volumetric glow (not discrete bands)
-    function drawAura(tSec, cx, cy, byOf){
+    const NSHEETS=8;   // overlapping footprint sheets per gap → a continuous volumetric glow (not discrete bands)
+    function drawAura(tSec, cx, cy, byOf, AMP){
       if(!auraReady || auraI<=0) return;
       // each aura fills the gap between two planes (or around a focused plane) with stacked footprint glow-sheets,
       // each gap seeded differently so adjacent layers' auras don't drift in lockstep.
@@ -305,10 +298,13 @@
           const sc=sl[0], bell=0.4+0.6*Math.sin(fr*Math.PI);   // raised floor → no fully-dark trough between gaps (kills the dark band)
           const w=dir*(0.16+sl[2]*0.012), ph=sdx*0.013+n*0.9;   // circular drift: same freq for x & y → seamless loop (no scroll seam)
           const ox=Math.cos(tSec*w+ph)*40, oy=Math.sin(tSec*w+ph)*26, cover=300+sc*120;
-          const P00=proj(-BW0/2,-BD/2,by,cx,cy), P10=proj(BW0/2,-BD/2,by,cx,cy), P01=proj(-BW0/2,BD/2,by,cx,cy);
+          // DEFORM: warp each sheet's corner heights by the same wave (per-sheet phase via jw) so the sheets
+          // undulate and cross instead of sitting as parallel lines, and the glow conforms to the key wave.
+          const jw=gi+n*0.2, dA=AMP*0.5, wA=dA*waveFn(0,0,jw,tSec), wB=dA*waveFn(1,0,jw,tSec), wC=dA*waveFn(0,1,jw,tSec);   // gentle conform — full amplitude/phase spread the sheets apart and diluted the glow
+          const P00=proj(-BW0/2,-BD/2,by+wA,cx,cy), P10=proj(BW0/2,-BD/2,by+wB,cx,cy), P01=proj(-BW0/2,BD/2,by+wC,cx,cy);
           const ux=(P10[0]-P00[0])/SW, uy=(P10[1]-P00[1])/SW, vx=(P01[0]-P00[0])/SH, vy=(P01[1]-P00[1])/SH;
           const tex=tintSlab(col, ox, oy, cover);
-          ctx.globalAlpha=0.168*bell*auraI*ls*(0.82+0.18*Math.sin(tSec*1.1+gi*1.7+n));   // 0.14→0.168 (+20% more prominent)
+          ctx.globalAlpha=0.13*bell*auraI*ls*(0.82+0.18*Math.sin(tSec*1.1+gi*1.7+n));   // 8 sheets → slightly lower per-sheet alpha (keeps overall prominence)
           ctx.setTransform(SS*ux,SS*uy,SS*vx,SS*vy, SS*P00[0], SS*P00[1]);   // affine: SW×SH rect → a footprint sheet (×SS supersample)
           ctx.drawImage(tex,0,0,SW,SH);
         }
@@ -356,7 +352,7 @@
         _planes.push({ quad:bg.map(c=>[c[0],c[1]]), id:pl.id, sys:pl.sys, col:rep,
           cx:(bg[0][0]+bg[2][0])/2, cy:(bg[0][1]+bg[2][1])/2, hw:Math.abs(bg[1][0]-bg[0][0])/2+Math.abs(bg[2][0]-bg[1][0])/2 });
       }
-      if(enhanced) drawAura(tSec, cx, cy, byOf);
+      if(enhanced) drawAura(tSec, cx, cy, byOf, AMP);
 
       for(let j=0;j<N;j++){ const pl=P0[j], rgb=pl.rgb, by=byOf(j), mask=pl.L?carveMask(pl.L):null;
         if(showKeys){ const bgq=_planes[j].quad;   // the per-layer plane backdrop is part of "show keys" → hidden too when Keys is off (only lit keys float)
