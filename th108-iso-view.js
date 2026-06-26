@@ -32,7 +32,7 @@
     const onUp   = e => { updLock(e); if(!getRunning()){ const i=KEYMAP[e.code]; if(i!==undefined) E.releaseKey(state,i); } };
 
     // ---- view params ----
-    let yaw = 22*D2R, pitch = 58*D2R, zoom = 100, gap = 46, enhanced = false, focusIdx = null;
+    let yaw = 22*D2R, pitch = 58*D2R, zoom = 100, gap = 46, enhanced = false, focusIdx = null, auraI = 0.8;
     const ISO_PITCH = 58*D2R, FACE_PITCH = 89*D2R;   // isometric tilt vs front-flat (top-down)
 
     // ---- panel chrome ----
@@ -41,14 +41,17 @@
       '<div class="iso-head"><span class="iso-grip">⠿</span><b>Isometric View</b>' +
       '<span class="iso-spacer"></span>' +
       '<button type="button" class="iso-rs" hidden title="Reset window to the default size">⤢ Reset size</button>' +
-      '<button type="button" class="iso-pop" title="Pop out into a separate, resizable window">⧉ Pop out</button>' +
-      '<button type="button" class="iso-popin" hidden title="Pop back into the page">⧈ Pop in</button>' +
+      '<button type="button" class="iso-pop" title="Pop out into a separate, resizable window">' +
+        '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px"><path d="M21 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h6"/><path d="m21 3-9 9"/><path d="M15 3h6v6"/></svg>Pop out</button>' +
+      '<button type="button" class="iso-popin" hidden title="Pop back into the page">' +
+        '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px"><path d="M2 10h6V4"/><path d="m2 4 6 6"/><path d="M21 10V7a2 2 0 0 0-2-2h-7"/><path d="M3 14v2a2 2 0 0 0 2 2h3"/><rect width="10" height="7" x="12" y="13" rx="2"/></svg>Pop in</button>' +
       '<button type="button" class="iso-x" title="Close">✕</button></div>' +
       '<div class="iso-ctl">' +
         '<button type="button" class="iso-back" hidden>‹ Back</button>' +
         '<span class="iso-zwrap" title="Zoom — tell me the % to bake as default"><input type="range" class="iso-zoom" min="40" max="240" value="100"><small class="iso-zval">100%</small></span>' +
         '<label class="iso-gl">Gap<input type="range" class="iso-gapr" min="14" max="90" value="46"></label>' +
         '<button type="button" class="iso-enh" title="Wave + rising stardust + aura wisps">✨ Enhanced</button>' +
+        '<label class="iso-gl iso-al" style="display:none" title="Aura glow intensity">Aura<input type="range" class="iso-aint" min="0" max="150" value="80"></label>' +
         '<button type="button" class="iso-face" hidden title="Tilt the focused layer front-flat vs isometric">Face-on</button>' +
       '</div>' +
       '<canvas class="iso-cv"></canvas>' +
@@ -95,11 +98,15 @@
     function sizeCanvas(w,h){ CW=Math.max(160,Math.round(w)); CH=Math.max(120,Math.round(h)); cv.width=CW*SS; cv.height=CH*SS; }
     sizeCanvas(DEF_W, DEF_H);
     const $ = s => panel.querySelector(s);
-    const zoomEl=$('.iso-zoom'), zvalEl=$('.iso-zval'), gapEl=$('.iso-gapr'), enhEl=$('.iso-enh'),
+    const zoomEl=$('.iso-zoom'), zvalEl=$('.iso-zval'), gapEl=$('.iso-gapr'), enhEl=$('.iso-enh'), aintEl=$('.iso-aint'),
           backEl=$('.iso-back'), faceEl=$('.iso-face'), legendEl=$('.iso-legend'), readEl=$('.iso-read');
     zoomEl.addEventListener('input', e=>{ zoom=+e.target.value; zvalEl.textContent=zoom+'%'; });
     gapEl.addEventListener('input', e=>{ gap=+e.target.value; });
-    enhEl.addEventListener('click', ()=>{ enhanced=!enhanced; enhEl.classList.toggle('on',enhanced); });
+    aintEl.addEventListener('input', e=>{ auraI=+e.target.value/100; });
+    // Home/End/PageUp/PageDown natively jam a focused range input to min/max — block them so those keys
+    // (used for reactive lighting / nav) don't yank a slider. Arrow keys still fine-adjust.
+    [zoomEl,gapEl,aintEl].forEach(el=> el.addEventListener('keydown', e=>{ if(e.key==='Home'||e.key==='End'||e.key==='PageUp'||e.key==='PageDown') e.preventDefault(); }));
+    enhEl.addEventListener('click', ()=>{ enhanced=!enhanced; enhEl.classList.toggle('on',enhanced); aintEl.parentElement.style.display=enhanced?'':'none'; });
     backEl.addEventListener('click', ()=>{ focusIdx=null; backEl.hidden=true; faceEl.hidden=true; pitch=ISO_PITCH; yaw=22*D2R; buildLegend(); });
     faceEl.addEventListener('click', ()=>{ const face=pitch<FACE_PITCH-0.05; pitch=face?FACE_PITCH:ISO_PITCH; if(face) yaw=0; faceEl.classList.toggle('on',face); });
 
@@ -172,20 +179,25 @@
 
     // ---- enhanced FX: rising stardust particles ----
     const P=[]; let _planes=[];
-    function spawnParticles(dt){
-      if(focusIdx!=null || _planes.length<2) return;
+    function spawnParticles(dt, cx, cy, byOf){
+      if(_planes.length<1) return;
+      // rise direction = the board's height axis projected to screen (yaw-invariant up-the-stack); spawn over
+      // the (rotated) board footprint so the dust conforms to the current orientation. Works in focus too.
+      const o0=proj(0,0,0,cx,cy), o1=proj(0,0,1,cx,cy); let rdx=o1[0]-o0[0], rdy=o1[1]-o0[1]; const rl=Math.hypot(rdx,rdy)||1; rdx/=rl; rdy/=rl;
       const rate = 60*dt/1000;   // small dust → spawn more of them
       let n = rate + (Math.random()<(rate%1)?1:0);
-      for(let s=0;s<n;s++){ const gi=1+((Math.random()*(_planes.length-1))|0); const lo=_planes[gi-1], hi=_planes[gi];
-        const col = lo.col || hi.col || [150,170,210];
-        P.push({ x:lo.cx + (Math.random()-0.5)*lo.hw*1.7, y:lo.cy + (Math.random()-0.5)*10,
-                 vy:-(12+Math.random()*20), life:0, max:0.8+Math.random()*1.0, col,
-                 sz:0.45+Math.random()*0.7, seed:Math.random()*TAU, tw:14+Math.random()*16 }); }   // sz tiny; seed/tw = per-dust twinkle phase+rate
+      for(let s=0;s<n;s++){ const p=(Math.random()*_planes.length)|0; const col=_planes[p].col||[150,170,210];
+        const sp=proj((Math.random()-0.5)*0.9*BW0, (Math.random()-0.5)*0.9*BD, byOf(p)+gap*0.12, cx, cy);
+        const spd=12+Math.random()*20;
+        P.push({ x:sp[0], y:sp[1], vx:rdx*spd, vy:rdy*spd, px:-rdy, py:rdx, life:0, max:0.8+Math.random()*1.0, col,
+                 sz:0.45+Math.random()*0.7, seed:Math.random()*TAU, tw:14+Math.random()*16 }); }   // sz tiny; px,py = perpendicular sway axis; seed/tw = twinkle
       if(P.length>320) P.splice(0,P.length-320);
     }
     function drawParticles(dt){
       ctx.globalCompositeOperation='lighter';
-      for(let i=P.length-1;i>=0;i--){ const q=P[i]; q.life+=dt/1000; q.y+=q.vy*dt/1000; q.x+=Math.sin(q.life*1.5+q.seed)*0.25; q.vy*=0.993;
+      for(let i=P.length-1;i>=0;i--){ const q=P[i]; q.life+=dt/1000;
+        const sway=Math.sin(q.life*1.5+q.seed)*0.45;   // gentle drift perpendicular to the rise
+        q.x+=(q.vx+q.px*sway)*dt/1000; q.y+=(q.vy+q.py*sway)*dt/1000; q.vx*=0.993; q.vy*=0.993;
         const t=q.life/q.max; if(t>=1){ P.splice(i,1); continue; }
         const tw=0.35+0.65*(0.5+0.5*Math.sin(q.life*q.tw+q.seed));   // fast twinkle
         const a=Math.sin(t*Math.PI)*0.95*tw, r=q.sz;
@@ -195,15 +207,48 @@
         ctx.fillStyle=g; ctx.beginPath(); ctx.arc(q.x,q.y,r*2.4,0,TAU); ctx.fill(); }
       ctx.globalCompositeOperation='source-over';
     }
-    function drawAura(tSec){
-      if(focusIdx!=null) return;
+    // volumetric aura: a real noise texture (256² luminance RGB) additively tinted per layer and drawn as
+    // several parallax slabs scrolling across each gap → a wispy, volumetric glow (not a flat radial flare).
+    const auraImg=new Image(); let auraReady=false; auraImg.onload=()=>{ auraReady=true; }; auraImg.src='iso-aura-noise.png';
+    const _aur=document.createElement('canvas'), _actx=_aur.getContext('2d');
+    const SW=190, SH=58;   // fixed slab resolution → affine-mapped onto each gap's board-oriented parallelogram so the aura rotates WITH the planes
+    function tintSlab(col,ox,oy,sc){   // feathered, tinted noise at SW×SH; drawAura maps it onto the gap parallelogram
+      _aur.width=SW; _aur.height=SH;
+      _actx.globalCompositeOperation='source-over'; _actx.clearRect(0,0,SW,SH);
+      const iw=256*sc, ih=256*sc;
+      for(let yy=(oy%ih)-ih; yy<SH; yy+=ih) for(let xx=(ox%iw)-iw; xx<SW; xx+=iw) _actx.drawImage(auraImg,xx,yy,iw,ih);
+      _actx.globalCompositeOperation='multiply'; _actx.fillStyle='rgb('+col[0]+','+col[1]+','+col[2]+')'; _actx.fillRect(0,0,SW,SH);
+      // edge falloff: elliptical vignette (bright center → black edges) so the noise feathers, not a hard box
+      _actx.save(); _actx.translate(SW/2,SH/2); _actx.scale(1,SH/SW);
+      const g=_actx.createRadialGradient(0,0,0,0,0,SW*0.5);
+      g.addColorStop(0,'#fff'); g.addColorStop(0.28,'#fff'); g.addColorStop(1,'#000');   // smaller bright core → more falloff
+      _actx.fillStyle=g; _actx.fillRect(-SW,-SW,2*SW,2*SW); _actx.restore();
+      _actx.globalCompositeOperation='source-over';
+      return _aur;
+    }
+    const SLABS=[[0.55,0.17,7],[0.9,0.20,12],[1.45,0.12,19]];   // [scale, baseAlpha, scrollSpeed] — 3 parallax depth slabs
+    const ADEP=0.5;   // aura covers only the mid 50% of the board depth → leaves falloff space to the planes above/below
+    function drawAura(tSec, cx, cy, byOf){
+      if(!auraReady || auraI<=0) return;
+      // aura "spots": one glow plane per gap (multi-layer), or one on the plane itself when a single layer is focused
+      const spots=[];
+      if(_planes.length>=2){ for(let i=1;i<_planes.length;i++){ const col=_planes[i-1].col||_planes[i].col; if(col) spots.push({by:(byOf(i-1)+byOf(i))/2, col}); } }
+      else if(_planes.length===1 && _planes[0].col) spots.push({by:byOf(0), col:_planes[0].col});
+      if(!spots.length) return;
       ctx.globalCompositeOperation='lighter';
-      for(let i=1;i<_planes.length;i++){ const lo=_planes[i-1], hi=_planes[i], col=lo.col||hi.col; if(!col) continue;
-        const mx=(lo.cx+hi.cx)/2, my=(lo.cy+hi.cy)/2, rad=Math.max(40,lo.hw*0.55), a=0.10+0.05*Math.sin(tSec*1.3+i);
-        const g=ctx.createRadialGradient(mx,my,0,mx,my,rad);
-        g.addColorStop(0,'rgba('+col[0]+','+col[1]+','+col[2]+','+a+')'); g.addColorStop(1,'rgba('+col[0]+','+col[1]+','+col[2]+',0)');
-        ctx.fillStyle=g; ctx.beginPath(); ctx.ellipse(mx,my,rad*1.7,rad,0,0,TAU); ctx.fill(); }
-      ctx.globalCompositeOperation='source-over';
+      let gi=0;
+      for(const sp of spots){ gi++; const col=sp.col, byMid=sp.by;
+        const P00=proj(-BW0/2,-BD*ADEP/2,byMid,cx,cy), P10=proj(BW0/2,-BD*ADEP/2,byMid,cx,cy), P01=proj(-BW0/2,BD*ADEP/2,byMid,cx,cy);
+        const ux=(P10[0]-P00[0])/SW, uy=(P10[1]-P00[1])/SW, vx=(P01[0]-P00[0])/SH, vy=(P01[1]-P00[1])/SH;
+        const lum=(0.299*col[0]+0.587*col[1]+0.114*col[2])/255, ls=0.5+0.5*(1-lum*0.7);   // tame white/bright so it doesn't dominate the colored auras
+        for(const [sc,baseA,spd] of SLABS){
+          const tex=tintSlab(col, tSec*spd, tSec*spd*0.25, sc);
+          ctx.globalAlpha=baseA*auraI*ls*(0.7+0.3*Math.sin(tSec*1.1+gi*1.7+sc));
+          ctx.setTransform(SS*ux,SS*uy,SS*vx,SS*vy, SS*P00[0], SS*P00[1]);   // affine: SW×SH rect → the gap parallelogram (×SS supersample)
+          ctx.drawImage(tex,0,0,SW,SH);
+        }
+      }
+      ctx.setTransform(SS,0,0,SS,0,0); ctx.globalAlpha=1; ctx.globalCompositeOperation='source-over';
     }
 
     // ---- main draw ----
@@ -219,7 +264,9 @@
       for(let j=0;j<N;j++){ const by=byOf(j);
         for(const c of [proj(-BW0/2,-BD/2,by,0,0),proj(BW0/2,-BD/2,by,0,0),proj(BW0/2,BD/2,by,0,0),proj(-BW0/2,BD/2,by,0,0)]){
           if(c[0]<minX)minX=c[0]; if(c[0]>maxX)maxX=c[0]; if(c[1]<minY)minY=c[1]; if(c[1]>maxY)maxY=c[1]; } }
-      const cx=(CW-(maxX-minX))/2-minX, cy=(CH-(maxY-minY))/2-minY;
+      // reserve a left gutter for the plane labels and a small right margin → board centers in the remaining
+      // space (shifts right, fills the empty area, gives the labels room).
+      const LGUT=112, RMARG=14, cx=LGUT+((CW-LGUT-RMARG)-(maxX-minX))/2-minX, cy=(CH-(maxY-minY))/2-minY;
 
       ctx.setTransform(SS,0,0,SS,0,0);
       ctx.fillStyle='#0d1117'; ctx.fillRect(0,0,CW,CH);
@@ -231,7 +278,7 @@
         _planes.push({ quad:bg.map(c=>[c[0],c[1]]), id:pl.id, sys:pl.sys, col:rep,
           cx:(bg[0][0]+bg[2][0])/2, cy:(bg[0][1]+bg[2][1])/2, hw:Math.abs(bg[1][0]-bg[0][0])/2+Math.abs(bg[2][0]-bg[1][0])/2 });
       }
-      if(enhanced) drawAura(tSec);
+      if(enhanced) drawAura(tSec, cx, cy, byOf);
 
       for(let j=0;j<N;j++){ const pl=P0[j], rgb=pl.rgb, by=byOf(j), mask=pl.L?carveMask(pl.L):null;
         const bgq=_planes[j].quad;
@@ -251,14 +298,21 @@
             ctx.fillStyle=RED; ctx.font='700 '+Math.max(9,11*zoom/100)+'px '+FAM; ctx.textAlign='center'; ctx.textBaseline='middle';
             ctx.fillText('−', m[0], m[1]); }
         }
-        // plane label (numbered), at the back-left corner
-        const lp=proj(-BW0/2, -BD/2-14, by, cx, cy);
-        ctx.font='600 11px '+FAM; ctx.textAlign='right'; ctx.textBaseline='middle';
-        ctx.fillStyle = pl.sys?'rgba(190,170,230,.95)':(pl.off?'rgba(139,148,158,.55)':'rgba(230,237,243,.92)');
-        ctx.fillText((pl.num?pl.num+' · ':'')+pl.name+(pl.off?'  (off)':'')+(pl.sys&&!lock.known?'  (press a key)':''), lp[0]-6, lp[1]);
       }
 
-      if(enhanced){ spawnParticles(dt); drawParticles(dt); } else if(P.length) P.length=0;
+      if(enhanced){ spawnParticles(dt, cx, cy, byOf); drawParticles(dt); } else if(P.length) P.length=0;
+
+      // LABELS (numbered), decluttered into a tidy left column: sort by screen height, enforce a min vertical
+      // spacing so they spread apart instead of piling up when planes crowd (e.g. when the board is rotated).
+      const LB=P0.map((pl,j)=>({pl, y:_planes[j].cy})).sort((a,b)=>a.y-b.y);
+      const MINSP=15;
+      for(let k=1;k<LB.length;k++) if(LB[k].y-LB[k-1].y<MINSP) LB[k].y=LB[k-1].y+MINSP;
+      if(LB.length){ const ov=LB[LB.length-1].y-(CH-8); if(ov>0) for(const L of LB) L.y-=ov;
+        const tc=8-LB[0].y; if(tc>0) for(const L of LB) L.y+=tc; }
+      ctx.font='600 11px '+FAM; ctx.textAlign='right'; ctx.textBaseline='middle';
+      for(const L of LB){ const pl=L.pl;
+        ctx.fillStyle=pl.sys?'rgba(190,170,230,.95)':(pl.off?'rgba(139,148,158,.55)':'rgba(230,237,243,.92)');
+        ctx.fillText((pl.num?pl.num+' · ':'')+pl.name+(pl.off?'  (off)':'')+(pl.sys&&!lock.known?'  (press a key)':''), LGUT-8, L.y); }
       readEl.textContent = 'zoom '+zoom+'% · yaw '+Math.round(((yaw/D2R)%360+360)%360)+'° · tilt '+Math.round(pitch/D2R)+'° · gap '+gap;
     }
 
@@ -276,9 +330,16 @@
     const onPopResize=()=>{ if(popWin) popWin.requestAnimationFrame(fitPop); };
     function copyVars(el){ const cs=getComputedStyle(document.documentElement);
       ['--card','--line','--fg','--muted','--blue','--text','--accent','--mint','--ring'].forEach(v=>{ const val=cs.getPropertyValue(v); if(val) el.style.setProperty(v,val); }); }
-    function popOut(){ if(popWin) return;
-      const w=window.open('','th108iso','popup,width=720,height=600'); if(!w){ alert('Pop-out blocked — allow popups for this page, then try again.'); return; }
-      popWin=w; const d=w.document; d.title='Isometric View — th108'; d.body.style.margin='0'; d.body.style.background='#0d1117';
+    async function popOut(){ if(popWin) return;
+      let w=null;
+      try{
+        if(window.documentPictureInPicture && window.documentPictureInPicture.requestWindow)
+          w = await window.documentPictureInPicture.requestWindow({ width:720, height:600 });   // Document Picture-in-Picture: a real resizable, always-on-top window NOT subject to popup blocking (Chromium — WebHID already requires it)
+        else
+          w = window.open('','th108iso','popup,width=720,height=600');                          // fallback for older Chromium
+      }catch(_){ w=null; }
+      if(!w){ readEl.textContent='Pop-out unavailable — update Chromium or allow popups'; return; }
+      popWin=w; const d=w.document; try{ d.title='Isometric View — th108'; }catch(_){} d.body.style.margin='0'; d.body.style.background='#0d1117';
       const css=document.getElementById('iso-view-css'); if(css){ const c=css.cloneNode(true); c.id='iso-view-css-pop'; d.head.appendChild(c); }
       copyVars(d.documentElement); d.body.appendChild(panel); panel.classList.add('popped');
       w.addEventListener('resize',onPopResize); w.addEventListener('keydown',onDown,true); w.addEventListener('keyup',onUp,true);
