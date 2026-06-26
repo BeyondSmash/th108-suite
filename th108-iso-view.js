@@ -32,7 +32,8 @@
     const onUp   = e => { updLock(e); if(!getRunning()){ const i=KEYMAP[e.code]; if(i!==undefined) E.releaseKey(state,i); } };
 
     // ---- view params ----
-    let yaw = 40*D2R, pitch = 22*D2R, zoom = 100, gap = 50, enhanced = false, focusIdx = null, auraI = 0.8, faceOn = false, showKeys = true, partSize = 0.55, glass = false, waveStyle = 'ripple', waveFreq = 2;
+    let yaw = 40*D2R, pitch = 22*D2R, zoom = 100, gap = 50, enhanced = false, focusIdx = null, auraI = 0.8, faceOn = false, showKeys = true, partSize = 0.55, glass = false, waveStyle = 'ripple';
+    const waveFreqs = { ripple:0.8, waveX:1.3 };   // baked default frequency per wave style (each editable via the slider)
     const ISO_PITCH = 22*D2R, FACE_PITCH = 89*D2R;   // isometric tilt vs front-flat (top-down)
 
     // ---- panel chrome ----
@@ -119,26 +120,27 @@
           backEl=$('.iso-back'), faceEl=$('.iso-face'), lockEl=$('.iso-lock'), legendEl=$('.iso-legend'), readEl=$('.iso-read');
     // ---- persistence: remember the view settings between sessions ----
     const SKEY='th108_iso_view';
-    function saveSettings(){ try{ localStorage.setItem(SKEY, JSON.stringify({yaw,pitch,zoom,gap,enhanced,auraI,partSize,glass,showKeys,faceOn,waveStyle,waveFreq})); }catch(_){ } }
+    function saveSettings(){ try{ localStorage.setItem(SKEY, JSON.stringify({yaw,pitch,zoom,gap,enhanced,auraI,partSize,glass,showKeys,faceOn,waveStyle,waveFreqs})); }catch(_){ } }
     let _saveT=0; function saveSoon(){ clearTimeout(_saveT); _saveT=setTimeout(saveSettings, 350); }
     function loadSettings(){ let s; try{ s=JSON.parse(localStorage.getItem(SKEY)); }catch(_){ } if(!s||typeof s!=='object') return;
       if(typeof s.yaw==='number') yaw=s.yaw; if(typeof s.pitch==='number') pitch=s.pitch;
       if(typeof s.zoom==='number') zoom=s.zoom; if(typeof s.gap==='number') gap=s.gap;
       if(typeof s.auraI==='number') auraI=s.auraI; if(typeof s.partSize==='number') partSize=s.partSize;
-      if(typeof s.waveFreq==='number') waveFreq=s.waveFreq;
+      if(s.waveFreqs && typeof s.waveFreqs==='object'){ if(typeof s.waveFreqs.ripple==='number') waveFreqs.ripple=s.waveFreqs.ripple; if(typeof s.waveFreqs.waveX==='number') waveFreqs.waveX=s.waveFreqs.waveX; }
       enhanced=!!s.enhanced; glass=!!s.glass; showKeys=s.showKeys!==false; faceOn=!!s.faceOn; if(s.waveStyle==='ripple'||s.waveStyle==='waveX') waveStyle=s.waveStyle; }
     function syncControls(){   // push the (possibly restored) state into the UI controls
       zoomEl.value=zoom; zvalEl.textContent=zoom+'%'; gapEl.value=gap; aintEl.value=Math.round(auraI*100);
       pszEl.value=Math.round(partSize*100); pszvEl.textContent='Dust '+Math.round(partSize*100)+'%'; waveEl.value=waveStyle;
-      wfreqEl.value=Math.round(waveFreq*10); wfvEl.textContent='Freq '+waveFreq.toFixed(1);
+      syncFreqSlider();
       enhEl.classList.toggle('on',enhanced); panel.querySelectorAll('.iso-efx').forEach(el=>el.style.display=enhanced?'':'none');
       keysEl.classList.toggle('on',showKeys); glassEl.classList.toggle('on',glass); panel.classList.toggle('glass',glass);
       faceEl.classList.toggle('on',faceOn); lockEl.hidden=!faceOn; }
-    wfreqEl.addEventListener('input', e=>{ waveFreq=+e.target.value/10; wfvEl.textContent='Freq '+waveFreq.toFixed(1); saveSoon(); });
+    function syncFreqSlider(){ const f=waveFreqs[waveStyle]||1; wfreqEl.value=Math.round(f*10); wfvEl.textContent='Freq '+f.toFixed(1); }
+    wfreqEl.addEventListener('input', e=>{ waveFreqs[waveStyle]=+e.target.value/10; wfvEl.textContent='Freq '+waveFreqs[waveStyle].toFixed(1); saveSoon(); });
     keysEl.addEventListener('click', ()=>{ showKeys=!showKeys; keysEl.classList.toggle('on',showKeys); saveSoon(); });
     glassEl.addEventListener('click', ()=>{ glass=!glass; glassEl.classList.toggle('on',glass); panel.classList.toggle('glass',glass); saveSoon(); });   // frosted-glass window: page shows through (draw() clears the canvas instead of dark-filling)
     pszEl.addEventListener('input', e=>{ partSize=+e.target.value/100; pszvEl.textContent='Dust '+e.target.value+'%'; saveSoon(); });
-    waveEl.addEventListener('change', e=>{ waveStyle=e.target.value; saveSoon(); });
+    waveEl.addEventListener('change', e=>{ waveStyle=e.target.value; syncFreqSlider(); saveSoon(); });
     // keys must NOT interact with the iso UI (Enter was re-toggling the focused Face-on button) — blur any control
     // after a click so it never holds keyboard focus. Reactive still reacts (that's a window-level key listener).
     panel.addEventListener('click', e=>{ const t=e.target.closest('button,input'); if(t&&t.blur) t.blur(); });   // NOT select — blurring it mid-click closed the dropdown (had to hold to pick)
@@ -194,9 +196,9 @@
       const up=by*cP - rz*sP, depth=by*sP + rz*cP;
       return [ cx + rx*Z, cy - up*Z, depth ];
     }
-    // enhanced-wave height offset per key (u,v normalized; j = plane index; t seconds). waveFreq sets the spatial
-    // frequency (the slider). Ripple = diagonal; Wave X = horizontal traveling wave.
-    function waveFn(u,v,j,t){ const f=waveFreq;
+    // enhanced-wave height offset per key (u,v normalized; j = plane index; t seconds). waveFreqs[style] sets the
+    // spatial frequency (the slider, per style). Ripple = diagonal; Wave X = horizontal traveling wave.
+    function waveFn(u,v,j,t){ const f=waveFreqs[waveStyle]||1;
       if(waveStyle==='waveX') return Math.sin(u*TAU*f - t*2.2 + j*0.4);
       return Math.sin((u*f + v*f*0.5)*TAU + t*1.7 + j*0.6);   // 'ripple'
     }
