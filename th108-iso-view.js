@@ -267,20 +267,22 @@
       //    edgeless glow that fills the gaps. Uses the temporally-smoothed plane colour → no keypress twitch.
       _gctx.globalCompositeOperation='lighter';
       for(let i=0;i<_planes.length;i++){ const pl=_planes[i], col=pl.col; if(!col) continue;
-        const bx=pl.cx*GLOWS, by=pl.cy*GLOWS, r=Math.max(8, pl.hw*GLOWS*0.95), c='rgba('+col[0]+','+col[1]+','+col[2]+',';
-        const lum=(0.299*col[0]+0.587*col[1]+0.114*col[2])/255, ls=0.5+0.5*(1-lum*0.7), a=0.8*auraI*ls;
+        const bx=pl.cx*GLOWS, by=pl.cy*GLOWS, r=Math.max(8, pl.hw*GLOWS*0.82), c='rgba('+col[0]+','+col[1]+','+col[2]+',';
+        const lum=(0.299*col[0]+0.587*col[1]+0.114*col[2])/255, ls=0.5+0.5*(1-lum*0.7), a=0.85*auraI*ls;
         // a wide-but-short ellipse hugging the layer, with a fast falloff → the glow CLINGS to the keyboard stack
         // and the panel edges/corners stay dark (not a full-viewport wash). Blobs overlap vertically into one field.
-        _gctx.save(); _gctx.translate(bx,by); _gctx.scale(1.1,0.34);
+        _gctx.save(); _gctx.translate(bx,by); _gctx.scale(1.0,0.3);
         const g=_gctx.createRadialGradient(0,0,0, 0,0, r);
         g.addColorStop(0,c+a+')'); g.addColorStop(0.5,c+(a*0.32)+')'); g.addColorStop(1,c+'0)');
         _gctx.fillStyle=g; _gctx.beginPath(); _gctx.arc(0,0,r,0,TAU); _gctx.fill(); _gctx.restore();
       }
-      // 2) modulate with one big slowly-drifting noise (gentle multiply, floor-raised to 0.5 so it TEXTURES rather
-      //    than carves) → volumetric wisps with no hard edges; circular drift = seamless loop.
-      const ns=Math.max(gw,gh)*1.9, dx=Math.cos(tSec*0.06)*gw*0.13, dy=Math.sin(tSec*0.06)*gh*0.13;
-      _gctx.globalCompositeOperation='multiply'; _gctx.globalAlpha=0.5;
-      _gctx.drawImage(auraImg, (gw-ns)/2+dx, (gh-ns)/2+dy, ns, ns);
+      // 2) modulate with TWO drifting noise layers (multiply) → visibly MOVING, parallax (volumetric) wisps, not a
+      //    static texture. Different scales/speeds/directions; Lissajous drift so the motion never freezes or snaps.
+      _gctx.globalCompositeOperation='multiply';
+      const ns=Math.max(gw,gh)*1.7, dx=Math.cos(tSec*0.33)*gw*0.24, dy=Math.sin(tSec*0.27)*gh*0.20;
+      _gctx.globalAlpha=0.6; _gctx.drawImage(auraImg, (gw-ns)/2+dx, (gh-ns)/2+dy, ns, ns);
+      const ns2=Math.max(gw,gh)*1.0, dx2=-Math.cos(tSec*0.5+1.3)*gw*0.3, dy2=Math.sin(tSec*0.43+1.3)*gh*0.24;   // smaller, faster, opposite → parallax depth
+      _gctx.globalAlpha=0.42; _gctx.drawImage(auraImg, (gw-ns2)/2+dx2, (gh-ns2)/2+dy2, ns2, ns2);
       _gctx.globalAlpha=1; _gctx.globalCompositeOperation='source-over';
       // 3) composite onto the scene (additive, upscaled → smooth blur)
       ctx.setTransform(SS,0,0,SS,0,0); ctx.imageSmoothingEnabled=true; ctx.globalCompositeOperation='lighter';
