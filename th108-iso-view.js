@@ -253,27 +253,33 @@
         ctx.fillStyle=cs+a+')'; ctx.beginPath(); ctx.arc(q.x,q.y,r,0,TAU); ctx.fill(); }   // bright core
       ctx.globalCompositeOperation='source-over';
     }
-    // ===== AURA: a soft glow lying IN each gap, sheared to the plane's isometric parallelogram =====
-    // Drawn per-gap directly on the scene, BETWEEN the two bounding planes (so the layer above occludes it →
-    // depth). The unit glow is mapped through the lower plane's parallelogram basis, so its footprint shears
-    // with the 3D orientation and lies flat in the gap — reads as light IN the gap, never a flat axis-aligned
-    // rectangle/backdrop. No offscreen buffer, no bbox → no box edges, no seams, no wash.
-    function drawGapGlow(i, tSec){
+    // ===== AURA: a soft glow lying IN each gap, built from wave-displaced stamps so it deforms with the ripple =====
+    // Drawn per-gap directly on the scene, BETWEEN the two bounding planes (so the layer above occludes it → depth).
+    // Instead of one flat ellipse, the gap glow is a grid of soft sprite stamps laid across the board footprint,
+    // each lifted by the SAME wave height (waveFn) the keys use — so the glowing sheet undulates with the ripple
+    // and foreshortens with the 3D orientation. A board-shaped edge fade keeps it soft (no box edge, no wash).
+    const _spr=document.createElement('canvas'), _sctx=_spr.getContext('2d'); _spr.width=_spr.height=64;
+    function gapSprite(col){   // soft radial sprite tinted to the gap colour (rebuilt per gap → ~5/frame, cheap)
+      _sctx.clearRect(0,0,64,64); const c='rgba('+col[0]+','+col[1]+','+col[2]+',';
+      const g=_sctx.createRadialGradient(32,32,0, 32,32,32);
+      g.addColorStop(0,c+'1)'); g.addColorStop(0.5,c+'0.35)'); g.addColorStop(1,c+'0)');
+      _sctx.fillStyle=g; _sctx.fillRect(0,0,64,64); return _spr;
+    }
+    function drawGapGlow(i, tSec, cx, cy, AMP, byMid){
       if(auraI<=0) return;
       const lo=_planes[i-1], hi=_planes[i], col=lo.col||hi.col; if(!col) return;
-      const q=lo.quad;   // lower plane's parallelogram (all planes share orientation): basis = half-width + half-depth vectors
-      const ux=(q[1][0]-q[0][0])/2, uy=(q[1][1]-q[0][1])/2, vx=(q[3][0]-q[0][0])/2, vy=(q[3][1]-q[0][1])/2;
-      const wob=Math.sin(tSec*1.3 + i)*gap*0.04*(zoom/100);   // gentle vertical breathe, scaled with gap/zoom → conforms
-      const mx=(lo.cx+hi.cx)/2, my=(lo.cy+hi.cy)/2 + wob;     // gap midpoint
-      const lum=(0.299*col[0]+0.587*col[1]+0.114*col[2])/255, ls=0.5+0.5*(1-lum*0.7);
-      const a=1.2*auraI*ls, c='rgba('+col[0]+','+col[1]+','+col[2]+',';
-      const K=1.35;   // spill past the key footprint so the glow bleeds into the gap
-      ctx.setTransform(SS,0,0,SS,0,0); ctx.globalCompositeOperation='lighter';
-      ctx.save(); ctx.transform(ux*K, uy*K, vx*K, vy*K, mx, my);   // unit circle → sheared ellipse lying flat in the gap
-      const g=ctx.createRadialGradient(0,0,0, 0,0,1);
-      g.addColorStop(0,c+a+')'); g.addColorStop(0.4,c+(a*0.5)+')'); g.addColorStop(0.75,c+(a*0.14)+')'); g.addColorStop(1,c+'0)');
-      ctx.fillStyle=g; ctx.beginPath(); ctx.arc(0,0,1,0,TAU); ctx.fill(); ctx.restore();
-      ctx.globalCompositeOperation='source-over';
+      const lum=(0.299*col[0]+0.587*col[1]+0.114*col[2])/255, ls=0.5+0.5*(1-lum*0.7), baseA=1.05*auraI*ls;
+      const spr=gapSprite(col), jLo=i-1, NU=9, NV=4, stampR=Math.max(10,(lo.hw/NU)*2.0);   // generous overlap → continuous sheet
+      ctx.setTransform(SS,0,0,SS,0,0); ctx.globalCompositeOperation='lighter'; ctx.imageSmoothingEnabled=true;
+      for(let gv=0; gv<NV; gv++) for(let gu=0; gu<NU; gu++){
+        const u=(gu+0.5)/NU, v=(gv+0.5)/NV;
+        const fade=Math.pow((1-(2*u-1)*(2*u-1))*(1-(2*v-1)*(2*v-1)), 0.6);   // soft board-shaped falloff → 0 at edges, no box
+        if(fade<=0.02) continue;
+        const wz=AMP*waveFn(u,v,jLo,tSec);                                   // SAME wave the keys ride → glow undulates with them
+        const p=proj((u-0.5)*BW0, (v-0.5)*BD, byMid+wz, cx, cy);
+        ctx.globalAlpha=baseA*fade; ctx.drawImage(spr, p[0]-stampR, p[1]-stampR, stampR*2, stampR*2);
+      }
+      ctx.globalAlpha=1; ctx.globalCompositeOperation='source-over';
     }
 
     // ---- main draw ----
@@ -322,7 +328,7 @@
       }
 
       for(let j=0;j<N;j++){ const pl=P0[j], rgb=pl.rgb, by=byOf(j), mask=pl.L?carveMask(pl.L):null;
-        if(enhanced && j>0) drawGapGlow(j, tSec);   // glow in the gap below this plane, drawn BEFORE it → this layer occludes it (depth)
+        if(enhanced && j>0) drawGapGlow(j, tSec, cx, cy, AMP, by - gap/2);   // glow in the gap below this plane, drawn BEFORE it → this layer occludes it (depth)
         if(showKeys){ const bgq=_planes[j].quad;   // the per-layer plane backdrop is part of "show keys" → hidden too when Keys is off (only lit keys float)
           ctx.beginPath(); ctx.moveTo(bgq[0][0],bgq[0][1]); for(let i=1;i<4;i++) ctx.lineTo(bgq[i][0],bgq[i][1]); ctx.closePath();
           ctx.fillStyle = pl.sys?'rgba(120,90,160,.10)':(pl.off?'rgba(120,130,150,.05)':'rgba(90,110,140,.09)'); ctx.fill(); }
