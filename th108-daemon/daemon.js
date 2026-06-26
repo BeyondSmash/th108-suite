@@ -387,7 +387,16 @@ async function openIfPossible() {
 }
 
 // ----- render loop ~30fps -----
+let tickBusy = false;   // single-flight guard: setInterval keeps firing every ~33ms, but a slow/stalling send
+// (up to the 800ms ACK timeout) must NOT let the next interval re-enter and start a SECOND concurrent send —
+// two overlapping sendFrame calls interleave writes on the shared ACK gate → FIFO overrun → wedge (this is
+// what turns a one-frame board hiccup into a full mute). Mirrors the page's layerInFlight guard.
 async function tick() {
+  if (tickBusy) return;
+  tickBusy = true;
+  try { await runTick(); } finally { tickBusy = false; }
+}
+async function runTick() {
   if (paused || lcdBusy) return;   // lcdBusy: a flash upload owns the board — no lighting writes
   // Sleep-gap re-baseline: after a suspend, the pre-sleep muteAt is hours stale — without this the USB
   // restart would insta-fire on the first failed send at wake, even though wake mutes recover on their own.

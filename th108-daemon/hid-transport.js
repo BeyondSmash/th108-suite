@@ -70,7 +70,7 @@ function makeSender(device, { packLen = 64, cmd = 0x32, ackTimeoutMs = 800 } = {
     setTimeout(() => { if (ackWaiter === res) { ackWaiter = null; res(false); } }, ackTimeoutMs);
   });
 
-  const sendFrame = async function (flat) {
+  const _sendOne = async function (flat) {
     const room = packLen - 8, n = Math.max(1, Math.ceil(flat.length / room));
     for (let c = 0; c < n; c++) {
       const off = c * room, chunk = flat.slice(off, off + room), last = c === n - 1;
@@ -86,6 +86,13 @@ function makeSender(device, { packLen = 64, cmd = 0x32, ackTimeoutMs = 800 } = {
     }
     return true;
   };
+  // SINGLE-FLIGHT: serialize every sendFrame call through one chain so two frames can NEVER interleave
+  // their ACK-gated chunk writes. The gate uses shared ackWaiter/ackOff state, so two overlapping calls
+  // race — they write off=0 twice with no ACK consumed between (the exact double-write the flight recorder
+  // shows right before a mute). The daemon's render loop also guards re-entry now, but enforcing it HERE
+  // makes it impossible for ANY caller to put two un-ACKed writes on this device.
+  let chain = Promise.resolve();
+  const sendFrame = (flat) => { const p = chain.then(() => _sendOne(flat), () => _sendOne(flat)); chain = p.then(() => {}, () => {}); return p; };
   // Dump the flight recorder as text (timestamps relative to the latest event). The daemon calls this
   // at the mute transition — capturing what the board+host were doing in the ~second before silence.
   sendFrame.flightRecorder = () => {
