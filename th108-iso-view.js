@@ -32,7 +32,7 @@
     const onUp   = e => { updLock(e); if(!getRunning()){ const i=KEYMAP[e.code]; if(i!==undefined) E.releaseKey(state,i); } };
 
     // ---- view params ----
-    let yaw = 40*D2R, pitch = 22*D2R, zoom = 100, gap = 50, enhanced = false, focusIdx = null, auraI = 0.8, faceOn = false, showKeys = true, partSize = 0.55, glass = false, waveStyle = 'ripple';
+    let yaw = 40*D2R, pitch = 22*D2R, zoom = 100, gap = 50, enhanced = false, focusIdx = null, auraI = 0.8, faceOn = false, showKeys = true, partSize = 0.55, glass = false, waveStyle = 'ripple', waveFreq = 2;
     const ISO_PITCH = 22*D2R, FACE_PITCH = 89*D2R;   // isometric tilt vs front-flat (top-down)
 
     // ---- panel chrome ----
@@ -57,9 +57,8 @@
         '<label class="iso-gl iso-efx" style="display:none" title="Aura glow intensity">Aura<input type="range" class="iso-aint" min="0" max="150" value="80"></label>' +
         '<label class="iso-gl iso-efx" style="display:none" title="Stardust size"><input type="range" class="iso-psz" min="40" max="280" value="55"><small class="iso-pszv" style="font-size:10px;color:var(--muted,#8b949e)">Dust 55%</small></label>' +
         '<select class="iso-wave iso-efx" style="display:none" title="Enhanced wave pattern">' +
-          '<option value="ripple">〜 Ripple</option><option value="waveX">→ Wave X</option><option value="waveY">↓ Wave Y</option>' +
-          '<option value="radial">◎ Radial</option><option value="twist">⟳ Twist</option><option value="swirl">🌀 Swirl</option>' +
-          '<option value="bounce">↕ Bounce</option><option value="scatter">⁘ Scatter</option></select>' +
+          '<option value="ripple">〜 Ripple</option><option value="waveX">→ Wave X</option></select>' +
+        '<label class="iso-gl iso-efx" style="display:none" title="Wave frequency"><input type="range" class="iso-wfreq" min="5" max="80" value="20"><small class="iso-wfv" style="font-size:10px;color:var(--muted,#8b949e)">Freq 2.0</small></label>' +
         '<button type="button" class="iso-face" title="Tilt the board front-flat (keys facing you) vs isometric">Face-on</button>' +
         '<span class="iso-lock" hidden title="Tilt is locked while Face-on is active — the board faces you flat. Click Face-on again to unlock and tilt freely (you can still spin/yaw).">' +
           '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></span>' +
@@ -116,36 +115,39 @@
     sizeCanvas(DEF_W, DEF_H);
     const $ = s => panel.querySelector(s);
     const zoomEl=$('.iso-zoom'), zvalEl=$('.iso-zval'), gapEl=$('.iso-gapr'), enhEl=$('.iso-enh'), aintEl=$('.iso-aint'), keysEl=$('.iso-keys'),
-          pszEl=$('.iso-psz'), pszvEl=$('.iso-pszv'), glassEl=$('.iso-glass'), waveEl=$('.iso-wave'),
+          pszEl=$('.iso-psz'), pszvEl=$('.iso-pszv'), glassEl=$('.iso-glass'), waveEl=$('.iso-wave'), wfreqEl=$('.iso-wfreq'), wfvEl=$('.iso-wfv'),
           backEl=$('.iso-back'), faceEl=$('.iso-face'), lockEl=$('.iso-lock'), legendEl=$('.iso-legend'), readEl=$('.iso-read');
     // ---- persistence: remember the view settings between sessions ----
     const SKEY='th108_iso_view';
-    function saveSettings(){ try{ localStorage.setItem(SKEY, JSON.stringify({yaw,pitch,zoom,gap,enhanced,auraI,partSize,glass,showKeys,faceOn,waveStyle})); }catch(_){ } }
+    function saveSettings(){ try{ localStorage.setItem(SKEY, JSON.stringify({yaw,pitch,zoom,gap,enhanced,auraI,partSize,glass,showKeys,faceOn,waveStyle,waveFreq})); }catch(_){ } }
     let _saveT=0; function saveSoon(){ clearTimeout(_saveT); _saveT=setTimeout(saveSettings, 350); }
     function loadSettings(){ let s; try{ s=JSON.parse(localStorage.getItem(SKEY)); }catch(_){ } if(!s||typeof s!=='object') return;
       if(typeof s.yaw==='number') yaw=s.yaw; if(typeof s.pitch==='number') pitch=s.pitch;
       if(typeof s.zoom==='number') zoom=s.zoom; if(typeof s.gap==='number') gap=s.gap;
       if(typeof s.auraI==='number') auraI=s.auraI; if(typeof s.partSize==='number') partSize=s.partSize;
-      enhanced=!!s.enhanced; glass=!!s.glass; showKeys=s.showKeys!==false; faceOn=!!s.faceOn; if(typeof s.waveStyle==='string') waveStyle=s.waveStyle; }
+      if(typeof s.waveFreq==='number') waveFreq=s.waveFreq;
+      enhanced=!!s.enhanced; glass=!!s.glass; showKeys=s.showKeys!==false; faceOn=!!s.faceOn; if(s.waveStyle==='ripple'||s.waveStyle==='waveX') waveStyle=s.waveStyle; }
     function syncControls(){   // push the (possibly restored) state into the UI controls
       zoomEl.value=zoom; zvalEl.textContent=zoom+'%'; gapEl.value=gap; aintEl.value=Math.round(auraI*100);
       pszEl.value=Math.round(partSize*100); pszvEl.textContent='Dust '+Math.round(partSize*100)+'%'; waveEl.value=waveStyle;
+      wfreqEl.value=Math.round(waveFreq*10); wfvEl.textContent='Freq '+waveFreq.toFixed(1);
       enhEl.classList.toggle('on',enhanced); panel.querySelectorAll('.iso-efx').forEach(el=>el.style.display=enhanced?'':'none');
       keysEl.classList.toggle('on',showKeys); glassEl.classList.toggle('on',glass); panel.classList.toggle('glass',glass);
       faceEl.classList.toggle('on',faceOn); lockEl.hidden=!faceOn; }
+    wfreqEl.addEventListener('input', e=>{ waveFreq=+e.target.value/10; wfvEl.textContent='Freq '+waveFreq.toFixed(1); saveSoon(); });
     keysEl.addEventListener('click', ()=>{ showKeys=!showKeys; keysEl.classList.toggle('on',showKeys); saveSoon(); });
     glassEl.addEventListener('click', ()=>{ glass=!glass; glassEl.classList.toggle('on',glass); panel.classList.toggle('glass',glass); saveSoon(); });   // frosted-glass window: page shows through (draw() clears the canvas instead of dark-filling)
     pszEl.addEventListener('input', e=>{ partSize=+e.target.value/100; pszvEl.textContent='Dust '+e.target.value+'%'; saveSoon(); });
     waveEl.addEventListener('change', e=>{ waveStyle=e.target.value; saveSoon(); });
     // keys must NOT interact with the iso UI (Enter was re-toggling the focused Face-on button) — blur any control
     // after a click so it never holds keyboard focus. Reactive still reacts (that's a window-level key listener).
-    panel.addEventListener('click', e=>{ const t=e.target.closest('button,input,select'); if(t&&t.blur) t.blur(); });
+    panel.addEventListener('click', e=>{ const t=e.target.closest('button,input'); if(t&&t.blur) t.blur(); });   // NOT select — blurring it mid-click closed the dropdown (had to hold to pick)
     zoomEl.addEventListener('input', e=>{ zoom=+e.target.value; zvalEl.textContent=zoom+'%'; saveSoon(); });
     gapEl.addEventListener('input', e=>{ gap=+e.target.value; saveSoon(); });
     aintEl.addEventListener('input', e=>{ auraI=+e.target.value/100; saveSoon(); });
     // Home/End/PageUp/PageDown natively jam a focused range input to min/max — block them so those keys
     // (used for reactive lighting / nav) don't yank a slider. Arrow keys still fine-adjust.
-    [zoomEl,gapEl,aintEl,pszEl].forEach(el=> el.addEventListener('keydown', e=>{ if(e.key==='Home'||e.key==='End'||e.key==='PageUp'||e.key==='PageDown') e.preventDefault(); }));
+    [zoomEl,gapEl,aintEl,pszEl,wfreqEl].forEach(el=> el.addEventListener('keydown', e=>{ if(e.key==='Home'||e.key==='End'||e.key==='PageUp'||e.key==='PageDown') e.preventDefault(); }));
     enhEl.addEventListener('click', ()=>{ enhanced=!enhanced; enhEl.classList.toggle('on',enhanced); panel.querySelectorAll('.iso-efx').forEach(el=>el.style.display=enhanced?'':'none'); saveSoon(); });
     backEl.addEventListener('click', ()=>{ focusIdx=null; backEl.hidden=true; if(!faceOn){ pitch=ISO_PITCH; yaw=40*D2R; } buildLegend(); saveSoon(); });
     // Face-on: snap to a flat front-facing (top-down) view AND lock tilt (so a drag can't knock it off); yaw still spins.
@@ -192,18 +194,11 @@
       const up=by*cP - rz*sP, depth=by*sP + rz*cP;
       return [ cx + rx*Z, cy - up*Z, depth ];
     }
-    // enhanced-wave height offset per key (u,v normalized; j = plane index; t seconds) — selectable styles
-    function waveFn(u,v,j,t){
-      switch(waveStyle){
-        case 'waveX': return Math.sin(u*TAU*1.5 - t*2.2 + j*0.4);
-        case 'waveY': return Math.sin(v*TAU*1.6 - t*2.2 + j*0.4);
-        case 'radial': { const dx=u-0.5,dy=v-0.5; return Math.sin(Math.hypot(dx,dy)*TAU*2.4 - t*2.4); }
-        case 'twist': return Math.sin(Math.atan2(v-0.5,u-0.5)*3 + (u-0.5)*4 + t*1.8);
-        case 'swirl': { const dx=u-0.5,dy=v-0.5; return Math.sin(Math.atan2(dy,dx)*2 + Math.hypot(dx,dy)*TAU*2 - t*2.2); }
-        case 'bounce': return Math.sin(t*2.6 + j*0.9);
-        case 'scatter': { const h=Math.sin((u*127.1+v*311.7)*43.758); return Math.sin((h-Math.floor(h))*TAU + t*2.4); }
-        default: return Math.sin((u*2+v)*TAU + t*1.7 + j*0.6);   // 'ripple'
-      }
+    // enhanced-wave height offset per key (u,v normalized; j = plane index; t seconds). waveFreq sets the spatial
+    // frequency (the slider). Ripple = diagonal; Wave X = horizontal traveling wave.
+    function waveFn(u,v,j,t){ const f=waveFreq;
+      if(waveStyle==='waveX') return Math.sin(u*TAU*f - t*2.2 + j*0.4);
+      return Math.sin((u*f + v*f*0.5)*TAU + t*1.7 + j*0.6);   // 'ripple'
     }
 
     function avgColor(rgb){ let r=0,g=0,b=0,n=0; for(let k=0;k<NLED;k++){ const t=k*3, L=rgb[t]+rgb[t+1]+rgb[t+2]; if(L>24){ r+=rgb[t];g+=rgb[t+1];b+=rgb[t+2];n++; } } return n?[r/n|0,g/n|0,b/n|0]:null; }
