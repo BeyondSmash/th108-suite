@@ -226,7 +226,7 @@
       const cr=(b[0]-a[0])*(py-a[1])-(b[1]-a[1])*(px-a[0]); const sg=cr>0?1:cr<0?-1:0; if(sg){ if(s&&sg!==s) return false; s=sg; } } return true; }
 
     // ---- enhanced FX: rising stardust particles ----
-    const P=[]; let _planes=[];
+    const P=[]; let _planes=[]; const _csm=[];   // _csm = per-plane temporally-smoothed colour (anti-twitch for the aura)
     function spawnParticles(dt, cx, cy, byOf){
       if(_planes.length<1) return;
       // rise direction = the board's height axis projected to screen (yaw-invariant up-the-stack); spawn over
@@ -270,13 +270,13 @@
       // edge falloff: elliptical vignette (bright center → black edges) so the noise feathers, not a hard box
       _actx.save(); _actx.translate(SW/2,SH/2); _actx.scale(1,SH/SW);
       const g=_actx.createRadialGradient(0,0,0,0,0,SW*0.5);
-      g.addColorStop(0,'#fff'); g.addColorStop(0.15,'#fff'); g.addColorStop(0.82,'#000'); g.addColorStop(1,'#000');   // reach full black BEFORE the edge → no hard rectangle edge
+      g.addColorStop(0,'#fff'); g.addColorStop(0.5,'#fff'); g.addColorStop(1,'#000');   // wide bright core, fading only at the far edge → the falloff lands OUTSIDE the keyboard (footprint is 2x the board)
       _actx.fillStyle=g; _actx.fillRect(-SW,-SW,2*SW,2*SW); _actx.restore();
       _actx.globalCompositeOperation='source-over';
       return _aur;
     }
     const SLABS=[[0.55,0.17,7],[0.9,0.20,12],[1.45,0.12,19]];   // [scale, baseAlpha, scrollSpeed] — 3 parallax sheets
-    const NSHEETS=8, AURA_M=0.82;   // sheets per gap; AURA_M = half-extent of the footprint (>0.5 → extends past the keys so the feathered edges fall OUTSIDE them, not on the keyboard boundary)
+    const NSHEETS=8, AURA_M=1.0;   // sheets per gap; AURA_M = half-extent of the footprint (1.0 = 2x the board → the feathered falloff lands well OUTSIDE the keyboard, no visible edge)
     function drawAura(tSec, cx, cy, byOf, AMP){
       if(!auraReady || auraI<=0) return;
       // each aura fills the gap between two planes (or around a focused plane) with stacked footprint glow-sheets,
@@ -293,8 +293,8 @@
         // MANY overlapping full-footprint sheets across the gap, alpha bell-weighted (brightest mid-gap, fading to
         // 0 at each plane) → reads as ONE continuous volumetric glow, not a few discrete squished layers. Each
         // sheet seeded differently so the noise doesn't align into visible bands.
-        for(let n=0;n<NSHEETS;n++){ const fr=(n+0.5)/NSHEETS, by=sp.lo+span*fr, sl=SLABS[n%SLABS.length];
-          const sc=sl[0], bell=0.55+0.45*Math.sin(fr*Math.PI);   // higher floor → adjacent gaps overlap at the planes (no dark band between auras)
+        for(let n=0;n<NSHEETS;n++){ const fr=(n+0.5)/NSHEETS, ext=fr*1.5-0.25, by=sp.lo+span*ext, sl=SLABS[n%SLABS.length];   // ext spills the sheets past both planes so a lit layer's aura bleeds across the dark layers (no dark band)
+          const sc=sl[0], bc=Math.max(0,Math.min(1,ext)), bell=0.45+0.55*Math.sin(bc*Math.PI);   // gentle bell over the gap, dimming in the spill region
           const w=dir*(0.16+sl[2]*0.012), ph=sdx*0.013+n*0.9;   // circular drift: same freq for x & y → seamless loop (no scroll seam)
           const ox=Math.cos(tSec*w+ph)*40, oy=Math.sin(tSec*w+ph)*26, cover=300+sc*120;
           // DEFORM: warp each sheet's corner heights by the same wave (per-sheet phase via jw) so the sheets
@@ -303,7 +303,7 @@
           const P00=proj(-BW0*AURA_M,-BD*AURA_M,by+wA,cx,cy), P10=proj(BW0*AURA_M,-BD*AURA_M,by+wB,cx,cy), P01=proj(-BW0*AURA_M,BD*AURA_M,by+wC,cx,cy);
           const ux=(P10[0]-P00[0])/SW, uy=(P10[1]-P00[1])/SW, vx=(P01[0]-P00[0])/SH, vy=(P01[1]-P00[1])/SH;
           const tex=tintSlab(col, ox, oy, cover);
-          ctx.globalAlpha=0.11*bell*auraI*ls*(0.82+0.18*Math.sin(tSec*1.1+gi*1.7+n));   // lower per-sheet alpha (bigger footprint → more overlap, keeps overall prominence)
+          ctx.globalAlpha=0.07*bell*auraI*ls*(0.82+0.18*Math.sin(tSec*1.1+gi*1.7+n));   // lower per-sheet alpha (2x footprint = much larger bright area)
           ctx.setTransform(SS*ux,SS*uy,SS*vx,SS*vy, SS*P00[0], SS*P00[1]);   // affine: SW×SH rect → a footprint sheet (×SS supersample)
           ctx.drawImage(tex,0,0,SW,SH);
         }
@@ -344,7 +344,13 @@
       } else { ctx.fillStyle='#0d1117'; ctx.fillRect(0,0,CW,CH); }
 
       _planes=[];
-      for(let j=0;j<N;j++){ const pl=P0[j], by=byOf(j), rep=avgColor(pl.rgb);
+      for(let j=0;j<N;j++){ const pl=P0[j], by=byOf(j), raw=avgColor(pl.rgb);
+        // temporally smooth the per-plane colour the aura uses, so a sudden lit key (e.g. a reactive keypress)
+        // eases in/out over ~150ms instead of twitching the aura.
+        let sm=_csm[j];
+        if(raw){ if(sm){ sm[0]+=(raw[0]-sm[0])*0.12; sm[1]+=(raw[1]-sm[1])*0.12; sm[2]+=(raw[2]-sm[2])*0.12; } else { sm=raw.slice(); _csm[j]=sm; } }
+        else if(sm){ sm[0]*=0.88; sm[1]*=0.88; sm[2]*=0.88; if(sm[0]+sm[1]+sm[2]<6){ _csm[j]=null; sm=null; } }
+        const rep = sm ? [sm[0]|0,sm[1]|0,sm[2]|0] : null;
         const bg=[proj(-BW0/2,-BD/2,by,cx,cy),proj(BW0/2,-BD/2,by,cx,cy),proj(BW0/2,BD/2,by,cx,cy),proj(-BW0/2,BD/2,by,cx,cy)];
         _planes.push({ quad:bg.map(c=>[c[0],c[1]]), id:pl.id, sys:pl.sys, col:rep,
           cx:(bg[0][0]+bg[2][0])/2, cy:(bg[0][1]+bg[2][1])/2, hw:Math.abs(bg[1][0]-bg[0][0])/2+Math.abs(bg[2][0]-bg[1][0])/2 });
