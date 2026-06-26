@@ -1271,11 +1271,13 @@ function npPaintBar(flat,keys,lit,op,br,bg,bb,f,grad,fit){
     flat[o+1]=(flat[o+1]*(1-op)+r)|0; flat[o+2]=(flat[o+2]*(1-op)+g)|0; flat[o+3]=(flat[o+3]*(1-op)+bl)|0;
   }
 }
-let _npPos=null, _npPosAt=0;
+let _npPos=null, _npPosAt=0, _npLastTrack=null, _npFlashUntil=0;
 setInterval(async ()=>{
   const on=document.getElementById('npBar');
   if(!on||!on.checked||!DC.present){ _npPos=null; return; }
-  try{ const j=await (await fetch('/nowplaying/pos',{cache:'no-store'})).json(); _npPos=j.pos||null; if(_npPos) _npPosAt=performance.now(); }
+  try{ const j=await (await fetch('/nowplaying/pos',{cache:'no-store'})).json(); _npPos=j.pos||null; if(_npPos){ _npPosAt=performance.now();
+    // detect a real track change (pos.track = "title|artist") → arm a brief flash window for the iso preview
+    if(_npPos.track && _npPos.track!==_npLastTrack){ if(_npLastTrack!==null && _npPos.playing) _npFlashUntil=performance.now()+450; _npLastTrack=_npPos.track; } } }
   catch(_){ _npPos=null; }
 }, 250);
 function applyNpBar(flat){
@@ -1490,11 +1492,11 @@ function isoExtraPlanes(){   // Song-progress bar (keys 1-0 / numpad) as its own
   const lit=Math.round((ms.progress||0)*keys.length), span=(fit?lit:keys.length)-1;
   for(let i=0;i<lit && i<keys.length;i++){ let b=0; if(grad&&grad!=='solid'&&span>0){ const p=i/span; b=grad==='fromWhite'?1-p:p; }
     const o=keys[i]*3; _npPlaneRgb[o]=((br+(255-br)*b)*f)|0; _npPlaneRgb[o+1]=((bg+(255-bg)*b)*f)|0; _npPlaneRgb[o+2]=((bb+(255-bb)*b)*f)|0; }
-  // "Flash keys 1-0 on track change" → demo it in the preview as a gentle pulse in the flash color (the real flash is a 150ms daemon event we can't observe here)
+  // "Flash keys 1-0 on track change" → solid flash ONLY during the brief window after a REAL track change
+  // (mirrors the daemon's 150ms flash; _npFlashUntil is armed by the pos poll), not a constant pulse.
   const fl=document.getElementById('npFlash');
-  if(fl&&fl.checked){ const [fr,fg,fb]=TH108Engine.hexToRgb(((document.getElementById('npFlashColor')||{}).value)||'#ffd000');
-    const pulse=(0.15+0.2*(0.5+0.5*Math.sin(performance.now()/650)));
-    for(let i=0;i<keys.length;i++){ const o=keys[i]*3; _npPlaneRgb[o]=Math.max(_npPlaneRgb[o],fr*pulse|0); _npPlaneRgb[o+1]=Math.max(_npPlaneRgb[o+1],fg*pulse|0); _npPlaneRgb[o+2]=Math.max(_npPlaneRgb[o+2],fb*pulse|0); } }
+  if(fl&&fl.checked && performance.now()<_npFlashUntil){ const [fr,fg,fb]=TH108Engine.hexToRgb(((document.getElementById('npFlashColor')||{}).value)||'#ffd000');
+    for(let i=0;i<keys.length;i++){ const o=keys[i]*3; _npPlaneRgb[o]=Math.max(_npPlaneRgb[o],fr); _npPlaneRgb[o+1]=Math.max(_npPlaneRgb[o+1],fg); _npPlaneRgb[o+2]=Math.max(_npPlaneRgb[o+2],fb); } }
   return [{name:'Song progress', rgb:_npPlaneRgb}];
 }
 const ISO=TH108IsoView.create({ state, engine:TH108Engine, getRunning:()=>running,

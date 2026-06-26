@@ -32,7 +32,7 @@
     const onUp   = e => { updLock(e); if(!getRunning()){ const i=KEYMAP[e.code]; if(i!==undefined) E.releaseKey(state,i); } };
 
     // ---- view params ----
-    let yaw = 22*D2R, pitch = 58*D2R, zoom = 100, gap = 46, enhanced = false, focusIdx = null, auraI = 0.8, faceOn = false;
+    let yaw = 22*D2R, pitch = 58*D2R, zoom = 100, gap = 46, enhanced = false, focusIdx = null, auraI = 0.8, faceOn = false, showKeys = true, partSize = 1, glass = false;
     const ISO_PITCH = 58*D2R, FACE_PITCH = 89*D2R;   // isometric tilt vs front-flat (top-down)
 
     // ---- panel chrome ----
@@ -40,7 +40,8 @@
     panel.innerHTML =
       '<div class="iso-head"><span class="iso-grip">⠿</span><b>Isometric View</b>' +
       '<span class="iso-spacer"></span>' +
-      '<button type="button" class="iso-rs" hidden title="Reset window to the default size">⤢ Reset size</button>' +
+      '<button type="button" class="iso-wmax" hidden title="Maximize / restore the pop-out window">⛶</button>' +
+      '<button type="button" class="iso-rs" hidden title="Reset the pop-out window to the default size">⤢ Reset size</button>' +
       '<button type="button" class="iso-pop" title="Pop out into a separate, resizable window">' +
         '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px"><path d="M21 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h6"/><path d="m21 3-9 9"/><path d="M15 3h6v6"/></svg>Pop out</button>' +
       '<button type="button" class="iso-popin" hidden title="Pop back into the page">' +
@@ -50,8 +51,11 @@
         '<button type="button" class="iso-back" hidden>‹ Back</button>' +
         '<span class="iso-zwrap" title="Zoom — tell me the % to bake as default"><input type="range" class="iso-zoom" min="40" max="240" value="100"><small class="iso-zval">100%</small></span>' +
         '<label class="iso-gl">Gap<input type="range" class="iso-gapr" min="14" max="90" value="46"></label>' +
+        '<button type="button" class="iso-keys on" title="Show the inactive/unused keys so the full keyboard layout reads (esp. face-on / top-down)">⌨ Keys</button>' +
+        '<button type="button" class="iso-glass" title="Swap the window background between solid and frosted glass (the page shows through, refracted)">🫧 Glass</button>' +
         '<button type="button" class="iso-enh" title="Wave + rising stardust + aura wisps">✨ Enhanced</button>' +
-        '<label class="iso-gl iso-al" style="display:none" title="Aura glow intensity">Aura<input type="range" class="iso-aint" min="0" max="150" value="80"></label>' +
+        '<label class="iso-gl iso-efx" style="display:none" title="Aura glow intensity">Aura<input type="range" class="iso-aint" min="0" max="150" value="80"></label>' +
+        '<label class="iso-gl iso-efx" style="display:none" title="Stardust size"><input type="range" class="iso-psz" min="40" max="280" value="100"><small class="iso-pszv" style="font-size:10px;color:var(--muted,#8b949e)">Dust 100%</small></label>' +
         '<button type="button" class="iso-face" title="Tilt the board front-flat (keys facing you) vs isometric">Face-on</button>' +
         '<span class="iso-lock" hidden title="Tilt is locked while Face-on is active — the board faces you flat. Click Face-on again to unlock and tilt freely (you can still spin/yaw).">' +
           '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></span>' +
@@ -71,14 +75,17 @@
         '.iso-x{display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:50%;' +
         'background:none;border:0;color:var(--muted,#8b949e);font-size:13px;line-height:1;cursor:pointer;padding:0;margin:0}' +
         '.iso-x:hover{color:var(--fg,#e6edf3);background:rgba(255,255,255,.06)}' +
-        '.iso-head>button.iso-pop,.iso-head>button.iso-popin,.iso-head>button.iso-rs{margin:0;padding:4px 10px;font-size:11.5px;' +
-        'background:rgba(255,255,255,.05);box-shadow:inset 0 0 0 1px var(--line,#30363d);color:var(--fg,#e6edf3)}' +
         '.iso-panel.popped{position:static;left:0;top:0;transform:none;width:100%;height:100vh;border:0;border-radius:0;box-shadow:none;display:flex;flex-direction:column}' +
         '.iso-panel.popped .iso-head{cursor:default}.iso-panel.popped .iso-grip{display:none}' +
         '.iso-panel.popped .iso-cv{flex:1 1 auto;width:100%;height:auto;min-height:120px;margin:6px 0 2px}' +
-        '.iso-ctl{display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:8px 12px 4px}' +
-        '.iso-ctl button{margin:0;padding:4px 11px;font-size:12px;box-shadow:0 0 0 1px var(--line,#30363d)}' +
-        '.iso-ctl button.on{background:var(--blue,#58a6ff);color:#0d1117;box-shadow:none}' +
+        '.iso-ctl{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:9px 12px 5px}' +
+        // modern buttons: soft rounded pills, subtle fill, smooth hover, glowing active state (shared by header + control bar)
+        '.iso-ctl button,.iso-head>button.iso-pop,.iso-head>button.iso-popin,.iso-head>button.iso-rs,.iso-head>button.iso-wmax{margin:0;padding:5px 12px;' +
+        'font-size:12px;font-weight:600;border-radius:8px;border:1px solid rgba(255,255,255,.10);background:rgba(255,255,255,.06);color:var(--fg,#e6edf3);' +
+        'box-shadow:none;cursor:pointer;transition:background .15s,border-color .15s,transform .08s}' +
+        '.iso-ctl button:hover,.iso-head>button.iso-pop:hover,.iso-head>button.iso-popin:hover,.iso-head>button.iso-rs:hover,.iso-head>button.iso-wmax:hover{background:rgba(255,255,255,.13);border-color:rgba(255,255,255,.22)}' +
+        '.iso-ctl button:active,.iso-head>button.iso-pop:active,.iso-head>button.iso-popin:active,.iso-head>button.iso-rs:active,.iso-head>button.iso-wmax:active{transform:translateY(1px)}' +
+        '.iso-ctl button.on{background:var(--blue,#58a6ff);border-color:transparent;color:#0d1117;box-shadow:0 2px 10px rgba(88,166,255,.35)}' +
         '.iso-zwrap{display:inline-flex;flex-direction:column;align-items:center;gap:1px}' +
         '.iso-zwrap input{width:120px}.iso-zval{font-size:11px;color:var(--muted,#8b949e)}' +
         '.iso-gl{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--muted,#8b949e)}.iso-gl input{width:90px}' +
@@ -89,7 +96,10 @@
         '.iso-chip.foc{box-shadow:inset 0 0 0 1px var(--blue,#58a6ff)}.iso-chip.off{opacity:.5}' +
         '.iso-chip .pw{width:13px;height:13px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:9px;' +
         'box-shadow:inset 0 0 0 1px var(--muted,#8b949e)}.iso-chip.on .pw{background:#3fb950;box-shadow:none;color:#0d1117}' +
-        '.iso-foot{padding:4px 12px 11px;font-size:11px;color:var(--muted,#8b949e);line-height:1.45}.iso-read{color:var(--fg,#e6edf3)}';
+        '.iso-foot{padding:4px 12px 11px;font-size:11px;color:var(--muted,#8b949e);line-height:1.45}.iso-read{color:var(--fg,#e6edf3)}' +
+        '.iso-panel.glass{background:rgba(20,25,33,.45);backdrop-filter:blur(22px) saturate(1.6);-webkit-backdrop-filter:blur(22px) saturate(1.6);' +
+        'border-color:rgba(255,255,255,.16);box-shadow:0 18px 50px rgba(0,0,0,.5),inset 0 1px 0 rgba(255,255,255,.22),inset 0 0 0 1px rgba(255,255,255,.05)}' +
+        '.iso-panel.glass .iso-head{border-bottom-color:rgba(255,255,255,.12)}';
       document.head.appendChild(st);
     }
     document.body.appendChild(panel);
@@ -100,22 +110,29 @@
     function sizeCanvas(w,h){ CW=Math.max(160,Math.round(w)); CH=Math.max(120,Math.round(h)); cv.width=CW*SS; cv.height=CH*SS; }
     sizeCanvas(DEF_W, DEF_H);
     const $ = s => panel.querySelector(s);
-    const zoomEl=$('.iso-zoom'), zvalEl=$('.iso-zval'), gapEl=$('.iso-gapr'), enhEl=$('.iso-enh'), aintEl=$('.iso-aint'),
+    const zoomEl=$('.iso-zoom'), zvalEl=$('.iso-zval'), gapEl=$('.iso-gapr'), enhEl=$('.iso-enh'), aintEl=$('.iso-aint'), keysEl=$('.iso-keys'),
+          pszEl=$('.iso-psz'), pszvEl=$('.iso-pszv'), glassEl=$('.iso-glass'),
           backEl=$('.iso-back'), faceEl=$('.iso-face'), lockEl=$('.iso-lock'), legendEl=$('.iso-legend'), readEl=$('.iso-read');
+    keysEl.addEventListener('click', ()=>{ showKeys=!showKeys; keysEl.classList.toggle('on',showKeys); });
+    glassEl.addEventListener('click', ()=>{ glass=!glass; glassEl.classList.toggle('on',glass); panel.classList.toggle('glass',glass); });   // frosted-glass window: page shows through (draw() clears the canvas instead of dark-filling)
+    pszEl.addEventListener('input', e=>{ partSize=+e.target.value/100; pszvEl.textContent='Dust '+e.target.value+'%'; });
+    // keys must NOT interact with the iso UI (Enter was re-toggling the focused Face-on button) — blur any control
+    // after a click so it never holds keyboard focus. Reactive still reacts (that's a window-level key listener).
+    panel.addEventListener('click', e=>{ const t=e.target.closest('button,input'); if(t&&t.blur) t.blur(); });
     zoomEl.addEventListener('input', e=>{ zoom=+e.target.value; zvalEl.textContent=zoom+'%'; });
     gapEl.addEventListener('input', e=>{ gap=+e.target.value; });
     aintEl.addEventListener('input', e=>{ auraI=+e.target.value/100; });
     // Home/End/PageUp/PageDown natively jam a focused range input to min/max — block them so those keys
     // (used for reactive lighting / nav) don't yank a slider. Arrow keys still fine-adjust.
-    [zoomEl,gapEl,aintEl].forEach(el=> el.addEventListener('keydown', e=>{ if(e.key==='Home'||e.key==='End'||e.key==='PageUp'||e.key==='PageDown') e.preventDefault(); }));
-    enhEl.addEventListener('click', ()=>{ enhanced=!enhanced; enhEl.classList.toggle('on',enhanced); aintEl.parentElement.style.display=enhanced?'':'none'; });
+    [zoomEl,gapEl,aintEl,pszEl].forEach(el=> el.addEventListener('keydown', e=>{ if(e.key==='Home'||e.key==='End'||e.key==='PageUp'||e.key==='PageDown') e.preventDefault(); }));
+    enhEl.addEventListener('click', ()=>{ enhanced=!enhanced; enhEl.classList.toggle('on',enhanced); panel.querySelectorAll('.iso-efx').forEach(el=>el.style.display=enhanced?'':'none'); });
     backEl.addEventListener('click', ()=>{ focusIdx=null; backEl.hidden=true; if(!faceOn){ pitch=ISO_PITCH; yaw=22*D2R; } buildLegend(); });
     // Face-on: snap to a flat front-facing (top-down) view AND lock tilt (so a drag can't knock it off); yaw still spins.
     faceEl.addEventListener('click', ()=>{ faceOn=!faceOn; pitch=faceOn?FACE_PITCH:ISO_PITCH; if(faceOn) yaw=0; faceEl.classList.toggle('on',faceOn); lockEl.hidden=!faceOn; });
 
     // ---- drag the panel by its header ----
     const head = $('.iso-head'); let dg=null;
-    head.addEventListener('pointerdown', e=>{ if(e.target.closest('.iso-x')) return;
+    head.addEventListener('pointerdown', e=>{ if(e.target.closest('button')) return;   // don't start a drag on the header BUTTONS (pop-out/pop-in/reset/close) — capturing the pointer here suppressed their clicks
       const r=panel.getBoundingClientRect(); panel.style.transform='none'; panel.style.left=r.left+'px'; panel.style.top=r.top+'px';
       dg={dx:e.clientX-r.left,dy:e.clientY-r.top}; head.classList.add('drag'); head.setPointerCapture(e.pointerId); e.preventDefault(); });
     head.addEventListener('pointermove', e=>{ if(!dg) return;
@@ -131,6 +148,10 @@
     cv.addEventListener('pointermove', e=>{ if(!rot) return; const dx=e.clientX-rot.x, dy=e.clientY-rot.y;
       rot.moved=Math.max(rot.moved,Math.abs(dx)+Math.abs(dy));
       yaw=rot.y0 + dx*0.7*D2R; if(!faceOn) pitch=Math.max(8*D2R, Math.min(90*D2R, rot.p0 + dy*0.5*D2R));   // Face-on locks tilt
+      if(e.ctrlKey){   // hold Ctrl → snap yaw/tilt to the nearest 90° interval when within ~12°
+        const snap=(rad)=>{ const d=rad/D2R, n=Math.round(d/90)*90; return Math.abs(d-n)<12 ? n*D2R : rad; };
+        yaw=snap(yaw); if(!faceOn){ const ps=snap(pitch); pitch=Math.max(8*D2R,Math.min(90*D2R,ps)); }
+      }
       cv.classList.toggle('drag', rot.moved>4); });
     cv.addEventListener('pointerup', e=>{ if(!rot) return; const click=rot.moved<=4; const mv=rot; rot=null; cv.classList.remove('drag');
       if(click) clickAt(mv.px, mv.py); });
@@ -203,7 +224,7 @@
         q.x+=(q.vx+q.px*sway)*dt/1000; q.y+=(q.vy+q.py*sway)*dt/1000; q.vx*=0.993; q.vy*=0.993;
         const t=q.life/q.max; if(t>=1){ P.splice(i,1); continue; }
         const tw=0.35+0.65*(0.5+0.5*Math.sin(q.life*q.tw+q.seed));   // fast twinkle
-        const a=Math.sin(t*Math.PI)*0.95*tw, r=q.sz;
+        const a=Math.sin(t*Math.PI)*0.95*tw, r=q.sz*partSize;
         ctx.fillStyle='rgba('+q.col[0]+','+q.col[1]+','+q.col[2]+','+a+')'; ctx.beginPath(); ctx.arc(q.x,q.y,r,0,TAU); ctx.fill();   // sharp dust core
         const g=ctx.createRadialGradient(q.x,q.y,0,q.x,q.y,r*2.4);   // tiny soft halo
         g.addColorStop(0,'rgba('+q.col[0]+','+q.col[1]+','+q.col[2]+','+(a*0.5)+')'); g.addColorStop(1,'rgba('+q.col[0]+','+q.col[1]+','+q.col[2]+',0)');
@@ -229,23 +250,27 @@
       _actx.globalCompositeOperation='source-over';
       return _aur;
     }
-    const SLABS=[[0.55,0.17,7],[0.9,0.20,12],[1.45,0.12,19]];   // [scale, baseAlpha, scrollSpeed] — 3 parallax slabs (spread in DEPTH → volume)
+    const SLABS=[[0.55,0.17,7],[0.9,0.20,12],[1.45,0.12,19]];   // [scale, baseAlpha, scrollSpeed] — 3 parallax sheets
+    const HFRAC=[0.3,0.5,0.7];   // heights across the gap for the stacked footprint glow-sheets
     function drawAura(tSec, cx, cy, byOf){
       if(!auraReady || auraI<=0) return;
-      // each aura is a VERTICAL CURTAIN filling the gap between two planes (board width × gap height) so it stays
-      // visible at flat angles instead of collapsing to a thin sliver. Focus = one curtain around the plane.
+      // each aura fills the gap between two planes (or around a focused plane) with stacked footprint glow-sheets,
+      // each gap seeded differently so adjacent layers' auras don't drift in lockstep.
       const spots=[];
       if(_planes.length>=2){ for(let i=1;i<_planes.length;i++){ const col=_planes[i-1].col||_planes[i].col; if(col) spots.push({lo:byOf(i-1),hi:byOf(i), col}); } }
       else if(_planes.length===1 && _planes[0].col){ const b=byOf(0); spots.push({lo:b-gap*0.45,hi:b+gap*0.45, col:_planes[0].col}); }
       if(!spots.length) return;
       ctx.globalCompositeOperation='lighter';
       let gi=0;
-      for(const sp of spots){ gi++; const col=sp.col;
+      for(const sp of spots){ gi++; const col=sp.col, span=sp.hi-sp.lo;
         const lum=(0.299*col[0]+0.587*col[1]+0.114*col[2])/255, ls=0.5+0.5*(1-lum*0.7);   // tame white/bright vs the colored auras
-        for(let si=0;si<SLABS.length;si++){ const sc=SLABS[si][0], baseA=SLABS[si][1], spd=SLABS[si][2], z=(si-1)*BD*0.32;   // z spreads the slabs across the board depth → volume
-          const P00=proj(-BW0/2,z,sp.lo,cx,cy), P10=proj(BW0/2,z,sp.lo,cx,cy), P01=proj(-BW0/2,z,sp.hi,cx,cy);   // U = board width, V = the gap height (vertical curtain)
+        const sdx=gi*167.3, sdy=gi*97.1, dir=(gi%2)?1:-1;   // per-gap seed: different start offset + alternating scroll direction so layers don't move in lockstep
+        // stack a few full-footprint (width×depth) glow sheets across the gap height → a gap-filling volume that
+        // reads from ANY angle: a width-only curtain vanishes edge-on, a single footprint vanishes at low pitch.
+        for(let si=0;si<SLABS.length;si++){ const sc=SLABS[si][0], baseA=SLABS[si][1], spd=SLABS[si][2], by=sp.lo+span*HFRAC[si];
+          const P00=proj(-BW0/2,-BD/2,by,cx,cy), P10=proj(BW0/2,-BD/2,by,cx,cy), P01=proj(-BW0/2,BD/2,by,cx,cy);
           const ux=(P10[0]-P00[0])/SW, uy=(P10[1]-P00[1])/SW, vx=(P01[0]-P00[0])/SH, vy=(P01[1]-P00[1])/SH;
-          const tex=tintSlab(col, tSec*spd, tSec*spd*0.25, sc);
+          const tex=tintSlab(col, dir*tSec*spd+sdx, tSec*spd*0.25+sdy, sc);
           ctx.globalAlpha=baseA*auraI*ls*(0.7+0.3*Math.sin(tSec*1.1+gi*1.7+si));
           ctx.setTransform(SS*ux,SS*uy,SS*vx,SS*vy, SS*P00[0], SS*P00[1]);   // affine: SW×SH rect → the gap curtain (×SS supersample)
           ctx.drawImage(tex,0,0,SW,SH);
@@ -274,10 +299,12 @@
       for(let j=0;j<N;j++){ const by=byOf(j);
         for(const c of [proj(-BW0/2,-BD/2,by,0,0),proj(BW0/2,-BD/2,by,0,0),proj(BW0/2,BD/2,by,0,0),proj(-BW0/2,BD/2,by,0,0)]){
           if(c[0]<minX)minX=c[0]; if(c[0]>maxX)maxX=c[0]; if(c[1]<minY)minY=c[1]; if(c[1]>maxY)maxY=c[1]; } }
-      // anchor the board's left edge just right of the label column (small gap) so the labels sit close to it
-      const LBGAP=16, cx=labelRight+LBGAP-minX, cy=(CH-(maxY-minY))/2-minY;
+      // place the board after the label column. Docked + board ~fills the width → tight left-anchor (labels close).
+      // Popped (wide window) or lots of spare room → center it in the available space so it doesn't hug the left.
+      const LBGAP=16, RMARG=14, region=CW-(labelRight+LBGAP)-RMARG, content=maxX-minX, popped=panel.classList.contains('popped');
+      const cx=((popped||region>content+40) ? (labelRight+LBGAP)+(region-content)/2 : labelRight+LBGAP)-minX, cy=(CH-(maxY-minY))/2-minY;
 
-      ctx.fillStyle='#0d1117'; ctx.fillRect(0,0,CW,CH);
+      if(glass) ctx.clearRect(0,0,CW,CH); else { ctx.fillStyle='#0d1117'; ctx.fillRect(0,0,CW,CH); }   // glass mode: transparent canvas so the frosted panel (and page) shows through
 
       _planes=[];
       for(let j=0;j<N;j++){ const pl=P0[j], by=byOf(j), rep=avgColor(pl.rgb);
@@ -298,9 +325,9 @@
           const cor=[proj(bx0,bz0,by+wz,cx,cy),proj(bx1,bz0,by+wz,cx,cy),proj(bx1,bz1,by+wz,cx,cy),proj(bx0,bz1,by+wz,cx,cy)];
           ctx.beginPath(); ctx.moveTo(cor[0][0],cor[0][1]); for(let i=1;i<4;i++) ctx.lineTo(cor[i][0],cor[i][1]); ctx.closePath();
           if(lum>6){ ctx.shadowBlur=pl.off?0:Math.min(14,lum/14); ctx.shadowColor='rgb('+cr+','+cg+','+cb+')';
-            ctx.fillStyle=pl.off?'rgba('+cr+','+cg+','+cb+',.22)':'rgb('+cr+','+cg+','+cb+')'; }
-          else { ctx.shadowBlur=0; ctx.fillStyle='rgba(150,160,175,.07)'; }
-          ctx.fill(); ctx.shadowBlur=0;
+            ctx.fillStyle=pl.off?'rgba('+cr+','+cg+','+cb+',.22)':'rgb('+cr+','+cg+','+cb+')'; ctx.fill(); ctx.shadowBlur=0; }
+          else if(showKeys){ ctx.shadowBlur=0; ctx.fillStyle='rgba(150,160,175,.10)'; ctx.fill();   // inactive key → a faint keycap + outline so the layout reads
+            ctx.strokeStyle='rgba(180,190,205,.17)'; ctx.lineWidth=1; ctx.stroke(); }
           if(mask && mask[r.k]>0.15){ const m=proj((r.u-0.5)*BW0,(r.v-0.5)*BD,by+wz,cx,cy);   // silhouetted/carving key
             ctx.fillStyle=RED; ctx.font='700 '+Math.max(9,11*zoom/100)+'px '+FAM; ctx.textAlign='center'; ctx.textBaseline='middle';
             ctx.fillText('−', m[0], m[1]); }
@@ -326,8 +353,8 @@
     }
 
     // ---- pop-out window + loop ----
-    let raf=0, rafWin=window, popWin=null;
-    const popEl=$('.iso-pop'), popinEl=$('.iso-popin'), rsEl=$('.iso-rs');
+    let raf=0, rafWin=window, popWin=null, winMax=false;
+    const popEl=$('.iso-pop'), popinEl=$('.iso-popin'), rsEl=$('.iso-rs'), wmaxEl=$('.iso-wmax');
     function schedule(){ rafWin=popWin||window; raf=rafWin.requestAnimationFrame(tick); }
     function tick(now){ if(panel.hidden){ raf=0; return; }
       try{ if(getRunning()){ for(const L of state.layers) if(!L.enabled) E.renderLayer(L,now,state); }
@@ -353,7 +380,7 @@
       copyVars(d.documentElement); d.body.appendChild(panel); panel.classList.add('popped');
       w.addEventListener('resize',onPopResize); w.addEventListener('keydown',onDown,true); w.addEventListener('keyup',onUp,true);
       w.addEventListener('pagehide',popIn);
-      popEl.hidden=true; popinEl.hidden=false; rsEl.hidden=false;
+      popEl.hidden=true; popinEl.hidden=false; rsEl.hidden=false; wmaxEl.hidden=false;
       if(raf){ try{ rafWin.cancelAnimationFrame(raf); }catch(_){} raf=0; } schedule();   // drive from the child window (focused → not rAF-throttled)
       w.requestAnimationFrame(fitPop);
     }
@@ -361,12 +388,16 @@
       try{ w.removeEventListener('resize',onPopResize); }catch(_){}
       try{ document.body.appendChild(panel); }catch(_){}
       panel.classList.remove('popped'); sizeCanvas(DEF_W,DEF_H);
-      popEl.hidden=false; popinEl.hidden=true; rsEl.hidden=true;
+      popEl.hidden=false; popinEl.hidden=true; rsEl.hidden=true; wmaxEl.hidden=true; winMax=false; wmaxEl.classList.remove('on');
       try{ w.close(); }catch(_){}
       raf=0; if(!panel.hidden) schedule();   // child rAF is dead; reschedule on the parent
     }
-    function resetSize(){ if(popWin){ popWin.resizeTo(720,600); onPopResize(); } }
-    popEl.addEventListener('click',popOut); popinEl.addEventListener('click',popIn); rsEl.addEventListener('click',resetSize);
+    // resizeTo on a PiP window needs a user activation — fine, these run from a real button click.
+    function resetSize(){ if(!popWin) return; try{ popWin.resizeTo(720,600); }catch(_){} winMax=false; wmaxEl.classList.remove('on'); onPopResize(); }
+    function winMaximize(){ if(!popWin) return; winMax=!winMax;
+      try{ if(winMax) popWin.resizeTo(popWin.screen.availWidth, popWin.screen.availHeight); else popWin.resizeTo(720,600); }catch(_){}
+      wmaxEl.classList.toggle('on',winMax); onPopResize(); }
+    popEl.addEventListener('click',popOut); popinEl.addEventListener('click',popIn); rsEl.addEventListener('click',resetSize); wmaxEl.addEventListener('click',winMaximize);
 
     function open(){ if(!panel.hidden) return; panel.hidden=false; buildLegend();
       window.addEventListener('keydown',onDown,true); window.addEventListener('keyup',onUp,true);
