@@ -309,6 +309,23 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
   .faqcard code{ background:var(--inset); border:1px solid var(--border); border-radius:5px; padding:1px 5px;
                  font-family:ui-monospace,Consolas,monospace; font-size:12px; }
 
+  /* docs tab */
+  .doccard h3{ font-family:"Fraunces",Georgia,serif; font-weight:700; font-size:16px; margin:14px 0 5px; letter-spacing:-.2px; }
+  .doccard h3:first-of-type{ margin-top:4px; }
+  .doccard p, .doccard li{ color:var(--muted); font-size:13px; line-height:1.55; }
+  .doccard p{ margin:0 0 6px; }
+  .doccard ul{ margin:0 0 8px; padding-left:18px; }
+  .doccard li{ margin:2px 0; }
+  .doccard li b, .doccard p b{ color:var(--text); }
+  .doctable{ width:100%; border-collapse:collapse; font-size:12.5px; margin:2px 0 4px; }
+  .doctable th, .doctable td{ text-align:left; padding:6px 9px; border-bottom:1px solid var(--border); vertical-align:top; }
+  .doctable th{ color:var(--text); font-weight:600; }
+  .doctable td:first-child{ color:var(--text); font-weight:600; width:30%; }
+  .doctable .yes{ color:#3fb950; } .doctable .no{ color:#8b949e; }
+  .chglog{ list-style:none; margin:0; padding:0; }
+  .chglog li{ margin:0 0 10px; padding-left:0; }
+  .chglog .ver{ color:var(--text); font-weight:600; } .chglog .date{ color:var(--muted); font-size:11.5px; margin-left:6px; }
+
   /* hotkeys: clickable physical keyboard (positions from the engine's board map) */
   #kbBoard{ position:relative; aspect-ratio:22.5/6.5; }
   .kbkey{ position:absolute; background:var(--inset); border-radius:9px; display:flex; align-items:center;
@@ -453,6 +470,7 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
     <div class="tab" data-page="lighting">Lighting</div>
     <div class="tab" data-page="lcd">LCD Screen</div>
     <div class="tab" data-page="profiles">Profiles</div>
+    <div class="tab" data-page="docs">Docs</div>
     <div class="tab" data-page="faq">FAQ</div>
   </nav>
   <button id="connectHdr" class="hdrconnect" hidden title="this page takes over the keyboard (WebHID) — needed for key binding and for editing while the daemon is off">⌨ Connect Keyboard</button>
@@ -475,24 +493,30 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
 
   <!-- ========== HOME ========== -->
   <div class="card s3" id="bioCard" data-pages="home">
-    <div class="cardbar"><span class="grip">⠿</span>
+    <div class="cardbar"><span class="grip">⠿</span><h2>About</h2>
       <span id="setupPathWrap" onpointerdown="event.stopPropagation()" style="display:none;margin-left:auto;flex-direction:column;align-items:flex-end;gap:4px;font-size:11.5px;color:var(--muted)">
         <span style="display:inline-flex;align-items:center;gap:7px">
           <span style="opacity:.7">setup.cmd</span>
-          <code id="setupPathTxt" title="full path to setup.cmd — run it (or your TH108 Lighting desktop shortcut) to start the daemon" style="font-family:ui-monospace,SFMono-Regular,Menlo,monospace;background:var(--inset);padding:2px 7px;border-radius:6px;user-select:all;cursor:text;max-width:340px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></code>
+          <code id="setupPathTxt" title="full path to setup.cmd — run it (or your TH108 Lighting desktop shortcut) to start the daemon" style="font-family:ui-monospace,SFMono-Regular,Menlo,monospace;background:var(--inset);padding:2px 7px;border-radius:6px;user-select:all;cursor:text;max-width:170px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;direction:rtl;text-align:left"></code>
           <button id="setupPathCopy" style="margin:0;padding:2px 9px;font-size:11.5px" title="copy the full path to the clipboard">⧉ Copy</button>
         </span>
         <span style="display:inline-flex;align-items:center;gap:7px">
           <span style="opacity:.7">start-tray.vbs</span>
-          <code id="trayPathTxt" title="full path to start-tray.vbs — after 'Exit Tray', run this to relaunch the tray (loads updates / restarts the background app)" style="font-family:ui-monospace,SFMono-Regular,Menlo,monospace;background:var(--inset);padding:2px 7px;border-radius:6px;user-select:all;cursor:text;max-width:340px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></code>
+          <code id="trayPathTxt" title="full path to start-tray.vbs — after 'Exit Tray', run this to relaunch the tray (loads updates / restarts the background app)" style="font-family:ui-monospace,SFMono-Regular,Menlo,monospace;background:var(--inset);padding:2px 7px;border-radius:6px;user-select:all;cursor:text;max-width:170px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;direction:rtl;text-align:left"></code>
           <button id="trayPathCopy" style="margin:0;padding:2px 9px;font-size:11.5px" title="copy the full path to the clipboard">⧉ Copy</button>
         </span>
       </span>
     </div>
     <div class="avatar">⌨️</div>
-    <p style="margin:0;font-size:15px">I'm <span class="bigtype">th108</span>, the host-side lighting &amp; LCD suite
-       for the <b>Epomaker TH108 V2 PRO</b>. Four composited lighting layers, keypress-reactive in every app,
-       GIF&nbsp;→&nbsp;keys, onboard effects and LCD uploads — the things the stock firmware can't do.</p>
+    <p style="margin:0 0 10px;font-size:15px">I'm <span class="bigtype">th108</span> — a free companion app for the
+       <b>Epomaker TH108 V2 PRO</b> keyboard. I run on your PC and drive its per-key RGB and LCD screen with
+       effects the keyboard's own firmware can't do on its own:</p>
+    <ul style="margin:0 0 10px;padding-left:18px;font-size:13.5px;color:var(--muted);line-height:1.6">
+      <li><b style="color:var(--text)">Layered lighting</b> — stack up to four effects (gradients, reactive, audio-reactive, GIF) and blend them live.</li>
+      <li><b style="color:var(--text)">Reactive in any app</b> — keys light up as you type, system-wide, via a small always-on background app.</li>
+      <li><b style="color:var(--text)">LCD &amp; onboard</b> — upload images/GIFs to the little screen and configure the keyboard's onboard effects.</li>
+    </ul>
+    <p style="margin:0;font-size:12px;color:var(--muted)">Unofficial &amp; not affiliated with Epomaker. See the <b>Docs</b> tab for a full feature guide, comparisons and legal notes.</p>
   </div>
 
   <div class="card s3" id="connectCard" data-pages="home">
@@ -738,6 +762,129 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
        playing a GIF or video <i>inside</i> the layer stack (so it could blend with the other layers), but that part
        of the engine isn't built yet — a Media layer currently renders nothing. To put a GIF on your keys today, use
        the GIF → Keyboard Lighting card on the Lighting tab; it plays in place of the layers.</p>
+  </div>
+
+  <!-- ========== DOCS ========== -->
+  <div class="card s6 doccard" id="docFeatures" data-pages="docs">
+    <div class="cardbar"><span class="grip">⠿</span><h2>Feature Guide</h2></div>
+    <p>Everything th108 adds on top of your TH108 V2 PRO, by area. Most of it is <b>host-driven</b> — your PC computes
+       the lighting frame-by-frame and streams it to the board, so effects can react to things the keyboard can't see
+       on its own (what you type, what's playing, what's on screen).</p>
+
+    <h3>Layer Compositor (Lighting tab)</h3>
+    <ul>
+      <li>Stack up to <b>four lighting layers</b> and blend them top-to-bottom — each with its own <b>opacity</b>,
+          <b>blend mode</b> (Normal, Multiply, Screen, Add, etc.) and <b>frame rate</b>.</li>
+      <li>Layer <b>types</b>: <b>Static</b> (solid/per-key paint), <b>Gradient</b> (two-colour, angled, animatable),
+          <b>Pulse</b> (breathing), <b>Reactive</b> (lights keys as you press them), <b>Audio</b> (spectrum bars from
+          your sound), and <b>Media</b> (reserved for in-stack GIF/video — not built yet).</li>
+      <li>Global <b>Adjust</b> across the whole stack: brightness, saturation, contrast, gamma and hue-rotate.</li>
+      <li><b>Isometric View</b> button — a draggable 3D visualizer that shows the layer stack as glowing key-planes
+          (rotate, zoom, focus a layer, toggle layers) so you can see how the composite is built.</li>
+    </ul>
+
+    <h3>Reactive typing in any app</h3>
+    <p>A <b>Reactive</b> layer lights each key as you press it — system-wide, in any program — because the always-on
+       background app sees your keystrokes. (A browser tab can only see keys typed into itself, so this comes from the
+       daemon, not the page.)</p>
+
+    <h3>Audio-reactive lighting</h3>
+    <ul>
+      <li><b>System / App audio</b> — the background app captures your output device and drives spectrum bars with the
+          page closed.</li>
+      <li><b>Specific browser tab / microphone</b> — captured inside this page (browser privacy limits it to here), so
+          it only reaches the keys while this tab is driving the board.</li>
+    </ul>
+
+    <h3>GIF → Keys (Lighting tab)</h3>
+    <p>Map any GIF onto the per-key grid and play it across the keyboard. Requires <b>Connect</b> (this page drives the
+       board for the GIF player).</p>
+
+    <h3>Onboard effects</h3>
+    <p>Write the keyboard's <b>built-in firmware effects</b> from the page — useful as a clean baseline, or to overwrite
+       a corrupt onboard config.</p>
+
+    <h3>LCD Screen (LCD Screen tab)</h3>
+    <p>Upload <b>images and GIFs</b> to the keyboard's little display, plus a <b>Now Playing</b> readout. (Uploads are
+       chunked and rate-limited for hardware safety.)</p>
+
+    <h3>Hotkeys &amp; Host Actions (Hotkeys tab)</h3>
+    <ul>
+      <li><b>Remap keys</b> to other keys or to light functions, written to the keyboard's keymap.</li>
+      <li><b>Host Actions</b> — bind a key (or chord / multi-tap / hold) to a <b>PC action</b>: toggle mic or music
+          lighting, cycle profiles, launch or switch to a program, minimise/maximise/restore a window, or run a macro.
+          They run through the background app, so they work with this page closed — and the key still does its normal
+          job too.</li>
+    </ul>
+
+    <h3>Profiles (Profiles tab)</h3>
+    <p>Save and switch whole setups (layers + lighting + binds). Export/Import to JSON to back up or move between
+       machines.</p>
+
+    <h3>Background Daemon (Home tab)</h3>
+    <p>The always-on engine: keeps your layers and reactive typing running in every app and takes over whenever this
+       page is closed. Options: <b>auto-start at login</b>, <b>auto-fix lighting wedge</b> (USB restart), and
+       <b>lights-off when the monitor is off</b>.</p>
+  </div>
+
+  <div class="card s6 doccard" id="docCompare" data-pages="docs">
+    <div class="cardbar"><span class="grip">⠿</span><h2>th108 vs. Epomaker's WebHID tool</h2></div>
+    <p>Epomaker ships an official browser configurator (the WebHID page) for the TH108. It writes settings <b>into the
+       keyboard's onboard memory</b>, then your PC steps out of the way. th108 is different in kind: it's a
+       <b>host-driven</b> suite — your PC keeps computing and streaming the lighting, which is what makes the
+       reactive / audio / live-composite effects possible. The two can't drive the board at the same time.</p>
+    <table class="doctable">
+      <tr><th>Capability</th><th>Epomaker WebHID</th><th>th108</th></tr>
+      <tr><td>Where effects run</td><td>On the keyboard (onboard)</td><td>On your PC, streamed live</td></tr>
+      <tr><td>Works after the tab closes</td><td class="yes">Yes (onboard)</td><td class="yes">Yes — via the background daemon</td></tr>
+      <tr><td>Multi-layer live compositing</td><td class="no">One effect at a time</td><td class="yes">Up to 4 blended layers</td></tr>
+      <tr><td>Reactive typing in <em>every</em> app</td><td class="no">Onboard reactive only</td><td class="yes">Yes (daemon sees system-wide keys)</td></tr>
+      <tr><td>Audio-reactive lighting</td><td class="no">No</td><td class="yes">System / app / tab / mic</td></tr>
+      <tr><td>GIF → keys</td><td class="no">No</td><td class="yes">Yes</td></tr>
+      <tr><td>Bind keys to PC actions</td><td class="no">No</td><td class="yes">Host Actions (apps, windows, macros…)</td></tr>
+      <tr><td>LCD image / GIF upload</td><td class="yes">Yes</td><td class="yes">Yes + Now Playing</td></tr>
+      <tr><td>Onboard effect editing</td><td class="yes">Yes</td><td class="yes">Yes</td></tr>
+      <tr><td>Profiles / export-import</td><td>Onboard slots</td><td class="yes">Host profiles + JSON</td></tr>
+      <tr><td>Always-on PC background app</td><td class="no">Not needed / none</td><td class="yes">Yes (optional, auto-start)</td></tr>
+    </table>
+    <p style="font-size:11.5px">Comparison is based on the official tool's per-key lighting configurator; Epomaker may
+       add features over time. Use whichever fits — onboard effects from either tool survive a reboot; host-driven
+       effects need th108 running.</p>
+  </div>
+
+  <div class="card s3 doccard" id="docChangelog" data-pages="docs">
+    <div class="cardbar"><span class="grip">⠿</span><h2>Changelog</h2></div>
+    <p style="font-size:12px">Notable additions. Newer entries land on top as the suite updates.</p>
+    <ul class="chglog">
+      <li><span class="ver">Isometric View</span><span class="date">Jun 2026</span><br>3D layer-stack visualizer with
+          per-gap volumetric aura that deforms with the wave animation.</li>
+      <li><span class="ver">Host Actions</span><span class="date">Jun 2026</span><br>Bind keys / chords / holds to PC
+          actions — mic &amp; music toggles, profile cycling, launch / switch-to app, window controls, macros.</li>
+      <li><span class="ver">Layer Compositor</span><span class="date">2026</span><br>Up to four host-driven lighting
+          layers with blend modes and global adjust, plus the audio-reactive layer.</li>
+      <li><span class="ver">Background Daemon</span><span class="date">2026</span><br>Always-on engine: reactive in any
+          app, auto-start, USB-wedge auto-recovery, lights-off-when-monitor-off.</li>
+      <li><span class="ver">LCD &amp; GIF tools</span><span class="date">2026</span><br>Image / GIF upload to the screen,
+          GIF→keys player, Now Playing readout.</li>
+    </ul>
+  </div>
+
+  <div class="card s3 doccard" id="docLegal" data-pages="docs">
+    <div class="cardbar"><span class="grip">⠿</span><h2>Legal &amp; Disclaimer</h2></div>
+    <h3>Not affiliated with Epomaker</h3>
+    <p>th108 is an <b>independent, unofficial, free</b> tool. It is <b>not affiliated with, endorsed by, sponsored by,
+       or supported by Epomaker</b>. "Epomaker" and "TH108" are trademarks of their respective owners and are used here
+       only to identify the compatible hardware (nominative use).</p>
+    <h3>No warranty</h3>
+    <p>Provided <b>"as is", without warranty of any kind</b>. It communicates with hardware over standard HID lighting
+       and screen commands; you use it <b>at your own risk</b>. The authors are not liable for any damage, data loss, or
+       device malfunction. It does <b>not</b> flash or modify keyboard firmware.</p>
+    <h3>Privacy</h3>
+    <p>Everything runs <b>locally on your machine</b>. There is <b>no telemetry and no data collection</b>. Audio, tab,
+       and microphone capture used for reactive effects stay on your PC and are never uploaded.</p>
+    <h3>Third-party</h3>
+    <p>Onboard-effect tooling adapts open-source work (e.g. OpenRGB protocol notes). Respect the licences of any such
+       components when redistributing.</p>
   </div>
 
   <!-- ========== LIGHTING ========== -->
@@ -1818,7 +1965,7 @@ restoreLayout();
 
 // ===== Reset Layout(s): per-tab card-arrangement reset (Toolbox) =====
 (function(){
-  const PAGES=[['home','Home'],['hotkeys','Hotkeys'],['lighting','Lighting'],['lcd','LCD Screen'],['profiles','Profiles'],['faq','FAQ']];
+  const PAGES=[['home','Home'],['hotkeys','Hotkeys'],['lighting','Lighting'],['lcd','LCD Screen'],['profiles','Profiles'],['docs','Docs'],['faq','FAQ']];
   const ovl=document.getElementById('rlOvl');
   if(!ovl) return;
   document.getElementById('resetLayoutBtn').addEventListener('click',()=>{
