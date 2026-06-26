@@ -255,60 +255,36 @@
         ctx.fillStyle=g; ctx.beginPath(); ctx.arc(q.x,q.y,r*2.4,0,TAU); ctx.fill(); }
       ctx.globalCompositeOperation='source-over';
     }
-    // volumetric aura: a real noise texture (256² luminance RGB) additively tinted per layer and drawn as
-    // several parallax slabs scrolling across each gap → a wispy, volumetric glow (not a flat radial flare).
+    // ===== AURA: a soft SCREEN-SPACE colour field (one big blob per layer) modulated by drifting noise =====
+    // No rectangular geometry → no edges, seams or bands. Rendered low-res then upscaled (natural blur).
     const auraImg=new Image(); let auraReady=false; auraImg.onload=()=>{ auraReady=true; }; auraImg.src='iso-aura-noise.png';
-    const _aur=document.createElement('canvas'), _actx=_aur.getContext('2d');
-    const SW=190, SH=58;   // fixed slab resolution → affine-mapped onto each gap's board-oriented parallelogram so the aura rotates WITH the planes
-    function tintSlab(col,ox,oy,cover){   // feathered, tinted noise at SW×SH; drawAura maps it onto the gap parallelogram
-      _aur.width=SW; _aur.height=SH;
-      _actx.globalCompositeOperation='source-over'; _actx.clearRect(0,0,SW,SH);
-      // ONE cover-sized draw (no tiling) → there are no repeated copies and no scroll-wrap seam, so the animation
-      // loops cleanly. ox/oy drift the noise within the cover margin (a small circular path = seamless loop).
-      _actx.drawImage(auraImg, (SW-cover)/2+ox, (SH-cover)/2+oy, cover, cover);
-      _actx.globalCompositeOperation='multiply'; _actx.fillStyle='rgb('+col[0]+','+col[1]+','+col[2]+')'; _actx.fillRect(0,0,SW,SH);
-      // edge falloff: elliptical vignette (bright center → black edges) so the noise feathers, not a hard box
-      _actx.save(); _actx.translate(SW/2,SH/2); _actx.scale(1,SH/SW);
-      const g=_actx.createRadialGradient(0,0,0,0,0,SW*0.5);
-      g.addColorStop(0,'#fff'); g.addColorStop(0.5,'#fff'); g.addColorStop(1,'#000');   // wide bright core, fading only at the far edge → the falloff lands OUTSIDE the keyboard (footprint is 2x the board)
-      _actx.fillStyle=g; _actx.fillRect(-SW,-SW,2*SW,2*SW); _actx.restore();
-      _actx.globalCompositeOperation='source-over';
-      return _aur;
-    }
-    const SLABS=[[0.55,0.17,7],[0.9,0.20,12],[1.45,0.12,19]];   // [scale, baseAlpha, scrollSpeed] — 3 parallax sheets
-    const NSHEETS=8, AURA_M=1.0;   // sheets per gap; AURA_M = half-extent of the footprint (1.0 = 2x the board → the feathered falloff lands well OUTSIDE the keyboard, no visible edge)
-    function drawAura(tSec, cx, cy, byOf, AMP){
+    const _glow=document.createElement('canvas'), _gctx=_glow.getContext('2d');
+    const GLOWS=0.42;   // glow render scale (low-res → soft + cheap)
+    function drawAura(tSec){
       if(!auraReady || auraI<=0) return;
-      // each aura fills the gap between two planes (or around a focused plane) with stacked footprint glow-sheets,
-      // each gap seeded differently so adjacent layers' auras don't drift in lockstep.
-      const spots=[];
-      if(_planes.length>=2){ for(let i=1;i<_planes.length;i++){ const col=_planes[i-1].col||_planes[i].col; if(col) spots.push({lo:byOf(i-1),hi:byOf(i), col}); } }
-      else if(_planes.length===1 && _planes[0].col){ const b=byOf(0); spots.push({lo:b-gap*0.45,hi:b+gap*0.45, col:_planes[0].col}); }
-      if(!spots.length) return;
-      ctx.globalCompositeOperation='lighter';
-      let gi=0;
-      for(const sp of spots){ gi++; const col=sp.col, span=sp.hi-sp.lo;
-        const lum=(0.299*col[0]+0.587*col[1]+0.114*col[2])/255, ls=0.5+0.5*(1-lum*0.7);   // tame white/bright vs the colored auras
-        const sdx=gi*167.3, sdy=gi*97.1, dir=(gi%2)?1:-1;   // per-gap seed: different start offset + alternating scroll direction so layers don't move in lockstep
-        // MANY overlapping full-footprint sheets across the gap, alpha bell-weighted (brightest mid-gap, fading to
-        // 0 at each plane) → reads as ONE continuous volumetric glow, not a few discrete squished layers. Each
-        // sheet seeded differently so the noise doesn't align into visible bands.
-        for(let n=0;n<NSHEETS;n++){ const fr=(n+0.5)/NSHEETS, ext=fr*1.5-0.25, by=sp.lo+span*ext, sl=SLABS[n%SLABS.length];   // ext spills the sheets past both planes so a lit layer's aura bleeds across the dark layers (no dark band)
-          const sc=sl[0], bc=Math.max(0,Math.min(1,ext)), bell=0.45+0.55*Math.sin(bc*Math.PI);   // gentle bell over the gap, dimming in the spill region
-          const w=dir*(0.16+sl[2]*0.012), ph=sdx*0.013+n*0.9;   // circular drift: same freq for x & y → seamless loop (no scroll seam)
-          const ox=Math.cos(tSec*w+ph)*40, oy=Math.sin(tSec*w+ph)*26, cover=300+sc*120;
-          // DEFORM: warp each sheet's corner heights by the same wave (per-sheet phase via jw) so the sheets
-          // undulate and cross instead of sitting as parallel lines, and the glow conforms to the key wave.
-          const jw=gi+n*0.2, dA=AMP*0.5, wA=dA*waveFn(0,0,jw,tSec), wB=dA*waveFn(1,0,jw,tSec), wC=dA*waveFn(0,1,jw,tSec);   // gentle conform — full amplitude/phase spread the sheets apart and diluted the glow
-          const P00=proj(-BW0*AURA_M,-BD*AURA_M,by+wA,cx,cy), P10=proj(BW0*AURA_M,-BD*AURA_M,by+wB,cx,cy), P01=proj(-BW0*AURA_M,BD*AURA_M,by+wC,cx,cy);
-          const ux=(P10[0]-P00[0])/SW, uy=(P10[1]-P00[1])/SW, vx=(P01[0]-P00[0])/SH, vy=(P01[1]-P00[1])/SH;
-          const tex=tintSlab(col, ox, oy, cover);
-          ctx.globalAlpha=0.07*bell*auraI*ls*(0.82+0.18*Math.sin(tSec*1.1+gi*1.7+n));   // lower per-sheet alpha (2x footprint = much larger bright area)
-          ctx.setTransform(SS*ux,SS*uy,SS*vx,SS*vy, SS*P00[0], SS*P00[1]);   // affine: SW×SH rect → a footprint sheet (×SS supersample)
-          ctx.drawImage(tex,0,0,SW,SH);
-        }
+      const gw=Math.max(2,Math.round(CW*GLOWS)), gh=Math.max(2,Math.round(CH*GLOWS));
+      if(_glow.width!==gw) _glow.width=gw; if(_glow.height!==gh) _glow.height=gh;
+      _gctx.setTransform(1,0,0,1,0,0); _gctx.globalAlpha=1; _gctx.globalCompositeOperation='source-over'; _gctx.clearRect(0,0,gw,gh);
+      // 1) colour field: one large elliptical blob per plane (additive) → overlapping blobs make a continuous,
+      //    edgeless glow that fills the gaps. Uses the temporally-smoothed plane colour → no keypress twitch.
+      _gctx.globalCompositeOperation='lighter';
+      for(let i=0;i<_planes.length;i++){ const pl=_planes[i], col=pl.col; if(!col) continue;
+        const bx=pl.cx*GLOWS, by=pl.cy*GLOWS, r=Math.max(10, pl.hw*GLOWS*1.05);
+        const lum=(0.299*col[0]+0.587*col[1]+0.114*col[2])/255, ls=0.5+0.5*(1-lum*0.7), a=0.5*auraI*ls;
+        const g=_gctx.createRadialGradient(bx,by,0, bx,by, r);
+        g.addColorStop(0,'rgba('+col[0]+','+col[1]+','+col[2]+','+a+')'); g.addColorStop(1,'rgba('+col[0]+','+col[1]+','+col[2]+',0)');
+        _gctx.fillStyle=g; _gctx.save(); _gctx.translate(bx,by); _gctx.scale(1.45,0.95); _gctx.beginPath(); _gctx.arc(0,0,r,0,TAU); _gctx.fill(); _gctx.restore();
       }
-      ctx.setTransform(SS,0,0,SS,0,0); ctx.globalAlpha=1; ctx.globalCompositeOperation='source-over';
+      // 2) modulate with one big slowly-drifting noise (gentle multiply, floor-raised to 0.5 so it TEXTURES rather
+      //    than carves) → volumetric wisps with no hard edges; circular drift = seamless loop.
+      const ns=Math.max(gw,gh)*1.9, dx=Math.cos(tSec*0.06)*gw*0.13, dy=Math.sin(tSec*0.06)*gh*0.13;
+      _gctx.globalCompositeOperation='multiply'; _gctx.globalAlpha=0.5;
+      _gctx.drawImage(auraImg, (gw-ns)/2+dx, (gh-ns)/2+dy, ns, ns);
+      _gctx.globalAlpha=1; _gctx.globalCompositeOperation='source-over';
+      // 3) composite onto the scene (additive, upscaled → smooth blur)
+      ctx.setTransform(SS,0,0,SS,0,0); ctx.imageSmoothingEnabled=true; ctx.globalCompositeOperation='lighter';
+      ctx.drawImage(_glow, 0,0,gw,gh, 0,0,CW,CH);
+      ctx.globalCompositeOperation='source-over';
     }
 
     // ---- main draw ----
@@ -348,14 +324,14 @@
         // temporally smooth the per-plane colour the aura uses, so a sudden lit key (e.g. a reactive keypress)
         // eases in/out over ~150ms instead of twitching the aura.
         let sm=_csm[j];
-        if(raw){ if(sm){ sm[0]+=(raw[0]-sm[0])*0.12; sm[1]+=(raw[1]-sm[1])*0.12; sm[2]+=(raw[2]-sm[2])*0.12; } else { sm=raw.slice(); _csm[j]=sm; } }
-        else if(sm){ sm[0]*=0.88; sm[1]*=0.88; sm[2]*=0.88; if(sm[0]+sm[1]+sm[2]<6){ _csm[j]=null; sm=null; } }
+        if(raw){ if(sm){ sm[0]+=(raw[0]-sm[0])*0.06; sm[1]+=(raw[1]-sm[1])*0.06; sm[2]+=(raw[2]-sm[2])*0.06; } else { sm=raw.slice(); _csm[j]=sm; } }   // slow ease (~350ms) → keypress can't twitch the aura
+        else if(sm){ sm[0]*=0.94; sm[1]*=0.94; sm[2]*=0.94; if(sm[0]+sm[1]+sm[2]<6){ _csm[j]=null; sm=null; } }
         const rep = sm ? [sm[0]|0,sm[1]|0,sm[2]|0] : null;
         const bg=[proj(-BW0/2,-BD/2,by,cx,cy),proj(BW0/2,-BD/2,by,cx,cy),proj(BW0/2,BD/2,by,cx,cy),proj(-BW0/2,BD/2,by,cx,cy)];
         _planes.push({ quad:bg.map(c=>[c[0],c[1]]), id:pl.id, sys:pl.sys, col:rep,
           cx:(bg[0][0]+bg[2][0])/2, cy:(bg[0][1]+bg[2][1])/2, hw:Math.abs(bg[1][0]-bg[0][0])/2+Math.abs(bg[2][0]-bg[1][0])/2 });
       }
-      if(enhanced) drawAura(tSec, cx, cy, byOf, AMP);
+      if(enhanced) drawAura(tSec);
 
       for(let j=0;j<N;j++){ const pl=P0[j], rgb=pl.rgb, by=byOf(j), mask=pl.L?carveMask(pl.L):null;
         if(showKeys){ const bgq=_planes[j].quad;   // the per-layer plane backdrop is part of "show keys" → hidden too when Keys is off (only lit keys float)
