@@ -28,14 +28,16 @@
       lock.NumLock=e.getModifierState('NumLock'); lock.CapsLock=e.getModifierState('CapsLock'); lock.ScrollLock=e.getModifierState('ScrollLock'); }
     // while open + NOT driving, stamp keys into state.react so the Reactive plane reacts to typing in the
     // preview (the page's own keydown handler only stamps while it's driving the board).
-    const onDown = e => { updLock(e); if(!getRunning() && !e.repeat){ const i=KEYMAP[e.code]; if(i!==undefined) E.stampKey(state,i); } };
-    const onUp   = e => { updLock(e); if(!getRunning()){ const i=KEYMAP[e.code]; if(i!==undefined) E.releaseKey(state,i); } };
+    const onDown = e => { ctrlDown=e.ctrlKey; updLock(e); if(!getRunning() && !e.repeat){ const i=KEYMAP[e.code]; if(i!==undefined) E.stampKey(state,i); } };
+    const onUp   = e => { ctrlDown=e.ctrlKey; updLock(e); if(!getRunning()){ const i=KEYMAP[e.code]; if(i!==undefined) E.releaseKey(state,i); } };
 
     // ---- view params ----
-    let yaw = 40*D2R, pitch = 22*D2R, zoom = 100, gap = 50, drawer = 0, enhanced = false, focusIdx = null, auraI = 0.0075, faceOn = false, showKeys = true, partSize = 0.55, glass = false, waveStyle = 'ripple';   // auraI baked (slider removed); 0.0075 = old slider value 0.75
+    const DEF_YAW = 35*D2R, DEF_PITCH = 20*D2R, DEF_ZOOM = 100, DEF_GAP = 47, DEF_DRAWER = 20;   // default view (DEF_GAP 47 = Gap slider 80); reused by Reset Orientation
+    let yaw = DEF_YAW, pitch = DEF_PITCH, zoom = DEF_ZOOM, gap = DEF_GAP, drawer = DEF_DRAWER, enhanced = false, focusIdx = null, auraI = 0.0075, faceOn = false, showKeys = true, partSize = 0.55, glass = false, waveStyle = 'ripple';   // auraI baked (slider removed); 0.0075 = old slider value 0.75
     let fxAnim = true, fxParticles = true, fxAura = true;   // Enhanced sub-toggles; all off ⇒ Enhanced off
+    let ctrlDown = false, ctrlGuide = 0;   // ctrlDown = Ctrl held; ctrlGuide = eased alpha of the Ctrl-drag corner overlay
     const waveFreqs = { ripple:0.8, waveX:1.3 };   // baked frequency per wave style
-    const ISO_PITCH = 22*D2R, FACE_PITCH = 89*D2R;   // isometric tilt vs front-flat (top-down)
+    const ISO_PITCH = DEF_PITCH, FACE_PITCH = 89*D2R;   // isometric resting tilt (= default) vs front-flat (top-down)
     // Gap slider reads 0-100 but the actual layer spacing stays its original 14-55 range (0→14, 100→55).
     const GAP_LO = 14, GAP_HI = 55;
     const gapToSlider = g => Math.round((g-GAP_LO)/(GAP_HI-GAP_LO)*100);
@@ -58,8 +60,8 @@
       '<button type="button" class="iso-x" title="Close">✕</button></div>' +
       '<div class="iso-sliders">' +   // row 1: wide sliders (so they step by 1) with their value ABOVE
         '<span class="iso-sld" title="Zoom — scale the view (100% is centred)"><span class="iso-sld-top"><span>Zoom</span><small class="iso-zval">100%</small></span><input type="range" class="iso-zoom" min="0" max="100" value="50"></span>' +
-        '<span class="iso-sld" title="Gap — spacing between the layers"><span class="iso-sld-top"><span>Gap</span><small class="iso-gval">88</small></span><input type="range" class="iso-gapr" min="0" max="100" value="88"></span>' +
-        '<span class="iso-sld" title="Drawer — pull the layers out like a dresser (bottom out the most, each one above it less)"><span class="iso-sld-top"><span>Drawer</span><small class="iso-dval">0</small></span><input type="range" class="iso-draw" min="0" max="100" value="0"></span>' +
+        '<span class="iso-sld" title="Gap — spacing between the layers"><span class="iso-sld-top"><span>Gap</span><small class="iso-gval">80</small></span><input type="range" class="iso-gapr" min="0" max="100" value="80"></span>' +
+        '<span class="iso-sld" title="Drawer — pull the layers out like a dresser (bottom out the most, each one above it less)"><span class="iso-sld-top"><span>Drawer</span><small class="iso-dval">20</small></span><input type="range" class="iso-draw" min="0" max="100" value="20"></span>' +
       '</div>' +
       '<div class="iso-ctl">' +   // row 2: buttons
         '<button type="button" class="iso-back" hidden>‹ Back</button>' +
@@ -74,6 +76,7 @@
         '<select class="iso-wave iso-efx" style="display:none" title="Enhanced wave pattern">' +
           '<option value="ripple">〜 Ripple</option><option value="waveX">→ Wave X</option></select>' +
         '<button type="button" class="iso-face" title="Tilt the board front-flat (keys facing you) vs isometric">Face-on</button>' +
+        '<button type="button" class="iso-reset" title="Reset Orientation — zoom / rotation / gap / drawer back to the default view">⟲ Reset</button>' +
         '<span class="iso-lock" hidden title="Tilt is locked while Face-on is active — the board faces you flat. Click Face-on again to unlock and tilt freely (you can still spin/yaw).">' +
           '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></span>' +
       '</div>' +
@@ -95,7 +98,7 @@
         '.iso-panel.popped{position:static;left:0;top:0;transform:none;width:100%;height:100vh;border:0;border-radius:0;box-shadow:none;display:flex;flex-direction:column}' +
         '.iso-panel.popped .iso-head{cursor:default}.iso-panel.popped .iso-grip{display:none}' +
         '.iso-panel.popped .iso-cv{flex:1 1 auto;width:100%;height:auto;min-height:120px;margin:6px 0 2px}' +
-        '.iso-ctl{display:flex;justify-content:center;align-items:center;gap:10px;flex-wrap:wrap;padding:4px 12px 5px}' +
+        '.iso-ctl{display:flex;justify-content:center;align-items:center;gap:10px;flex-wrap:wrap;padding:4px 12px 9px;border-bottom:1px solid var(--line,#30363d)}' +   // border = separator between the controls (header) and the viewport
         // modern buttons: soft rounded pills, subtle fill, smooth hover, glowing active state (shared by header + control bar)
         '.iso-ctl button,.iso-head>button.iso-pop,.iso-head>button.iso-popin,.iso-head>button.iso-rs,.iso-head>button.iso-wmax{margin:0;padding:5px 12px;' +
         'font-size:12px;font-weight:600;border-radius:8px;border:1px solid rgba(255,255,255,.10);background:rgba(255,255,255,.06);color:var(--fg,#e6edf3);' +
@@ -113,7 +116,7 @@
         '.iso-sld input{width:190px}' +
         '.iso-gl{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--muted,#8b949e)}.iso-gl input{width:90px}' +
         '.iso-cv{display:block;width:720px;height:392px;margin:6px auto 2px;touch-action:none;cursor:grab}.iso-cv.drag{cursor:grabbing}' +
-        '.iso-legend{display:flex;flex-wrap:wrap;gap:6px;padding:4px 12px 2px}' +
+        '.iso-legend{display:flex;flex-wrap:wrap;gap:6px;padding:9px 12px 2px;border-top:1px solid var(--line,#30363d)}' +   // border = separator between the viewport and the footer (legend + readout)
         '.iso-chip{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;padding:3px 8px;border-radius:999px;' +
         'background:rgba(255,255,255,.05);box-shadow:inset 0 0 0 1px var(--line,#30363d);cursor:pointer;user-select:none}' +
         '.iso-chip.foc{box-shadow:inset 0 0 0 1px var(--blue,#58a6ff)}.iso-chip.off{opacity:.5}' +
@@ -179,9 +182,11 @@
     fxanimEl.addEventListener('click', ()=>toggleFx(()=>fxAnim=!fxAnim));
     fxpEl.addEventListener('click', ()=>toggleFx(()=>fxParticles=!fxParticles));
     fxaEl.addEventListener('click', ()=>toggleFx(()=>fxAura=!fxAura));
-    backEl.addEventListener('click', ()=>{ focusIdx=null; backEl.hidden=true; if(!faceOn){ pitch=ISO_PITCH; yaw=40*D2R; } buildLegend(); saveSoon(); });
+    backEl.addEventListener('click', ()=>{ focusIdx=null; backEl.hidden=true; if(!faceOn){ pitch=ISO_PITCH; yaw=DEF_YAW; } buildLegend(); saveSoon(); });
     // Face-on: snap to a flat front-facing (top-down) view AND lock tilt (so a drag can't knock it off); yaw still spins.
     faceEl.addEventListener('click', ()=>{ faceOn=!faceOn; pitch=faceOn?FACE_PITCH:ISO_PITCH; if(faceOn) yaw=0; faceEl.classList.toggle('on',faceOn); lockEl.hidden=!faceOn; saveSoon(); });
+    // Reset Orientation: restore the whole view (zoom / rotation / gap / drawer) to the default and clear focus / Face-on
+    $('.iso-reset').addEventListener('click', ()=>{ yaw=DEF_YAW; pitch=DEF_PITCH; zoom=DEF_ZOOM; gap=DEF_GAP; drawer=DEF_DRAWER; focusIdx=null; faceOn=false; backEl.hidden=true; lockEl.hidden=true; faceEl.classList.remove('on'); buildLegend(); syncControls(); saveSoon(); });
     loadSettings(); syncControls();
 
     // ---- drag the panel by its header ----
@@ -199,7 +204,7 @@
     let rot=null;
     cv.addEventListener('pointerdown', e=>{ rot={x:e.clientX,y:e.clientY,y0:yaw,p0:pitch,moved:0,px:hitX(e),py:hitY(e)};
       cv.setPointerCapture(e.pointerId); e.preventDefault(); });
-    cv.addEventListener('pointermove', e=>{ if(!rot) return; const dx=e.clientX-rot.x, dy=e.clientY-rot.y;
+    cv.addEventListener('pointermove', e=>{ if(!rot) return; ctrlDown=e.ctrlKey; const dx=e.clientX-rot.x, dy=e.clientY-rot.y;
       rot.moved=Math.max(rot.moved,Math.abs(dx)+Math.abs(dy));
       yaw=rot.y0 + dx*0.7*D2R; if(!faceOn) pitch=Math.max(8*D2R, Math.min(90*D2R, rot.p0 + dy*0.5*D2R));   // Face-on locks tilt
       if(e.ctrlKey){   // hold Ctrl → snap yaw/tilt to the nearest 90° interval when within ~12°
@@ -445,6 +450,16 @@
         ctx.fillStyle=pl.sys?'rgba(190,170,230,.95)':(pl.off?'rgba(139,148,158,.55)':'rgba(230,237,243,.92)');
         ctx.fillText(labelStr(pl), labelRight, L.y); }
       readEl.textContent = 'zoom '+zoom+'% · yaw '+Math.round(((yaw/D2R)%360+360)%360)+'° · tilt '+Math.round(pitch/D2R)+'° · gap '+gapToSlider(gap)+(drawer?' · drawer '+drawer:'');
+
+      // Ctrl-drag guide: 4 framing corner brackets that fade in while Ctrl is held during a viewport drag (90° snap mode)
+      const gTarget = (rot && ctrlDown) ? 1 : 0;
+      ctrlGuide += (gTarget - ctrlGuide) * Math.min(1, dt/110);   // ~110ms ease in/out
+      if(ctrlGuide > 0.012){ ctx.setTransform(SS,0,0,SS,0,0);
+        const m=15, AL=26, a=ctrlGuide*0.8;
+        ctx.strokeStyle='rgba(200,210,228,'+a.toFixed(3)+')'; ctx.lineWidth=2; ctx.lineCap='round'; ctx.lineJoin='round';
+        for(const c of [[m,m,1,1],[CW-m,m,-1,1],[m,CH-m,1,-1],[CW-m,CH-m,-1,-1]]){
+          ctx.beginPath(); ctx.moveTo(c[0], c[1]+c[3]*AL); ctx.lineTo(c[0],c[1]); ctx.lineTo(c[0]+c[2]*AL, c[1]); ctx.stroke(); }
+      }
     }
 
     // ---- pop-out window + loop ----
