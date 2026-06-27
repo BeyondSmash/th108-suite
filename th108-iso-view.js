@@ -32,9 +32,14 @@
     const onUp   = e => { updLock(e); if(!getRunning()){ const i=KEYMAP[e.code]; if(i!==undefined) E.releaseKey(state,i); } };
 
     // ---- view params ----
-    let yaw = 40*D2R, pitch = 22*D2R, zoom = 100, gap = 50, drawer = 0, enhanced = false, focusIdx = null, auraI = 0.8, faceOn = false, showKeys = true, partSize = 0.55, glass = false, waveStyle = 'ripple';
+    let yaw = 40*D2R, pitch = 22*D2R, zoom = 100, gap = 50, drawer = 0, enhanced = false, focusIdx = null, auraI = 0.06, faceOn = false, showKeys = true, partSize = 0.55, glass = false, waveStyle = 'ripple';
+    let fxAnim = true, fxParticles = true, fxAura = true;   // Enhanced sub-toggles; all off ⇒ Enhanced off
     const waveFreqs = { ripple:0.8, waveX:1.3 };   // baked frequency per wave style
     const ISO_PITCH = 22*D2R, FACE_PITCH = 89*D2R;   // isometric tilt vs front-flat (top-down)
+    // Gap slider reads 0-100 but the actual layer spacing stays its original 14-55 range (0→14, 100→55).
+    const GAP_LO = 14, GAP_HI = 55;
+    const gapToSlider = g => Math.round((g-GAP_LO)/(GAP_HI-GAP_LO)*100);
+    const sliderToGap = v => Math.round(GAP_LO + (+v/100)*(GAP_HI-GAP_LO));
 
     // ---- panel chrome ----
     const panel = document.createElement('div'); panel.className = 'iso-panel'; panel.hidden = true;
@@ -50,12 +55,15 @@
       '<div class="iso-ctl">' +
         '<button type="button" class="iso-back" hidden>‹ Back</button>' +
         '<span class="iso-zwrap" title="Zoom — tell me the % to bake as default"><input type="range" class="iso-zoom" min="40" max="240" value="100"><small class="iso-zval">100%</small></span>' +
-        '<label class="iso-gl">Gap<input type="range" class="iso-gapr" min="14" max="55" value="50"></label>' +
+        '<label class="iso-gl">Gap<input type="range" class="iso-gapr" min="0" max="100" value="88"></label>' +
         '<label class="iso-gl" title="Pull the layers out like a dresser — bottom drawer out the most, each one above it less (tell me the value to bake)">Drawer<input type="range" class="iso-draw" min="0" max="100" value="0"><small class="iso-dval">0</small></label>' +
         '<button type="button" class="iso-keys on" title="Show the inactive/unused keys so the full keyboard layout reads (esp. face-on / top-down)">⌨ Keys</button>' +
         '<button type="button" class="iso-glass" title="Swap the window background between solid and frosted glass (the page shows through, refracted)">🫧 Glass</button>' +
         '<button type="button" class="iso-enh" title="Wave + rising stardust + aura wisps">✨ Enhanced</button>' +
-        '<label class="iso-gl iso-efx" style="display:none" title="Aura glow intensity — tell me the value to bake as default">Aura<input type="range" class="iso-aint" min="0" max="150" value="80"><small class="iso-aval">80</small></label>' +
+        '<button type="button" class="iso-fxanim iso-efx" style="display:none" title="Wave ripple animation of the keys + aura">Animation</button>' +
+        '<button type="button" class="iso-fxp iso-efx" style="display:none" title="Rising stardust particles">Particles</button>' +
+        '<button type="button" class="iso-fxa iso-efx" style="display:none" title="Volumetric glow in the gaps">Aura</button>' +
+        '<label class="iso-gl iso-efx" style="display:none" title="Aura glow intensity — tell me the value to bake as default">Aura<input type="range" class="iso-aint" min="0" max="150" value="6"><small class="iso-aval">6</small></label>' +
         '<select class="iso-wave iso-efx" style="display:none" title="Enhanced wave pattern">' +
           '<option value="ripple">〜 Ripple</option><option value="waveX">→ Wave X</option></select>' +
         '<button type="button" class="iso-face" title="Tilt the board front-flat (keys facing you) vs isometric">Face-on</button>' +
@@ -114,23 +122,30 @@
     function sizeCanvas(w,h){ CW=Math.max(160,Math.round(w)); CH=Math.max(120,Math.round(h)); cv.width=CW*SS; cv.height=CH*SS; }
     sizeCanvas(DEF_W, DEF_H);
     const $ = s => panel.querySelector(s);
-    const zoomEl=$('.iso-zoom'), zvalEl=$('.iso-zval'), gapEl=$('.iso-gapr'), drawEl=$('.iso-draw'), dvalEl=$('.iso-dval'), enhEl=$('.iso-enh'), aintEl=$('.iso-aint'), avalEl=$('.iso-aval'), keysEl=$('.iso-keys'),
+    const zoomEl=$('.iso-zoom'), zvalEl=$('.iso-zval'), gapEl=$('.iso-gapr'), drawEl=$('.iso-draw'), dvalEl=$('.iso-dval'), enhEl=$('.iso-enh'),
+          fxanimEl=$('.iso-fxanim'), fxpEl=$('.iso-fxp'), fxaEl=$('.iso-fxa'), aintEl=$('.iso-aint'), avalEl=$('.iso-aval'), keysEl=$('.iso-keys'),
           glassEl=$('.iso-glass'), waveEl=$('.iso-wave'),
           backEl=$('.iso-back'), faceEl=$('.iso-face'), lockEl=$('.iso-lock'), legendEl=$('.iso-legend'), readEl=$('.iso-read');
     // ---- persistence: remember the view settings between sessions ----
     const SKEY='th108_iso_view';
-    function saveSettings(){ try{ localStorage.setItem(SKEY, JSON.stringify({yaw,pitch,zoom,gap,drawer,enhanced,auraI,glass,showKeys,faceOn,waveStyle})); }catch(_){ } }
+    function saveSettings(){ try{ localStorage.setItem(SKEY, JSON.stringify({yaw,pitch,zoom,gap,drawer,enhanced,fxAnim,fxParticles,fxAura,auraI,glass,showKeys,faceOn,waveStyle})); }catch(_){ } }
     let _saveT=0; function saveSoon(){ clearTimeout(_saveT); _saveT=setTimeout(saveSettings, 350); }
     function loadSettings(){ let s; try{ s=JSON.parse(localStorage.getItem(SKEY)); }catch(_){ } if(!s||typeof s!=='object') return;
       if(typeof s.yaw==='number') yaw=s.yaw; if(typeof s.pitch==='number') pitch=s.pitch;
       if(typeof s.zoom==='number') zoom=s.zoom; if(typeof s.gap==='number') gap=Math.min(55,Math.max(14,s.gap));   // clamp to the slider range
       if(typeof s.drawer==='number') drawer=Math.min(100,Math.max(0,s.drawer));
       if(typeof s.auraI==='number') auraI=s.auraI;
-      enhanced=!!s.enhanced; glass=!!s.glass; showKeys=s.showKeys!==false; faceOn=!!s.faceOn; if(s.waveStyle==='ripple'||s.waveStyle==='waveX') waveStyle=s.waveStyle; }
+      enhanced=!!s.enhanced; glass=!!s.glass; showKeys=s.showKeys!==false; faceOn=!!s.faceOn; if(s.waveStyle==='ripple'||s.waveStyle==='waveX') waveStyle=s.waveStyle;
+      if(typeof s.fxAnim==='boolean') fxAnim=s.fxAnim; if(typeof s.fxParticles==='boolean') fxParticles=s.fxParticles; if(typeof s.fxAura==='boolean') fxAura=s.fxAura;
+      if(enhanced && !(fxAnim||fxParticles||fxAura)){ fxAnim=fxParticles=fxAura=true; } }   // never "Enhanced on" with all three sub-features off
     function syncControls(){   // push the (possibly restored) state into the UI controls
-      zoomEl.value=zoom; zvalEl.textContent=zoom+'%'; gapEl.value=gap; drawEl.value=drawer; dvalEl.textContent=drawer; aintEl.value=Math.round(auraI*100); avalEl.textContent=Math.round(auraI*100);
+      zoomEl.value=zoom; zvalEl.textContent=zoom+'%'; gapEl.value=gapToSlider(gap); drawEl.value=drawer; dvalEl.textContent=drawer; aintEl.value=Math.round(auraI*100); avalEl.textContent=Math.round(auraI*100);
       waveEl.value=waveStyle;
       enhEl.classList.toggle('on',enhanced); panel.querySelectorAll('.iso-efx').forEach(el=>el.style.display=enhanced?'':'none');
+      // each sub-feature's extra widget gates on its own flag too: the Aura slider only with Aura on, the wave dropdown only with Animation on
+      const auraLabel=aintEl.closest('label'); if(auraLabel) auraLabel.style.display=(enhanced&&fxAura)?'':'none';
+      waveEl.style.display=(enhanced&&fxAnim)?'':'none';
+      fxanimEl.classList.toggle('on',fxAnim); fxpEl.classList.toggle('on',fxParticles); fxaEl.classList.toggle('on',fxAura);
       keysEl.classList.toggle('on',showKeys); glassEl.classList.toggle('on',glass); panel.classList.toggle('glass',glass);
       faceEl.classList.toggle('on',faceOn); lockEl.hidden=!faceOn; }
     keysEl.addEventListener('click', ()=>{ showKeys=!showKeys; keysEl.classList.toggle('on',showKeys); saveSoon(); });
@@ -140,13 +155,18 @@
     // after a click so it never holds keyboard focus. Reactive still reacts (that's a window-level key listener).
     panel.addEventListener('click', e=>{ const t=e.target.closest('button,input'); if(t&&t.blur) t.blur(); });   // NOT select — blurring it mid-click closed the dropdown (had to hold to pick)
     zoomEl.addEventListener('input', e=>{ zoom=+e.target.value; zvalEl.textContent=zoom+'%'; saveSoon(); });
-    gapEl.addEventListener('input', e=>{ gap=+e.target.value; saveSoon(); });
+    gapEl.addEventListener('input', e=>{ gap=sliderToGap(e.target.value); saveSoon(); });
     drawEl.addEventListener('input', e=>{ drawer=+e.target.value; dvalEl.textContent=e.target.value; saveSoon(); });
     aintEl.addEventListener('input', e=>{ auraI=+e.target.value/100; avalEl.textContent=e.target.value; saveSoon(); });
     // Home/End/PageUp/PageDown natively jam a focused range input to min/max — block them so those keys
     // (used for reactive lighting / nav) don't yank a slider. Arrow keys still fine-adjust.
     [zoomEl,gapEl,drawEl,aintEl].forEach(el=> el.addEventListener('keydown', e=>{ if(e.key==='Home'||e.key==='End'||e.key==='PageUp'||e.key==='PageDown') e.preventDefault(); }));
-    enhEl.addEventListener('click', ()=>{ enhanced=!enhanced; enhEl.classList.toggle('on',enhanced); panel.querySelectorAll('.iso-efx').forEach(el=>el.style.display=enhanced?'':'none'); saveSoon(); });
+    enhEl.addEventListener('click', ()=>{ enhanced=!enhanced; if(enhanced) fxAnim=fxParticles=fxAura=true; syncControls(); saveSoon(); });   // turning Enhanced on enables all three sub-features
+    // sub-toggles: flip one feature; if that leaves all three off, Enhanced itself turns off
+    function toggleFx(set){ set(); if(!(fxAnim||fxParticles||fxAura)) enhanced=false; syncControls(); saveSoon(); }
+    fxanimEl.addEventListener('click', ()=>toggleFx(()=>fxAnim=!fxAnim));
+    fxpEl.addEventListener('click', ()=>toggleFx(()=>fxParticles=!fxParticles));
+    fxaEl.addEventListener('click', ()=>toggleFx(()=>fxAura=!fxAura));
     backEl.addEventListener('click', ()=>{ focusIdx=null; backEl.hidden=true; if(!faceOn){ pitch=ISO_PITCH; yaw=40*D2R; } buildLegend(); saveSoon(); });
     // Face-on: snap to a flat front-facing (top-down) view AND lock tilt (so a drag can't knock it off); yaw still spins.
     faceEl.addEventListener('click', ()=>{ faceOn=!faceOn; pitch=faceOn?FACE_PITCH:ISO_PITCH; if(faceOn) yaw=0; faceEl.classList.toggle('on',faceOn); lockEl.hidden=!faceOn; saveSoon(); });
@@ -303,12 +323,12 @@
     function draw(now){
       const dt=Math.min(80, _last?now-_last:16); _last=now; const tSec=now/1000;
       const P0=planeList(), N=P0.length;
-      const AMP = enhanced ? gap*0.20 : 0;
+      const AMP = (enhanced && fxAnim) ? gap*0.20 : 0;   // wave ripple only when the Animation sub-toggle is on
       // height of plane index within the drawn set, centered
       const byOf = j => (j-(N-1)/2)*gap;
       // "Drawer": pull each plane out along the board-depth axis like a dresser — the BOTTOM layer (j=0) out the
       // most, each one above it less. dz is a depth (+bz) offset; stepFrac = 1 at bottom → 0 at top.
-      const DRAW_MAX = BD*2.0;
+      const DRAW_MAX = BD*4.0;   // max pull distance (bottom plane at drawer=100)
       const dzOf = j => (N>1 ? (N-1-j)/(N-1) : 0) * (drawer/100) * DRAW_MAX;
       // measure the widest label first so the board can sit just right of a column wide enough to never clip them
       ctx.setTransform(SS,0,0,SS,0,0);
@@ -348,7 +368,7 @@
       }
 
       for(let j=0;j<N;j++){ const pl=P0[j], rgb=pl.rgb, by=byOf(j), dz=dzOf(j), mask=pl.L?carveMask(pl.L):null;
-        if(enhanced && j>0) drawGapGlow(j, tSec, cx, cy, AMP, by - gap/2, (dzOf(j-1)+dz)/2);   // glow in the gap below this plane, drawn BEFORE it → this layer occludes it (depth); dz = gap-midpoint drawer offset
+        if(enhanced && fxAura && j>0) drawGapGlow(j, tSec, cx, cy, AMP, by - gap/2, (dzOf(j-1)+dz)/2);   // glow in the gap below this plane, drawn BEFORE it → this layer occludes it (depth); dz = gap-midpoint drawer offset
         if(showKeys){ const bgq=_planes[j].quad;   // the per-layer plane backdrop is part of "show keys" → hidden too when Keys is off (only lit keys float)
           ctx.beginPath(); ctx.moveTo(bgq[0][0],bgq[0][1]); for(let i=1;i<4;i++) ctx.lineTo(bgq[i][0],bgq[i][1]); ctx.closePath();
           ctx.fillStyle = pl.sys?'rgba(120,90,160,.10)':(pl.off?'rgba(120,130,150,.05)':'rgba(90,110,140,.09)'); ctx.fill(); }
@@ -370,7 +390,7 @@
         }
       }
 
-      if(enhanced){ spawnParticles(dt, cx, cy, byOf, dzOf); drawParticles(dt); } else if(P.length) P.length=0;
+      if(enhanced && fxParticles){ spawnParticles(dt, cx, cy, byOf, dzOf); drawParticles(dt); } else if(P.length) P.length=0;
 
       // LABELS (numbered), decluttered into a tidy left column: sort by screen height, enforce a min vertical
       // spacing so they spread apart instead of piling up when planes crowd (e.g. when the board is rotated).
@@ -385,7 +405,7 @@
       for(const L of LB){ const pl=L.pl;
         ctx.fillStyle=pl.sys?'rgba(190,170,230,.95)':(pl.off?'rgba(139,148,158,.55)':'rgba(230,237,243,.92)');
         ctx.fillText(labelStr(pl), labelRight, L.y); }
-      readEl.textContent = 'zoom '+zoom+'% · yaw '+Math.round(((yaw/D2R)%360+360)%360)+'° · tilt '+Math.round(pitch/D2R)+'° · gap '+gap+(drawer?' · drawer '+drawer:'');
+      readEl.textContent = 'zoom '+zoom+'% · yaw '+Math.round(((yaw/D2R)%360+360)%360)+'° · tilt '+Math.round(pitch/D2R)+'° · gap '+gapToSlider(gap)+(drawer?' · drawer '+drawer:'');
     }
 
     // ---- pop-out window + loop ----
@@ -398,7 +418,7 @@
            draw(now); }catch(_){}
       schedule();
     }
-    function fitPop(){ if(popWin) sizeCanvas(cv.clientWidth, cv.clientHeight); }
+    function fitPop(){ if(popWin){ sizeCanvas(cv.clientWidth, cv.clientHeight); P.length=0; } }   // clear stardust on resize/maximize so no stale-positioned dust lingers in empty space until its life expires
     const onPopResize=()=>{ if(popWin) popWin.requestAnimationFrame(fitPop); };
     function copyVars(el){ const cs=getComputedStyle(document.documentElement);
       ['--card','--line','--fg','--muted','--blue','--text','--accent','--mint','--ring'].forEach(v=>{ const val=cs.getPropertyValue(v); if(val) el.style.setProperty(v,val); }); }
