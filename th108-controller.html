@@ -32,6 +32,7 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
   ::view-transition-old(root),::view-transition-new(root){ animation-duration:.45s; }
 
   *{ box-sizing:border-box; }
+  html{ scrollbar-gutter:stable; }   /* reserve scrollbar space on every tab so a short page (Profiles) doesn't widen the viewport and shift centered content right */
   body{ font:14px/1.55 "Plus Jakarta Sans",system-ui,sans-serif; background:var(--bg); color:var(--text);
         margin:0; padding:0 24px 20px; }
   /* theme-change easing: ONLY as a fallback when the View Transitions API is missing (html.no-vt set at boot).
@@ -76,9 +77,10 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
   ::view-transition-old(theme-toggle){ display:none; }
   ::view-transition-new(theme-toggle){ animation:none; }
   #themeBtn .knob{ position:absolute; top:4px; left:4px; width:23px; height:23px; border-radius:50%;
-                   background:var(--tabhl); box-shadow:var(--shadow); display:flex; align-items:center; justify-content:center;
+                   background:var(--tabhl); box-shadow:var(--shadow), 0 0 0 1px var(--border); display:flex; align-items:center; justify-content:center;
                    transition:transform .45s cubic-bezier(.22,1,.36,1), background-color .45s; }
-  [data-theme="dark"] #themeBtn .knob{ transform:translateX(27px); }
+  /* dark mode: lighter knob + a light ring so the circle around the moon contrasts against the dark track */
+  [data-theme="dark"] #themeBtn .knob{ transform:translateX(27px); background:#3a424d; box-shadow:0 1px 4px rgba(0,0,0,.5), 0 0 0 1px rgba(255,255,255,.25); }
   /* sun ⇄ moon SVG morph: the disc grows while a mask circle slides in to bite the crescent; rays fold away */
   #themeBtn .kcore{ fill:#f2a23b; transition:r .45s, fill .45s; r:5; }
   #themeBtn .kcut{ transition:cx .45s, cy .45s; cx:32px; cy:2px; }
@@ -314,7 +316,10 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
   .faqcard h3{ font-family:"Fraunces",Georgia,serif; font-weight:700; font-size:17.5px; margin:0 0 8px; letter-spacing:-.2px; }
   .faqcard p{ margin:0; color:#a8b4c0; font-size:14.5px; line-height:1.6; }   /* brighter + larger than --muted/13.5 for readability */
   .faqcard b{ color:#dbe2ea; }   /* bold: clear emphasis, a touch below stark white */
-  .faqcard p+p{ margin-top:8px; }
+  .faqcard p+p{ margin-top:13px; }   /* more breathing room between FAQ paragraphs */
+  .faqcard.fqz1{ background-image:linear-gradient(rgba(127,154,212,.05),rgba(127,154,212,.05)); }   /* per-card zebra tone (assigned by JS in DOM order) */
+  .faqcard.fqz2{ background-image:linear-gradient(rgba(250,128,114,.04),rgba(250,128,114,.04)); }
+  .faqcard.fqz3{ background-image:linear-gradient(rgba(86,211,100,.038),rgba(86,211,100,.038)); }
   /* troubleshooting cards live on the FAQ tab but read as their own group (chip survives drag-reorder) */
   .tbtag{ background:var(--yellow); color:#0d1117; font-size:10.5px; font-weight:700; letter-spacing:.4px;
           padding:2px 9px; border-radius:999px; }
@@ -346,8 +351,10 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
   .doctable th{ color:var(--text); font-weight:600; }
   .doctable td:first-child{ color:var(--text); font-weight:600; width:30%; }
   .doctable .yes{ color:#3fb950; } .doctable .no{ color:#8b949e; }
+  .doctable tr:nth-child(even) td{ background:rgba(127,154,212,.05); }   /* zebra rows */
   .chglog{ list-style:none; margin:0; padding:0; }
-  .chglog li{ margin:0 0 10px; padding-left:0; }
+  .chglog li{ margin:0; padding:8px 11px; border-radius:10px; }   /* padded so the zebra band has room */
+  .chglog li:nth-of-type(even){ background:rgba(127,154,212,.06); }   /* zebra entries */
   .chglog .ver{ color:var(--text); font-weight:600; } .chglog .date{ color:var(--muted); font-size:11.5px; margin-left:6px; }
 
   /* hotkeys: clickable physical keyboard (positions from the engine's board map) */
@@ -550,9 +557,9 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
       <button id="connect" class="primary" title="hands the keyboard from the daemon to this page and starts your layers automatically">Connect Keyboard</button>
       <button id="driveToggle" class="go" disabled title="switch who drives the keyboard LEDs — this tab (WebHID) or the background daemon">Drive from this Tab ▶</button>
     </div>
-    <p class="hint">While connected, click this page once so it has keyboard focus, then type — pressed keys flash orange.
-       <br>⚠ <b>Browser keydown only fires while this tab is focused.</b> Reactive-in-any-app comes from the background daemon instead.
-       <br>💡 <b>Daemon running? Skip Connect for layer editing</b> — edits push to it live and reactive keeps working in every app. Connect is only for the GIF→keys, onboard-effect, and LCD tools (it takes the keyboard from the daemon until you close this tab).</p>
+    <p class="hint" style="margin:0">While connected, click this page once so it has keyboard focus, then type — pressed keys flash orange.</p>
+    <p class="hint" style="margin:12px 0 0">⚠ <b>Browser keydown only fires while this tab is focused.</b> Reactive-in-any-app comes from the background daemon instead.</p>
+    <p class="hint" style="margin:12px 0 0">💡 <b>Daemon running? Skip Connect for layer editing</b> — edits push to it live and reactive keeps working in every app. Connect is only for the GIF→keys, onboard-effect, and LCD tools (it takes the keyboard from the daemon until you close this tab).</p>
   </div>
 
   <div class="card s3" id="daemonPanel" data-pages="home">
@@ -915,20 +922,28 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
 
   <div class="card s3 doccard" id="docLegal" data-pages="docs">
     <div class="cardbar"><span class="grip">⠿</span><h2>Legal &amp; Disclaimer</h2></div>
+    <section class="fgsec">
     <h3>Not affiliated with Epomaker</h3>
     <p>th108 is an <b>independent, unofficial, free</b> tool. It is <b>not affiliated with, endorsed by, sponsored by,
        or supported by Epomaker</b>. "Epomaker" and "TH108" are trademarks of their respective owners and are used here
        only to identify the compatible hardware (nominative use).</p>
+    </section>
+    <section class="fgsec">
     <h3>No warranty</h3>
     <p>Provided <b>"as is", without warranty of any kind</b>. It communicates with hardware over standard HID lighting
        and screen commands; you use it <b>at your own risk</b>. The authors are not liable for any damage, data loss, or
        device malfunction. It does <b>not</b> flash or modify keyboard firmware.</p>
+    </section>
+    <section class="fgsec">
     <h3>Privacy</h3>
     <p>Everything runs <b>locally on your machine</b>. There is <b>no telemetry and no data collection</b>. Audio, tab,
        and microphone capture used for reactive effects stay on your PC and are never uploaded.</p>
+    </section>
+    <section class="fgsec">
     <h3>Third-party</h3>
     <p>Onboard-effect tooling adapts open-source work (e.g. OpenRGB protocol notes). Respect the licences of any such
        components when redistributing.</p>
+    </section>
   </div>
 
   <!-- ========== LIGHTING ========== -->
@@ -1941,6 +1956,8 @@ function restoreLayout(){
   saved.forEach(id=>{ const c=document.getElementById(id); if(c && c.parentElement===gridEl) gridEl.appendChild(c); });
 }
 restoreLayout();
+// FAQ: give each card a subtly different background tone (zebra-by-card), stable in DOM order
+document.querySelectorAll('#grid .faqcard[data-pages~="faq"]').forEach((c,i)=>{ const t=i%4; if(t) c.classList.add('fqz'+t); });
 
 // ===== card layout mode: Grid (even rows, default) vs Fill (masonry — pack cards up into vertical gaps) =====
 // Fill = the CSS-grid masonry trick: a fine grid-auto-rows track + a per-card grid-row-end span computed
