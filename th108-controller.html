@@ -312,7 +312,8 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
            justify-content:center; font-size:30px; margin-bottom:10px; }
   .bigtype{ font-family:"Fraunces",Georgia,serif; font-weight:800; font-size:25px; letter-spacing:-.4px; }
   .faqcard h3{ font-family:"Fraunces",Georgia,serif; font-weight:700; font-size:17.5px; margin:0 0 8px; letter-spacing:-.2px; }
-  .faqcard p{ margin:0; color:var(--muted); font-size:13.5px; }
+  .faqcard p{ margin:0; color:#a8b4c0; font-size:14.5px; line-height:1.6; }   /* brighter + larger than --muted/13.5 for readability */
+  .faqcard b{ color:#dbe2ea; }   /* bold: clear emphasis, a touch below stark white */
   .faqcard p+p{ margin-top:8px; }
   /* troubleshooting cards live on the FAQ tab but read as their own group (chip survives drag-reorder) */
   .tbtag{ background:var(--yellow); color:#0d1117; font-size:10.5px; font-weight:700; letter-spacing:.4px;
@@ -323,11 +324,23 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
   /* docs tab */
   .doccard h3{ font-family:"Fraunces",Georgia,serif; font-weight:700; font-size:16px; margin:14px 0 5px; letter-spacing:-.2px; }
   .doccard h3:first-of-type{ margin-top:4px; }
-  .doccard p, .doccard li{ color:var(--muted); font-size:13px; line-height:1.55; }
+  .doccard p, .doccard li{ color:#a8b4c0; font-size:14px; line-height:1.6; }   /* brighter + larger for readability */
   .doccard p{ margin:0 0 6px; }
   .doccard ul{ margin:0 0 8px; padding-left:18px; }
   .doccard li{ margin:2px 0; }
-  .doccard li b, .doccard p b{ color:var(--text); }
+  .doccard li b, .doccard p b{ color:#dbe2ea; }   /* bold: a touch below stark white */
+  /* Feature Guide: zebra-blocked sections + color-coded titles for scanability */
+  .doccard .fgsec{ padding:9px 14px 6px; border-radius:12px; margin:7px 0; }
+  .doccard .fgsec:nth-of-type(even){ background:rgba(127,154,212,.06); }   /* subtle zebra on the dark card */
+  #docFeatures .fgsec h3{ margin-top:3px; }
+  #docFeatures .fgsec:nth-of-type(8n+1) h3{ color:#fa8072; }   /* coral  */
+  #docFeatures .fgsec:nth-of-type(8n+2) h3{ color:#58a6ff; }   /* blue   */
+  #docFeatures .fgsec:nth-of-type(8n+3) h3{ color:#56d364; }   /* green  */
+  #docFeatures .fgsec:nth-of-type(8n+4) h3{ color:#e3b341; }   /* amber  */
+  #docFeatures .fgsec:nth-of-type(8n+5) h3{ color:#bc8cff; }   /* purple */
+  #docFeatures .fgsec:nth-of-type(8n+6) h3{ color:#39c5cf; }   /* teal   */
+  #docFeatures .fgsec:nth-of-type(8n+7) h3{ color:#ff9bce; }   /* pink   */
+  #docFeatures .fgsec:nth-of-type(8n+0) h3{ color:#79c0ff; }   /* sky    */
   .doctable{ width:100%; border-collapse:collapse; font-size:12.5px; margin:2px 0 4px; }
   .doctable th, .doctable td{ text-align:left; padding:6px 9px; border-bottom:1px solid var(--border); vertical-align:top; }
   .doctable th{ color:var(--text); font-weight:600; }
@@ -659,7 +672,7 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
 
   <div class="card s2 faqcard" id="profHelpCard" data-pages="profiles">
     <div class="cardbar"><span class="grip">⠿</span></div>
-    <h3>What's in a profile?</h3>
+    <h3>What's saved in a profile</h3>
     <p>The full Lighting-tab setup: all four layers with their pattern settings, plus the stacking order — the same
        data the background daemon runs. Key bindings live in the keyboard's own flash, so they stay put across
        profile switches. Exported files are daemon-compatible JSON.</p>
@@ -668,14 +681,14 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
   <!-- ========== FAQ ========== -->
   <div class="card s2 faqcard" id="faq1" data-pages="faq">
     <div class="cardbar"><span class="grip">⠿</span></div>
-    <h3>What does Connect actually do?</h3>
+    <h3>What Connect actually does</h3>
     <p>It hands the keyboard from the background daemon to this page and starts your layers automatically — one
        click, no second step. You only need it for the GIF→keys player and the LCD uploader; plain layer editing
        pushes to the daemon live without ever connecting.</p>
   </div>
   <div class="card s2 faqcard" id="faq2" data-pages="faq">
     <div class="cardbar"><span class="grip">⠿</span></div>
-    <h3>Reactive layers only respond while this tab is focused?</h3>
+    <h3>Reactive only sees this tab's keys after Connect</h3>
     <p>This only concerns layers whose type is <b>Reactive</b> (whichever level they sit at — other layer types
        aren't affected). Once this page owns the keyboard (after Connect), it can only see keystrokes typed into
        this tab — a browser limit. Reactive-in-every-app comes from the background daemon: close this tab (or never
@@ -683,7 +696,7 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
   </div>
   <div class="card s2 faqcard" id="faq11" data-pages="faq">
     <div class="cardbar"><span class="grip">⠿</span></div>
-    <h3>Make a key toggle mic lighting (or cycle profiles) with no side effect</h3>
+    <h3>Use a key to toggle mic lighting or cycle profiles</h3>
     <p><b>Host Actions</b> (Hotkeys → Assign to Key → <b>Host Actions</b> tab) bind a key to a background-app action —
        Mic/Music lighting on-off, or Profile Next/Prev. They run through the daemon, so they work with this page
        closed. Click the action, then <b>press the key</b> you want to use — it captures whatever that key sends, so
@@ -702,7 +715,7 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
   </div>
   <div class="card s2 faqcard" id="faq4" data-pages="faq">
     <div class="cardbar"><span class="grip">⠿</span><span class="tbtag">Troubleshooting</span></div>
-    <h3>Lighting froze or went static by itself?</h3>
+    <h3>Lighting froze or went static on its own</h3>
     <p>The board sometimes goes <b>mute</b> — it silently stops accepting host lighting (typing still works) and
        falls back to its saved firmware effect, which usually looks static. USB power events are the main trigger:
        sleep, or other devices power-cycling on the same bus. <b>Rapidly handing the board back and forth</b>
@@ -729,7 +742,7 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
   </div>
   <div class="card s2 faqcard" id="faq8" data-pages="faq">
     <div class="cardbar"><span class="grip">⠿</span><span class="tbtag">Troubleshooting</span></div>
-    <h3>"Online" but the keyboard isn't connected?</h3>
+    <h3>"Online" but the keyboard shows not connected</h3>
     <p>Three indicators, three different things. The header <b>Online</b> tag = the background daemon
        <i>process</i> is running. The Background Daemon card says whether <i>it</i> currently holds the keyboard.
        The Keyboard card's status is whether <i>this page</i> holds it (Connect). They can legitimately disagree —
@@ -738,7 +751,7 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
   </div>
   <div class="card s2 faqcard" id="faq10" data-pages="faq">
     <div class="cardbar"><span class="grip">⠿</span><span class="tbtag">Troubleshooting</span></div>
-    <h3>Play/Pause controls my browser, not Spotify?</h3>
+    <h3>Play/Pause controls my browser instead of Spotify</h3>
     <p>That's Windows, not this suite. The media keys go to the <i>most-recently-active</i> media session, and
        Chrome/Edge grab it aggressively — so your keyboard's ⏯ hits a browser tab instead of Spotify. The clean
        fix is to stop the browser from claiming the keys:</p>
@@ -750,7 +763,7 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
   </div>
   <div class="card s2 faqcard" id="faq6" data-pages="faq">
     <div class="cardbar"><span class="grip">⠿</span></div>
-    <h3>Where's the official driver?</h3>
+    <h3>Where to find the official driver</h3>
     <p>Epomaker's official web driver lives at
        <a href="https://epomaker.driveall.cn/" target="_blank" rel="noopener">epomaker.driveall.cn</a> —
        useful for the firmware features this suite doesn't cover yet. Two warnings: quit the background daemon
@@ -760,7 +773,8 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
   </div>
   <div class="card s2 faqcard" id="faq9" data-pages="faq">
     <div class="cardbar"><span class="grip">⠿</span></div>
-    <h3>What do the two reset buttons clear?</h3>
+    <h3>What the two reset buttons clear</h3>
+    <p>Both buttons live in the <b>Toolbox</b> card on the <a href="#home">Home page</a>.</p>
     <p><b>↺ Reset All Settings</b> resets this page: layers, per-pattern values, LCD calibration, and panel
        layout. Kept: your media Library, saved Profiles (delete those individually on the Profiles tab), and the
        keymap backup + remapped-key marks — those mirror the keyboard itself, which this reset never touches.</p>
@@ -769,7 +783,7 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
   </div>
   <div class="card s2 faqcard" id="faq5" data-pages="faq">
     <div class="cardbar"><span class="grip">⠿</span></div>
-    <h3>Why does the "Media" layer type do nothing?</h3>
+    <h3>Why the "Media" layer type does nothing (for now)</h3>
     <p>In the Layer Compositor, one of the choices in a layer's type dropdown is <b>Media</b>. It's reserved for
        playing a GIF or video <i>inside</i> the layer stack (so it could blend with the other layers), but that part
        of the engine isn't built yet — a Media layer currently renders nothing. To put a GIF on your keys today, use
@@ -783,6 +797,7 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
        the lighting frame-by-frame and streams it to the board, so effects can react to things the keyboard can't see
        on its own (what you type, what's playing, what's on screen).</p>
 
+    <section class="fgsec">
     <h3>Layer Compositor (Lighting tab)</h3>
     <ul>
       <li>Stack up to <b>four lighting layers</b> and blend them top-to-bottom — each with its own <b>opacity</b>,
@@ -794,12 +809,16 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
       <li><b>Isometric View</b> button — a draggable 3D visualizer that shows the layer stack as glowing key-planes
           (rotate, zoom, focus a layer, toggle layers) so you can see how the composite is built.</li>
     </ul>
+    </section>
 
+    <section class="fgsec">
     <h3>Reactive typing in any app</h3>
     <p>A <b>Reactive</b> layer lights each key as you press it — system-wide, in any program — because the always-on
        background app sees your keystrokes. (A browser tab can only see keys typed into itself, so this comes from the
        daemon, not the page.)</p>
+    </section>
 
+    <section class="fgsec">
     <h3>Audio-reactive lighting</h3>
     <ul>
       <li><b>System / App audio</b> — the background app captures your output device and drives spectrum bars with the
@@ -807,19 +826,27 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
       <li><b>Specific browser tab / microphone</b> — captured inside this page (browser privacy limits it to here), so
           it only reaches the keys while this tab is driving the board.</li>
     </ul>
+    </section>
 
+    <section class="fgsec">
     <h3>GIF → Keys (Lighting tab)</h3>
     <p>Map any GIF onto the per-key grid and play it across the keyboard. Requires <b>Connect</b> (this page drives the
        board for the GIF player).</p>
+    </section>
 
+    <section class="fgsec">
     <h3>Onboard effects</h3>
     <p>Write the keyboard's <b>built-in firmware effects</b> from the page — useful as a clean baseline, or to overwrite
        a corrupt onboard config.</p>
+    </section>
 
+    <section class="fgsec">
     <h3>LCD Screen (LCD Screen tab)</h3>
     <p>Upload <b>images and GIFs</b> to the keyboard's little display, plus a <b>Now Playing</b> readout. (Uploads are
        chunked and rate-limited for hardware safety.)</p>
+    </section>
 
+    <section class="fgsec">
     <h3>Hotkeys &amp; Host Actions (Hotkeys tab)</h3>
     <ul>
       <li><b>Remap keys</b> to other keys or to light functions, written to the keyboard's keymap.</li>
@@ -828,15 +855,20 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
           They run through the background app, so they work with this page closed — and the key still does its normal
           job too.</li>
     </ul>
+    </section>
 
+    <section class="fgsec">
     <h3>Profiles (Profiles tab)</h3>
     <p>Save and switch whole setups (layers + lighting + binds). Export/Import to JSON to back up or move between
        machines.</p>
+    </section>
 
+    <section class="fgsec">
     <h3>Background Daemon (Home tab)</h3>
     <p>The always-on engine: keeps your layers and reactive typing running in every app and takes over whenever this
        page is closed. Options: <b>auto-start at login</b>, <b>auto-fix lighting wedge</b> (USB restart), and
        <b>lights-off when the monitor is off</b>.</p>
+    </section>
   </div>
 
   <div class="card s6 doccard" id="docCompare" data-pages="docs">
