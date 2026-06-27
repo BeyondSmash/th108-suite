@@ -314,9 +314,10 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
            justify-content:center; font-size:30px; margin-bottom:10px; }
   .bigtype{ font-family:"Fraunces",Georgia,serif; font-weight:800; font-size:25px; letter-spacing:-.4px; }
   .faqcard h3{ font-family:"Fraunces",Georgia,serif; font-weight:700; font-size:17.5px; margin:0 0 8px; letter-spacing:-.2px; }
-  .faqcard p{ margin:0; color:#a8b4c0; font-size:14.5px; line-height:1.6; }   /* brighter + larger than --muted/13.5 for readability */
+  .faqcard p{ margin:0; color:#a8b4c0; font-size:14.5px; line-height:1.6; padding:7px 10px; border-radius:8px; }   /* brighter+larger; padded so each paragraph is its own readable band */
   .faqcard b{ color:#dbe2ea; }   /* bold: clear emphasis, a touch below stark white */
-  .faqcard p+p{ margin-top:13px; }   /* more breathing room between FAQ paragraphs */
+  .faqcard p+p{ margin-top:6px; }   /* small gap — the band padding does the separating now */
+  .faqcard p:nth-of-type(even){ background:rgba(127,154,212,.06); }   /* zebra the sections within a card for easier reading */
   .faqcard.fqz1{ background-image:linear-gradient(rgba(127,154,212,.05),rgba(127,154,212,.05)); }   /* per-card zebra tone (assigned by JS in DOM order) */
   .faqcard.fqz2{ background-image:linear-gradient(rgba(250,128,114,.04),rgba(250,128,114,.04)); }
   .faqcard.fqz3{ background-image:linear-gradient(rgba(86,211,100,.038),rgba(86,211,100,.038)); }
