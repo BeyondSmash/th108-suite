@@ -54,7 +54,7 @@
         '<button type="button" class="iso-keys on" title="Show the inactive/unused keys so the full keyboard layout reads (esp. face-on / top-down)">⌨ Keys</button>' +
         '<button type="button" class="iso-glass" title="Swap the window background between solid and frosted glass (the page shows through, refracted)">🫧 Glass</button>' +
         '<button type="button" class="iso-enh" title="Wave + rising stardust + aura wisps">✨ Enhanced</button>' +
-        '<label class="iso-gl iso-efx" style="display:none" title="Aura glow intensity">Aura<input type="range" class="iso-aint" min="0" max="150" value="80"></label>' +
+        '<label class="iso-gl iso-efx" style="display:none" title="Aura glow intensity — tell me the value to bake as default">Aura<input type="range" class="iso-aint" min="0" max="150" value="80"><small class="iso-aval">80</small></label>' +
         '<select class="iso-wave iso-efx" style="display:none" title="Enhanced wave pattern">' +
           '<option value="ripple">〜 Ripple</option><option value="waveX">→ Wave X</option></select>' +
         '<button type="button" class="iso-face" title="Tilt the board front-flat (keys facing you) vs isometric">Face-on</button>' +
@@ -91,6 +91,7 @@
         '.iso-zwrap{display:inline-flex;flex-direction:column;align-items:center;gap:1px}' +
         '.iso-zwrap input{width:120px}.iso-zval{font-size:11px;color:var(--muted,#8b949e)}' +
         '.iso-gl{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--muted,#8b949e)}.iso-gl input{width:90px}' +
+        '.iso-aval{min-width:20px;text-align:right;font-size:11px;color:var(--fg,#e6edf3)}' +
         '.iso-cv{display:block;width:720px;height:392px;margin:6px auto 2px;touch-action:none;cursor:grab}.iso-cv.drag{cursor:grabbing}' +
         '.iso-legend{display:flex;flex-wrap:wrap;gap:6px;padding:4px 12px 2px}' +
         '.iso-chip{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;padding:3px 8px;border-radius:999px;' +
@@ -112,7 +113,7 @@
     function sizeCanvas(w,h){ CW=Math.max(160,Math.round(w)); CH=Math.max(120,Math.round(h)); cv.width=CW*SS; cv.height=CH*SS; }
     sizeCanvas(DEF_W, DEF_H);
     const $ = s => panel.querySelector(s);
-    const zoomEl=$('.iso-zoom'), zvalEl=$('.iso-zval'), gapEl=$('.iso-gapr'), enhEl=$('.iso-enh'), aintEl=$('.iso-aint'), keysEl=$('.iso-keys'),
+    const zoomEl=$('.iso-zoom'), zvalEl=$('.iso-zval'), gapEl=$('.iso-gapr'), enhEl=$('.iso-enh'), aintEl=$('.iso-aint'), avalEl=$('.iso-aval'), keysEl=$('.iso-keys'),
           glassEl=$('.iso-glass'), waveEl=$('.iso-wave'),
           backEl=$('.iso-back'), faceEl=$('.iso-face'), lockEl=$('.iso-lock'), legendEl=$('.iso-legend'), readEl=$('.iso-read');
     // ---- persistence: remember the view settings between sessions ----
@@ -125,7 +126,7 @@
       if(typeof s.auraI==='number') auraI=s.auraI;
       enhanced=!!s.enhanced; glass=!!s.glass; showKeys=s.showKeys!==false; faceOn=!!s.faceOn; if(s.waveStyle==='ripple'||s.waveStyle==='waveX') waveStyle=s.waveStyle; }
     function syncControls(){   // push the (possibly restored) state into the UI controls
-      zoomEl.value=zoom; zvalEl.textContent=zoom+'%'; gapEl.value=gap; aintEl.value=Math.round(auraI*100);
+      zoomEl.value=zoom; zvalEl.textContent=zoom+'%'; gapEl.value=gap; aintEl.value=Math.round(auraI*100); avalEl.textContent=Math.round(auraI*100);
       waveEl.value=waveStyle;
       enhEl.classList.toggle('on',enhanced); panel.querySelectorAll('.iso-efx').forEach(el=>el.style.display=enhanced?'':'none');
       keysEl.classList.toggle('on',showKeys); glassEl.classList.toggle('on',glass); panel.classList.toggle('glass',glass);
@@ -138,7 +139,7 @@
     panel.addEventListener('click', e=>{ const t=e.target.closest('button,input'); if(t&&t.blur) t.blur(); });   // NOT select — blurring it mid-click closed the dropdown (had to hold to pick)
     zoomEl.addEventListener('input', e=>{ zoom=+e.target.value; zvalEl.textContent=zoom+'%'; saveSoon(); });
     gapEl.addEventListener('input', e=>{ gap=+e.target.value; saveSoon(); });
-    aintEl.addEventListener('input', e=>{ auraI=+e.target.value/100; saveSoon(); });
+    aintEl.addEventListener('input', e=>{ auraI=+e.target.value/100; avalEl.textContent=e.target.value; saveSoon(); });
     // Home/End/PageUp/PageDown natively jam a focused range input to min/max — block them so those keys
     // (used for reactive lighting / nav) don't yank a slider. Arrow keys still fine-adjust.
     [zoomEl,gapEl,aintEl].forEach(el=> el.addEventListener('keydown', e=>{ if(e.key==='Home'||e.key==='End'||e.key==='PageUp'||e.key==='PageDown') e.preventDefault(); }));
