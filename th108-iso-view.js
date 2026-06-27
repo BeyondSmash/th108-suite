@@ -125,7 +125,7 @@
         '.iso-chip .pw{width:13px;height:13px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:9px;' +
         'box-shadow:inset 0 0 0 1px var(--muted,#8b949e)}.iso-chip.on .pw{background:#3fb950;box-shadow:none;color:#0d1117}' +
         '.iso-foot{padding:4px 12px 11px;font-size:11px;color:var(--muted,#8b949e);line-height:1.45}.iso-read{color:var(--fg,#e6edf3)}' +
-        '.iso-panel.glass{background:rgba(20,25,33,var(--glass-a,.45));backdrop-filter:blur(var(--glass-b,22px)) saturate(1.6);-webkit-backdrop-filter:blur(var(--glass-b,22px)) saturate(1.6);' +
+        '.iso-panel.glass{background:rgba(20,25,33,var(--glass-a,.45));backdrop-filter:blur(var(--glass-b,12px)) saturate(1.5) url(#iso-glass-ref);-webkit-backdrop-filter:blur(var(--glass-b,12px)) saturate(1.5);' +   // url() = SVG displacement-map filter → real edge refraction (Chromium; Safari falls back to blur)
         'border-color:rgba(255,255,255,.16);box-shadow:0 18px 50px rgba(0,0,0,.5),inset 0 1px 0 rgba(255,255,255,.22),inset 0 0 0 1px rgba(255,255,255,.05)}' +
         '.iso-panel.glass .iso-head{border-bottom-color:rgba(255,255,255,.12)}';
       document.head.appendChild(st);
@@ -137,6 +137,9 @@
     let CW = DEF_W, CH = DEF_H;
     function sizeCanvas(w,h){ CW=Math.max(160,Math.round(w)); CH=Math.max(120,Math.round(h)); cv.width=CW*SS; cv.height=CH*SS; }
     sizeCanvas(DEF_W, DEF_H);
+    // In the popped window the canvas flex-shrinks when the header grows (Glass slider / Enhanced sub-toggles wrap
+    // a new row) WITHOUT a window resize — re-fit the buffer to the canvas's live size so content can't clip up.
+    if(window.ResizeObserver){ new ResizeObserver(()=>{ if(popWin && cv.clientWidth>0 && cv.clientHeight>0) sizeCanvas(cv.clientWidth, cv.clientHeight); }).observe(cv); }
     const $ = s => panel.querySelector(s);
     const zoomEl=$('.iso-zoom'), zvalEl=$('.iso-zval'), gapEl=$('.iso-gapr'), gvalEl=$('.iso-gval'), drawEl=$('.iso-draw'), dvalEl=$('.iso-dval'), enhEl=$('.iso-enh'),
           fxanimEl=$('.iso-fxanim'), fxpEl=$('.iso-fxp'), fxaEl=$('.iso-fxa'), glassrEl=$('.iso-glassr'), glvalEl=$('.iso-glval'), keysEl=$('.iso-keys'),
@@ -164,10 +167,29 @@
       glassrEl.value=glassAmt; glvalEl.textContent=glassAmt; $('.iso-glass-sld').style.display=glass?'':'none';   // glass slider only while Glass is on
       keysEl.classList.toggle('on',showKeys); glassEl.classList.toggle('on',glass); applyGlass();
       faceEl.classList.toggle('on',faceOn); lockEl.hidden=!faceOn; }
-    // glassiness → CSS vars consumed by .iso-panel.glass (docked: real blur of the page behind; popped: a painted sheen in draw())
+    // Build the SVG displacement-map filter (#iso-glass-ref) ONCE per document: a normal-map that's neutral in the
+    // centre and bends outward at the rim, so backdrop-filter:url() refracts the page through the panel EDGES (not
+    // just blur). Docked only — a popped OS window has no backdrop to refract.
+    function buildGlassFilter(doc){ if(!doc || doc.getElementById('iso-glass-svg')) return;
+      const M=200, c=document.createElement('canvas'); c.width=c.height=M; const q=c.getContext('2d');
+      const im=q.createImageData(M,M), d=im.data, marg=0.13;
+      for(let y=0;y<M;y++) for(let x=0;x<M;x++){ const i=(y*M+x)*4, nx=x/(M-1), ny=y/(M-1);
+        const fx=Math.max(0,1-Math.min(nx,1-nx)/marg), fy=Math.max(0,1-Math.min(ny,1-ny)/marg);   // 1 at the L/R (x) & T/B (y) edges → 0 in the centre
+        d[i]=128+(nx-0.5)*254*fx*fx; d[i+1]=128+(ny-0.5)*254*fy*fy; d[i+2]=128; d[i+3]=255; }   // R=x-displacement, G=y-displacement
+      q.putImageData(im,0,0);
+      const svg=doc.createElementNS('http://www.w3.org/2000/svg','svg'); svg.id='iso-glass-svg';
+      svg.setAttribute('width','0'); svg.setAttribute('height','0'); svg.style.position='absolute';
+      svg.innerHTML='<filter id="iso-glass-ref" color-interpolation-filters="sRGB">'
+        +'<feImage href="'+c.toDataURL()+'" preserveAspectRatio="none" x="0" y="0" width="100%" height="100%" result="m"/>'
+        +'<feDisplacementMap in="SourceGraphic" in2="m" xChannelSelector="R" yChannelSelector="G" scale="20"/></filter>';
+      doc.body.appendChild(svg);
+    }
+    // glassiness → CSS vars consumed by .iso-panel.glass (docked: real blur + edge refraction; popped: painted sheen in draw())
     function applyGlass(){ panel.classList.toggle('glass',glass);
-      panel.style.setProperty('--glass-b', Math.round(glassAmt/100*40)+'px');
-      panel.style.setProperty('--glass-a', (0.18 + glassAmt/100*0.42).toFixed(3)); }
+      panel.style.setProperty('--glass-b', Math.round(glassAmt/100*22)+'px');   // lighter blur so the refraction reads
+      panel.style.setProperty('--glass-a', (0.16 + glassAmt/100*0.40).toFixed(3));
+      const doc=panel.ownerDocument; buildGlassFilter(doc);
+      const fdm=doc.querySelector('#iso-glass-ref feDisplacementMap'); if(fdm) fdm.setAttribute('scale', Math.round(8+glassAmt/100*34)); }
     keysEl.addEventListener('click', ()=>{ showKeys=!showKeys; keysEl.classList.toggle('on',showKeys); saveSoon(); });
     glassEl.addEventListener('click', ()=>{ glass=!glass; glassEl.classList.toggle('on',glass); $('.iso-glass-sld').style.display=glass?'':'none'; applyGlass(); saveSoon(); });   // frosted-glass window
     glassrEl.addEventListener('input', e=>{ glassAmt=+e.target.value; glvalEl.textContent=e.target.value; applyGlass(); saveSoon(); });
@@ -496,7 +518,7 @@
       d.body.style.font='14px/1.55 "Plus Jakarta Sans",system-ui,sans-serif';   // match the page font (the panel uses font:inherit)
       document.querySelectorAll('link').forEach(l=>{ if(/fonts\.(googleapis|gstatic)/.test(l.href||'')) d.head.appendChild(l.cloneNode(true)); });   // load the webfont in the popped window
       const css=document.getElementById('iso-view-css'); if(css){ const c=css.cloneNode(true); c.id='iso-view-css-pop'; d.head.appendChild(c); }
-      copyVars(d.documentElement); d.body.appendChild(panel); panel.classList.add('popped');
+      copyVars(d.documentElement); d.body.appendChild(panel); panel.classList.add('popped'); buildGlassFilter(d);
       w.addEventListener('resize',onPopResize); w.addEventListener('keydown',onDown,true); w.addEventListener('keyup',onUp,true);
       w.addEventListener('pagehide',onPopHide);   // closing the OS window CLOSES the whole view (Pop-in button re-docks instead)
       popEl.hidden=true; popinEl.hidden=false; rsEl.hidden=false;
