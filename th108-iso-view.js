@@ -38,7 +38,7 @@
     const DEF_YAW = 35*D2R, DEF_PITCH = 20*D2R, DEF_ZOOM = 100, DEF_GAP = 47, DEF_DRAWER = 20;   // default view (DEF_GAP 47 = Gap slider 80); reused by Reset Orientation
     let yaw = DEF_YAW, pitch = DEF_PITCH, zoom = DEF_ZOOM, gap = DEF_GAP, drawer = DEF_DRAWER, enhanced = false, focusIdx = null, auraI = 0.0075, faceOn = false, showKeys = true, partSize = 0.55, glass = false, waveStyle = 'ripple';   // auraI baked (slider removed); 0.0075 = old slider value 0.75
     let fxAnim = true, fxParticles = true, fxAura = true;   // Enhanced sub-toggles; all off ⇒ Enhanced off
-    let glassAmt = 50, chromaAmt = 15;   // glassAmt = blur/translucency/edge-smear; chromaAmt = chromatic-aberration (R/B split) strength
+    const glassAmt = 50, chromaAmt = 6;   // baked (sliders removed): blur/translucency/edge-bend + chromatic-aberration strength
     let ctrlDown = false, ctrlGuide = 0;   // ctrlDown = Ctrl held; ctrlGuide = eased alpha of the Ctrl-drag corner overlay
     const waveFreqs = { ripple:0.8, waveX:1.3 };   // baked frequency per wave style
     const ISO_PITCH = DEF_PITCH, FACE_PITCH = 89*D2R;   // isometric resting tilt (= default) vs front-flat (top-down)
@@ -67,8 +67,6 @@
         '<span class="iso-sld" title="Zoom — scale the view (100% is centred)"><span class="iso-sld-top"><span>Zoom</span><small class="iso-zval">100%</small></span><input type="range" class="iso-zoom" min="0" max="100" value="50"></span>' +
         '<span class="iso-sld" title="Gap — spacing between the layers"><span class="iso-sld-top"><span>Gap</span><small class="iso-gval">80</small></span><input type="range" class="iso-gapr" min="0" max="100" value="80"></span>' +
         '<span class="iso-sld" title="Drawer — pull the layers out like a dresser (bottom out the most, each one above it less)"><span class="iso-sld-top"><span>Drawer</span><small class="iso-dval">20</small></span><input type="range" class="iso-draw" min="0" max="100" value="20"></span>' +
-        '<span class="iso-sld iso-glass-sld" style="display:none" title="Glassiness — blur, translucency &amp; how much the edges bend/smear light (only while Glass is on)"><span class="iso-sld-top"><span>Glass</span><small class="iso-glval">50</small></span><input type="range" class="iso-glassr" min="0" max="100" value="50"></span>' +
-        '<span class="iso-sld iso-glass-sld" style="display:none" title="Chromatic aberration — how much the glass splits R/G/B (colour fringing) at the edges"><span class="iso-sld-top"><span>Chroma</span><small class="iso-chval">15</small></span><input type="range" class="iso-chromar" min="0" max="100" value="15"></span>' +
       '</div>' +
       '<div class="iso-ctl">' +   // row 2: buttons
         '<button type="button" class="iso-back" hidden>‹ Back</button>' +
@@ -157,20 +155,18 @@
     if(window.ResizeObserver){ new ResizeObserver(()=>{ if(popWin && cv.clientWidth>0 && cv.clientHeight>0) sizeCanvas(cv.clientWidth, cv.clientHeight); }).observe(cv); }
     const $ = s => panel.querySelector(s);
     const zoomEl=$('.iso-zoom'), zvalEl=$('.iso-zval'), gapEl=$('.iso-gapr'), gvalEl=$('.iso-gval'), drawEl=$('.iso-draw'), dvalEl=$('.iso-dval'), enhEl=$('.iso-enh'),
-          fxanimEl=$('.iso-fxanim'), fxpEl=$('.iso-fxp'), fxaEl=$('.iso-fxa'), glassrEl=$('.iso-glassr'), glvalEl=$('.iso-glval'), chromaEl=$('.iso-chromar'), chvalEl=$('.iso-chval'), keysEl=$('.iso-keys'),
+          fxanimEl=$('.iso-fxanim'), fxpEl=$('.iso-fxp'), fxaEl=$('.iso-fxa'), keysEl=$('.iso-keys'),
           glassEl=$('.iso-glass'), waveEl=$('.iso-wave'),
           backEl=$('.iso-back'), faceEl=$('.iso-face'), lockEl=$('.iso-lock'), legendEl=$('.iso-legend'), readEl=$('.iso-read');
     // ---- persistence: remember the view settings between sessions ----
     const SKEY='th108_iso_view';
-    function saveSettings(){ try{ localStorage.setItem(SKEY, JSON.stringify({yaw,pitch,zoom,gap,drawer,enhanced,fxAnim,fxParticles,fxAura,glass,glassAmt,chromaAmt,showKeys,faceOn,waveStyle,
+    function saveSettings(){ try{ localStorage.setItem(SKEY, JSON.stringify({yaw,pitch,zoom,gap,drawer,enhanced,fxAnim,fxParticles,fxAura,glass,showKeys,faceOn,waveStyle,
       lockK:lock.known,lockN:lock.NumLock,lockC:lock.CapsLock,lockS:lock.ScrollLock})); }catch(_){ } }
     let _saveT=0; function saveSoon(){ clearTimeout(_saveT); _saveT=setTimeout(saveSettings, 350); }
     function loadSettings(){ let s; try{ s=JSON.parse(localStorage.getItem(SKEY)); }catch(_){ } if(!s||typeof s!=='object') return;
       if(typeof s.yaw==='number') yaw=s.yaw; if(typeof s.pitch==='number') pitch=s.pitch;
       if(typeof s.zoom==='number') zoom=s.zoom; if(typeof s.gap==='number') gap=Math.min(55,Math.max(14,s.gap));   // clamp to the slider range
       if(typeof s.drawer==='number') drawer=Math.min(100,Math.max(0,s.drawer));
-      if(typeof s.glassAmt==='number') glassAmt=Math.min(100,Math.max(0,s.glassAmt));
-      if(typeof s.chromaAmt==='number') chromaAmt=Math.min(100,Math.max(0,s.chromaAmt));
       enhanced=!!s.enhanced; glass=!!s.glass; showKeys=s.showKeys!==false; faceOn=!!s.faceOn; if(s.waveStyle==='ripple'||s.waveStyle==='waveX') waveStyle=s.waveStyle;
       if(s.lockK){ lock.known=true; lock.NumLock=!!s.lockN; lock.CapsLock=!!s.lockC; lock.ScrollLock=!!s.lockS; }   // restore last-known lock state → System plane shows on refresh
       if(typeof s.fxAnim==='boolean') fxAnim=s.fxAnim; if(typeof s.fxParticles==='boolean') fxParticles=s.fxParticles; if(typeof s.fxAura==='boolean') fxAura=s.fxAura;
@@ -182,8 +178,6 @@
       // each sub-feature's extra widget gates on its own flag too: the Aura slider only with Aura on, the wave dropdown only with Animation on
       waveEl.style.display=(enhanced&&fxAnim)?'':'none';
       fxanimEl.classList.toggle('on',fxAnim); fxpEl.classList.toggle('on',fxParticles); fxaEl.classList.toggle('on',fxAura);
-      glassrEl.value=glassAmt; glvalEl.textContent=glassAmt; chromaEl.value=chromaAmt; chvalEl.textContent=chromaAmt;
-      panel.querySelectorAll('.iso-glass-sld').forEach(el=>el.style.display=glass?'':'none');   // Glass + Chroma sliders only while Glass is on
       keysEl.classList.toggle('on',showKeys); glassEl.classList.toggle('on',glass); applyGlass();
       faceEl.classList.toggle('on',faceOn); lockEl.hidden=!faceOn; }
     // Build the SVG displacement-map filter (#iso-glass-ref) ONCE per document: a normal-map that's neutral in the
@@ -236,9 +230,7 @@
         fdms[0].setAttribute('scale',(base+sp).toFixed(1)); fdms[1].setAttribute('scale',base.toFixed(1)); fdms[2].setAttribute('scale',(base-sp).toFixed(1));
         const lite=doc.querySelector('#iso-glass-ref-lite feDisplacementMap'); if(lite) lite.setAttribute('scale',base.toFixed(1)); } }
     keysEl.addEventListener('click', ()=>{ showKeys=!showKeys; keysEl.classList.toggle('on',showKeys); saveSoon(); });
-    glassEl.addEventListener('click', ()=>{ glass=!glass; glassEl.classList.toggle('on',glass); panel.querySelectorAll('.iso-glass-sld').forEach(el=>el.style.display=glass?'':'none'); applyGlass(); saveSoon(); });   // frosted-glass window
-    glassrEl.addEventListener('input', e=>{ glassAmt=+e.target.value; glvalEl.textContent=e.target.value; applyGlass(); saveSoon(); });
-    chromaEl.addEventListener('input', e=>{ chromaAmt=+e.target.value; chvalEl.textContent=e.target.value; applyGlass(); saveSoon(); });
+    glassEl.addEventListener('click', ()=>{ glass=!glass; glassEl.classList.toggle('on',glass); applyGlass(); saveSoon(); });   // frosted-glass window (glassiness baked)
     waveEl.addEventListener('change', e=>{ waveStyle=e.target.value; saveSoon(); });
     // keys must NOT interact with the iso UI (Enter was re-toggling the focused Face-on button) — blur any control
     // after a click so it never holds keyboard focus. Reactive still reacts (that's a window-level key listener).
@@ -252,7 +244,7 @@
     drawEl.addEventListener('input', e=>{ drawer=+e.target.value; dvalEl.textContent=e.target.value; saveSoon(); });
     // Home/End/PageUp/PageDown natively jam a focused range input to min/max — block them so those keys
     // (used for reactive lighting / nav) don't yank a slider. Arrow keys still fine-adjust.
-    [zoomEl,gapEl,drawEl,glassrEl,chromaEl].forEach(el=> el.addEventListener('keydown', e=>{ if(e.key==='Home'||e.key==='End'||e.key==='PageUp'||e.key==='PageDown') e.preventDefault(); }));
+    [zoomEl,gapEl,drawEl].forEach(el=> el.addEventListener('keydown', e=>{ if(e.key==='Home'||e.key==='End'||e.key==='PageUp'||e.key==='PageDown') e.preventDefault(); }));
     enhEl.addEventListener('click', ()=>{ enhanced=!enhanced; if(enhanced) fxAnim=fxParticles=fxAura=true; syncControls(); saveSoon(); });   // turning Enhanced on enables all three sub-features
     // sub-toggles: flip one feature; if that leaves all three off, Enhanced itself turns off
     function toggleFx(set){ set(); if(!(fxAnim||fxParticles||fxAura)) enhanced=false; syncControls(); saveSoon(); }
