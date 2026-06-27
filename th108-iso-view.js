@@ -40,6 +40,10 @@
     const GAP_LO = 14, GAP_HI = 55;
     const gapToSlider = g => Math.round((g-GAP_LO)/(GAP_HI-GAP_LO)*100);
     const sliderToGap = v => Math.round(GAP_LO + (+v/100)*(GAP_HI-GAP_LO));
+    // Zoom slider 0-100 maps to zoom% with 100% pinned at the CENTRE (slider 50): below 50 → 40-100%, above → 100-240%.
+    const ZOOM_LO = 40, ZOOM_HI = 240;
+    const sliderToZoom = v => { v=+v; return v<=50 ? Math.round(ZOOM_LO + v/50*(100-ZOOM_LO)) : Math.round(100 + (v-50)/50*(ZOOM_HI-100)); };
+    const zoomToSlider = z => z<=100 ? Math.round((z-ZOOM_LO)/(100-ZOOM_LO)*50) : Math.round(50 + (z-100)/(ZOOM_HI-100)*50);
 
     // ---- panel chrome ----
     const panel = document.createElement('div'); panel.className = 'iso-panel'; panel.hidden = true;
@@ -52,11 +56,13 @@
       '<button type="button" class="iso-popin" hidden title="Pop back into the page">' +
         '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px"><path d="M2 10h6V4"/><path d="m2 4 6 6"/><path d="M21 10V7a2 2 0 0 0-2-2h-7"/><path d="M3 14v2a2 2 0 0 0 2 2h3"/><rect width="10" height="7" x="12" y="13" rx="2"/></svg>Pop in</button>' +
       '<button type="button" class="iso-x" title="Close">✕</button></div>' +
-      '<div class="iso-ctl">' +
+      '<div class="iso-sliders">' +   // row 1: wide sliders (so they step by 1) with their value ABOVE
+        '<span class="iso-sld" title="Zoom — scale the view (100% is centred)"><span class="iso-sld-top"><span>Zoom</span><small class="iso-zval">100%</small></span><input type="range" class="iso-zoom" min="0" max="100" value="50"></span>' +
+        '<span class="iso-sld" title="Gap — spacing between the layers"><span class="iso-sld-top"><span>Gap</span><small class="iso-gval">88</small></span><input type="range" class="iso-gapr" min="0" max="100" value="88"></span>' +
+        '<span class="iso-sld" title="Drawer — pull the layers out like a dresser (bottom out the most, each one above it less)"><span class="iso-sld-top"><span>Drawer</span><small class="iso-dval">0</small></span><input type="range" class="iso-draw" min="0" max="100" value="0"></span>' +
+      '</div>' +
+      '<div class="iso-ctl">' +   // row 2: buttons
         '<button type="button" class="iso-back" hidden>‹ Back</button>' +
-        '<span class="iso-zwrap" title="Zoom — tell me the % to bake as default"><input type="range" class="iso-zoom" min="40" max="240" value="100"><small class="iso-zval">100%</small></span>' +
-        '<label class="iso-gl">Gap<input type="range" class="iso-gapr" min="0" max="100" value="88"></label>' +
-        '<label class="iso-gl" title="Pull the layers out like a dresser — bottom drawer out the most, each one above it less (tell me the value to bake)">Drawer<input type="range" class="iso-draw" min="0" max="100" value="0"><small class="iso-dval">0</small></label>' +
         '<button type="button" class="iso-keys on" title="Show the inactive/unused keys so the full keyboard layout reads (esp. face-on / top-down)">⌨ Keys</button>' +
         '<button type="button" class="iso-glass" title="Swap the window background between solid and frosted glass (the page shows through, refracted)">🫧 Glass</button>' +
         '<button type="button" class="iso-enh" title="Wave + rising stardust + aura wisps">✨ Enhanced</button>' +
@@ -87,7 +93,7 @@
         '.iso-panel.popped{position:static;left:0;top:0;transform:none;width:100%;height:100vh;border:0;border-radius:0;box-shadow:none;display:flex;flex-direction:column}' +
         '.iso-panel.popped .iso-head{cursor:default}.iso-panel.popped .iso-grip{display:none}' +
         '.iso-panel.popped .iso-cv{flex:1 1 auto;width:100%;height:auto;min-height:120px;margin:6px 0 2px}' +
-        '.iso-ctl{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:9px 12px 5px}' +
+        '.iso-ctl{display:flex;justify-content:center;align-items:center;gap:10px;flex-wrap:wrap;padding:4px 12px 5px}' +
         // modern buttons: soft rounded pills, subtle fill, smooth hover, glowing active state (shared by header + control bar)
         '.iso-ctl button,.iso-head>button.iso-pop,.iso-head>button.iso-popin,.iso-head>button.iso-rs,.iso-head>button.iso-wmax{margin:0;padding:5px 12px;' +
         'font-size:12px;font-weight:600;border-radius:8px;border:1px solid rgba(255,255,255,.10);background:rgba(255,255,255,.06);color:var(--fg,#e6edf3);' +
@@ -96,8 +102,10 @@
         '.iso-ctl button:active,.iso-head>button.iso-pop:active,.iso-head>button.iso-popin:active,.iso-head>button.iso-rs:active,.iso-head>button.iso-wmax:active{transform:translateY(1px)}' +
         '.iso-ctl button.on{background:var(--blue,#58a6ff);border-color:transparent;color:#0d1117;box-shadow:0 2px 10px rgba(88,166,255,.35)}' +
         '.iso-ctl select.iso-wave{margin:0;padding:5px 8px;font-size:12px;font-weight:600;border-radius:8px;border:1px solid rgba(255,255,255,.10);background:rgba(255,255,255,.06);color:var(--fg,#e6edf3);cursor:pointer}' +
-        '.iso-zwrap{display:inline-flex;flex-direction:column;align-items:center;gap:1px}' +
-        '.iso-zwrap input{width:120px}.iso-zval{font-size:11px;color:var(--muted,#8b949e)}' +
+        '.iso-sliders{display:flex;justify-content:center;align-items:flex-end;gap:22px;flex-wrap:wrap;padding:9px 12px 2px}' +
+        '.iso-sld{display:inline-flex;flex-direction:column;gap:3px;font-size:12px;color:var(--muted,#8b949e)}' +
+        '.iso-sld-top{display:flex;justify-content:space-between;align-items:baseline;gap:14px}.iso-sld-top small{color:var(--fg,#e6edf3);font-size:11px}' +
+        '.iso-sld input{width:190px}' +
         '.iso-gl{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--muted,#8b949e)}.iso-gl input{width:90px}' +
         '.iso-cv{display:block;width:720px;height:392px;margin:6px auto 2px;touch-action:none;cursor:grab}.iso-cv.drag{cursor:grabbing}' +
         '.iso-legend{display:flex;flex-wrap:wrap;gap:6px;padding:4px 12px 2px}' +
@@ -120,7 +128,7 @@
     function sizeCanvas(w,h){ CW=Math.max(160,Math.round(w)); CH=Math.max(120,Math.round(h)); cv.width=CW*SS; cv.height=CH*SS; }
     sizeCanvas(DEF_W, DEF_H);
     const $ = s => panel.querySelector(s);
-    const zoomEl=$('.iso-zoom'), zvalEl=$('.iso-zval'), gapEl=$('.iso-gapr'), drawEl=$('.iso-draw'), dvalEl=$('.iso-dval'), enhEl=$('.iso-enh'),
+    const zoomEl=$('.iso-zoom'), zvalEl=$('.iso-zval'), gapEl=$('.iso-gapr'), gvalEl=$('.iso-gval'), drawEl=$('.iso-draw'), dvalEl=$('.iso-dval'), enhEl=$('.iso-enh'),
           fxanimEl=$('.iso-fxanim'), fxpEl=$('.iso-fxp'), fxaEl=$('.iso-fxa'), keysEl=$('.iso-keys'),
           glassEl=$('.iso-glass'), waveEl=$('.iso-wave'),
           backEl=$('.iso-back'), faceEl=$('.iso-face'), lockEl=$('.iso-lock'), legendEl=$('.iso-legend'), readEl=$('.iso-read');
@@ -136,7 +144,7 @@
       if(typeof s.fxAnim==='boolean') fxAnim=s.fxAnim; if(typeof s.fxParticles==='boolean') fxParticles=s.fxParticles; if(typeof s.fxAura==='boolean') fxAura=s.fxAura;
       if(enhanced && !(fxAnim||fxParticles||fxAura)){ fxAnim=fxParticles=fxAura=true; } }   // never "Enhanced on" with all three sub-features off
     function syncControls(){   // push the (possibly restored) state into the UI controls
-      zoomEl.value=zoom; zvalEl.textContent=zoom+'%'; gapEl.value=gapToSlider(gap); drawEl.value=drawer; dvalEl.textContent=drawer;
+      zoomEl.value=zoomToSlider(zoom); zvalEl.textContent=zoom+'%'; gapEl.value=gapToSlider(gap); gvalEl.textContent=gapToSlider(gap); drawEl.value=drawer; dvalEl.textContent=drawer;
       waveEl.value=waveStyle;
       enhEl.classList.toggle('on',enhanced); panel.querySelectorAll('.iso-efx').forEach(el=>el.style.display=enhanced?'':'none');
       // each sub-feature's extra widget gates on its own flag too: the Aura slider only with Aura on, the wave dropdown only with Animation on
@@ -150,8 +158,8 @@
     // keys must NOT interact with the iso UI (Enter was re-toggling the focused Face-on button) — blur any control
     // after a click so it never holds keyboard focus. Reactive still reacts (that's a window-level key listener).
     panel.addEventListener('click', e=>{ const t=e.target.closest('button,input'); if(t&&t.blur) t.blur(); });   // NOT select — blurring it mid-click closed the dropdown (had to hold to pick)
-    zoomEl.addEventListener('input', e=>{ zoom=+e.target.value; zvalEl.textContent=zoom+'%'; saveSoon(); });
-    gapEl.addEventListener('input', e=>{ gap=sliderToGap(e.target.value); saveSoon(); });
+    zoomEl.addEventListener('input', e=>{ zoom=sliderToZoom(e.target.value); zvalEl.textContent=zoom+'%'; saveSoon(); });
+    gapEl.addEventListener('input', e=>{ gap=sliderToGap(e.target.value); gvalEl.textContent=e.target.value; saveSoon(); });
     drawEl.addEventListener('input', e=>{ drawer=+e.target.value; dvalEl.textContent=e.target.value; saveSoon(); });
     // Home/End/PageUp/PageDown natively jam a focused range input to min/max — block them so those keys
     // (used for reactive lighting / nav) don't yank a slider. Arrow keys still fine-adjust.
@@ -290,12 +298,14 @@
       if(_glow.width!==gw){ _glow.width=gw; _foot.width=gw; } if(_glow.height!==gh){ _glow.height=gh; _foot.height=gh; }
       _fctx.setTransform(1,0,0,1,0,0); _fctx.globalAlpha=1; _fctx.globalCompositeOperation='source-over'; _fctx.clearRect(0,0,gw,gh);
       _gctx.setTransform(1,0,0,1,0,0); _gctx.globalAlpha=1; _gctx.globalCompositeOperation='source-over'; _gctx.clearRect(0,0,gw,gh);
-      // (1) footprint: lit-key soft colour blobs at the plane (base of the rise)
-      const rad=Math.max(2.5, _planes[j].hw*GLOWS*0.14); let any=false;
+      // (1) footprint: lit-key soft colour blobs, seated a bit ABOVE the plane so the blob's lower bloom doesn't
+      // spill below the keys (the "clips through the bottom"); the column then rises up from there. Constant height
+      // (NOT wave-displaced) so it doesn't breathe.
+      const rad=Math.max(2.5, _planes[j].hw*GLOWS*0.13); const riseBase=by + gap*0.22; let any=false;
       _fctx.globalCompositeOperation='lighter';
       for(const r of RECTS){ const t=r.k*3, cr=rgb[t],cg=rgb[t+1],cb=rgb[t+2], lum=0.299*cr+0.587*cg+0.114*cb;
         if(lum<16) continue;
-        const p=proj((r.u-0.5)*BW0, (r.v-0.5)*BD+dz, by, cx, cy);   // constant: aura sits at the plane, NOT wave-displaced (no breathing)
+        const p=proj((r.u-0.5)*BW0, (r.v-0.5)*BD+dz, riseBase, cx, cy);
         _fctx.globalAlpha=Math.min(1, (lum/255)*AURA_GAIN*auraI);
         _fctx.fillStyle='rgb('+cr+','+cg+','+cb+')';
         _fctx.beginPath(); _fctx.arc(p[0]*GLOWS, p[1]*GLOWS, rad, 0, TAU); _fctx.fill(); any=true;
