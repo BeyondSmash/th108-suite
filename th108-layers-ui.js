@@ -668,8 +668,8 @@
           const positionPeek=()=>{ const grid=card.parentElement, gr=grid.getBoundingClientRect(), comp=grid.closest('.card')||grid, compR=comp.getBoundingClientRect(), cr=card.getBoundingClientRect();
             const pw=peek.offsetWidth||200, gap=12; peek.style.transform='none'; peek.style.right='auto';
             peek.style.top=Math.round(window.innerHeight*0.30)+'px';
-            let left = (cr.left+cr.width/2) < (gr.left+gr.width/2) ? (compR.left-gap-pw) : (compR.right+gap);   // audio LEFT col → outside the compositor's left edge; RIGHT col → outside its right
-            left = Math.max(4, Math.min(left, window.innerWidth-4-pw));   // never off-screen
+            let left = (cr.left+cr.width/2) < (gr.left+gr.width/2) ? (compR.left+gap) : (compR.right-gap-pw);   // dock INSIDE the compositor's near edge (LEFT col → inside-left, RIGHT col → inside-right) — never the page margin
+            left = Math.max(compR.left+4, Math.min(left, compR.right-4-pw));   // clamp WITHIN the compositor region (user: pill must not leak outside the layer-compositor zone)
             peek.style.left=Math.round(left)+'px'; };
           // insert the duplicate INLINE right after the section header nearest the top of the view (what you're tuning)
           const showDup=()=>{ const aim=window.innerHeight*0.16; let best=null, bd=1e9;
