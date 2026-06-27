@@ -32,7 +32,7 @@
     const onUp   = e => { updLock(e); if(!getRunning()){ const i=KEYMAP[e.code]; if(i!==undefined) E.releaseKey(state,i); } };
 
     // ---- view params ----
-    let yaw = 40*D2R, pitch = 22*D2R, zoom = 100, gap = 50, enhanced = false, focusIdx = null, auraI = 0.8, faceOn = false, showKeys = true, partSize = 0.55, glass = false, waveStyle = 'ripple';
+    let yaw = 40*D2R, pitch = 22*D2R, zoom = 100, gap = 50, drawer = 0, enhanced = false, focusIdx = null, auraI = 0.8, faceOn = false, showKeys = true, partSize = 0.55, glass = false, waveStyle = 'ripple';
     const waveFreqs = { ripple:0.8, waveX:1.3 };   // baked frequency per wave style
     const ISO_PITCH = 22*D2R, FACE_PITCH = 89*D2R;   // isometric tilt vs front-flat (top-down)
 
@@ -51,6 +51,7 @@
         '<button type="button" class="iso-back" hidden>‹ Back</button>' +
         '<span class="iso-zwrap" title="Zoom — tell me the % to bake as default"><input type="range" class="iso-zoom" min="40" max="240" value="100"><small class="iso-zval">100%</small></span>' +
         '<label class="iso-gl">Gap<input type="range" class="iso-gapr" min="14" max="55" value="50"></label>' +
+        '<label class="iso-gl" title="Pull the layers out like a dresser — bottom drawer out the most, each one above it less (tell me the value to bake)">Drawer<input type="range" class="iso-draw" min="0" max="100" value="0"><small class="iso-dval">0</small></label>' +
         '<button type="button" class="iso-keys on" title="Show the inactive/unused keys so the full keyboard layout reads (esp. face-on / top-down)">⌨ Keys</button>' +
         '<button type="button" class="iso-glass" title="Swap the window background between solid and frosted glass (the page shows through, refracted)">🫧 Glass</button>' +
         '<button type="button" class="iso-enh" title="Wave + rising stardust + aura wisps">✨ Enhanced</button>' +
@@ -113,20 +114,21 @@
     function sizeCanvas(w,h){ CW=Math.max(160,Math.round(w)); CH=Math.max(120,Math.round(h)); cv.width=CW*SS; cv.height=CH*SS; }
     sizeCanvas(DEF_W, DEF_H);
     const $ = s => panel.querySelector(s);
-    const zoomEl=$('.iso-zoom'), zvalEl=$('.iso-zval'), gapEl=$('.iso-gapr'), enhEl=$('.iso-enh'), aintEl=$('.iso-aint'), avalEl=$('.iso-aval'), keysEl=$('.iso-keys'),
+    const zoomEl=$('.iso-zoom'), zvalEl=$('.iso-zval'), gapEl=$('.iso-gapr'), drawEl=$('.iso-draw'), dvalEl=$('.iso-dval'), enhEl=$('.iso-enh'), aintEl=$('.iso-aint'), avalEl=$('.iso-aval'), keysEl=$('.iso-keys'),
           glassEl=$('.iso-glass'), waveEl=$('.iso-wave'),
           backEl=$('.iso-back'), faceEl=$('.iso-face'), lockEl=$('.iso-lock'), legendEl=$('.iso-legend'), readEl=$('.iso-read');
     // ---- persistence: remember the view settings between sessions ----
     const SKEY='th108_iso_view';
-    function saveSettings(){ try{ localStorage.setItem(SKEY, JSON.stringify({yaw,pitch,zoom,gap,enhanced,auraI,glass,showKeys,faceOn,waveStyle})); }catch(_){ } }
+    function saveSettings(){ try{ localStorage.setItem(SKEY, JSON.stringify({yaw,pitch,zoom,gap,drawer,enhanced,auraI,glass,showKeys,faceOn,waveStyle})); }catch(_){ } }
     let _saveT=0; function saveSoon(){ clearTimeout(_saveT); _saveT=setTimeout(saveSettings, 350); }
     function loadSettings(){ let s; try{ s=JSON.parse(localStorage.getItem(SKEY)); }catch(_){ } if(!s||typeof s!=='object') return;
       if(typeof s.yaw==='number') yaw=s.yaw; if(typeof s.pitch==='number') pitch=s.pitch;
       if(typeof s.zoom==='number') zoom=s.zoom; if(typeof s.gap==='number') gap=Math.min(55,Math.max(14,s.gap));   // clamp to the slider range
+      if(typeof s.drawer==='number') drawer=Math.min(100,Math.max(0,s.drawer));
       if(typeof s.auraI==='number') auraI=s.auraI;
       enhanced=!!s.enhanced; glass=!!s.glass; showKeys=s.showKeys!==false; faceOn=!!s.faceOn; if(s.waveStyle==='ripple'||s.waveStyle==='waveX') waveStyle=s.waveStyle; }
     function syncControls(){   // push the (possibly restored) state into the UI controls
-      zoomEl.value=zoom; zvalEl.textContent=zoom+'%'; gapEl.value=gap; aintEl.value=Math.round(auraI*100); avalEl.textContent=Math.round(auraI*100);
+      zoomEl.value=zoom; zvalEl.textContent=zoom+'%'; gapEl.value=gap; drawEl.value=drawer; dvalEl.textContent=drawer; aintEl.value=Math.round(auraI*100); avalEl.textContent=Math.round(auraI*100);
       waveEl.value=waveStyle;
       enhEl.classList.toggle('on',enhanced); panel.querySelectorAll('.iso-efx').forEach(el=>el.style.display=enhanced?'':'none');
       keysEl.classList.toggle('on',showKeys); glassEl.classList.toggle('on',glass); panel.classList.toggle('glass',glass);
@@ -139,10 +141,11 @@
     panel.addEventListener('click', e=>{ const t=e.target.closest('button,input'); if(t&&t.blur) t.blur(); });   // NOT select — blurring it mid-click closed the dropdown (had to hold to pick)
     zoomEl.addEventListener('input', e=>{ zoom=+e.target.value; zvalEl.textContent=zoom+'%'; saveSoon(); });
     gapEl.addEventListener('input', e=>{ gap=+e.target.value; saveSoon(); });
+    drawEl.addEventListener('input', e=>{ drawer=+e.target.value; dvalEl.textContent=e.target.value; saveSoon(); });
     aintEl.addEventListener('input', e=>{ auraI=+e.target.value/100; avalEl.textContent=e.target.value; saveSoon(); });
     // Home/End/PageUp/PageDown natively jam a focused range input to min/max — block them so those keys
     // (used for reactive lighting / nav) don't yank a slider. Arrow keys still fine-adjust.
-    [zoomEl,gapEl,aintEl].forEach(el=> el.addEventListener('keydown', e=>{ if(e.key==='Home'||e.key==='End'||e.key==='PageUp'||e.key==='PageDown') e.preventDefault(); }));
+    [zoomEl,gapEl,drawEl,aintEl].forEach(el=> el.addEventListener('keydown', e=>{ if(e.key==='Home'||e.key==='End'||e.key==='PageUp'||e.key==='PageDown') e.preventDefault(); }));
     enhEl.addEventListener('click', ()=>{ enhanced=!enhanced; enhEl.classList.toggle('on',enhanced); panel.querySelectorAll('.iso-efx').forEach(el=>el.style.display=enhanced?'':'none'); saveSoon(); });
     backEl.addEventListener('click', ()=>{ focusIdx=null; backEl.hidden=true; if(!faceOn){ pitch=ISO_PITCH; yaw=40*D2R; } buildLegend(); saveSoon(); });
     // Face-on: snap to a flat front-facing (top-down) view AND lock tilt (so a drag can't knock it off); yaw still spins.
@@ -228,7 +231,7 @@
 
     // ---- enhanced FX: rising stardust particles ----
     const P=[]; let _planes=[]; const _csm=[];   // _csm = per-plane temporally-smoothed colour (anti-twitch for the aura)
-    function spawnParticles(dt, cx, cy, byOf){
+    function spawnParticles(dt, cx, cy, byOf, dzOf){
       if(_planes.length<1) return;
       // rise direction = the board's height axis projected to screen (yaw-invariant up-the-stack); spawn over
       // the (rotated) board footprint so the dust conforms to the current orientation. Works in focus too.
@@ -236,7 +239,7 @@
       const rate = 60*dt/1000;   // small dust → spawn more of them
       let n = rate + (Math.random()<(rate%1)?1:0);
       for(let s=0;s<n;s++){ const p=(Math.random()*_planes.length)|0; const col=_planes[p].col||[150,170,210];
-        const sp=proj((Math.random()-0.5)*0.9*BW0, (Math.random()-0.5)*0.9*BD, byOf(p)+gap*0.12, cx, cy);
+        const sp=proj((Math.random()-0.5)*0.9*BW0, (Math.random()-0.5)*0.9*BD+(dzOf?dzOf(p):0), byOf(p)+gap*0.12, cx, cy);
         const spd=12+Math.random()*20;
         P.push({ x:sp[0], y:sp[1], vx:rdx*spd, vy:rdy*spd, px:-rdy, py:rdx, life:0, max:0.8+Math.random()*1.0, col,
                  sz:0.45+Math.random()*0.7, seed:Math.random()*TAU, tw:14+Math.random()*16 }); }   // sz tiny; px,py = perpendicular sway axis; seed/tw = twinkle
@@ -269,7 +272,7 @@
       g.addColorStop(0,c+'1)'); g.addColorStop(0.45,c+'0.4)'); g.addColorStop(1,c+'0)');
       _sctx.fillStyle=g; _sctx.fillRect(0,0,64,64); return _spr;
     }
-    function drawGapGlow(i, tSec, cx, cy, AMP, byMid){
+    function drawGapGlow(i, tSec, cx, cy, AMP, byMid, dzMid){
       if(auraI<=0) return;
       const lo=_planes[i-1], hi=_planes[i], col=lo.col||hi.col; if(!col) return;
       const gw=Math.max(2,Math.round(CW*GLOWS)), gh=Math.max(2,Math.round(CH*GLOWS));
@@ -285,7 +288,7 @@
         const wv=waveFn(u,v,jLo,tSec);                                        // -1..1 ripple value
         const wz=AMP*1.4*wv;                                                  // displace the surface (a bit MORE than the keys so the undulation survives the blur)
         const bright=0.35+0.65*(0.5+0.5*wv);                                  // AND modulate brightness → a travelling bright band reads as ripple even when soft
-        const p=proj((u-0.5)*BW0, (v-0.5)*BD, byMid+wz, cx, cy);
+        const p=proj((u-0.5)*BW0, (v-0.5)*BD+(dzMid||0), byMid+wz, cx, cy);
         _gctx.globalAlpha=baseA*fade*bright; _gctx.drawImage(spr, p[0]*GLOWS-stampR, p[1]*GLOWS-stampR, stampR*2, stampR*2);
       }
       _gctx.globalAlpha=1; _gctx.globalCompositeOperation='source-over';
@@ -303,6 +306,10 @@
       const AMP = enhanced ? gap*0.20 : 0;
       // height of plane index within the drawn set, centered
       const byOf = j => (j-(N-1)/2)*gap;
+      // "Drawer": pull each plane out along the board-depth axis like a dresser — the BOTTOM layer (j=0) out the
+      // most, each one above it less. dz is a depth (+bz) offset; stepFrac = 1 at bottom → 0 at top.
+      const DRAW_MAX = BD*2.0;
+      const dzOf = j => (N>1 ? (N-1-j)/(N-1) : 0) * (drawer/100) * DRAW_MAX;
       // measure the widest label first so the board can sit just right of a column wide enough to never clip them
       ctx.setTransform(SS,0,0,SS,0,0);
       const FAM=getComputedStyle(document.body).fontFamily||'system-ui,sans-serif';
@@ -311,8 +318,8 @@
       let maxLW=0; for(const pl of P0){ const w=ctx.measureText(labelStr(pl)).width; if(w>maxLW)maxLW=w; }
       // layout pass: bbox of plane backdrops at cx=cy=0
       let minX=1e9,maxX=-1e9,minY=1e9,maxY=-1e9;
-      for(let j=0;j<N;j++){ const by=byOf(j);
-        for(const c of [proj(-BW0/2,-BD/2,by,0,0),proj(BW0/2,-BD/2,by,0,0),proj(BW0/2,BD/2,by,0,0),proj(-BW0/2,BD/2,by,0,0)]){
+      for(let j=0;j<N;j++){ const by=byOf(j), dz=dzOf(j);
+        for(const c of [proj(-BW0/2,-BD/2+dz,by,0,0),proj(BW0/2,-BD/2+dz,by,0,0),proj(BW0/2,BD/2+dz,by,0,0),proj(-BW0/2,BD/2+dz,by,0,0)]){
           if(c[0]<minX)minX=c[0]; if(c[0]>maxX)maxX=c[0]; if(c[1]<minY)minY=c[1]; if(c[1]>maxY)maxY=c[1]; } }
       // center the labels + board as ONE unit so the labels always sit close to the board (docked OR maximized — no big gap)
       const LBGAP=16, unitW=(maxX-minX)+LBGAP+maxLW, unitLeft=Math.max(8,(CW-unitW)/2);
@@ -328,27 +335,27 @@
       } else { ctx.fillStyle='#0d1117'; ctx.fillRect(0,0,CW,CH); }
 
       _planes=[];
-      for(let j=0;j<N;j++){ const pl=P0[j], by=byOf(j), raw=avgColor(pl.rgb);
+      for(let j=0;j<N;j++){ const pl=P0[j], by=byOf(j), dz=dzOf(j), raw=avgColor(pl.rgb);
         // temporally smooth the per-plane colour the aura uses, so a sudden lit key (e.g. a reactive keypress)
         // eases in/out over ~150ms instead of twitching the aura.
         let sm=_csm[j];
         if(raw){ if(sm){ sm[0]+=(raw[0]-sm[0])*0.06; sm[1]+=(raw[1]-sm[1])*0.06; sm[2]+=(raw[2]-sm[2])*0.06; } else { sm=raw.slice(); _csm[j]=sm; } }   // slow ease (~350ms) → keypress can't twitch the aura
         else if(sm){ sm[0]*=0.94; sm[1]*=0.94; sm[2]*=0.94; if(sm[0]+sm[1]+sm[2]<6){ _csm[j]=null; sm=null; } }
         const rep = sm ? [sm[0]|0,sm[1]|0,sm[2]|0] : null;
-        const bg=[proj(-BW0/2,-BD/2,by,cx,cy),proj(BW0/2,-BD/2,by,cx,cy),proj(BW0/2,BD/2,by,cx,cy),proj(-BW0/2,BD/2,by,cx,cy)];
+        const bg=[proj(-BW0/2,-BD/2+dz,by,cx,cy),proj(BW0/2,-BD/2+dz,by,cx,cy),proj(BW0/2,BD/2+dz,by,cx,cy),proj(-BW0/2,BD/2+dz,by,cx,cy)];
         _planes.push({ quad:bg.map(c=>[c[0],c[1]]), id:pl.id, sys:pl.sys, col:rep,
           cx:(bg[0][0]+bg[2][0])/2, cy:(bg[0][1]+bg[2][1])/2, hw:Math.abs(bg[1][0]-bg[0][0])/2+Math.abs(bg[2][0]-bg[1][0])/2 });
       }
 
-      for(let j=0;j<N;j++){ const pl=P0[j], rgb=pl.rgb, by=byOf(j), mask=pl.L?carveMask(pl.L):null;
-        if(enhanced && j>0) drawGapGlow(j, tSec, cx, cy, AMP, by - gap/2);   // glow in the gap below this plane, drawn BEFORE it → this layer occludes it (depth)
+      for(let j=0;j<N;j++){ const pl=P0[j], rgb=pl.rgb, by=byOf(j), dz=dzOf(j), mask=pl.L?carveMask(pl.L):null;
+        if(enhanced && j>0) drawGapGlow(j, tSec, cx, cy, AMP, by - gap/2, (dzOf(j-1)+dz)/2);   // glow in the gap below this plane, drawn BEFORE it → this layer occludes it (depth); dz = gap-midpoint drawer offset
         if(showKeys){ const bgq=_planes[j].quad;   // the per-layer plane backdrop is part of "show keys" → hidden too when Keys is off (only lit keys float)
           ctx.beginPath(); ctx.moveTo(bgq[0][0],bgq[0][1]); for(let i=1;i<4;i++) ctx.lineTo(bgq[i][0],bgq[i][1]); ctx.closePath();
           ctx.fillStyle = pl.sys?'rgba(120,90,160,.10)':(pl.off?'rgba(120,130,150,.05)':'rgba(90,110,140,.09)'); ctx.fill(); }
 
         for(const r of RECTS){ const t=r.k*3, cr=rgb[t],cg=rgb[t+1],cb=rgb[t+2], lum=0.299*cr+0.587*cg+0.114*cb;
           const wz = AMP*waveFn(r.u, r.v, j, tSec);   // enhanced wave: selectable key-height ripple
-          const bx0=(r.u-r.hw-0.5)*BW0, bx1=(r.u+r.hw-0.5)*BW0, bz0=(r.v-r.hh-0.5)*BD, bz1=(r.v+r.hh-0.5)*BD;
+          const bx0=(r.u-r.hw-0.5)*BW0, bx1=(r.u+r.hw-0.5)*BW0, bz0=(r.v-r.hh-0.5)*BD+dz, bz1=(r.v+r.hh-0.5)*BD+dz;
           const cor=[proj(bx0,bz0,by+wz,cx,cy),proj(bx1,bz0,by+wz,cx,cy),proj(bx1,bz1,by+wz,cx,cy),proj(bx0,bz1,by+wz,cx,cy)];
           ctx.beginPath(); ctx.moveTo(cor[0][0],cor[0][1]); for(let i=1;i<4;i++) ctx.lineTo(cor[i][0],cor[i][1]); ctx.closePath();
           if(lum>6){ ctx.shadowBlur=pl.off?0:Math.min(14,lum/14); ctx.shadowColor='rgb('+cr+','+cg+','+cb+')';
@@ -357,13 +364,13 @@
             ctx.strokeStyle='rgba(180,190,205,.17)'; ctx.lineWidth=1; ctx.stroke(); }
           if(mask && mask[r.k]>0.15){   // silhouetted/carving key → black it out (it removes light from below), then a red minus on top
             ctx.shadowBlur=0; ctx.fillStyle='#000'; ctx.fill();   // re-fill the same key quad black
-            const m=proj((r.u-0.5)*BW0,(r.v-0.5)*BD,by+wz,cx,cy);
+            const m=proj((r.u-0.5)*BW0,(r.v-0.5)*BD+dz,by+wz,cx,cy);
             ctx.fillStyle=RED; ctx.font='700 '+Math.max(9,11*zoom/100)+'px '+FAM; ctx.textAlign='center'; ctx.textBaseline='middle';
             ctx.fillText('−', m[0], m[1]); }
         }
       }
 
-      if(enhanced){ spawnParticles(dt, cx, cy, byOf); drawParticles(dt); } else if(P.length) P.length=0;
+      if(enhanced){ spawnParticles(dt, cx, cy, byOf, dzOf); drawParticles(dt); } else if(P.length) P.length=0;
 
       // LABELS (numbered), decluttered into a tidy left column: sort by screen height, enforce a min vertical
       // spacing so they spread apart instead of piling up when planes crowd (e.g. when the board is rotated).
@@ -378,7 +385,7 @@
       for(const L of LB){ const pl=L.pl;
         ctx.fillStyle=pl.sys?'rgba(190,170,230,.95)':(pl.off?'rgba(139,148,158,.55)':'rgba(230,237,243,.92)');
         ctx.fillText(labelStr(pl), labelRight, L.y); }
-      readEl.textContent = 'zoom '+zoom+'% · yaw '+Math.round(((yaw/D2R)%360+360)%360)+'° · tilt '+Math.round(pitch/D2R)+'° · gap '+gap;
+      readEl.textContent = 'zoom '+zoom+'% · yaw '+Math.round(((yaw/D2R)%360+360)%360)+'° · tilt '+Math.round(pitch/D2R)+'° · gap '+gap+(drawer?' · drawer '+drawer:'');
     }
 
     // ---- pop-out window + loop ----
