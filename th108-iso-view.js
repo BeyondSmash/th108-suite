@@ -163,6 +163,10 @@
     // keys must NOT interact with the iso UI (Enter was re-toggling the focused Face-on button) — blur any control
     // after a click so it never holds keyboard focus. Reactive still reacts (that's a window-level key listener).
     panel.addEventListener('click', e=>{ const t=e.target.closest('button,input'); if(t&&t.blur) t.blur(); });   // NOT select — blurring it mid-click closed the dropdown (had to hold to pick)
+    // Enter / numpad-Enter / Space must NOT activate a focused iso button (esp. the close ✕, which was exiting the
+    // window) — these controls are mouse-driven, and Enter belongs to reactive typing. preventDefault kills the
+    // keyboard "click" without stopping propagation, so the reactive key handler still sees the keydown.
+    panel.addEventListener('keydown', e=>{ if((e.key==='Enter'||e.key===' ') && e.target.closest('button')) e.preventDefault(); });
     zoomEl.addEventListener('input', e=>{ zoom=sliderToZoom(e.target.value); zvalEl.textContent=zoom+'%'; saveSoon(); });
     gapEl.addEventListener('input', e=>{ gap=sliderToGap(e.target.value); gvalEl.textContent=e.target.value; saveSoon(); });
     drawEl.addEventListener('input', e=>{ drawer=+e.target.value; dvalEl.textContent=e.target.value; saveSoon(); });
@@ -395,9 +399,17 @@
       }
 
       for(let j=0;j<N;j++){ const pl=P0[j], rgb=pl.rgb, by=byOf(j), dz=dzOf(j), mask=pl.L?carveMask(pl.L):null;
-        if(showKeys){ const bgq=_planes[j].quad;   // the per-layer plane backdrop is part of "show keys" → hidden too when Keys is off (only lit keys float)
-          ctx.beginPath(); ctx.moveTo(bgq[0][0],bgq[0][1]); for(let i=1;i<4;i++) ctx.lineTo(bgq[i][0],bgq[i][1]); ctx.closePath();
-          ctx.fillStyle = pl.sys?'rgba(120,90,160,.10)':(pl.off?'rgba(120,130,150,.05)':'rgba(90,110,140,.09)'); ctx.fill(); }
+        if(showKeys){   // the per-layer plane backdrop is part of "show keys" → hidden too when Keys is off (only lit keys float)
+          ctx.fillStyle = pl.sys?'rgba(120,90,160,.10)':(pl.off?'rgba(120,130,150,.05)':'rgba(90,110,140,.09)');
+          if(AMP>0){   // subdivide the backdrop into a wave-displaced mesh so it ripples WITH the keys (one flat quad can't)
+            const NU=16, NV=6;
+            for(let gv=0; gv<NV; gv++){ const v0=gv/NV, v1=(gv+1)/NV; ctx.beginPath();
+              for(let gu=0; gu<=NU; gu++){ const u=gu/NU, p=proj((u-0.5)*BW0,(v0-0.5)*BD+dz, by+AMP*waveFn(u,v0,j,tSec), cx,cy); gu?ctx.lineTo(p[0],p[1]):ctx.moveTo(p[0],p[1]); }
+              for(let gu=NU; gu>=0; gu--){ const u=gu/NU, p=proj((u-0.5)*BW0,(v1-0.5)*BD+dz, by+AMP*waveFn(u,v1,j,tSec), cx,cy); ctx.lineTo(p[0],p[1]); }
+              ctx.closePath(); ctx.fill(); }
+          } else { const bgq=_planes[j].quad;   // no wave → the single flat quad (cheaper, identical look)
+            ctx.beginPath(); ctx.moveTo(bgq[0][0],bgq[0][1]); for(let i=1;i<4;i++) ctx.lineTo(bgq[i][0],bgq[i][1]); ctx.closePath(); ctx.fill(); }
+        }
 
         for(const r of RECTS){ const t=r.k*3, cr=rgb[t],cg=rgb[t+1],cb=rgb[t+2], lum=0.299*cr+0.587*cg+0.114*cb;
           const wz = AMP*waveFn(r.u, r.v, j, tSec);   // enhanced wave: selectable key-height ripple
