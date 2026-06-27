@@ -262,7 +262,7 @@
     // continuous cloud (no "light-probe spheres"). Board-shaped edge fade keeps it soft (no box, no wash).
     const _spr=document.createElement('canvas'), _sctx=_spr.getContext('2d'); _spr.width=_spr.height=64;
     const _glow=document.createElement('canvas'), _gctx=_glow.getContext('2d');
-    const GLOWS=0.26;   // offscreen render scale — lower = blurrier/more cohesive on upscale (0.26 ≈ heavy melt)
+    const GLOWS=0.44;   // offscreen render scale — low enough to fuse the stamps into a cloud, high enough to keep the wave bands
     function gapSprite(col){   // soft radial sprite tinted to the gap colour (rebuilt per gap → ~5/frame, cheap)
       _sctx.clearRect(0,0,64,64); const c='rgba('+col[0]+','+col[1]+','+col[2]+',';
       const g=_sctx.createRadialGradient(32,32,0, 32,32,32);
@@ -276,15 +276,17 @@
       if(_glow.width!==gw) _glow.width=gw; if(_glow.height!==gh) _glow.height=gh;
       _gctx.setTransform(1,0,0,1,0,0); _gctx.globalAlpha=1; _gctx.globalCompositeOperation='source-over'; _gctx.clearRect(0,0,gw,gh);
       const lum=(0.299*col[0]+0.587*col[1]+0.114*col[2])/255, ls=0.5+0.5*(1-lum*0.7), baseA=0.95*auraI*ls;
-      const spr=gapSprite(col), jLo=i-1, NU=11, NV=5, stampR=Math.max(5,(lo.hw*GLOWS/NU)*2.6);   // dense + overlapping; the upscale melts them together
+      const spr=gapSprite(col), jLo=i-1, NU=16, NV=5, stampR=Math.max(5,(lo.hw*GLOWS/NU)*2.7);   // dense along u so the ripple crests resolve before the (moderate) blur fuses them
       _gctx.globalCompositeOperation='lighter';
       for(let gv=0; gv<NV; gv++) for(let gu=0; gu<NU; gu++){
         const u=(gu+0.5)/NU, v=(gv+0.5)/NV;
         const fade=Math.pow((1-(2*u-1)*(2*u-1))*(1-(2*v-1)*(2*v-1)), 0.55);   // soft board-shaped falloff → 0 at edges, no box
         if(fade<=0.02) continue;
-        const wz=AMP*waveFn(u,v,jLo,tSec);                                    // SAME wave the keys ride → glow undulates with them
+        const wv=waveFn(u,v,jLo,tSec);                                        // -1..1 ripple value
+        const wz=AMP*1.4*wv;                                                  // displace the surface (a bit MORE than the keys so the undulation survives the blur)
+        const bright=0.35+0.65*(0.5+0.5*wv);                                  // AND modulate brightness → a travelling bright band reads as ripple even when soft
         const p=proj((u-0.5)*BW0, (v-0.5)*BD, byMid+wz, cx, cy);
-        _gctx.globalAlpha=baseA*fade; _gctx.drawImage(spr, p[0]*GLOWS-stampR, p[1]*GLOWS-stampR, stampR*2, stampR*2);
+        _gctx.globalAlpha=baseA*fade*bright; _gctx.drawImage(spr, p[0]*GLOWS-stampR, p[1]*GLOWS-stampR, stampR*2, stampR*2);
       }
       _gctx.globalAlpha=1; _gctx.globalCompositeOperation='source-over';
       // upscale the whole low-res gap buffer onto the scene → bilinear blur fuses the stamps into a cohesive cloud
