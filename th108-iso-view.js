@@ -139,7 +139,8 @@
         '.iso-panel.glass{background:linear-gradient(135deg,rgba(255,255,255,.14),rgba(255,255,255,.03) 32%,rgba(255,255,255,0) 55%,rgba(255,255,255,.04)),rgba(20,25,33,var(--glass-a,.45));' +
         'backdrop-filter:blur(var(--glass-b,12px)) saturate(1.8) brightness(1.06) url(#iso-glass-ref);-webkit-backdrop-filter:blur(var(--glass-b,12px)) saturate(1.8) brightness(1.06);' +   // url() = SVG displacement-map filter → real edge refraction (Chromium; Safari falls back to blur)
         'border-color:rgba(255,255,255,.28);box-shadow:0 18px 50px rgba(0,0,0,.5),inset 0 1px 0 rgba(255,255,255,.45),inset 0 0 0 1px rgba(255,255,255,.10),inset 0 -24px 50px rgba(0,0,0,.18),inset 0 2px 14px rgba(255,255,255,.10)}' +
-        '.iso-panel.glass .iso-head{border-bottom-color:rgba(255,255,255,.12)}';
+        '.iso-panel.glass .iso-head{border-bottom-color:rgba(255,255,255,.12)}' +
+        '.iso-panel.iso-dragging{backdrop-filter:none!important;-webkit-backdrop-filter:none!important}';   // dragging the window → drop the costly refraction recompute for a smooth drag
       document.head.appendChild(st);
     }
     document.body.appendChild(panel);
@@ -220,7 +221,7 @@
       panel.style.setProperty('--glass-a', (0.16 + glassAmt/100*0.40).toFixed(3));
       const doc=panel.ownerDocument; buildGlassFilter(doc);
       const fdms=doc.querySelectorAll('#iso-glass-ref feDisplacementMap');   // R / G / B displaced by different amounts → chromatic aberration
-      if(fdms.length>=3){ const base=16+glassAmt/100*64, sp=base*(chromaAmt/100*0.6);   // Glass slider = edge bend; Chroma slider = R↔B split
+      if(fdms.length>=3){ const base=34+glassAmt/100*120, sp=base*(chromaAmt/100*0.6);   // stronger displacement → the tangential stretch reads as a SMEAR along the rim
         fdms[0].setAttribute('scale',(base+sp).toFixed(1)); fdms[1].setAttribute('scale',base.toFixed(1)); fdms[2].setAttribute('scale',(base-sp).toFixed(1)); } }
     keysEl.addEventListener('click', ()=>{ showKeys=!showKeys; keysEl.classList.toggle('on',showKeys); saveSoon(); });
     glassEl.addEventListener('click', ()=>{ glass=!glass; glassEl.classList.toggle('on',glass); applyGlass(); saveSoon(); });   // frosted-glass window (glassiness baked)
@@ -255,12 +256,12 @@
     const head = $('.iso-head'); let dg=null;
     head.addEventListener('pointerdown', e=>{ if(e.target.closest('button')) return;   // don't start a drag on the header BUTTONS (pop-out/pop-in/reset/close) — capturing the pointer here suppressed their clicks
       const r=panel.getBoundingClientRect(); panel.style.transform='none'; panel.style.left=r.left+'px'; panel.style.top=r.top+'px';
-      dg={dx:e.clientX-r.left,dy:e.clientY-r.top}; head.classList.add('drag'); head.setPointerCapture(e.pointerId); e.preventDefault(); });
+      dg={dx:e.clientX-r.left,dy:e.clientY-r.top}; head.classList.add('drag'); panel.classList.add('iso-dragging'); head.setPointerCapture(e.pointerId); e.preventDefault(); });
     head.addEventListener('pointermove', e=>{ if(!dg) return;
       const maxL=Math.max(0,window.innerWidth-panel.offsetWidth), maxT=Math.max(0,window.innerHeight-panel.offsetHeight);
       panel.style.left=Math.min(maxL,Math.max(0,e.clientX-dg.dx))+'px';
       panel.style.top =Math.min(maxT,Math.max(0,e.clientY-dg.dy))+'px'; });   // clamp to all four viewport edges
-    head.addEventListener('pointerup', ()=>{ dg=null; head.classList.remove('drag'); });
+    head.addEventListener('pointerup', ()=>{ dg=null; head.classList.remove('drag'); panel.classList.remove('iso-dragging'); });
 
     // ---- rotate by dragging the canvas (small move = a click → focus the plane under it) ----
     let rot=null;
@@ -530,6 +531,7 @@
     const popEl=$('.iso-pop'), popinEl=$('.iso-popin'), rsEl=$('.iso-rs');
     function schedule(){ rafWin=popWin||window; raf=rafWin.requestAnimationFrame(tick); }
     function tick(now){ if(panel.hidden){ raf=0; return; }
+      if(dg){ _last=now; schedule(); return; }   // dragging the WINDOW → freeze the (heavy) scene render so the drag stays smooth (also drops the backdrop-filter recompute via .iso-dragging)
       try{ if(getRunning()){ for(const L of state.layers) if(!L.enabled) E.renderLayer(L,now,state); }
            else { for(const L of state.layers) E.renderLayer(L,now,state); }
            draw(now); }catch(_){}
