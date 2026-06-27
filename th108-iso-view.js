@@ -112,7 +112,7 @@
         '.iso-fxgroup{display:inline-flex;align-items:center;gap:7px;padding:4px 8px;margin-left:-3px;border-radius:11px;border:1px solid rgba(88,166,255,.40);background:rgba(88,166,255,.07)}' +
         '.iso-fxgroup button{font-size:11.5px;padding:4px 10px}' +
         '.iso-ctl select.iso-wave{margin:0;padding:5px 8px;font-size:12px;font-weight:600;border-radius:8px;border:1px solid rgba(255,255,255,.10);background:rgba(255,255,255,.06);color:var(--fg,#e6edf3);cursor:pointer;transition:filter .12s}' +
-        '.iso-ctl select.iso-wave:hover{filter:brightness(1.15)}.iso-ctl select.iso-wave:focus:not(:focus-visible){outline:none}' +   // hover brighten 15%; no lingering mouse-focus ring
+        '.iso-ctl select.iso-wave:hover{filter:brightness(1.30)}.iso-ctl select.iso-wave:focus{outline:none}' +   // hover brighten; no lingering focus ring (select matches :focus-visible on click)
         '.iso-sliders{display:flex;justify-content:center;align-items:flex-end;gap:22px;flex-wrap:wrap;padding:9px 12px 2px}' +
         '.iso-sld{display:inline-flex;flex-direction:column;gap:3px;font-size:12px;color:var(--muted,#8b949e)}' +
         '.iso-sld-top{display:flex;justify-content:space-between;align-items:baseline;gap:14px}.iso-sld-top small{color:var(--fg,#e6edf3);font-size:11px}' +
@@ -172,25 +172,39 @@
     // centre and bends outward at the rim, so backdrop-filter:url() refracts the page through the panel EDGES (not
     // just blur). Docked only — a popped OS window has no backdrop to refract.
     function buildGlassFilter(doc){ if(!doc || doc.getElementById('iso-glass-svg')) return;
-      const M=200, c=document.createElement('canvas'); c.width=c.height=M; const q=c.getContext('2d');
-      const im=q.createImageData(M,M), d=im.data, marg=0.13;
-      for(let y=0;y<M;y++) for(let x=0;x<M;x++){ const i=(y*M+x)*4, nx=x/(M-1), ny=y/(M-1);
-        const fx=Math.max(0,1-Math.min(nx,1-nx)/marg), fy=Math.max(0,1-Math.min(ny,1-ny)/marg);   // 1 at the L/R (x) & T/B (y) edges → 0 in the centre
-        d[i]=128+(nx-0.5)*254*fx*fx; d[i+1]=128+(ny-0.5)*254*fy*fy; d[i+2]=128; d[i+3]=255; }   // R=x-displacement, G=y-displacement
+      // Edge normal map: a THIN rim band whose displacement points outward at the very edge and falls to neutral
+      // (128) well before the centre — so only the rim bends light, not the whole backdrop. Corners blend both axes.
+      const M=220, c=document.createElement('canvas'); c.width=c.height=M; const q=c.getContext('2d');
+      const im=q.createImageData(M,M), d=im.data, band=M*0.075;
+      const fall=t=>{ t=Math.max(0,1-t/band); return t*t; };   // 1 at the edge → 0 at band depth
+      for(let y=0;y<M;y++) for(let x=0;x<M;x++){ const i=(y*M+x)*4;
+        const nx=fall(M-1-x)-fall(x), ny=fall(M-1-y)-fall(y);   // outward at the rim (magnify) ; 0 in the interior
+        d[i]=128+nx*125; d[i+1]=128+ny*125; d[i+2]=128; d[i+3]=255; }   // R = x-disp, G = y-disp
       q.putImageData(im,0,0);
       const svg=doc.createElementNS('http://www.w3.org/2000/svg','svg'); svg.id='iso-glass-svg';
       svg.setAttribute('width','0'); svg.setAttribute('height','0'); svg.style.position='absolute';
-      svg.innerHTML='<filter id="iso-glass-ref" color-interpolation-filters="sRGB">'
+      // chromatic aberration: displace the backdrop's R / G / B by DIFFERENT scales, then recombine → colour fringing
+      // where the displacement is strong (the rim). scales are set live from the Glass slider in applyGlass().
+      svg.innerHTML='<filter id="iso-glass-ref" color-interpolation-filters="sRGB" x="-4%" y="-4%" width="108%" height="108%">'
         +'<feImage href="'+c.toDataURL()+'" preserveAspectRatio="none" x="0" y="0" width="100%" height="100%" result="m"/>'
-        +'<feDisplacementMap in="SourceGraphic" in2="m" xChannelSelector="R" yChannelSelector="G" scale="20"/></filter>';
+        +'<feDisplacementMap in="SourceGraphic" in2="m" xChannelSelector="R" yChannelSelector="G" scale="26" result="dr"/>'
+        +'<feDisplacementMap in="SourceGraphic" in2="m" xChannelSelector="R" yChannelSelector="G" scale="20" result="dg"/>'
+        +'<feDisplacementMap in="SourceGraphic" in2="m" xChannelSelector="R" yChannelSelector="G" scale="14" result="db"/>'
+        +'<feColorMatrix in="dr" values="1 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 1 0" result="cr"/>'
+        +'<feColorMatrix in="dg" values="0 0 0 0 0  0 1 0 0 0  0 0 0 0 0  0 0 0 1 0" result="cg"/>'
+        +'<feColorMatrix in="db" values="0 0 0 0 0  0 0 0 0 0  0 0 1 0 0  0 0 0 1 0" result="cb"/>'
+        +'<feBlend in="cr" in2="cg" mode="screen" result="crg"/>'
+        +'<feBlend in="crg" in2="cb" mode="screen"/></filter>';
       doc.body.appendChild(svg);
     }
     // glassiness → CSS vars consumed by .iso-panel.glass (docked: real blur + edge refraction; popped: painted sheen in draw())
     function applyGlass(){ panel.classList.toggle('glass',glass);
-      panel.style.setProperty('--glass-b', Math.round(glassAmt/100*22)+'px');   // lighter blur so the refraction reads
+      panel.style.setProperty('--glass-b', (glassAmt/100*7).toFixed(1)+'px');   // minimal blur so the edge refraction + chromatic fringe stay crisp
       panel.style.setProperty('--glass-a', (0.16 + glassAmt/100*0.40).toFixed(3));
       const doc=panel.ownerDocument; buildGlassFilter(doc);
-      const fdm=doc.querySelector('#iso-glass-ref feDisplacementMap'); if(fdm) fdm.setAttribute('scale', Math.round(8+glassAmt/100*34)); }
+      const fdms=doc.querySelectorAll('#iso-glass-ref feDisplacementMap');   // R / G / B displaced by different amounts → chromatic aberration, scaled by the slider
+      if(fdms.length>=3){ const base=7+glassAmt/100*26, sp=base*0.32;
+        fdms[0].setAttribute('scale',(base+sp).toFixed(1)); fdms[1].setAttribute('scale',base.toFixed(1)); fdms[2].setAttribute('scale',(base-sp).toFixed(1)); } }
     keysEl.addEventListener('click', ()=>{ showKeys=!showKeys; keysEl.classList.toggle('on',showKeys); saveSoon(); });
     glassEl.addEventListener('click', ()=>{ glass=!glass; glassEl.classList.toggle('on',glass); $('.iso-glass-sld').style.display=glass?'':'none'; applyGlass(); saveSoon(); });   // frosted-glass window
     glassrEl.addEventListener('input', e=>{ glassAmt=+e.target.value; glvalEl.textContent=e.target.value; applyGlass(); saveSoon(); });

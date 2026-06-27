@@ -199,8 +199,9 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
              background:var(--card); color:var(--text); box-shadow:0 0 0 2px var(--ring); border-radius:999px; padding:9px 16px; }
   a.btnlink:hover{ box-shadow:0 0 0 2px var(--accent); }
   select{ font:inherit; background:var(--bg); color:var(--text); border:1px solid var(--border); border-radius:10px; padding:4px 8px; transition:filter .12s, border-color .12s; }   /* --bg is a touch darker than the card → dropdowns contrast (was --inset, which is lighter) */
-  select:hover{ filter:brightness(1.15); }   /* brighten 15% on hover */
-  select:focus:not(:focus-visible){ outline:none; }   /* no lingering focus ring after a MOUSE click (keyboard focus keeps its ring for a11y) */
+  select:hover{ filter:brightness(1.30); }   /* brighten on hover (noticeable) */
+  select:focus{ outline:none; }   /* kill the lingering focus ring (selects match :focus-visible even on mouse click, so :not() didn't work) */
+  select:focus-visible{ border-color:var(--accent); }   /* keyboard focus → subtle accent border instead of the ring */
   select option{ background:var(--bg); color:var(--text); }
   select option:nth-child(even){ background:var(--inset); }   /* zebra rows in the open dropdown list (Chrome honors option bg) */
   input[type=text],input[type=number]{ font:inherit; background:var(--inset); color:var(--text); border:1px solid var(--border); border-radius:10px; }
