@@ -58,14 +58,20 @@
       const baseFs = 15 * W / (cv.getBoundingClientRect().width || W);
       ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
       for (const r of RECTS) {
-        const hex = keys[r.idx];
-        ctx.fillStyle = hex || '#222831';                 // painted color, else dim neutral
+        const v = keys[r.idx];
+        const isSub = v && v[0] !== '#';                  // silhouette marker (e.g. 'sub'), not a hex color
+        const face = isSub ? '#2d333b' : (v || '#222831');
+        ctx.fillStyle = face;                             // painted color, silhouette slate, else dim neutral
         ctx.fillRect(r.x+0.75, r.y+0.75, Math.max(1,r.w-1.5), Math.max(1,r.h-1.5));
+        if (isSub) {                                      // diagonal slash = this key carves the layers below (negative space)
+          ctx.strokeStyle = '#768390'; ctx.lineWidth = 1.5;
+          ctx.beginPath(); ctx.moveTo(r.x+3, r.y+r.h-3); ctx.lineTo(r.x+r.w-3, r.y+3); ctx.stroke();
+        }
         if (sel.has(r.idx)) { ctx.strokeStyle = '#58a6ff'; ctx.lineWidth = 2; ctx.strokeRect(r.x+1, r.y+1, r.w-2, r.h-2); }
         const lbl = keyLabel(CODE_BY_IDX[r.idx]);         // key-face character(s)
         if (lbl) {
-          const c = E.hexToRgb(hex || '#222831'), lum = 0.299*c[0]+0.587*c[1]+0.114*c[2];
-          ctx.fillStyle = hex ? (lum>140 ? '#000' : '#fff') : MUTED;   // painted: black/white by luminance; unpainted: page --muted (= Pick-a-Key)
+          const c = E.hexToRgb(face), lum = 0.299*c[0]+0.587*c[1]+0.114*c[2];
+          ctx.fillStyle = (v && !isSub) ? (lum>140 ? '#000' : '#fff') : MUTED;   // solid: black/white by luminance; silhouette or unpainted: page --muted
           let fs = Math.min(baseFs, r.h*0.52);
           ctx.font = '600 '+fs+'px '+FONTFAM;
           const maxw = r.w*0.84, tw = ctx.measureText(lbl).width;

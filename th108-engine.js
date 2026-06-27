@@ -410,15 +410,17 @@
   // color — the painted shape reads as a negative-space silhouette (same mechanism as bars 'subtract').
   function renderKeys(L){
     const s=L.settings||{}, keys=s.keys||{}, out=L.rgb;
-    const subtract = s.fill === 'subtract';
-    let cb=null, any=false;
-    if(subtract){ cb = L._carveBuf || (L._carveBuf = new Float32Array(NLED)); cb.fill(0); }
-    for(let k=0;k<NLED;k++){ const o=k*3, hex=keys[INDICES[k]];
-      if(hex){
-        if(subtract){ cb[k]=1; any=true; out[o]=out[o+1]=out[o+2]=0; }   // painted key carves below → dark silhouette
-        else { const c=hexToRgb(hex); out[o]=c[0]; out[o+1]=c[1]; out[o+2]=c[2]; } }
+    const legacySub = s.fill === 'subtract';   // legacy LAYER-WIDE subtract (pre per-key): every painted key carves
+    const cb = L._carveBuf || (L._carveBuf = new Float32Array(NLED)); cb.fill(0);
+    let any=false;
+    for(let k=0;k<NLED;k++){ const o=k*3, v=keys[INDICES[k]];
+      if(v){
+        // PER-KEY mode: a hex value '#rrggbb' = solid fill; any other marker (e.g. 'sub') = silhouette carve.
+        // Mix freely — some keys draw their color, others carve the layers below into negative space.
+        if(legacySub || v[0]!=='#'){ cb[k]=1; any=true; out[o]=out[o+1]=out[o+2]=0; }   // carves the layers below → silhouette
+        else { const c=hexToRgb(v); out[o]=c[0]; out[o+1]=c[1]; out[o+2]=c[2]; } }
       else { out[o]=out[o+1]=out[o+2]=0; } }
-    L._carve = (subtract && any) ? cb : null;   // clear when solid / nothing painted (else a stale mask keeps carving)
+    L._carve = any ? cb : null;   // null when nothing carves (else a stale mask keeps carving)
   }
 
   // Per-key physical center [cx,cy] in 0..1 board space (same space the card's preview paints + the crop overlay
@@ -1042,7 +1044,9 @@
     else if(L.type==='gradient'){ ['colorA','colorB','angle','scroll','phase'].forEach(k=>{ if(s[k]===undefined)s[k]=def[k]; }); }
     else if(L.type==='pattern'){ const pd={ pattern:'rainbow', color:'#00ffff', color2:'#ff00ff', color3:'#00ff00', colMode:'rainbow', speed:50, scale:10, gap:150, cox:-8, coy:-10 };
       Object.keys(pd).forEach(k=>{ if(s[k]===undefined)s[k]=pd[k]; }); }
-    else if(L.type==='individual'){ if(!L.settings.keys || typeof L.settings.keys!=='object') L.settings.keys={}; if(L.settings.current===undefined) L.settings.current='#ff8c00'; if(L.settings.fill===undefined) L.settings.fill='solid'; }
+    else if(L.type==='individual'){ const st=L.settings; if(!st.keys || typeof st.keys!=='object') st.keys={}; if(st.current===undefined) st.current='#ff8c00'; if(st.brush!=='sub') st.brush='solid';
+      if(st.fill==='subtract'){ for(const k in st.keys){ if(st.keys[k] && st.keys[k][0]==='#') st.keys[k]='sub'; } }   // migrate legacy LAYER-WIDE subtract → per-key silhouette markers
+      st.fill='solid'; }   // 'fill' is now per-key (encoded in keys[]); keep the field inert for back-compat
     else if(L.type==='audio'){
       const ad={ style:'bars', source:'system', appId:'', deviceId:'', pauseStyle:'linear',
         gain:1, floor:5, attackMs:40, decayMs:220, beatSens:50, micGain:100, micGate:0,

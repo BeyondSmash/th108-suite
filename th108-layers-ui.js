@@ -275,14 +275,17 @@
       } else if(L.type==='individual'){
         if(!s.keys||typeof s.keys!=='object') s.keys={};
         if(s.current===undefined) s.current='#ff8c00';
-        if(s.fill===undefined) s.fill='solid';
-        const fillOpt=[['solid','Solid'],['subtract','Subtract (silhouette)']].map(o=>'<option value="'+o[0]+'"'+(o[0]===s.fill?' selected':'')+'>'+o[1]+'</option>').join('');
-        const isSub=s.fill==='subtract';
+        if(s.brush!=='sub') s.brush='solid';   // active brush is PER-KEY now (each key stores its own mode); 'fill' is legacy
+        // brush note shown under the controls — explains what the active brush paints
+        const brushNote = b => b==='sub'
+          ? 'Silhouette brush: painted keys carve the layers below into dark negative space (the color is ignored) — needs a layer beneath. Mix freely with Solid keys in this same layer.'
+          : 'Solid brush: paint exact key colors. Pick a color, Show Keyboard, then click/drag keys. Switch to Silhouette to carve other keys in the SAME layer.';
+        const brushBtns=[['solid','🎨 Solid'],['sub','⬛ Silhouette']].map(o=>'<button type="button" class="patbtn s-brush'+(o[0]===s.brush?' on':'')+'" data-brush="'+o[0]+'">'+o[1]+'</button>').join('');
         body.innerHTML='<div class="ctl">'+
-          sec('Fill')+
-          full('<select class="s-fill" title="Solid = paint exact key colors. Subtract = the painted keys carve the layers below into a dark silhouette (negative space) — needs a layer beneath to cut into.">'+fillOpt+'</select>')+
+          sec('Brush')+
+          full('<span style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center;flex:1 1 100%">'+brushBtns+'</span>')+
           sub('Paint')+
-          full('<input type="color" class="s-current" value="'+s.current+'"><span class="val s-fillNote" style="opacity:.7;flex:1 1 100%">'+(isSub?'In Subtract the paint color is ignored — you’re choosing which keys to carve into a silhouette.':'Pick a color, Show Keyboard, then click/drag keys to paint them.')+'</span>')+
+          full('<input type="color" class="s-current" value="'+s.current+'"'+(s.brush==='sub'?' style="opacity:.4"':'')+'><span class="val s-fillNote" style="opacity:.7;flex:1 1 100%">'+brushNote(s.brush)+'</span>')+
           full('<button class="s-showkb" type="button">⌨ Show Keyboard</button><span class="val s-selcount"></span>')+
           full('<button class="s-clearsel" type="button">Clear selection</button><button class="s-clearall" type="button">Clear all</button>')+
         '</div>';
@@ -293,22 +296,26 @@
         function mountBoard(){
           if(pb) return;
           wrap=document.createElement('div'); wrap.className='pb-wrap pb-large';
-          wrap.innerHTML='<div class="pb-board"></div><div class="pb-hint">Click/drag to paint · Shift+ add · Ctrl+ deselect · Alt+drag erase · pick a color to recolor the selection</div>';
+          wrap.innerHTML='<div class="pb-board"></div><div class="pb-hint">Click/drag = paint · Shift = add · Ctrl = deselect · Alt+drag = erase · pick a color to recolor the selection</div>';
           card.parentNode.insertBefore(wrap, card);   // wedge the board directly ABOVE this layer card
           pb=root_PaintBoard().mount(wrap.querySelector('.pb-board'), {
-            engine:E, getKeys:()=>s.keys, getColor:()=>s.current,
+            engine:E, getKeys:()=>s.keys, getColor:()=> s.brush==='sub' ? 'sub' : s.current,   // brush paints the silhouette marker OR the solid color
             onPaint:(idx,hex)=>{ if(hex) s.keys[idx]=hex; else delete s.keys[idx]; reRender(); },
             onChange:()=>{ updCount(); scheduleSaveLayers(); },
           });
           c('.s-showkb').textContent='⌨ Hide Keyboard'; updCount();
+          // the board mounts ABOVE this card (pushing it down) — smooth-scroll the page to follow it into view.
+          // rAF so the insert's reflow (and any Fill-mode masonry repack) settles before the scroll targets it.
+          requestAnimationFrame(()=>{ try{ wrap.scrollIntoView({behavior:'smooth', block:'center'}); }catch(_){ try{ wrap.scrollIntoView(); }catch(__){ } } });
         }
         function unmountBoard(){ if(!pb) return; pb.destroy(); pb=null; if(wrap&&wrap.parentNode) wrap.parentNode.removeChild(wrap); wrap=null; c('.s-showkb').textContent='⌨ Show Keyboard'; updCount(); }
-        c('.s-fill').addEventListener('change',e=>{ s.fill=e.target.value;   // update the note in place (no rebuild — that would orphan the mounted paint board, which is a card sibling)
-          const note=c('.s-fillNote'); if(note) note.textContent = s.fill==='subtract'
-            ? 'In Subtract the paint color is ignored — you’re choosing which keys to carve into a silhouette.'
-            : 'Pick a color, Show Keyboard, then click/drag keys to paint them.';
-          reRender(); scheduleSaveLayers(); });
-        c('.s-current').addEventListener('input',e=>{ s.current=e.target.value; if(pb) pb.recolorSelection(); });
+        body.querySelectorAll('.s-brush').forEach(b=>b.addEventListener('click',()=>{   // switch the active brush in place (no rebuild — that would orphan the mounted paint board, a card sibling)
+          s.brush=b.dataset.brush;
+          body.querySelectorAll('.s-brush').forEach(x=>x.classList.toggle('on',x.dataset.brush===s.brush));
+          const note=c('.s-fillNote'); if(note) note.textContent=brushNote(s.brush);
+          const cur=c('.s-current'); if(cur) cur.style.opacity = s.brush==='sub' ? '.4' : '1';   // color is irrelevant while the Silhouette brush is active
+          reRender(); scheduleSaveLayers(); }));
+        c('.s-current').addEventListener('input',e=>{ s.current=e.target.value; if(s.brush!=='sub' && pb) pb.recolorSelection(); });   // recolor only repaints SOLID keys; silhouette keys ignore color
         c('.s-showkb').addEventListener('click',()=>{ pb?unmountBoard():mountBoard(); });
         c('.s-clearsel').addEventListener('click',()=>{ if(pb){ pb.clearSelection(); } reRender(); scheduleSaveLayers(); });
         c('.s-clearall').addEventListener('click',()=>{ s.keys={}; if(pb){ pb.selectNone(); pb.draw(); } reRender(); scheduleSaveLayers(); });
