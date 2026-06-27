@@ -254,33 +254,43 @@
         ctx.fillStyle=cs+a+')'; ctx.beginPath(); ctx.arc(q.x,q.y,r,0,TAU); ctx.fill(); }   // bright core
       ctx.globalCompositeOperation='source-over';
     }
-    // ===== AURA: a soft glow lying IN each gap, built from wave-displaced stamps so it deforms with the ripple =====
-    // Drawn per-gap directly on the scene, BETWEEN the two bounding planes (so the layer above occludes it → depth).
-    // Instead of one flat ellipse, the gap glow is a grid of soft sprite stamps laid across the board footprint,
-    // each lifted by the SAME wave height (waveFn) the keys use — so the glowing sheet undulates with the ripple
-    // and foreshortens with the 3D orientation. A board-shaped edge fade keeps it soft (no box edge, no wash).
+    // ===== AURA: a soft, COHESIVE glow lying IN each gap, built from wave-displaced stamps =====
+    // Per-gap, drawn BETWEEN the two bounding planes (so the layer above occludes it → depth). A grid of soft
+    // stamps is laid across the board footprint, each lifted by the SAME wave height (waveFn) the keys use → the
+    // sheet undulates with the ripple and foreshortens with the 3D orientation. Crucially the stamps are rendered
+    // into a LOW-RES offscreen and upscaled — the bilinear blur dissolves the individual radial sprites into one
+    // continuous cloud (no "light-probe spheres"). Board-shaped edge fade keeps it soft (no box, no wash).
     const _spr=document.createElement('canvas'), _sctx=_spr.getContext('2d'); _spr.width=_spr.height=64;
+    const _glow=document.createElement('canvas'), _gctx=_glow.getContext('2d');
+    const GLOWS=0.26;   // offscreen render scale — lower = blurrier/more cohesive on upscale (0.26 ≈ heavy melt)
     function gapSprite(col){   // soft radial sprite tinted to the gap colour (rebuilt per gap → ~5/frame, cheap)
       _sctx.clearRect(0,0,64,64); const c='rgba('+col[0]+','+col[1]+','+col[2]+',';
       const g=_sctx.createRadialGradient(32,32,0, 32,32,32);
-      g.addColorStop(0,c+'1)'); g.addColorStop(0.5,c+'0.35)'); g.addColorStop(1,c+'0)');
+      g.addColorStop(0,c+'1)'); g.addColorStop(0.45,c+'0.4)'); g.addColorStop(1,c+'0)');
       _sctx.fillStyle=g; _sctx.fillRect(0,0,64,64); return _spr;
     }
     function drawGapGlow(i, tSec, cx, cy, AMP, byMid){
       if(auraI<=0) return;
       const lo=_planes[i-1], hi=_planes[i], col=lo.col||hi.col; if(!col) return;
-      const lum=(0.299*col[0]+0.587*col[1]+0.114*col[2])/255, ls=0.5+0.5*(1-lum*0.7), baseA=1.05*auraI*ls;
-      const spr=gapSprite(col), jLo=i-1, NU=9, NV=4, stampR=Math.max(10,(lo.hw/NU)*2.0);   // generous overlap → continuous sheet
-      ctx.setTransform(SS,0,0,SS,0,0); ctx.globalCompositeOperation='lighter'; ctx.imageSmoothingEnabled=true;
+      const gw=Math.max(2,Math.round(CW*GLOWS)), gh=Math.max(2,Math.round(CH*GLOWS));
+      if(_glow.width!==gw) _glow.width=gw; if(_glow.height!==gh) _glow.height=gh;
+      _gctx.setTransform(1,0,0,1,0,0); _gctx.globalAlpha=1; _gctx.globalCompositeOperation='source-over'; _gctx.clearRect(0,0,gw,gh);
+      const lum=(0.299*col[0]+0.587*col[1]+0.114*col[2])/255, ls=0.5+0.5*(1-lum*0.7), baseA=0.95*auraI*ls;
+      const spr=gapSprite(col), jLo=i-1, NU=11, NV=5, stampR=Math.max(5,(lo.hw*GLOWS/NU)*2.6);   // dense + overlapping; the upscale melts them together
+      _gctx.globalCompositeOperation='lighter';
       for(let gv=0; gv<NV; gv++) for(let gu=0; gu<NU; gu++){
         const u=(gu+0.5)/NU, v=(gv+0.5)/NV;
-        const fade=Math.pow((1-(2*u-1)*(2*u-1))*(1-(2*v-1)*(2*v-1)), 0.6);   // soft board-shaped falloff → 0 at edges, no box
+        const fade=Math.pow((1-(2*u-1)*(2*u-1))*(1-(2*v-1)*(2*v-1)), 0.55);   // soft board-shaped falloff → 0 at edges, no box
         if(fade<=0.02) continue;
-        const wz=AMP*waveFn(u,v,jLo,tSec);                                   // SAME wave the keys ride → glow undulates with them
+        const wz=AMP*waveFn(u,v,jLo,tSec);                                    // SAME wave the keys ride → glow undulates with them
         const p=proj((u-0.5)*BW0, (v-0.5)*BD, byMid+wz, cx, cy);
-        ctx.globalAlpha=baseA*fade; ctx.drawImage(spr, p[0]-stampR, p[1]-stampR, stampR*2, stampR*2);
+        _gctx.globalAlpha=baseA*fade; _gctx.drawImage(spr, p[0]*GLOWS-stampR, p[1]*GLOWS-stampR, stampR*2, stampR*2);
       }
-      ctx.globalAlpha=1; ctx.globalCompositeOperation='source-over';
+      _gctx.globalAlpha=1; _gctx.globalCompositeOperation='source-over';
+      // upscale the whole low-res gap buffer onto the scene → bilinear blur fuses the stamps into a cohesive cloud
+      ctx.setTransform(SS,0,0,SS,0,0); ctx.imageSmoothingEnabled=true; ctx.globalCompositeOperation='lighter';
+      ctx.drawImage(_glow, 0,0,gw,gh, 0,0,CW,CH);
+      ctx.globalCompositeOperation='source-over';
     }
 
     // ---- main draw ----
