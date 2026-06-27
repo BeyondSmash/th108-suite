@@ -215,7 +215,25 @@
       document.getElementById('gifInfo').textContent=label+': '+frames.length+' frame(s), source '+frames[0].w+'×'+frames[0].h+' → 104 keys';
       document.getElementById('gifPlay').disabled=!hasDevice();
       log('loaded '+frames.length+' frame(s): '+label,'ok');
+      updateConnectHint(); startPreviewAnim();   // animate the on-page preview immediately — even with no device (Connect is only needed to drive the real keys)
     }
+    // ----- local PREVIEW animation: cycle the on-page previews with NO device (never sendFrame). The real
+    // gifTick owns the canvases while playing to the board; this fills the gap so a loaded GIF visibly animates. -----
+    let prevTimer=null;
+    function stopPreviewAnim(){ if(prevTimer){ clearTimeout(prevTimer); prevTimer=null; } }
+    function startPreviewAnim(){ if(!prevTimer && gifFrames.length>1 && !gifPlaying) prevTick(); }   // static (1 frame) needs no loop
+    function prevTick(){
+      prevTimer=null;
+      if(gifPlaying || gifFrames.length<2) return;                                   // device playback owns the canvases / nothing to animate
+      const cv=document.getElementById('gifSrc');
+      if(cv && cv.offsetParent===null){ prevTimer=setTimeout(prevTick, 400); return; }   // panel not visible → idle-poll cheaply
+      if(!gifDrag && !document.hidden && !document.getElementById('gifStatic').checked){
+        gifIdx=(gifIdx+1)%gifFrames.length; drawSrc(); drawKb(gifFrames[gifIdx].rgb);     // PREVIEW only — never sendFrame
+      }
+      const fr=gifFrames[gifIdx], delay=Math.max(1000/fpsCap(), (((fr&&fr.delayMs)|0)||100)/gifSpeed());
+      prevTimer=setTimeout(prevTick, delay);
+    }
+    function updateConnectHint(){ const h=document.getElementById('gifConnectHint'); if(h) h.style.display=(gifFrames.length && !hasDevice() && !gifPlaying)?'inline':'none'; }
     async function loadMedia(blob, name, save){           // save (default true) → persist to the library
       if(save===undefined) save=true;
       document.getElementById('gifPlay').disabled=true; log('decoding '+name+'…','dim');
@@ -254,7 +272,7 @@
       if(!hasDevice()||!gifFrames.length||gifPlaying) return;
       gifPrevLayers=isRunning(); clearObActive();               // remember what GIF playback replaced (and it overrides any firmware effect)
       if(isRunning()) stopLayers();                             // GIF mode replaces the reactive pulse
-      gifPlaying=true; gifIdx=0;
+      gifPlaying=true; gifIdx=0; stopPreviewAnim(); updateConnectHint();   // device playback takes over the canvases
       document.getElementById('gifPlay').disabled=true; document.getElementById('gifStop').disabled=false;
       refreshButtons();   // GIF now owns the board → drive toggle disables, pill shows WebHID
       log('GIF playback started ('+gifFrames.length+' frames)','ok'); gifTick();
@@ -264,6 +282,7 @@
       gifPlaying=false;
       if(tickW) tickW.postMessage({stop:true});
       document.getElementById('gifPlay').disabled=!hasDevice(); document.getElementById('gifStop').disabled=true;
+      updateConnectHint(); startPreviewAnim();   // back to the local preview animation
       refreshButtons();   // GIF released the board → drive toggle reflects layers/daemon state again
       const off=[]; INDICES.forEach(i=>off.push(i,0,0,0)); await sendFrame(off);
       log('GIF playback stopped (board cleared)','dim');
@@ -351,7 +370,7 @@
     return {
       play: gifPlay,
       stop: gifStopFn,                                       // async — clears the board; awaitable (applyOnboard does)
-      onDeviceBound(){ if(gifFrames.length) document.getElementById('gifPlay').disabled=false; },
+      onDeviceBound(){ if(gifFrames.length) document.getElementById('gifPlay').disabled=false; updateConnectHint(); },
       get playing(){ return gifPlaying; },
       get framesLoaded(){ return gifFrames.length>0; }
     };

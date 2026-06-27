@@ -918,6 +918,7 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
       <button id="gifPlay" class="go" disabled>Play GIF ▶</button>
       <button id="gifStop" class="stop" disabled>Stop GIF ⏹</button>
       <button id="gifReset">Reset Position</button>
+      <span id="gifConnectHint" class="hint" style="display:none;color:var(--warn,#e0a200);flex:1 1 100%">⌨ The preview animates below, but to play it on your <b>keys</b> you must <b>Connect</b> the keyboard (top-right) — the GIF player drives the board directly (WebHID), unlike layers which the daemon can run.</span>
     </div>
     <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:8px">
       <input id="gifUrl" type="text" class="tin" placeholder="paste an image / GIF URL…" style="flex:1;min-width:180px">
