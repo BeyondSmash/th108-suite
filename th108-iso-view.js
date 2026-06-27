@@ -32,7 +32,7 @@
     const onUp   = e => { updLock(e); if(!getRunning()){ const i=KEYMAP[e.code]; if(i!==undefined) E.releaseKey(state,i); } };
 
     // ---- view params ----
-    let yaw = 40*D2R, pitch = 22*D2R, zoom = 100, gap = 50, drawer = 0, enhanced = false, focusIdx = null, auraI = 0.06, faceOn = false, showKeys = true, partSize = 0.55, glass = false, waveStyle = 'ripple';
+    let yaw = 40*D2R, pitch = 22*D2R, zoom = 100, gap = 50, drawer = 0, enhanced = false, focusIdx = null, auraI = 0.03, faceOn = false, showKeys = true, partSize = 0.55, glass = false, waveStyle = 'ripple';
     let fxAnim = true, fxParticles = true, fxAura = true;   // Enhanced sub-toggles; all off ⇒ Enhanced off
     const waveFreqs = { ripple:0.8, waveX:1.3 };   // baked frequency per wave style
     const ISO_PITCH = 22*D2R, FACE_PITCH = 89*D2R;   // isometric tilt vs front-flat (top-down)
@@ -63,7 +63,7 @@
         '<button type="button" class="iso-fxanim iso-efx" style="display:none" title="Wave ripple animation of the keys + aura">Animation</button>' +
         '<button type="button" class="iso-fxp iso-efx" style="display:none" title="Rising stardust particles">Particles</button>' +
         '<button type="button" class="iso-fxa iso-efx" style="display:none" title="Volumetric glow in the gaps">Aura</button>' +
-        '<label class="iso-gl iso-efx" style="display:none" title="Aura glow intensity — tell me the value to bake as default">Aura<input type="range" class="iso-aint" min="0" max="150" value="6"><small class="iso-aval">6</small></label>' +
+        '<label class="iso-gl iso-efx" style="display:none" title="Aura glow intensity — tell me the value to bake as default">Aura<input type="range" class="iso-aint" min="0" max="150" value="3"><small class="iso-aval">3</small></label>' +
         '<select class="iso-wave iso-efx" style="display:none" title="Enhanced wave pattern">' +
           '<option value="ripple">〜 Ripple</option><option value="waveX">→ Wave X</option></select>' +
         '<button type="button" class="iso-face" title="Tilt the board front-flat (keys facing you) vs isometric">Face-on</button>' +
@@ -319,7 +319,7 @@
       // out as a shape mask first, then re-mask with destination-in to clip the texture back to the column.
       if(texReady){
         _fctx.globalCompositeOperation='source-over'; _fctx.globalAlpha=1; _fctx.clearRect(0,0,gw,gh); _fctx.drawImage(_glow,0,0);
-        _gctx.globalCompositeOperation='multiply'; _gctx.globalAlpha=0.9;
+        _gctx.globalCompositeOperation='multiply'; _gctx.globalAlpha=0.5;   // partial multiply → texture dims the glow without punching it to black (less "darkness" in the aura)
         const TH=gh*1.7, scroll=((tSec*0.16)%1)*TH;   // two stacked copies → seamless vertical wrap
         _gctx.drawImage(auraTex, 0, -scroll, gw, TH);
         _gctx.drawImage(auraTex, 0, TH-scroll, gw, TH);
