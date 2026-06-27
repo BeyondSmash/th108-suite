@@ -38,7 +38,7 @@
     const DEF_YAW = 35*D2R, DEF_PITCH = 20*D2R, DEF_ZOOM = 100, DEF_GAP = 47, DEF_DRAWER = 20;   // default view (DEF_GAP 47 = Gap slider 80); reused by Reset Orientation
     let yaw = DEF_YAW, pitch = DEF_PITCH, zoom = DEF_ZOOM, gap = DEF_GAP, drawer = DEF_DRAWER, enhanced = false, focusIdx = null, auraI = 0.0075, faceOn = false, showKeys = true, partSize = 0.55, glass = false, waveStyle = 'ripple';   // auraI baked (slider removed); 0.0075 = old slider value 0.75
     let fxAnim = true, fxParticles = true, fxAura = true;   // Enhanced sub-toggles; all off ⇒ Enhanced off
-    const glassAmt = 50, chromaAmt = 15;   // baked (sliders removed): blur/translucency/edge-bend + chromatic-aberration strength
+    let glassAmt = 50, chromaAmt = 15;   // glassAmt = blur/translucency/edge-smear; chromaAmt = chromatic-aberration (R/B split) strength
     let ctrlDown = false, ctrlGuide = 0;   // ctrlDown = Ctrl held; ctrlGuide = eased alpha of the Ctrl-drag corner overlay
     const waveFreqs = { ripple:0.8, waveX:1.3 };   // baked frequency per wave style
     const ISO_PITCH = DEF_PITCH, FACE_PITCH = 89*D2R;   // isometric resting tilt (= default) vs front-flat (top-down)
@@ -57,6 +57,7 @@
       '<div class="iso-head"><span class="iso-grip">⠿</span><b>Isometric View</b>' +
       '<span class="iso-spacer"></span>' +
       '<button type="button" class="iso-rs" hidden title="Reset the pop-out window to the default size (use the window\'s own buttons to minimize / maximize)">⤢ Reset size</button>' +
+      '<button type="button" class="iso-reset" title="Reset Orientation — zoom / rotation / gap / drawer back to the default view">⟲ Reset</button>' +
       '<button type="button" class="iso-pop" title="Pop out into a separate, resizable window">' +
         '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px"><path d="M21 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h6"/><path d="m21 3-9 9"/><path d="M15 3h6v6"/></svg>Pop out</button>' +
       '<button type="button" class="iso-popin" hidden title="Pop back into the page">' +
@@ -66,6 +67,8 @@
         '<span class="iso-sld" title="Zoom — scale the view (100% is centred)"><span class="iso-sld-top"><span>Zoom</span><small class="iso-zval">100%</small></span><input type="range" class="iso-zoom" min="0" max="100" value="50"></span>' +
         '<span class="iso-sld" title="Gap — spacing between the layers"><span class="iso-sld-top"><span>Gap</span><small class="iso-gval">80</small></span><input type="range" class="iso-gapr" min="0" max="100" value="80"></span>' +
         '<span class="iso-sld" title="Drawer — pull the layers out like a dresser (bottom out the most, each one above it less)"><span class="iso-sld-top"><span>Drawer</span><small class="iso-dval">20</small></span><input type="range" class="iso-draw" min="0" max="100" value="20"></span>' +
+        '<span class="iso-sld iso-glass-sld" style="display:none" title="Glassiness — blur, translucency &amp; how much the edges bend/smear light (only while Glass is on)"><span class="iso-sld-top"><span>Glass</span><small class="iso-glval">50</small></span><input type="range" class="iso-glassr" min="0" max="100" value="50"></span>' +
+        '<span class="iso-sld iso-glass-sld" style="display:none" title="Chromatic aberration — how much the glass splits R/G/B (colour fringing) at the edges"><span class="iso-sld-top"><span>Chroma</span><small class="iso-chval">15</small></span><input type="range" class="iso-chromar" min="0" max="100" value="15"></span>' +
       '</div>' +
       '<div class="iso-ctl">' +   // row 2: buttons
         '<button type="button" class="iso-back" hidden>‹ Back</button>' +
@@ -80,7 +83,6 @@
         '<select class="iso-wave iso-efx" style="display:none" title="Enhanced wave pattern">' +
           '<option value="ripple">〜 Ripple</option><option value="waveX">→ Wave X</option></select>' +
         '<button type="button" class="iso-face" title="Tilt the board front-flat (keys facing you) vs isometric">Face-on</button>' +
-        '<button type="button" class="iso-reset" title="Reset Orientation — zoom / rotation / gap / drawer back to the default view">⟲ Reset</button>' +
         '<span class="iso-lock" hidden title="Tilt is locked while Face-on is active — the board faces you flat. Click Face-on again to unlock and tilt freely (you can still spin/yaw).">' +
           '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></span>' +
       '</div>' +
@@ -107,11 +109,11 @@
         '.iso-panel.popped .iso-cv{flex:1 1 0;min-height:0;width:100%;height:auto;margin:6px 0 2px}' +   // flex-basis 0 + min-height:0 → the canvas truly shrinks when the header grows (auto basis aspect-locks a <canvas> so it wouldn\'t)
         '.iso-ctl{display:flex;justify-content:center;align-items:center;gap:10px;flex-wrap:wrap;padding:4px 12px 9px;border-bottom:1px solid var(--line,#30363d)}' +   // border = separator between the controls (header) and the viewport
         // modern buttons: soft rounded pills, subtle fill, smooth hover, glowing active state (shared by header + control bar)
-        '.iso-ctl button,.iso-head>button.iso-pop,.iso-head>button.iso-popin,.iso-head>button.iso-rs,.iso-head>button.iso-wmax{margin:0;padding:5px 12px;' +
+        '.iso-ctl button,.iso-head>button.iso-pop,.iso-head>button.iso-popin,.iso-head>button.iso-rs,.iso-head>button.iso-reset,.iso-head>button.iso-wmax{margin:0;padding:5px 12px;' +
         'font-size:12px;font-weight:600;border-radius:8px;border:1px solid rgba(255,255,255,.10);background:rgba(255,255,255,.06);color:var(--fg,#e6edf3);' +
         'box-shadow:none;cursor:pointer;transition:background .15s,border-color .15s,transform .08s}' +
-        '.iso-ctl button:hover,.iso-head>button.iso-pop:hover,.iso-head>button.iso-popin:hover,.iso-head>button.iso-rs:hover,.iso-head>button.iso-wmax:hover{background:rgba(255,255,255,.13);border-color:rgba(255,255,255,.22)}' +
-        '.iso-ctl button:active,.iso-head>button.iso-pop:active,.iso-head>button.iso-popin:active,.iso-head>button.iso-rs:active,.iso-head>button.iso-wmax:active{transform:translateY(1px)}' +
+        '.iso-ctl button:hover,.iso-head>button.iso-pop:hover,.iso-head>button.iso-popin:hover,.iso-head>button.iso-rs:hover,.iso-head>button.iso-reset:hover,.iso-head>button.iso-wmax:hover{background:rgba(255,255,255,.13);border-color:rgba(255,255,255,.22)}' +
+        '.iso-ctl button:active,.iso-head>button.iso-pop:active,.iso-head>button.iso-popin:active,.iso-head>button.iso-rs:active,.iso-head>button.iso-reset:active,.iso-head>button.iso-wmax:active{transform:translateY(1px)}' +
         '.iso-ctl button.on{background:var(--blue,#58a6ff);border-color:transparent;color:#0d1117;box-shadow:0 2px 10px rgba(88,166,255,.35)}' +
         // the three Enhanced sub-toggles framed as a subset (blue tint ties them to the Enhanced button); negative left margin tucks the frame up against Enhanced
         '.iso-fxgroup{display:inline-flex;align-items:center;gap:7px;padding:4px 8px;margin-left:-3px;border-radius:11px;border:1px solid rgba(88,166,255,.40);background:rgba(88,166,255,.07)}' +
@@ -140,7 +142,7 @@
         'backdrop-filter:blur(var(--glass-b,12px)) saturate(1.8) brightness(1.06) url(#iso-glass-ref);-webkit-backdrop-filter:blur(var(--glass-b,12px)) saturate(1.8) brightness(1.06);' +   // url() = SVG displacement-map filter → real edge refraction (Chromium; Safari falls back to blur)
         'border-color:rgba(255,255,255,.28);box-shadow:0 18px 50px rgba(0,0,0,.5),inset 0 1px 0 rgba(255,255,255,.45),inset 0 0 0 1px rgba(255,255,255,.10),inset 0 -24px 50px rgba(0,0,0,.18),inset 0 2px 14px rgba(255,255,255,.10)}' +
         '.iso-panel.glass .iso-head{border-bottom-color:rgba(255,255,255,.12)}' +
-        '.iso-panel.iso-dragging{backdrop-filter:none!important;-webkit-backdrop-filter:none!important}';   // dragging the window → drop the costly refraction recompute for a smooth drag
+        '.iso-panel.glass.iso-dragging{backdrop-filter:blur(var(--glass-b,12px)) saturate(1.6) url(#iso-glass-ref-lite)!important;-webkit-backdrop-filter:blur(var(--glass-b,12px)) saturate(1.6)!important}';   // dragging → cheaper single-displacement refraction (still visible) instead of the full chromatic recompute
       document.head.appendChild(st);
     }
     document.body.appendChild(panel);
@@ -155,18 +157,20 @@
     if(window.ResizeObserver){ new ResizeObserver(()=>{ if(popWin && cv.clientWidth>0 && cv.clientHeight>0) sizeCanvas(cv.clientWidth, cv.clientHeight); }).observe(cv); }
     const $ = s => panel.querySelector(s);
     const zoomEl=$('.iso-zoom'), zvalEl=$('.iso-zval'), gapEl=$('.iso-gapr'), gvalEl=$('.iso-gval'), drawEl=$('.iso-draw'), dvalEl=$('.iso-dval'), enhEl=$('.iso-enh'),
-          fxanimEl=$('.iso-fxanim'), fxpEl=$('.iso-fxp'), fxaEl=$('.iso-fxa'), keysEl=$('.iso-keys'),
+          fxanimEl=$('.iso-fxanim'), fxpEl=$('.iso-fxp'), fxaEl=$('.iso-fxa'), glassrEl=$('.iso-glassr'), glvalEl=$('.iso-glval'), chromaEl=$('.iso-chromar'), chvalEl=$('.iso-chval'), keysEl=$('.iso-keys'),
           glassEl=$('.iso-glass'), waveEl=$('.iso-wave'),
           backEl=$('.iso-back'), faceEl=$('.iso-face'), lockEl=$('.iso-lock'), legendEl=$('.iso-legend'), readEl=$('.iso-read');
     // ---- persistence: remember the view settings between sessions ----
     const SKEY='th108_iso_view';
-    function saveSettings(){ try{ localStorage.setItem(SKEY, JSON.stringify({yaw,pitch,zoom,gap,drawer,enhanced,fxAnim,fxParticles,fxAura,glass,showKeys,faceOn,waveStyle,
+    function saveSettings(){ try{ localStorage.setItem(SKEY, JSON.stringify({yaw,pitch,zoom,gap,drawer,enhanced,fxAnim,fxParticles,fxAura,glass,glassAmt,chromaAmt,showKeys,faceOn,waveStyle,
       lockK:lock.known,lockN:lock.NumLock,lockC:lock.CapsLock,lockS:lock.ScrollLock})); }catch(_){ } }
     let _saveT=0; function saveSoon(){ clearTimeout(_saveT); _saveT=setTimeout(saveSettings, 350); }
     function loadSettings(){ let s; try{ s=JSON.parse(localStorage.getItem(SKEY)); }catch(_){ } if(!s||typeof s!=='object') return;
       if(typeof s.yaw==='number') yaw=s.yaw; if(typeof s.pitch==='number') pitch=s.pitch;
       if(typeof s.zoom==='number') zoom=s.zoom; if(typeof s.gap==='number') gap=Math.min(55,Math.max(14,s.gap));   // clamp to the slider range
       if(typeof s.drawer==='number') drawer=Math.min(100,Math.max(0,s.drawer));
+      if(typeof s.glassAmt==='number') glassAmt=Math.min(100,Math.max(0,s.glassAmt));
+      if(typeof s.chromaAmt==='number') chromaAmt=Math.min(100,Math.max(0,s.chromaAmt));
       enhanced=!!s.enhanced; glass=!!s.glass; showKeys=s.showKeys!==false; faceOn=!!s.faceOn; if(s.waveStyle==='ripple'||s.waveStyle==='waveX') waveStyle=s.waveStyle;
       if(s.lockK){ lock.known=true; lock.NumLock=!!s.lockN; lock.CapsLock=!!s.lockC; lock.ScrollLock=!!s.lockS; }   // restore last-known lock state → System plane shows on refresh
       if(typeof s.fxAnim==='boolean') fxAnim=s.fxAnim; if(typeof s.fxParticles==='boolean') fxParticles=s.fxParticles; if(typeof s.fxAura==='boolean') fxAura=s.fxAura;
@@ -178,6 +182,8 @@
       // each sub-feature's extra widget gates on its own flag too: the Aura slider only with Aura on, the wave dropdown only with Animation on
       waveEl.style.display=(enhanced&&fxAnim)?'':'none';
       fxanimEl.classList.toggle('on',fxAnim); fxpEl.classList.toggle('on',fxParticles); fxaEl.classList.toggle('on',fxAura);
+      glassrEl.value=glassAmt; glvalEl.textContent=glassAmt; chromaEl.value=chromaAmt; chvalEl.textContent=chromaAmt;
+      panel.querySelectorAll('.iso-glass-sld').forEach(el=>el.style.display=glass?'':'none');   // Glass + Chroma sliders only while Glass is on
       keysEl.classList.toggle('on',showKeys); glassEl.classList.toggle('on',glass); applyGlass();
       faceEl.classList.toggle('on',faceOn); lockEl.hidden=!faceOn; }
     // Build the SVG displacement-map filter (#iso-glass-ref) ONCE per document: a normal-map that's neutral in the
@@ -198,13 +204,13 @@
         d[i]=128 + fTB*px*127;     // X-disp scaled by x-position → horizontal stretch ALONG the top/bottom edges
         d[i+1]=128 + fLR*py*127;   // Y-disp scaled by y-position → vertical stretch ALONG the left/right edges
         d[i+2]=128; d[i+3]=255; }
-      q.putImageData(im,0,0);
+      q.putImageData(im,0,0); const url=c.toDataURL();
       const svg=doc.createElementNS('http://www.w3.org/2000/svg','svg'); svg.id='iso-glass-svg';
       svg.setAttribute('width','0'); svg.setAttribute('height','0'); svg.style.position='absolute';
       // chromatic aberration: displace the backdrop's R / G / B by DIFFERENT scales, then recombine → colour fringing
-      // where the displacement is strong (the rim). scales are set live from the Glass slider in applyGlass().
+      // where the displacement is strong (the rim). scales are set live from the sliders in applyGlass().
       svg.innerHTML='<filter id="iso-glass-ref" color-interpolation-filters="sRGB" x="-4%" y="-4%" width="108%" height="108%">'
-        +'<feImage href="'+c.toDataURL()+'" preserveAspectRatio="none" x="0" y="0" width="100%" height="100%" result="m"/>'
+        +'<feImage href="'+url+'" preserveAspectRatio="none" x="0" y="0" width="100%" height="100%" result="m"/>'
         +'<feDisplacementMap in="SourceGraphic" in2="m" xChannelSelector="R" yChannelSelector="G" scale="26" result="dr"/>'
         +'<feDisplacementMap in="SourceGraphic" in2="m" xChannelSelector="R" yChannelSelector="G" scale="20" result="dg"/>'
         +'<feDisplacementMap in="SourceGraphic" in2="m" xChannelSelector="R" yChannelSelector="G" scale="14" result="db"/>'
@@ -212,7 +218,12 @@
         +'<feColorMatrix in="dg" values="0 0 0 0 0  0 1 0 0 0  0 0 0 0 0  0 0 0 1 0" result="cg"/>'
         +'<feColorMatrix in="db" values="0 0 0 0 0  0 0 0 0 0  0 0 1 0 0  0 0 0 1 0" result="cb"/>'
         +'<feBlend in="cr" in2="cg" mode="screen" result="crg"/>'
-        +'<feBlend in="crg" in2="cb" mode="screen"/></filter>';
+        +'<feBlend in="crg" in2="cb" mode="screen"/></filter>'
+        // LITE filter: a single displacement (no chroma split / recombine) → ~3x cheaper; used WHILE DRAGGING so
+        // the refraction stays visible without the per-frame chromatic recompute janking the drag.
+        +'<filter id="iso-glass-ref-lite" color-interpolation-filters="sRGB" x="-4%" y="-4%" width="108%" height="108%">'
+        +'<feImage href="'+url+'" preserveAspectRatio="none" x="0" y="0" width="100%" height="100%" result="ml"/>'
+        +'<feDisplacementMap in="SourceGraphic" in2="ml" xChannelSelector="R" yChannelSelector="G" scale="20"/></filter>';
       doc.body.appendChild(svg);
     }
     // glassiness → CSS vars consumed by .iso-panel.glass (docked: real blur + edge refraction; popped: painted sheen in draw())
@@ -222,9 +233,12 @@
       const doc=panel.ownerDocument; buildGlassFilter(doc);
       const fdms=doc.querySelectorAll('#iso-glass-ref feDisplacementMap');   // R / G / B displaced by different amounts → chromatic aberration
       if(fdms.length>=3){ const base=34+glassAmt/100*120, sp=base*(chromaAmt/100*0.6);   // stronger displacement → the tangential stretch reads as a SMEAR along the rim
-        fdms[0].setAttribute('scale',(base+sp).toFixed(1)); fdms[1].setAttribute('scale',base.toFixed(1)); fdms[2].setAttribute('scale',(base-sp).toFixed(1)); } }
+        fdms[0].setAttribute('scale',(base+sp).toFixed(1)); fdms[1].setAttribute('scale',base.toFixed(1)); fdms[2].setAttribute('scale',(base-sp).toFixed(1));
+        const lite=doc.querySelector('#iso-glass-ref-lite feDisplacementMap'); if(lite) lite.setAttribute('scale',base.toFixed(1)); } }
     keysEl.addEventListener('click', ()=>{ showKeys=!showKeys; keysEl.classList.toggle('on',showKeys); saveSoon(); });
-    glassEl.addEventListener('click', ()=>{ glass=!glass; glassEl.classList.toggle('on',glass); applyGlass(); saveSoon(); });   // frosted-glass window (glassiness baked)
+    glassEl.addEventListener('click', ()=>{ glass=!glass; glassEl.classList.toggle('on',glass); panel.querySelectorAll('.iso-glass-sld').forEach(el=>el.style.display=glass?'':'none'); applyGlass(); saveSoon(); });   // frosted-glass window
+    glassrEl.addEventListener('input', e=>{ glassAmt=+e.target.value; glvalEl.textContent=e.target.value; applyGlass(); saveSoon(); });
+    chromaEl.addEventListener('input', e=>{ chromaAmt=+e.target.value; chvalEl.textContent=e.target.value; applyGlass(); saveSoon(); });
     waveEl.addEventListener('change', e=>{ waveStyle=e.target.value; saveSoon(); });
     // keys must NOT interact with the iso UI (Enter was re-toggling the focused Face-on button) — blur any control
     // after a click so it never holds keyboard focus. Reactive still reacts (that's a window-level key listener).
@@ -238,7 +252,7 @@
     drawEl.addEventListener('input', e=>{ drawer=+e.target.value; dvalEl.textContent=e.target.value; saveSoon(); });
     // Home/End/PageUp/PageDown natively jam a focused range input to min/max — block them so those keys
     // (used for reactive lighting / nav) don't yank a slider. Arrow keys still fine-adjust.
-    [zoomEl,gapEl,drawEl].forEach(el=> el.addEventListener('keydown', e=>{ if(e.key==='Home'||e.key==='End'||e.key==='PageUp'||e.key==='PageDown') e.preventDefault(); }));
+    [zoomEl,gapEl,drawEl,glassrEl,chromaEl].forEach(el=> el.addEventListener('keydown', e=>{ if(e.key==='Home'||e.key==='End'||e.key==='PageUp'||e.key==='PageDown') e.preventDefault(); }));
     enhEl.addEventListener('click', ()=>{ enhanced=!enhanced; if(enhanced) fxAnim=fxParticles=fxAura=true; syncControls(); saveSoon(); });   // turning Enhanced on enables all three sub-features
     // sub-toggles: flip one feature; if that leaves all three off, Enhanced itself turns off
     function toggleFx(set){ set(); if(!(fxAnim||fxParticles||fxAura)) enhanced=false; syncControls(); saveSoon(); }
