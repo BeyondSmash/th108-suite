@@ -87,6 +87,14 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
   [data-theme="dark"] #themeBtn .kcut{ cx:17px; cy:8px; }
   [data-theme="dark"] #themeBtn .krays{ opacity:0; transform:rotate(45deg) scale(.55); }
 
+  /* card layout mode toggle (Grid even-rows ↔ Fill masonry) */
+  #layoutBtn{ all:unset; cursor:pointer; display:inline-flex; align-items:center; gap:5px; font-size:12px; font-weight:600;
+              color:var(--muted); border:1px solid var(--border); border-radius:999px; padding:4px 10px;
+              transition:color .2s, border-color .2s; }
+  #layoutBtn:hover{ color:var(--text); border-color:var(--muted); }
+  #layoutBtn.active{ color:var(--text); border-color:var(--mint); }
+  #layoutBtn .gi{ font-size:13px; line-height:1; }
+
   /* ===== bento grid ===== */
   #grid{ display:grid; grid-template-columns:repeat(6,1fr); gap:16px; max-width:1240px; margin:8px auto 0;
          grid-auto-flow:dense; align-items:start; }
@@ -478,6 +486,7 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
   </nav>
   <button id="connectHdr" class="hdrconnect" hidden title="this page takes over the keyboard (WebHID) — needed for key binding and for editing while the daemon is off">⌨ Connect Keyboard</button>
   <span id="dmnOnline" class="dmnTag" hidden><i></i><span id="dmnTagTxt">Online</span></span>
+  <button id="layoutBtn" title="Card layout — Grid: even rows · Fill: pack cards up into the empty gaps below shorter cards"><span class="gi">▦</span><span id="layoutBtnTxt">Grid</span></button>
   <button id="themeBtn" title="toggle light / dark (crossfades)" aria-label="Toggle light or dark theme">
     <span class="knob"><svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true">
       <mask id="kmask"><rect width="24" height="24" fill="#fff"/><circle class="kcut" cx="32" cy="2" r="7" fill="#000"/></mask>
@@ -1891,6 +1900,7 @@ window.addEventListener('pointerup',endDrag);
 window.addEventListener('pointercancel',endDrag);
 function saveLayout(){
   try{ localStorage.setItem(LAYOUT_KEY, JSON.stringify(cardsAll().map(c=>c.id))); }catch(_){ }
+  scheduleMasonry();   // a drop clears the card's cssText (incl. its Fill span) → recompute
 }
 function restoreLayout(){
   let saved; try{ saved=JSON.parse(localStorage.getItem(LAYOUT_KEY)||'null'); }catch(_){ saved=null; }
@@ -1898,6 +1908,40 @@ function restoreLayout(){
   saved.forEach(id=>{ const c=document.getElementById(id); if(c && c.parentElement===gridEl) gridEl.appendChild(c); });
 }
 restoreLayout();
+
+// ===== card layout mode: Grid (even rows, default) vs Fill (masonry — pack cards up into vertical gaps) =====
+// Fill = the CSS-grid masonry trick: a fine grid-auto-rows track + a per-card grid-row-end span computed
+// from its rendered height, so short cards stop leaving the gap a row-aligned grid leaves. grid-auto-flow:dense
+// is already on, so spanned cards backfill holes. Grid mode just clears the inline spans → original look.
+const FILL_KEY='th108_cardfill', MROW=8;   // MROW px = the fine row track Fill packs against
+let fillMode=false; try{ fillMode=localStorage.getItem(FILL_KEY)==='1'; }catch(_){ }
+function layoutMasonry(){
+  if(!fillMode){ gridEl.style.gridAutoRows=''; cardsAll().forEach(c=>{ c.style.gridRowEnd=''; }); return; }
+  if(drag) return;                                       // never reflow mid-drag — it fights the FLIP rect measurements
+  gridEl.style.gridAutoRows=MROW+'px';
+  const gap=parseFloat(getComputedStyle(gridEl).rowGap)||16;
+  cardsAll().forEach(c=>{
+    if(c.hidden || c.classList.contains('lifted') || c.classList.contains('ph-clone')) return;
+    c.style.gridRowEnd='auto';                           // measure natural height with no span imposed
+    const h=c.getBoundingClientRect().height;
+    c.style.gridRowEnd='span '+Math.max(1,Math.ceil((h+gap)/(MROW+gap)));
+  });
+}
+let mRaf=0;
+// ponytail: rAF-coalesced; the ResizeObserver may re-fire from our own span writes, but height is content-driven
+// (a span change doesn't change a card's height) so it converges in one extra frame, not a loop.
+function scheduleMasonry(){ if(mRaf||drag) return; mRaf=requestAnimationFrame(()=>{ mRaf=0; layoutMasonry(); }); }
+try{ const mObs=new ResizeObserver(()=>scheduleMasonry()); cardsAll().forEach(c=>mObs.observe(c)); }catch(_){ }   // catches content/theme/font/resize/tab-switch (hidden↔shown) + drag-drop reflows
+window.addEventListener('resize',scheduleMasonry);
+if(document.fonts && document.fonts.ready) document.fonts.ready.then(scheduleMasonry);
+function setFillMode(on){
+  fillMode=on; try{ localStorage.setItem(FILL_KEY, on?'1':'0'); }catch(_){ }
+  const txt=document.getElementById('layoutBtnTxt'); if(txt) txt.textContent=on?'Fill':'Grid';
+  const btn=document.getElementById('layoutBtn'); if(btn) btn.classList.toggle('active',on);
+  layoutMasonry();
+}
+(function(){ const b=document.getElementById('layoutBtn'); if(b) b.addEventListener('click',()=>setFillMode(!fillMode)); })();
+setFillMode(fillMode);   // apply persisted state + label on load
 
 // ===== master lighting switch + global brightness (header; daemon mirrors via /lighting) =====
 (function(){
