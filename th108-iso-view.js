@@ -86,8 +86,11 @@
       '</div>' +
       '<canvas class="iso-cv"></canvas>' +
       '<div class="iso-legend"></div>' +
-      '<div class="iso-foot"><span class="iso-read"></span> · drag the view to rotate · click a layer to focus. ' +
-      'Top “System” plane = firmware-forced lock keys (white = lock ON). Red “−” = key carves the layers below.</div>';
+      '<div class="iso-foot">' +
+        '<div class="iso-read"></div>' +
+        '<div class="iso-hint"><span class="iso-hk">Controls</span> drag = rotate · <kbd>Ctrl</kbd>+drag = snap to 90° · click a layer = focus</div>' +
+        '<div class="iso-hint"><span class="iso-hk">Legend</span> top “System” plane = firmware lock keys (white = lock on) · red “−” = key carves the layers below</div>' +
+      '</div>';
     if (!document.getElementById('iso-view-css')) {
       const st = document.createElement('style'); st.id = 'iso-view-css';
       st.textContent =
@@ -113,8 +116,8 @@
         // the three Enhanced sub-toggles framed as a subset (blue tint ties them to the Enhanced button); negative left margin tucks the frame up against Enhanced
         '.iso-fxgroup{display:inline-flex;align-items:center;gap:7px;padding:4px 8px;margin-left:-3px;border-radius:11px;border:1px solid rgba(88,166,255,.40);background:rgba(88,166,255,.07)}' +
         '.iso-fxgroup button{font-size:11.5px;padding:4px 10px}' +
-        '.iso-ctl select.iso-wave{margin:0;padding:5px 8px;font-size:12px;font-weight:600;border-radius:8px;border:1px solid rgba(255,255,255,.10);background:rgba(255,255,255,.06);color:var(--fg,#e6edf3);cursor:pointer;transition:box-shadow .12s}' +
-        '.iso-ctl select.iso-wave:hover{box-shadow:inset 0 0 0 100px rgba(255,255,255,.12)}.iso-ctl select.iso-wave:focus{outline:none}' +   // hover brighten via inset overlay (filter:brightness jiggles the text); no lingering focus ring
+        '.iso-ctl select.iso-wave{margin:0;padding:5px 8px;font-size:12px;font-weight:600;border-radius:8px;border:1px solid rgba(255,255,255,.10);background:rgba(255,255,255,.06);color:var(--fg,#e6edf3);cursor:pointer}' +
+        '.iso-ctl select.iso-wave:hover{background-image:linear-gradient(0deg,rgba(255,255,255,.10),rgba(255,255,255,.10))}.iso-ctl select.iso-wave:focus{outline:none}' +   // hover brighten via flat overlay (pure paint — no text jiggle); no lingering focus ring
         '.iso-sliders{display:flex;justify-content:center;align-items:flex-end;gap:22px;flex-wrap:wrap;padding:9px 12px 2px}' +
         '.iso-sld{display:inline-flex;flex-direction:column;gap:3px;font-size:12px;color:var(--muted,#8b949e)}' +
         '.iso-sld-top{display:flex;justify-content:space-between;align-items:baseline;gap:14px}.iso-sld-top small{color:var(--fg,#e6edf3);font-size:11px}' +
@@ -127,7 +130,11 @@
         '.iso-chip.foc{box-shadow:inset 0 0 0 1px var(--blue,#58a6ff)}.iso-chip.off{opacity:.5}' +
         '.iso-chip .pw{width:13px;height:13px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:9px;' +
         'box-shadow:inset 0 0 0 1px var(--muted,#8b949e)}.iso-chip.on .pw{background:#3fb950;box-shadow:none;color:#0d1117}' +
-        '.iso-foot{padding:4px 12px 11px;font-size:11px;color:var(--muted,#8b949e);line-height:1.45}.iso-read{color:var(--fg,#e6edf3)}' +
+        '.iso-foot{padding:7px 12px 11px;font-size:11px;color:var(--muted,#8b949e);line-height:1.5}' +
+        '.iso-read{color:var(--fg,#e6edf3);font-weight:600;margin-bottom:4px}' +
+        '.iso-hint{margin-top:2px}.iso-hint+.iso-hint{margin-top:1px}' +
+        '.iso-hk{display:inline-block;min-width:54px;color:var(--fg,#e6edf3);font-weight:700;font-size:9.5px;letter-spacing:.5px;text-transform:uppercase;opacity:.55;margin-right:4px}' +
+        '.iso-foot kbd{font:inherit;font-size:10px;background:rgba(255,255,255,.10);border:1px solid rgba(255,255,255,.18);border-radius:4px;padding:0 4px;color:var(--fg,#e6edf3)}' +
         // glossy glass: a diagonal light-sweep over the tinted base, a punchier backdrop, and bright inner bevel highlights
         '.iso-panel.glass{background:linear-gradient(135deg,rgba(255,255,255,.14),rgba(255,255,255,.03) 32%,rgba(255,255,255,0) 55%,rgba(255,255,255,.04)),rgba(20,25,33,var(--glass-a,.45));' +
         'backdrop-filter:blur(var(--glass-b,12px)) saturate(1.8) brightness(1.06) url(#iso-glass-ref);-webkit-backdrop-filter:blur(var(--glass-b,12px)) saturate(1.8) brightness(1.06);' +   // url() = SVG displacement-map filter → real edge refraction (Chromium; Safari falls back to blur)
@@ -180,12 +187,16 @@
       // (128) well before the centre — so only the rim bends light, not the whole backdrop. Corners blend both axes.
       const M=220, c=document.createElement('canvas'); c.width=c.height=M; const q=c.getContext('2d');
       const im=q.createImageData(M,M), d=im.data, band=M*0.085;
-      // smoothstep falloff over a wider band → a strong displacement GRADIENT across the rim, so the backdrop is
-      // magnified/STRETCHED perpendicular to the edge (a lens bulge), not just rigidly shifted.
+      // smoothstep edge proximity → TANGENTIAL stretch: near the left/right rim the backdrop is stretched
+      // VERTICALLY (along that edge), near the top/bottom rim it's stretched HORIZONTALLY — i.e. parallel to the
+      // edge, not perpendicular. Displacement ∝ position so it magnifies (stretches) rather than rigidly shifts.
       const fall=t=>{ let s=Math.max(0,Math.min(1,1-t/band)); return s*s*(3-2*s); };
       for(let y=0;y<M;y++) for(let x=0;x<M;x++){ const i=(y*M+x)*4;
-        const nx=fall(M-1-x)-fall(x), ny=fall(M-1-y)-fall(y);   // outward at the rim ; 0 in the interior
-        d[i]=128+nx*127; d[i+1]=128+ny*127; d[i+2]=128; d[i+3]=255; }   // R = x-disp, G = y-disp
+        const px=(x/(M-1)-0.5)*2, py=(y/(M-1)-0.5)*2;   // position across the panel, -1..1
+        const fLR=Math.max(fall(x),fall(M-1-x)), fTB=Math.max(fall(y),fall(M-1-y));   // proximity to L/R vs T/B edges
+        d[i]=128 + fTB*px*127;     // X-disp scaled by x-position → horizontal stretch ALONG the top/bottom edges
+        d[i+1]=128 + fLR*py*127;   // Y-disp scaled by y-position → vertical stretch ALONG the left/right edges
+        d[i+2]=128; d[i+3]=255; }
       q.putImageData(im,0,0);
       const svg=doc.createElementNS('http://www.w3.org/2000/svg','svg'); svg.id='iso-glass-svg';
       svg.setAttribute('width','0'); svg.setAttribute('height','0'); svg.style.position='absolute';

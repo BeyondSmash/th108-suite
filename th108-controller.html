@@ -198,8 +198,8 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
   a.btnlink{ display:inline-block; text-decoration:none; font:600 13.5px/1.4 "Plus Jakarta Sans",system-ui,sans-serif;
              background:var(--card); color:var(--text); box-shadow:0 0 0 2px var(--ring); border-radius:999px; padding:9px 16px; }
   a.btnlink:hover{ box-shadow:0 0 0 2px var(--accent); }
-  select{ font:inherit; background:var(--bg); color:var(--text); border:1px solid var(--border); border-radius:10px; padding:4px 8px; transition:box-shadow .12s, border-color .12s; }   /* --bg is a touch darker than the card → dropdowns contrast (was --inset, which is lighter) */
-  select:hover{ box-shadow:inset 0 0 0 100px rgba(255,255,255,.16); }   /* brighten on hover via an inset overlay — filter:brightness re-layers the element and jiggles the text */
+  select{ font:inherit; background:var(--bg); color:var(--text); border:1px solid var(--border); border-radius:10px; padding:4px 8px; transition:border-color .12s; }   /* --bg is a touch darker than the card → dropdowns contrast (was --inset, which is lighter) */
+  select:hover{ background-image:linear-gradient(0deg,rgba(255,255,255,.13),rgba(255,255,255,.13)); }   /* brighten via a flat overlay — a pure paint; box-shadow/filter re-raster a native <select> and jiggle its text */
   select:focus{ outline:none; }   /* kill the lingering focus ring (selects match :focus-visible even on mouse click, so :not() didn't work) */
   select:focus-visible{ border-color:var(--accent); }   /* keyboard focus → subtle accent border instead of the ring */
   select option{ background:var(--bg); color:var(--text); }
