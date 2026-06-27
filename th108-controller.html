@@ -484,7 +484,7 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
     <div class="tab" data-page="docs">Docs</div>
     <div class="tab" data-page="faq">FAQ</div>
   </nav>
-  <button id="connectHdr" class="hdrconnect" hidden title="this page takes over the keyboard (WebHID) — needed for key binding and for editing while the daemon is off">⌨ Connect Keyboard</button>
+  <button id="connectHdr" class="hdrconnect" hidden title="this page takes over the keyboard (WebHID) — needed for key binding and for editing while the daemon is off">⌨ Connect</button>
   <span id="dmnOnline" class="dmnTag" hidden><i></i><span id="dmnTagTxt">Online</span></span>
   <button id="layoutBtn" title="Card layout — Grid: even rows · Fill: pack cards up into the empty gaps below shorter cards"><span class="gi">▦</span><span id="layoutBtnTxt">Grid</span></button>
   <button id="themeBtn" title="toggle light / dark (crossfades)" aria-label="Toggle light or dark theme">
@@ -1870,7 +1870,7 @@ function enableDrag(grid, handleSel, cardSel, commit){
   });
 }
 enableDrag(gridEl, '.cardbar', '.card', saveLayout);
-enableDrag(document.getElementById('layerCards'), '.lgrip', '.lcard', ()=>{ try{ LUI.reorderFromDom(); }catch(_){ } });
+enableDrag(document.getElementById('layerCards'), '.lgrip', '.lcard', ()=>{ try{ LUI.reorderFromDom(); }catch(_){ } try{ scheduleMasonry(); }catch(_){ } });
 window.addEventListener('pointermove',e=>{
   if(!drag) return;
   if(!drag.live){ if(Math.hypot(e.clientX-drag.sx, e.clientY-drag.sy)<5) return; liftCard(e); }
@@ -1915,30 +1915,41 @@ restoreLayout();
 // is already on, so spanned cards backfill holes. Grid mode just clears the inline spans → original look.
 const FILL_KEY='th108_cardfill', MROW=8;   // MROW px = the fine row track Fill packs against
 let fillMode=false; try{ fillMode=localStorage.getItem(FILL_KEY)==='1'; }catch(_){ }
-function layoutMasonry(){
-  if(!fillMode){ gridEl.style.gridAutoRows=''; cardsAll().forEach(c=>{ c.style.gridRowEnd=''; }); return; }
-  if(drag) return;                                       // never reflow mid-drag — it fights the FLIP rect measurements
-  gridEl.style.gridAutoRows=MROW+'px';
-  const gap=parseFloat(getComputedStyle(gridEl).rowGap)||16;
-  cardsAll().forEach(c=>{
+const layerCardsEl=document.getElementById('layerCards');
+function masonryGrid(g, sel){   // pack one grid's cards into their vertical gaps (Fill), or clear the spans (Grid)
+  if(!g) return;
+  if(!fillMode){ g.style.gridAutoRows=''; g.querySelectorAll(sel).forEach(c=>{ c.style.gridRowEnd=''; }); return; }
+  g.style.gridAutoRows=MROW+'px';
+  const gap=parseFloat(getComputedStyle(g).rowGap)||16;
+  g.querySelectorAll(sel).forEach(c=>{
     if(c.hidden || c.classList.contains('lifted') || c.classList.contains('ph-clone')) return;
     c.style.gridRowEnd='auto';                           // measure natural height with no span imposed
     const h=c.getBoundingClientRect().height;
     c.style.gridRowEnd='span '+Math.max(1,Math.ceil((h+gap)/(MROW+gap)));
   });
 }
+function layoutMasonry(){
+  if(drag) return;                                       // never reflow mid-drag — it fights the FLIP rect measurements
+  masonryGrid(gridEl, '.card');                          // bento grid
+  masonryGrid(layerCardsEl, '.lcard');                   // Layer Compositor cards (their own grid, inside a bento card)
+}
 let mRaf=0;
 // ponytail: rAF-coalesced; the ResizeObserver may re-fire from our own span writes, but height is content-driven
 // (a span change doesn't change a card's height) so it converges in one extra frame, not a loop.
 function scheduleMasonry(){ if(mRaf||drag) return; mRaf=requestAnimationFrame(()=>{ mRaf=0; layoutMasonry(); }); }
-try{ const mObs=new ResizeObserver(()=>scheduleMasonry()); cardsAll().forEach(c=>mObs.observe(c)); }catch(_){ }   // catches content/theme/font/resize/tab-switch (hidden↔shown) + drag-drop reflows
+try{ const mObs=new ResizeObserver(()=>scheduleMasonry());
+  cardsAll().forEach(c=>mObs.observe(c));
+  if(layerCardsEl) mObs.observe(layerCardsEl);           // compositor cards rebuild on edits → observe their container so Fill re-packs them
+}catch(_){ }   // catches content/theme/font/resize/tab-switch (hidden↔shown) + drag-drop reflows
 window.addEventListener('resize',scheduleMasonry);
 if(document.fonts && document.fonts.ready) document.fonts.ready.then(scheduleMasonry);
 function setFillMode(on){
+  const sy=window.scrollY;                               // a Grid↔Fill relayout changes total page height → the browser can clamp/reset scroll; restore it
   fillMode=on; try{ localStorage.setItem(FILL_KEY, on?'1':'0'); }catch(_){ }
   const txt=document.getElementById('layoutBtnTxt'); if(txt) txt.textContent=on?'Fill':'Grid';
   const btn=document.getElementById('layoutBtn'); if(btn) btn.classList.toggle('active',on);
   layoutMasonry();
+  window.scrollTo(0, sy);
 }
 (function(){ const b=document.getElementById('layoutBtn'); if(b) b.addEventListener('click',()=>setFillMode(!fillMode)); })();
 setFillMode(fillMode);   // apply persisted state + label on load
