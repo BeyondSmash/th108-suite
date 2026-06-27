@@ -66,9 +66,11 @@
         '<button type="button" class="iso-keys on" title="Show the inactive/unused keys so the full keyboard layout reads (esp. face-on / top-down)">⌨ Keys</button>' +
         '<button type="button" class="iso-glass" title="Swap the window background between solid and frosted glass (the page shows through, refracted)">🫧 Glass</button>' +
         '<button type="button" class="iso-enh" title="Wave + rising stardust + aura wisps">✨ Enhanced</button>' +
-        '<button type="button" class="iso-fxanim iso-efx" style="display:none" title="Wave ripple animation of the keys + aura">Animation</button>' +
-        '<button type="button" class="iso-fxp iso-efx" style="display:none" title="Rising stardust particles">Particles</button>' +
-        '<button type="button" class="iso-fxa iso-efx" style="display:none" title="Volumetric glow in the gaps">Aura</button>' +
+        '<span class="iso-fxgroup iso-efx" style="display:none" title="Enhanced sub-effects — toggle each independently; turning all three off turns Enhanced off">' +
+          '<button type="button" class="iso-fxanim" title="Wave ripple animation of the keys + aura">Animation</button>' +
+          '<button type="button" class="iso-fxp" title="Rising stardust particles">Particles</button>' +
+          '<button type="button" class="iso-fxa" title="Volumetric glow in the gaps">Aura</button>' +
+        '</span>' +
         '<select class="iso-wave iso-efx" style="display:none" title="Enhanced wave pattern">' +
           '<option value="ripple">〜 Ripple</option><option value="waveX">→ Wave X</option></select>' +
         '<button type="button" class="iso-face" title="Tilt the board front-flat (keys facing you) vs isometric">Face-on</button>' +
@@ -101,6 +103,9 @@
         '.iso-ctl button:hover,.iso-head>button.iso-pop:hover,.iso-head>button.iso-popin:hover,.iso-head>button.iso-rs:hover,.iso-head>button.iso-wmax:hover{background:rgba(255,255,255,.13);border-color:rgba(255,255,255,.22)}' +
         '.iso-ctl button:active,.iso-head>button.iso-pop:active,.iso-head>button.iso-popin:active,.iso-head>button.iso-rs:active,.iso-head>button.iso-wmax:active{transform:translateY(1px)}' +
         '.iso-ctl button.on{background:var(--blue,#58a6ff);border-color:transparent;color:#0d1117;box-shadow:0 2px 10px rgba(88,166,255,.35)}' +
+        // the three Enhanced sub-toggles framed as a subset (blue tint ties them to the Enhanced button); negative left margin tucks the frame up against Enhanced
+        '.iso-fxgroup{display:inline-flex;align-items:center;gap:7px;padding:4px 8px;margin-left:-3px;border-radius:11px;border:1px solid rgba(88,166,255,.40);background:rgba(88,166,255,.07)}' +
+        '.iso-fxgroup button{font-size:11.5px;padding:4px 10px}' +
         '.iso-ctl select.iso-wave{margin:0;padding:5px 8px;font-size:12px;font-weight:600;border-radius:8px;border:1px solid rgba(255,255,255,.10);background:rgba(255,255,255,.06);color:var(--fg,#e6edf3);cursor:pointer}' +
         '.iso-sliders{display:flex;justify-content:center;align-items:flex-end;gap:22px;flex-wrap:wrap;padding:9px 12px 2px}' +
         '.iso-sld{display:inline-flex;flex-direction:column;gap:3px;font-size:12px;color:var(--muted,#8b949e)}' +
@@ -223,7 +228,7 @@
     }
 
     function avgColor(rgb){ let r=0,g=0,b=0,n=0; for(let k=0;k<NLED;k++){ const t=k*3, L=rgb[t]+rgb[t+1]+rgb[t+2]; if(L>24){ r+=rgb[t];g+=rgb[t+1];b+=rgb[t+2];n++; } } return n?[r/n|0,g/n|0,b/n|0]:null; }
-    function carveMask(L){ if(L._carve) return L._carve; if(L.type==='reactive'&&L.settings&&L.settings.isolate&&L._inten) return L._inten; return null; }
+    function carveMask(L){ if(L.type==='reactive') return null; return L._carve || null; }   // reactive keys never get the carve silhouette (black face + red "−")
 
     function fillSysRgb(){ sysRgb.fill(0); if(!lock.known) return;
       for(const L of LOCK_K) if(lock[L.code]){ sysRgb[L.k*3]=255; sysRgb[L.k*3+1]=255; sysRgb[L.k*3+2]=255; } }
