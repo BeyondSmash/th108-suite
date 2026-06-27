@@ -251,68 +251,62 @@
 
     // ---- enhanced FX: rising stardust particles ----
     const P=[]; let _planes=[]; const _csm=[];   // _csm = per-plane temporally-smoothed colour (anti-twitch for the aura)
-    function spawnParticles(dt, cx, cy, byOf, dzOf){
+    // Particles live in BOARD space (bx,bz,by) and are re-projected every frame, so they stay rigidly anchored to
+    // the scene when you rotate/zoom (no screen-space drift "catching up"). They rise by increasing their board
+    // height (by) and sway a little along the board x-axis.
+    function spawnParticles(dt, byOf, dzOf){
       if(_planes.length<1) return;
-      // rise direction = the board's height axis projected to screen (yaw-invariant up-the-stack); spawn over
-      // the (rotated) board footprint so the dust conforms to the current orientation. Works in focus too.
-      const o0=proj(0,0,0,cx,cy), o1=proj(0,0,1,cx,cy); let rdx=o1[0]-o0[0], rdy=o1[1]-o0[1]; const rl=Math.hypot(rdx,rdy)||1; rdx/=rl; rdy/=rl;
       const rate = 60*dt/1000;   // small dust → spawn more of them
       let n = rate + (Math.random()<(rate%1)?1:0);
       for(let s=0;s<n;s++){ const p=(Math.random()*_planes.length)|0; const col=_planes[p].col||[150,170,210];
-        const sp=proj((Math.random()-0.5)*0.9*BW0, (Math.random()-0.5)*0.9*BD+(dzOf?dzOf(p):0), byOf(p)+gap*0.12, cx, cy);
-        const spd=12+Math.random()*20;
-        P.push({ x:sp[0], y:sp[1], vx:rdx*spd, vy:rdy*spd, px:-rdy, py:rdx, life:0, max:0.8+Math.random()*1.0, col,
-                 sz:0.45+Math.random()*0.7, seed:Math.random()*TAU, tw:14+Math.random()*16 }); }   // sz tiny; px,py = perpendicular sway axis; seed/tw = twinkle
+        P.push({ bx:(Math.random()-0.5)*0.9*BW0, bz:(Math.random()-0.5)*0.9*BD+(dzOf?dzOf(p):0), by:byOf(p)+gap*0.12,
+                 vby:14+Math.random()*22, life:0, max:0.8+Math.random()*1.0, col,
+                 sz:0.45+Math.random()*0.7, seed:Math.random()*TAU, tw:14+Math.random()*16, sway:5+Math.random()*7 }); }   // board-space rise + sway; seed/tw = twinkle
       if(P.length>320) P.splice(0,P.length-320);
     }
-    function drawParticles(dt){
-      ctx.globalCompositeOperation='lighter';
-      for(let i=P.length-1;i>=0;i--){ const q=P[i]; q.life+=dt/1000;
-        const sway=Math.sin(q.life*1.5+q.seed)*0.45;   // gentle drift perpendicular to the rise
-        q.x+=(q.vx+q.px*sway)*dt/1000; q.y+=(q.vy+q.py*sway)*dt/1000; q.vx*=0.993; q.vy*=0.993;
+    function drawParticles(dt, cx, cy){
+      ctx.globalCompositeOperation='lighter'; const ds=dt/1000;
+      for(let i=P.length-1;i>=0;i--){ const q=P[i]; q.life+=ds;
         const t=q.life/q.max; if(t>=1){ P.splice(i,1); continue; }
+        q.by += q.vby*ds;                                          // rise in BOARD space (rotates/zooms with the scene)
+        const bx=q.bx + Math.sin(q.life*1.5+q.seed)*q.sway;        // gentle board-space sway along the rise
+        const pp=proj(bx, q.bz, q.by, cx, cy);                     // re-project against the CURRENT view → stays anchored
         const tw=0.35+0.65*(0.5+0.5*Math.sin(q.life*q.tw+q.seed));   // fast twinkle
         const a=Math.sin(t*Math.PI)*0.95*tw, r=q.sz*partSize, cs='rgba('+q.col[0]+','+q.col[1]+','+q.col[2]+',';
-        ctx.fillStyle=cs+(a*0.32)+')'; ctx.beginPath(); ctx.arc(q.x,q.y,r*2.3,0,TAU); ctx.fill();   // faint halo (plain fill — no per-particle gradient = much cheaper)
-        ctx.fillStyle=cs+a+')'; ctx.beginPath(); ctx.arc(q.x,q.y,r,0,TAU); ctx.fill(); }   // bright core
+        ctx.fillStyle=cs+(a*0.32)+')'; ctx.beginPath(); ctx.arc(pp[0],pp[1],r*2.3,0,TAU); ctx.fill();   // faint halo (plain fill — no per-particle gradient = much cheaper)
+        ctx.fillStyle=cs+a+')'; ctx.beginPath(); ctx.arc(pp[0],pp[1],r,0,TAU); ctx.fill(); }   // bright core
       ctx.globalCompositeOperation='source-over';
     }
-    // ===== AURA: a soft, COHESIVE glow lying IN each gap, built from wave-displaced stamps =====
-    // Per-gap, drawn BETWEEN the two bounding planes (so the layer above occludes it → depth). A grid of soft
-    // stamps is laid across the board footprint, each lifted by the SAME wave height (waveFn) the keys use → the
-    // sheet undulates with the ripple and foreshortens with the 3D orientation. Crucially the stamps are rendered
-    // into a LOW-RES offscreen and upscaled — the bilinear blur dissolves the individual radial sprites into one
-    // continuous cloud (no "light-probe spheres"). Board-shaped edge fade keeps it soft (no box, no wash).
-    const _spr=document.createElement('canvas'), _sctx=_spr.getContext('2d'); _spr.width=_spr.height=64;
+    // ===== AURA: a KEY-AWARE glow — a blurred projection of each layer's actually-lit keys =====
+    // Each plane emits a glow from its OWN lit keys (per-key colour × brightness), rising into the gap just above
+    // it. We stamp every lit key as a soft blob into a LOW-RES offscreen at the key's wave-displaced position, then
+    // upscale it onto the scene — the bilinear blur fuses the blobs into a cohesive cloud that HUGS the lit keys and
+    // is dim/absent where keys are dark or carved (so a lone Esc no longer paints a board-wide wash, and a single
+    // System LED gets its own glow). Drawn AFTER the plane's keys and BEFORE the next plane up → the layer above
+    // occludes it (depth); the undulation comes free because the blob rides the same waveFn the keys do.
     const _glow=document.createElement('canvas'), _gctx=_glow.getContext('2d');
-    const GLOWS=0.44;   // offscreen render scale — low enough to fuse the stamps into a cloud, high enough to keep the wave bands
-    function gapSprite(col){   // soft radial sprite tinted to the gap colour (rebuilt per gap → ~5/frame, cheap)
-      _sctx.clearRect(0,0,64,64); const c='rgba('+col[0]+','+col[1]+','+col[2]+',';
-      const g=_sctx.createRadialGradient(32,32,0, 32,32,32);
-      g.addColorStop(0,c+'1)'); g.addColorStop(0.45,c+'0.4)'); g.addColorStop(1,c+'0)');
-      _sctx.fillStyle=g; _sctx.fillRect(0,0,64,64); return _spr;
-    }
-    function drawGapGlow(i, tSec, cx, cy, AMP, byMid, dzMid){
-      if(auraI<=0) return;
-      const lo=_planes[i-1], hi=_planes[i], col=lo.col||hi.col; if(!col) return;
+    const GLOWS=0.30;     // offscreen render scale — the upscale blur turns the per-key blobs into soft glow
+    const AURA_GAIN=3.2;   // maps auraI (slider/100) → per-key blob alpha; tuned so the baked value of ~6 stays subtle (blobs overlap + accumulate, so this stays low)
+    function drawPlaneGlow(j, rgb, tSec, cx, cy, AMP, by, dz){
+      if(auraI<=0 || !_planes[j] || !rgb) return;
       const gw=Math.max(2,Math.round(CW*GLOWS)), gh=Math.max(2,Math.round(CH*GLOWS));
       if(_glow.width!==gw) _glow.width=gw; if(_glow.height!==gh) _glow.height=gh;
       _gctx.setTransform(1,0,0,1,0,0); _gctx.globalAlpha=1; _gctx.globalCompositeOperation='source-over'; _gctx.clearRect(0,0,gw,gh);
-      const lum=(0.299*col[0]+0.587*col[1]+0.114*col[2])/255, ls=0.5+0.5*(1-lum*0.7), baseA=0.95*auraI*ls;
-      const spr=gapSprite(col), jLo=i-1, NU=16, NV=5, stampR=Math.max(5,(lo.hw*GLOWS/NU)*2.7);   // dense along u so the ripple crests resolve before the (moderate) blur fuses them
+      const riseY=by + gap*0.5;                              // sit in the gap just above this plane (light rising off the keys)
+      const rad=Math.max(2.5, _planes[j].hw*GLOWS*0.16);     // per-key blob radius in glow space (neighbours overlap → cohesive)
+      let any=false;
       _gctx.globalCompositeOperation='lighter';
-      for(let gv=0; gv<NV; gv++) for(let gu=0; gu<NU; gu++){
-        const u=(gu+0.5)/NU, v=(gv+0.5)/NV;
-        const fade=Math.pow((1-(2*u-1)*(2*u-1))*(1-(2*v-1)*(2*v-1)), 0.55);   // soft board-shaped falloff → 0 at edges, no box
-        if(fade<=0.02) continue;
-        const wv=waveFn(u,v,jLo,tSec);                                        // -1..1 ripple value
-        const wz=AMP*1.4*wv;                                                  // displace the surface (a bit MORE than the keys so the undulation survives the blur)
-        const bright=0.35+0.65*(0.5+0.5*wv);                                  // AND modulate brightness → a travelling bright band reads as ripple even when soft
-        const p=proj((u-0.5)*BW0, (v-0.5)*BD+(dzMid||0), byMid+wz, cx, cy);
-        _gctx.globalAlpha=baseA*fade*bright; _gctx.drawImage(spr, p[0]*GLOWS-stampR, p[1]*GLOWS-stampR, stampR*2, stampR*2);
+      for(const r of RECTS){ const t=r.k*3, cr=rgb[t],cg=rgb[t+1],cb=rgb[t+2], lum=0.299*cr+0.587*cg+0.114*cb;
+        if(lum<16) continue;                                 // dark / carved key → emits no aura
+        const wz=AMP*waveFn(r.u,r.v,j,tSec);
+        const p=proj((r.u-0.5)*BW0, (r.v-0.5)*BD+dz, riseY+wz, cx, cy);
+        _gctx.globalAlpha=Math.min(1, (lum/255)*AURA_GAIN*auraI);
+        _gctx.fillStyle='rgb('+cr+','+cg+','+cb+')';
+        _gctx.beginPath(); _gctx.arc(p[0]*GLOWS, p[1]*GLOWS, rad, 0, TAU); _gctx.fill(); any=true;
       }
       _gctx.globalAlpha=1; _gctx.globalCompositeOperation='source-over';
-      // upscale the whole low-res gap buffer onto the scene → bilinear blur fuses the stamps into a cohesive cloud
+      if(!any) return;                                       // nothing lit on this layer → nothing to composite
+      // upscale the whole low-res buffer onto the scene → bilinear blur fuses the per-key blobs into soft glow
       ctx.setTransform(SS,0,0,SS,0,0); ctx.imageSmoothingEnabled=true; ctx.globalCompositeOperation='lighter';
       ctx.drawImage(_glow, 0,0,gw,gh, 0,0,CW,CH);
       ctx.globalCompositeOperation='source-over';
@@ -328,7 +322,9 @@
       const byOf = j => (j-(N-1)/2)*gap;
       // "Drawer": pull each plane out along the board-depth axis like a dresser — the BOTTOM layer (j=0) out the
       // most, each one above it less. dz is a depth (+bz) offset; stepFrac = 1 at bottom → 0 at top.
-      const DRAW_MAX = BD*4.0;   // max pull distance (bottom plane at drawer=100)
+      // Scale the max pull with the layer count so drawer=100 separates every adjacent plane by >1 board-depth
+      // along the pull axis — i.e. they no longer overlap even in top-down view (Face-on / 90° tilt).
+      const DRAW_MAX = Math.max(1,N-1) * BD * 1.3;
       const dzOf = j => (N>1 ? (N-1-j)/(N-1) : 0) * (drawer/100) * DRAW_MAX;
       // measure the widest label first so the board can sit just right of a column wide enough to never clip them
       ctx.setTransform(SS,0,0,SS,0,0);
@@ -368,7 +364,6 @@
       }
 
       for(let j=0;j<N;j++){ const pl=P0[j], rgb=pl.rgb, by=byOf(j), dz=dzOf(j), mask=pl.L?carveMask(pl.L):null;
-        if(enhanced && fxAura && j>0) drawGapGlow(j, tSec, cx, cy, AMP, by - gap/2, (dzOf(j-1)+dz)/2);   // glow in the gap below this plane, drawn BEFORE it → this layer occludes it (depth); dz = gap-midpoint drawer offset
         if(showKeys){ const bgq=_planes[j].quad;   // the per-layer plane backdrop is part of "show keys" → hidden too when Keys is off (only lit keys float)
           ctx.beginPath(); ctx.moveTo(bgq[0][0],bgq[0][1]); for(let i=1;i<4;i++) ctx.lineTo(bgq[i][0],bgq[i][1]); ctx.closePath();
           ctx.fillStyle = pl.sys?'rgba(120,90,160,.10)':(pl.off?'rgba(120,130,150,.05)':'rgba(90,110,140,.09)'); ctx.fill(); }
@@ -388,9 +383,10 @@
             ctx.fillStyle=RED; ctx.font='700 '+Math.max(9,11*zoom/100)+'px '+FAM; ctx.textAlign='center'; ctx.textBaseline='middle';
             ctx.fillText('−', m[0], m[1]); }
         }
+        if(enhanced && fxAura) drawPlaneGlow(j, rgb, tSec, cx, cy, AMP, by, dz);   // key-aware glow rising from THIS layer's lit keys, drawn after its keys + before the next plane up → occluded by it (depth)
       }
 
-      if(enhanced && fxParticles){ spawnParticles(dt, cx, cy, byOf, dzOf); drawParticles(dt); } else if(P.length) P.length=0;
+      if(enhanced && fxParticles){ spawnParticles(dt, byOf, dzOf); drawParticles(dt, cx, cy); } else if(P.length) P.length=0;
 
       // LABELS (numbered), decluttered into a tidy left column: sort by screen height, enforce a min vertical
       // spacing so they spread apart instead of piling up when planes crowd (e.g. when the board is rotated).
