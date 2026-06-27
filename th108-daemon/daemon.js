@@ -819,7 +819,7 @@ const control = {
       settings.lightsOn = !!o.on; offCleared = false;
       if (settings.lightsOn) {
         if (state) state.lastFlat = null;            // force a repaint
-        closeDevice(); nextOpenAt = 0;               // fresh handle: host silence can leave the board in the ACK-but-ignore state
+        nextOpenAt = 0;                              // reopen ONLY if the handle is actually gone — do NOT closeDevice a healthy one. Reopening a long-lived handle on a quick off→on muted the board (2026-06-27, was streaming 981 min). Mirrors the monitor-wake path (which resumes from the same silence with no reopen and never mutes).
       }
     }
     if (o && o.brightness != null) {
