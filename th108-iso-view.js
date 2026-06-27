@@ -32,7 +32,7 @@
     const onUp   = e => { updLock(e); if(!getRunning()){ const i=KEYMAP[e.code]; if(i!==undefined) E.releaseKey(state,i); } };
 
     // ---- view params ----
-    let yaw = 40*D2R, pitch = 22*D2R, zoom = 100, gap = 50, drawer = 0, enhanced = false, focusIdx = null, auraI = 0.03, faceOn = false, showKeys = true, partSize = 0.55, glass = false, waveStyle = 'ripple';
+    let yaw = 40*D2R, pitch = 22*D2R, zoom = 100, gap = 50, drawer = 0, enhanced = false, focusIdx = null, auraI = 0.0075, faceOn = false, showKeys = true, partSize = 0.55, glass = false, waveStyle = 'ripple';   // auraI baked (slider removed); 0.0075 = old slider value 0.75
     let fxAnim = true, fxParticles = true, fxAura = true;   // Enhanced sub-toggles; all off ⇒ Enhanced off
     const waveFreqs = { ripple:0.8, waveX:1.3 };   // baked frequency per wave style
     const ISO_PITCH = 22*D2R, FACE_PITCH = 89*D2R;   // isometric tilt vs front-flat (top-down)
@@ -63,7 +63,6 @@
         '<button type="button" class="iso-fxanim iso-efx" style="display:none" title="Wave ripple animation of the keys + aura">Animation</button>' +
         '<button type="button" class="iso-fxp iso-efx" style="display:none" title="Rising stardust particles">Particles</button>' +
         '<button type="button" class="iso-fxa iso-efx" style="display:none" title="Volumetric glow in the gaps">Aura</button>' +
-        '<label class="iso-gl iso-efx" style="display:none" title="Aura glow intensity — tell me the value to bake as default">Aura<input type="range" class="iso-aint" min="0" max="150" value="3"><small class="iso-aval">3</small></label>' +
         '<select class="iso-wave iso-efx" style="display:none" title="Enhanced wave pattern">' +
           '<option value="ripple">〜 Ripple</option><option value="waveX">→ Wave X</option></select>' +
         '<button type="button" class="iso-face" title="Tilt the board front-flat (keys facing you) vs isometric">Face-on</button>' +
@@ -100,7 +99,6 @@
         '.iso-zwrap{display:inline-flex;flex-direction:column;align-items:center;gap:1px}' +
         '.iso-zwrap input{width:120px}.iso-zval{font-size:11px;color:var(--muted,#8b949e)}' +
         '.iso-gl{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--muted,#8b949e)}.iso-gl input{width:90px}' +
-        '.iso-aval{min-width:20px;text-align:right;font-size:11px;color:var(--fg,#e6edf3)}' +
         '.iso-cv{display:block;width:720px;height:392px;margin:6px auto 2px;touch-action:none;cursor:grab}.iso-cv.drag{cursor:grabbing}' +
         '.iso-legend{display:flex;flex-wrap:wrap;gap:6px;padding:4px 12px 2px}' +
         '.iso-chip{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;padding:3px 8px;border-radius:999px;' +
@@ -123,27 +121,25 @@
     sizeCanvas(DEF_W, DEF_H);
     const $ = s => panel.querySelector(s);
     const zoomEl=$('.iso-zoom'), zvalEl=$('.iso-zval'), gapEl=$('.iso-gapr'), drawEl=$('.iso-draw'), dvalEl=$('.iso-dval'), enhEl=$('.iso-enh'),
-          fxanimEl=$('.iso-fxanim'), fxpEl=$('.iso-fxp'), fxaEl=$('.iso-fxa'), aintEl=$('.iso-aint'), avalEl=$('.iso-aval'), keysEl=$('.iso-keys'),
+          fxanimEl=$('.iso-fxanim'), fxpEl=$('.iso-fxp'), fxaEl=$('.iso-fxa'), keysEl=$('.iso-keys'),
           glassEl=$('.iso-glass'), waveEl=$('.iso-wave'),
           backEl=$('.iso-back'), faceEl=$('.iso-face'), lockEl=$('.iso-lock'), legendEl=$('.iso-legend'), readEl=$('.iso-read');
     // ---- persistence: remember the view settings between sessions ----
     const SKEY='th108_iso_view';
-    function saveSettings(){ try{ localStorage.setItem(SKEY, JSON.stringify({yaw,pitch,zoom,gap,drawer,enhanced,fxAnim,fxParticles,fxAura,auraI,glass,showKeys,faceOn,waveStyle})); }catch(_){ } }
+    function saveSettings(){ try{ localStorage.setItem(SKEY, JSON.stringify({yaw,pitch,zoom,gap,drawer,enhanced,fxAnim,fxParticles,fxAura,glass,showKeys,faceOn,waveStyle})); }catch(_){ } }
     let _saveT=0; function saveSoon(){ clearTimeout(_saveT); _saveT=setTimeout(saveSettings, 350); }
     function loadSettings(){ let s; try{ s=JSON.parse(localStorage.getItem(SKEY)); }catch(_){ } if(!s||typeof s!=='object') return;
       if(typeof s.yaw==='number') yaw=s.yaw; if(typeof s.pitch==='number') pitch=s.pitch;
       if(typeof s.zoom==='number') zoom=s.zoom; if(typeof s.gap==='number') gap=Math.min(55,Math.max(14,s.gap));   // clamp to the slider range
       if(typeof s.drawer==='number') drawer=Math.min(100,Math.max(0,s.drawer));
-      if(typeof s.auraI==='number') auraI=s.auraI;
       enhanced=!!s.enhanced; glass=!!s.glass; showKeys=s.showKeys!==false; faceOn=!!s.faceOn; if(s.waveStyle==='ripple'||s.waveStyle==='waveX') waveStyle=s.waveStyle;
       if(typeof s.fxAnim==='boolean') fxAnim=s.fxAnim; if(typeof s.fxParticles==='boolean') fxParticles=s.fxParticles; if(typeof s.fxAura==='boolean') fxAura=s.fxAura;
       if(enhanced && !(fxAnim||fxParticles||fxAura)){ fxAnim=fxParticles=fxAura=true; } }   // never "Enhanced on" with all three sub-features off
     function syncControls(){   // push the (possibly restored) state into the UI controls
-      zoomEl.value=zoom; zvalEl.textContent=zoom+'%'; gapEl.value=gapToSlider(gap); drawEl.value=drawer; dvalEl.textContent=drawer; aintEl.value=Math.round(auraI*100); avalEl.textContent=Math.round(auraI*100);
+      zoomEl.value=zoom; zvalEl.textContent=zoom+'%'; gapEl.value=gapToSlider(gap); drawEl.value=drawer; dvalEl.textContent=drawer;
       waveEl.value=waveStyle;
       enhEl.classList.toggle('on',enhanced); panel.querySelectorAll('.iso-efx').forEach(el=>el.style.display=enhanced?'':'none');
       // each sub-feature's extra widget gates on its own flag too: the Aura slider only with Aura on, the wave dropdown only with Animation on
-      const auraLabel=aintEl.closest('label'); if(auraLabel) auraLabel.style.display=(enhanced&&fxAura)?'':'none';
       waveEl.style.display=(enhanced&&fxAnim)?'':'none';
       fxanimEl.classList.toggle('on',fxAnim); fxpEl.classList.toggle('on',fxParticles); fxaEl.classList.toggle('on',fxAura);
       keysEl.classList.toggle('on',showKeys); glassEl.classList.toggle('on',glass); panel.classList.toggle('glass',glass);
@@ -157,10 +153,9 @@
     zoomEl.addEventListener('input', e=>{ zoom=+e.target.value; zvalEl.textContent=zoom+'%'; saveSoon(); });
     gapEl.addEventListener('input', e=>{ gap=sliderToGap(e.target.value); saveSoon(); });
     drawEl.addEventListener('input', e=>{ drawer=+e.target.value; dvalEl.textContent=e.target.value; saveSoon(); });
-    aintEl.addEventListener('input', e=>{ auraI=+e.target.value/100; avalEl.textContent=e.target.value; saveSoon(); });
     // Home/End/PageUp/PageDown natively jam a focused range input to min/max — block them so those keys
     // (used for reactive lighting / nav) don't yank a slider. Arrow keys still fine-adjust.
-    [zoomEl,gapEl,drawEl,aintEl].forEach(el=> el.addEventListener('keydown', e=>{ if(e.key==='Home'||e.key==='End'||e.key==='PageUp'||e.key==='PageDown') e.preventDefault(); }));
+    [zoomEl,gapEl,drawEl].forEach(el=> el.addEventListener('keydown', e=>{ if(e.key==='Home'||e.key==='End'||e.key==='PageUp'||e.key==='PageDown') e.preventDefault(); }));
     enhEl.addEventListener('click', ()=>{ enhanced=!enhanced; if(enhanced) fxAnim=fxParticles=fxAura=true; syncControls(); saveSoon(); });   // turning Enhanced on enables all three sub-features
     // sub-toggles: flip one feature; if that leaves all three off, Enhanced itself turns off
     function toggleFx(set){ set(); if(!(fxAnim||fxParticles||fxAura)) enhanced=false; syncControls(); saveSoon(); }
@@ -300,8 +295,7 @@
       _fctx.globalCompositeOperation='lighter';
       for(const r of RECTS){ const t=r.k*3, cr=rgb[t],cg=rgb[t+1],cb=rgb[t+2], lum=0.299*cr+0.587*cg+0.114*cb;
         if(lum<16) continue;
-        const wz=AMP*waveFn(r.u,r.v,j,tSec);
-        const p=proj((r.u-0.5)*BW0, (r.v-0.5)*BD+dz, by+wz, cx, cy);
+        const p=proj((r.u-0.5)*BW0, (r.v-0.5)*BD+dz, by, cx, cy);   // constant: aura sits at the plane, NOT wave-displaced (no breathing)
         _fctx.globalAlpha=Math.min(1, (lum/255)*AURA_GAIN*auraI);
         _fctx.fillStyle='rgb('+cr+','+cg+','+cb+')';
         _fctx.beginPath(); _fctx.arc(p[0]*GLOWS, p[1]*GLOWS, rad, 0, TAU); _fctx.fill(); any=true;
@@ -352,7 +346,7 @@
       ctx.setTransform(SS,0,0,SS,0,0);
       const FAM=getComputedStyle(document.body).fontFamily||'system-ui,sans-serif';
       const labelStr = pl => (pl.num?pl.num+' · ':'')+pl.name+(pl.off?'  (off)':'')+(pl.sys&&!lock.known?'  (press a key)':'');
-      ctx.font='600 11px '+FAM;
+      ctx.font='600 12.65px '+FAM;
       let maxLW=0; for(const pl of P0){ const w=ctx.measureText(labelStr(pl)).width; if(w>maxLW)maxLW=w; }
       // layout pass: bbox of plane backdrops at cx=cy=0
       let minX=1e9,maxX=-1e9,minY=1e9,maxY=-1e9;
@@ -419,7 +413,7 @@
       for(let k=1;k<LB.length;k++) if(LB[k].y-LB[k-1].y<MINSP) LB[k].y=LB[k-1].y+MINSP;
       if(LB.length){ const ov=LB[LB.length-1].y-(CH-8); if(ov>0) for(const L of LB) L.y-=ov;
         const tc=8-LB[0].y; if(tc>0) for(const L of LB) L.y+=tc; }
-      ctx.font='600 11px '+FAM; ctx.textAlign='right'; ctx.textBaseline='middle';
+      ctx.font='600 12.65px '+FAM; ctx.textAlign='right'; ctx.textBaseline='middle';
       for(const L of LB){ const pl=L.pl;
         ctx.fillStyle=pl.sys?'rgba(190,170,230,.95)':(pl.off?'rgba(139,148,158,.55)':'rgba(230,237,243,.92)');
         ctx.fillText(labelStr(pl), labelRight, L.y); }
