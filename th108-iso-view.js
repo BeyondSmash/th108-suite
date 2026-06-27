@@ -113,7 +113,7 @@
         '.iso-sliders{display:flex;justify-content:center;align-items:flex-end;gap:22px;flex-wrap:wrap;padding:9px 12px 2px}' +
         '.iso-sld{display:inline-flex;flex-direction:column;gap:3px;font-size:12px;color:var(--muted,#8b949e)}' +
         '.iso-sld-top{display:flex;justify-content:space-between;align-items:baseline;gap:14px}.iso-sld-top small{color:var(--fg,#e6edf3);font-size:11px}' +
-        '.iso-sld input{width:190px}' +
+        '.iso-sld input{width:190px;accent-color:var(--accent,#fa8072)}' +   // coral slider in BOTH docked + popped (popout misses the page-global input[type=range] rule)
         '.iso-gl{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--muted,#8b949e)}.iso-gl input{width:90px}' +
         '.iso-cv{display:block;width:720px;height:392px;margin:6px auto 2px;touch-action:none;cursor:grab}.iso-cv.drag{cursor:grabbing}' +
         '.iso-legend{display:flex;flex-wrap:wrap;gap:6px;padding:9px 12px 2px;border-top:1px solid var(--line,#30363d)}' +   // border = separator between the viewport and the footer (legend + readout)
@@ -482,6 +482,8 @@
       const w = window.open('','th108iso','popup,width=780,height=640');
       if(!w){ readEl.textContent='Pop-out blocked — allow popups for this page, then try again'; return; }
       popWin=w; const d=w.document; try{ d.title='Isometric View — th108'; }catch(_){} d.body.style.margin='0'; d.body.style.background='#0d1117';
+      d.body.style.font='14px/1.55 "Plus Jakarta Sans",system-ui,sans-serif';   // match the page font (the panel uses font:inherit)
+      document.querySelectorAll('link').forEach(l=>{ if(/fonts\.(googleapis|gstatic)/.test(l.href||'')) d.head.appendChild(l.cloneNode(true)); });   // load the webfont in the popped window
       const css=document.getElementById('iso-view-css'); if(css){ const c=css.cloneNode(true); c.id='iso-view-css-pop'; d.head.appendChild(c); }
       copyVars(d.documentElement); d.body.appendChild(panel); panel.classList.add('popped');
       w.addEventListener('resize',onPopResize); w.addEventListener('keydown',onDown,true); w.addEventListener('keyup',onUp,true);
