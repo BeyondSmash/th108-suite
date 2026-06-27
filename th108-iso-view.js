@@ -344,8 +344,10 @@
       // most, each one above it less. dz is a depth (+bz) offset; stepFrac = 1 at bottom → 0 at top.
       // Scale the max pull with the layer count so drawer=100 separates every adjacent plane by >1 board-depth
       // along the pull axis — i.e. they no longer overlap even in top-down view (Face-on / 90° tilt).
+      // DRAWER_CAP holds the slider's 100 to the user-preferred pull (the old value-83 distance) while it still reads 100.
+      const DRAWER_CAP = 0.83;
       const DRAW_MAX = Math.max(1,N-1) * BD * 1.3;
-      const dzOf = j => (N>1 ? (N-1-j)/(N-1) : 0) * (drawer/100) * DRAW_MAX;
+      const dzOf = j => (N>1 ? (N-1-j)/(N-1) : 0) * (drawer/100*DRAWER_CAP) * DRAW_MAX;
       // measure the widest label first so the board can sit just right of a column wide enough to never clip them
       ctx.setTransform(SS,0,0,SS,0,0);
       const FAM=getComputedStyle(document.body).fontFamily||'system-ui,sans-serif';
