@@ -516,7 +516,7 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
       <li><b style="color:var(--text)">Reactive in any app</b> — keys light up as you type, system-wide, via a small always-on background app.</li>
       <li><b style="color:var(--text)">LCD &amp; onboard</b> — upload images/GIFs to the little screen and configure the keyboard's onboard effects.</li>
     </ul>
-    <p style="margin:0;font-size:12px;color:var(--muted)">Unofficial &amp; not affiliated with Epomaker. See the <b>Docs</b> tab for a full feature guide, comparisons and legal notes.</p>
+    <p style="margin:0;font-size:12px;color:var(--muted)">Unofficial &amp; not affiliated with Epomaker. See the <a href="#docs" style="color:var(--blue,#58a6ff);font-weight:600;text-decoration:none">Docs</a> tab for a full feature guide, comparisons and legal notes.</p>
   </div>
 
   <div class="card s3" id="connectCard" data-pages="home">
@@ -1689,7 +1689,10 @@ function applyPage(p){
   moveHl();
   try{ hdrConnSync(); }catch(_){ }   // fade the header Connect out on Home (Keyboard card has its own), in elsewhere
   try{ localStorage.setItem(PAGE_KEY,p); }catch(_){ }
+  try{ if(location.hash.slice(1).toLowerCase()!==p) history.replaceState(null,'','#'+p); }catch(_){ }   // reflect the tab in the URL (deep-linkable, e.g. #docs) without adding history entries / firing hashchange
 }
+const validPages=new Set([...tabsEl.querySelectorAll('.tab')].map(t=>t.dataset.page));
+function pageFromHash(){ const h=location.hash.slice(1).toLowerCase(); return validPages.has(h)?h:''; }   // '' = no/invalid hash
 function setPage(p){
   if(p===curPage) return;
   const wasLcd=curPage==='lcd';
@@ -1699,7 +1702,8 @@ function setPage(p){
   else if(wasLcd){ try{ TH108LCD.onHide(); }catch(_){ } }
 }
 tabsEl.querySelectorAll('.tab').forEach(t=>t.addEventListener('click',()=>setPage(t.dataset.page)));
-applyPage(localStorage.getItem(PAGE_KEY)||'home');
+window.addEventListener('hashchange',()=>{ const p=pageFromHash(); if(p) setPage(p); });   // deep links / in-page #docs anchors switch tabs
+applyPage(pageFromHash() || localStorage.getItem(PAGE_KEY) || 'home');   // a #hash in the URL wins on load
 if(curPage==='lcd'){ try{ TH108LCD.onShow(); }catch(_){ } }   // restored straight onto the LCD tab
 window.addEventListener('resize',moveHl);
 if(document.fonts && document.fonts.ready) document.fonts.ready.then(moveHl);   // tab widths shift once the webfonts land
