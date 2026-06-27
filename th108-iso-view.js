@@ -277,36 +277,56 @@
         ctx.fillStyle=cs+a+')'; ctx.beginPath(); ctx.arc(pp[0],pp[1],r,0,TAU); ctx.fill(); }   // bright core
       ctx.globalCompositeOperation='source-over';
     }
-    // ===== AURA: a KEY-AWARE glow — a blurred projection of each layer's actually-lit keys =====
-    // Each plane emits a glow from its OWN lit keys (per-key colour × brightness), rising into the gap just above
-    // it. We stamp every lit key as a soft blob into a LOW-RES offscreen at the key's wave-displaced position, then
-    // upscale it onto the scene — the bilinear blur fuses the blobs into a cohesive cloud that HUGS the lit keys and
-    // is dim/absent where keys are dark or carved (so a lone Esc no longer paints a board-wide wash, and a single
-    // System LED gets its own glow). Drawn AFTER the plane's keys and BEFORE the next plane up → the layer above
-    // occludes it (depth); the undulation comes free because the blob rides the same waveFn the keys do.
+    // ===== AURA: rising textured wisps projected from each layer's lit keys (gobo / spotlight style) =====
+    // Per plane: (1) stamp its lit keys as soft COLOUR blobs into a footprint buffer; (2) smear that footprint
+    // UPWARD along the board-height axis with a fade → a colour column rising off the keys; (3) MULTIPLY by a slowly
+    // UV-scrolling aura texture so the column breaks into organic rising filaments (the reference look). Key-aware:
+    // no lit keys → no aura; dark/carved keys emit nothing. Drawn after the plane's keys + before the next plane up
+    // → the layer above occludes it (depth). The column rides the same waveFn the keys do, so it still ripples.
+    const auraTex=new Image(); let texReady=false; auraTex.onload=()=>{texReady=true;}; auraTex.src='iso-aura-tex.png';
     const _glow=document.createElement('canvas'), _gctx=_glow.getContext('2d');
-    const GLOWS=0.30;     // offscreen render scale — the upscale blur turns the per-key blobs into soft glow
-    const AURA_GAIN=3.2;   // maps auraI (slider/100) → per-key blob alpha; tuned so the baked value of ~6 stays subtle (blobs overlap + accumulate, so this stays low)
+    const _foot=document.createElement('canvas'), _fctx=_foot.getContext('2d');
+    const GLOWS=0.30;       // offscreen render scale (extra blur on upscale)
+    const AURA_GAIN=3.5;    // auraI(slider/100) → footprint alpha; low because the upward smear + texture accumulate
+    const RISE_K=12;        // smear copies = vertical resolution of the rising column
     function drawPlaneGlow(j, rgb, tSec, cx, cy, AMP, by, dz){
       if(auraI<=0 || !_planes[j] || !rgb) return;
       const gw=Math.max(2,Math.round(CW*GLOWS)), gh=Math.max(2,Math.round(CH*GLOWS));
-      if(_glow.width!==gw) _glow.width=gw; if(_glow.height!==gh) _glow.height=gh;
+      if(_glow.width!==gw){ _glow.width=gw; _foot.width=gw; } if(_glow.height!==gh){ _glow.height=gh; _foot.height=gh; }
+      _fctx.setTransform(1,0,0,1,0,0); _fctx.globalAlpha=1; _fctx.globalCompositeOperation='source-over'; _fctx.clearRect(0,0,gw,gh);
       _gctx.setTransform(1,0,0,1,0,0); _gctx.globalAlpha=1; _gctx.globalCompositeOperation='source-over'; _gctx.clearRect(0,0,gw,gh);
-      const riseY=by + gap*0.5;                              // sit in the gap just above this plane (light rising off the keys)
-      const rad=Math.max(2.5, _planes[j].hw*GLOWS*0.16);     // per-key blob radius in glow space (neighbours overlap → cohesive)
-      let any=false;
-      _gctx.globalCompositeOperation='lighter';
+      // (1) footprint: lit-key soft colour blobs at the plane (base of the rise)
+      const rad=Math.max(2.5, _planes[j].hw*GLOWS*0.14); let any=false;
+      _fctx.globalCompositeOperation='lighter';
       for(const r of RECTS){ const t=r.k*3, cr=rgb[t],cg=rgb[t+1],cb=rgb[t+2], lum=0.299*cr+0.587*cg+0.114*cb;
-        if(lum<16) continue;                                 // dark / carved key → emits no aura
+        if(lum<16) continue;
         const wz=AMP*waveFn(r.u,r.v,j,tSec);
-        const p=proj((r.u-0.5)*BW0, (r.v-0.5)*BD+dz, riseY+wz, cx, cy);
-        _gctx.globalAlpha=Math.min(1, (lum/255)*AURA_GAIN*auraI);
-        _gctx.fillStyle='rgb('+cr+','+cg+','+cb+')';
-        _gctx.beginPath(); _gctx.arc(p[0]*GLOWS, p[1]*GLOWS, rad, 0, TAU); _gctx.fill(); any=true;
+        const p=proj((r.u-0.5)*BW0, (r.v-0.5)*BD+dz, by+wz, cx, cy);
+        _fctx.globalAlpha=Math.min(1, (lum/255)*AURA_GAIN*auraI);
+        _fctx.fillStyle='rgb('+cr+','+cg+','+cb+')';
+        _fctx.beginPath(); _fctx.arc(p[0]*GLOWS, p[1]*GLOWS, rad, 0, TAU); _fctx.fill(); any=true;
       }
-      _gctx.globalAlpha=1; _gctx.globalCompositeOperation='source-over';
-      if(!any) return;                                       // nothing lit on this layer → nothing to composite
-      // upscale the whole low-res buffer onto the scene → bilinear blur fuses the per-key blobs into soft glow
+      _fctx.globalAlpha=1; _fctx.globalCompositeOperation='source-over';
+      if(!any) return;
+      // (2) smear the footprint UP the board-height axis (one gap of rise), fading → a colour column rising off the keys
+      const o0=proj(0,0,by,cx,cy), o1=proj(0,0,by+1,cx,cy);
+      const sx=(o1[0]-o0[0])*gap*0.95/RISE_K*GLOWS, sy=(o1[1]-o0[1])*gap*0.95/RISE_K*GLOWS;
+      _gctx.globalCompositeOperation='lighter';
+      for(let k=0;k<RISE_K;k++){ _gctx.globalAlpha=Math.pow(1-k/RISE_K, 1.3); _gctx.drawImage(_foot, sx*k, sy*k); }
+      _gctx.globalAlpha=1;
+      // (3) carve the column into rising filaments with the UV-scrolling aura texture (scrolls upward → wisps rise).
+      // multiply bleeds the texture into the EMPTY areas too (transparent backdrop → raw source), so copy the column
+      // out as a shape mask first, then re-mask with destination-in to clip the texture back to the column.
+      if(texReady){
+        _fctx.globalCompositeOperation='source-over'; _fctx.globalAlpha=1; _fctx.clearRect(0,0,gw,gh); _fctx.drawImage(_glow,0,0);
+        _gctx.globalCompositeOperation='multiply'; _gctx.globalAlpha=0.9;
+        const TH=gh*1.7, scroll=((tSec*0.16)%1)*TH;   // two stacked copies → seamless vertical wrap
+        _gctx.drawImage(auraTex, 0, -scroll, gw, TH);
+        _gctx.drawImage(auraTex, 0, TH-scroll, gw, TH);
+        _gctx.globalCompositeOperation='destination-in'; _gctx.globalAlpha=1; _gctx.drawImage(_foot,0,0);   // clip texture back to the column shape
+        _gctx.globalCompositeOperation='source-over';
+      }
+      // (4) composite the rising aura onto the scene (bilinear upscale = extra softening)
       ctx.setTransform(SS,0,0,SS,0,0); ctx.imageSmoothingEnabled=true; ctx.globalCompositeOperation='lighter';
       ctx.drawImage(_glow, 0,0,gw,gh, 0,0,CW,CH);
       ctx.globalCompositeOperation='source-over';
