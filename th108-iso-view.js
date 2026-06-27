@@ -35,6 +35,7 @@
     const DEF_YAW = 35*D2R, DEF_PITCH = 20*D2R, DEF_ZOOM = 100, DEF_GAP = 47, DEF_DRAWER = 20;   // default view (DEF_GAP 47 = Gap slider 80); reused by Reset Orientation
     let yaw = DEF_YAW, pitch = DEF_PITCH, zoom = DEF_ZOOM, gap = DEF_GAP, drawer = DEF_DRAWER, enhanced = false, focusIdx = null, auraI = 0.0075, faceOn = false, showKeys = true, partSize = 0.55, glass = false, waveStyle = 'ripple';   // auraI baked (slider removed); 0.0075 = old slider value 0.75
     let fxAnim = true, fxParticles = true, fxAura = true;   // Enhanced sub-toggles; all off ⇒ Enhanced off
+    let glassAmt = 55;   // glassiness 0-100 (blur + translucency); 55 ≈ the original 22px-blur look
     let ctrlDown = false, ctrlGuide = 0;   // ctrlDown = Ctrl held; ctrlGuide = eased alpha of the Ctrl-drag corner overlay
     const waveFreqs = { ripple:0.8, waveX:1.3 };   // baked frequency per wave style
     const ISO_PITCH = DEF_PITCH, FACE_PITCH = 89*D2R;   // isometric resting tilt (= default) vs front-flat (top-down)
@@ -62,6 +63,7 @@
         '<span class="iso-sld" title="Zoom — scale the view (100% is centred)"><span class="iso-sld-top"><span>Zoom</span><small class="iso-zval">100%</small></span><input type="range" class="iso-zoom" min="0" max="100" value="50"></span>' +
         '<span class="iso-sld" title="Gap — spacing between the layers"><span class="iso-sld-top"><span>Gap</span><small class="iso-gval">80</small></span><input type="range" class="iso-gapr" min="0" max="100" value="80"></span>' +
         '<span class="iso-sld" title="Drawer — pull the layers out like a dresser (bottom out the most, each one above it less)"><span class="iso-sld-top"><span>Drawer</span><small class="iso-dval">20</small></span><input type="range" class="iso-draw" min="0" max="100" value="20"></span>' +
+        '<span class="iso-sld iso-glass-sld" style="display:none" title="Glassiness — blur + translucency of the window (only while Glass is on)"><span class="iso-sld-top"><span>Glass</span><small class="iso-glval">55</small></span><input type="range" class="iso-glassr" min="0" max="100" value="55"></span>' +
       '</div>' +
       '<div class="iso-ctl">' +   // row 2: buttons
         '<button type="button" class="iso-back" hidden>‹ Back</button>' +
@@ -96,7 +98,7 @@
         'background:none;border:0;color:var(--muted,#8b949e);font-size:13px;line-height:1;cursor:pointer;padding:0;margin:0}' +
         '.iso-x:hover{color:var(--fg,#e6edf3);background:rgba(255,255,255,.06)}' +
         '.iso-panel.popped{position:static;left:0;top:0;transform:none;width:100%;height:100vh;border:0;border-radius:0;box-shadow:none;display:flex;flex-direction:column}' +
-        '.iso-panel.popped .iso-head{cursor:default}.iso-panel.popped .iso-grip{display:none}' +
+        '.iso-panel.popped .iso-head{cursor:default}.iso-panel.popped .iso-grip{display:none}.iso-panel.popped .iso-x{display:none}' +   // popped: the OS window X is present → the in-UI X is redundant
         '.iso-panel.popped .iso-cv{flex:1 1 auto;width:100%;height:auto;min-height:120px;margin:6px 0 2px}' +
         '.iso-ctl{display:flex;justify-content:center;align-items:center;gap:10px;flex-wrap:wrap;padding:4px 12px 9px;border-bottom:1px solid var(--line,#30363d)}' +   // border = separator between the controls (header) and the viewport
         // modern buttons: soft rounded pills, subtle fill, smooth hover, glowing active state (shared by header + control bar)
@@ -123,7 +125,7 @@
         '.iso-chip .pw{width:13px;height:13px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:9px;' +
         'box-shadow:inset 0 0 0 1px var(--muted,#8b949e)}.iso-chip.on .pw{background:#3fb950;box-shadow:none;color:#0d1117}' +
         '.iso-foot{padding:4px 12px 11px;font-size:11px;color:var(--muted,#8b949e);line-height:1.45}.iso-read{color:var(--fg,#e6edf3)}' +
-        '.iso-panel.glass{background:rgba(20,25,33,.45);backdrop-filter:blur(22px) saturate(1.6);-webkit-backdrop-filter:blur(22px) saturate(1.6);' +
+        '.iso-panel.glass{background:rgba(20,25,33,var(--glass-a,.45));backdrop-filter:blur(var(--glass-b,22px)) saturate(1.6);-webkit-backdrop-filter:blur(var(--glass-b,22px)) saturate(1.6);' +
         'border-color:rgba(255,255,255,.16);box-shadow:0 18px 50px rgba(0,0,0,.5),inset 0 1px 0 rgba(255,255,255,.22),inset 0 0 0 1px rgba(255,255,255,.05)}' +
         '.iso-panel.glass .iso-head{border-bottom-color:rgba(255,255,255,.12)}';
       document.head.appendChild(st);
@@ -137,17 +139,18 @@
     sizeCanvas(DEF_W, DEF_H);
     const $ = s => panel.querySelector(s);
     const zoomEl=$('.iso-zoom'), zvalEl=$('.iso-zval'), gapEl=$('.iso-gapr'), gvalEl=$('.iso-gval'), drawEl=$('.iso-draw'), dvalEl=$('.iso-dval'), enhEl=$('.iso-enh'),
-          fxanimEl=$('.iso-fxanim'), fxpEl=$('.iso-fxp'), fxaEl=$('.iso-fxa'), keysEl=$('.iso-keys'),
+          fxanimEl=$('.iso-fxanim'), fxpEl=$('.iso-fxp'), fxaEl=$('.iso-fxa'), glassrEl=$('.iso-glassr'), glvalEl=$('.iso-glval'), keysEl=$('.iso-keys'),
           glassEl=$('.iso-glass'), waveEl=$('.iso-wave'),
           backEl=$('.iso-back'), faceEl=$('.iso-face'), lockEl=$('.iso-lock'), legendEl=$('.iso-legend'), readEl=$('.iso-read');
     // ---- persistence: remember the view settings between sessions ----
     const SKEY='th108_iso_view';
-    function saveSettings(){ try{ localStorage.setItem(SKEY, JSON.stringify({yaw,pitch,zoom,gap,drawer,enhanced,fxAnim,fxParticles,fxAura,glass,showKeys,faceOn,waveStyle})); }catch(_){ } }
+    function saveSettings(){ try{ localStorage.setItem(SKEY, JSON.stringify({yaw,pitch,zoom,gap,drawer,enhanced,fxAnim,fxParticles,fxAura,glass,glassAmt,showKeys,faceOn,waveStyle})); }catch(_){ } }
     let _saveT=0; function saveSoon(){ clearTimeout(_saveT); _saveT=setTimeout(saveSettings, 350); }
     function loadSettings(){ let s; try{ s=JSON.parse(localStorage.getItem(SKEY)); }catch(_){ } if(!s||typeof s!=='object') return;
       if(typeof s.yaw==='number') yaw=s.yaw; if(typeof s.pitch==='number') pitch=s.pitch;
       if(typeof s.zoom==='number') zoom=s.zoom; if(typeof s.gap==='number') gap=Math.min(55,Math.max(14,s.gap));   // clamp to the slider range
       if(typeof s.drawer==='number') drawer=Math.min(100,Math.max(0,s.drawer));
+      if(typeof s.glassAmt==='number') glassAmt=Math.min(100,Math.max(0,s.glassAmt));
       enhanced=!!s.enhanced; glass=!!s.glass; showKeys=s.showKeys!==false; faceOn=!!s.faceOn; if(s.waveStyle==='ripple'||s.waveStyle==='waveX') waveStyle=s.waveStyle;
       if(typeof s.fxAnim==='boolean') fxAnim=s.fxAnim; if(typeof s.fxParticles==='boolean') fxParticles=s.fxParticles; if(typeof s.fxAura==='boolean') fxAura=s.fxAura;
       if(enhanced && !(fxAnim||fxParticles||fxAura)){ fxAnim=fxParticles=fxAura=true; } }   // never "Enhanced on" with all three sub-features off
@@ -158,10 +161,16 @@
       // each sub-feature's extra widget gates on its own flag too: the Aura slider only with Aura on, the wave dropdown only with Animation on
       waveEl.style.display=(enhanced&&fxAnim)?'':'none';
       fxanimEl.classList.toggle('on',fxAnim); fxpEl.classList.toggle('on',fxParticles); fxaEl.classList.toggle('on',fxAura);
-      keysEl.classList.toggle('on',showKeys); glassEl.classList.toggle('on',glass); panel.classList.toggle('glass',glass);
+      glassrEl.value=glassAmt; glvalEl.textContent=glassAmt; $('.iso-glass-sld').style.display=glass?'':'none';   // glass slider only while Glass is on
+      keysEl.classList.toggle('on',showKeys); glassEl.classList.toggle('on',glass); applyGlass();
       faceEl.classList.toggle('on',faceOn); lockEl.hidden=!faceOn; }
+    // glassiness → CSS vars consumed by .iso-panel.glass (docked: real blur of the page behind; popped: a painted sheen in draw())
+    function applyGlass(){ panel.classList.toggle('glass',glass);
+      panel.style.setProperty('--glass-b', Math.round(glassAmt/100*40)+'px');
+      panel.style.setProperty('--glass-a', (0.18 + glassAmt/100*0.42).toFixed(3)); }
     keysEl.addEventListener('click', ()=>{ showKeys=!showKeys; keysEl.classList.toggle('on',showKeys); saveSoon(); });
-    glassEl.addEventListener('click', ()=>{ glass=!glass; glassEl.classList.toggle('on',glass); panel.classList.toggle('glass',glass); saveSoon(); });   // frosted-glass window: page shows through (draw() clears the canvas instead of dark-filling)
+    glassEl.addEventListener('click', ()=>{ glass=!glass; glassEl.classList.toggle('on',glass); $('.iso-glass-sld').style.display=glass?'':'none'; applyGlass(); saveSoon(); });   // frosted-glass window
+    glassrEl.addEventListener('input', e=>{ glassAmt=+e.target.value; glvalEl.textContent=e.target.value; applyGlass(); saveSoon(); });
     waveEl.addEventListener('change', e=>{ waveStyle=e.target.value; saveSoon(); });
     // keys must NOT interact with the iso UI (Enter was re-toggling the focused Face-on button) — blur any control
     // after a click so it never holds keyboard focus. Reactive still reacts (that's a window-level key listener).
@@ -175,7 +184,7 @@
     drawEl.addEventListener('input', e=>{ drawer=+e.target.value; dvalEl.textContent=e.target.value; saveSoon(); });
     // Home/End/PageUp/PageDown natively jam a focused range input to min/max — block them so those keys
     // (used for reactive lighting / nav) don't yank a slider. Arrow keys still fine-adjust.
-    [zoomEl,gapEl,drawEl].forEach(el=> el.addEventListener('keydown', e=>{ if(e.key==='Home'||e.key==='End'||e.key==='PageUp'||e.key==='PageDown') e.preventDefault(); }));
+    [zoomEl,gapEl,drawEl,glassrEl].forEach(el=> el.addEventListener('keydown', e=>{ if(e.key==='Home'||e.key==='End'||e.key==='PageUp'||e.key==='PageDown') e.preventDefault(); }));
     enhEl.addEventListener('click', ()=>{ enhanced=!enhanced; if(enhanced) fxAnim=fxParticles=fxAura=true; syncControls(); saveSoon(); });   // turning Enhanced on enables all three sub-features
     // sub-toggles: flip one feature; if that leaves all three off, Enhanced itself turns off
     function toggleFx(set){ set(); if(!(fxAnim||fxParticles||fxAura)) enhanced=false; syncControls(); saveSoon(); }
@@ -383,9 +392,10 @@
 
       if(glass){
         if(panel.classList.contains('popped')){   // a pop-out window has NO page behind it to see through (backdrop-filter can't reach the desktop) → paint a frosted dark-glass sheen so Glass still reads
-          ctx.fillStyle='#12161d'; ctx.fillRect(0,0,CW,CH);
+          const gl=glassAmt/100;   // more glass → lighter/frostier base + stronger sheen, to approximate the docked translucency
+          ctx.fillStyle='rgb('+Math.round(13+gl*15)+','+Math.round(17+gl*17)+','+Math.round(24+gl*22)+')'; ctx.fillRect(0,0,CW,CH);
           const gg=ctx.createLinearGradient(0,0,0,CH);
-          gg.addColorStop(0,'rgba(130,150,185,0.12)'); gg.addColorStop(0.4,'rgba(70,85,110,0.03)'); gg.addColorStop(1,'rgba(0,0,0,0.12)');
+          gg.addColorStop(0,'rgba(150,170,205,'+(0.05+gl*0.16).toFixed(3)+')'); gg.addColorStop(0.4,'rgba(70,85,110,0.03)'); gg.addColorStop(1,'rgba(0,0,0,0.12)');
           ctx.fillStyle=gg; ctx.fillRect(0,0,CW,CH);
         } else ctx.clearRect(0,0,CW,CH);   // docked: transparent canvas → the frosted panel shows the page through it
       } else { ctx.fillStyle='#0d1117'; ctx.fillRect(0,0,CW,CH); }
@@ -481,13 +491,14 @@
       // (Document PiP is always-on-top with no taskbar entry and no min/max chrome, so it can't do this).
       const w = window.open('','th108iso','popup,width=780,height=640');
       if(!w){ readEl.textContent='Pop-out blocked — allow popups for this page, then try again'; return; }
-      popWin=w; const d=w.document; try{ d.title='Isometric View — th108'; }catch(_){} d.body.style.margin='0'; d.body.style.background='#0d1117';
+      popWin=w; const d=w.document; try{ d.title='Isometric View — th108'; d.body.replaceChildren(); d.head.querySelectorAll('#iso-view-css-pop').forEach(e=>e.remove()); }catch(_){}   // window.open reuses the named window → wipe any stale content so panels can't accumulate
+      d.body.style.margin='0'; d.body.style.background='#0d1117';
       d.body.style.font='14px/1.55 "Plus Jakarta Sans",system-ui,sans-serif';   // match the page font (the panel uses font:inherit)
       document.querySelectorAll('link').forEach(l=>{ if(/fonts\.(googleapis|gstatic)/.test(l.href||'')) d.head.appendChild(l.cloneNode(true)); });   // load the webfont in the popped window
       const css=document.getElementById('iso-view-css'); if(css){ const c=css.cloneNode(true); c.id='iso-view-css-pop'; d.head.appendChild(c); }
       copyVars(d.documentElement); d.body.appendChild(panel); panel.classList.add('popped');
       w.addEventListener('resize',onPopResize); w.addEventListener('keydown',onDown,true); w.addEventListener('keyup',onUp,true);
-      w.addEventListener('pagehide',popIn);
+      w.addEventListener('pagehide',onPopHide);   // closing the OS window CLOSES the whole view (Pop-in button re-docks instead)
       popEl.hidden=true; popinEl.hidden=false; rsEl.hidden=false;
       if(raf){ try{ rafWin.cancelAnimationFrame(raf); }catch(_){} raf=0; } schedule();   // drive from the child window (focused → not rAF-throttled)
       w.requestAnimationFrame(fitPop);
@@ -500,6 +511,9 @@
       try{ w.close(); }catch(_){}
       raf=0; if(!panel.hidden) schedule();   // child rAF is dead; reschedule on the parent
     }
+    // OS window closed (its X / Ctrl-W): popWin is still set here (the Pop-in BUTTON nulls it before w.close(),
+    // so that path no-ops) → close the whole iso view. close() re-parents the panel back to the page first.
+    function onPopHide(){ if(popWin) close(); }
     function resetSize(){ if(!popWin) return; try{ popWin.resizeTo(780,640); popWin.moveTo(Math.max(0,(popWin.screen.availWidth-780)/2), Math.max(0,(popWin.screen.availHeight-640)/2)); }catch(_){} onPopResize(); }   // restore + recenter to the default size (use the OS restore button to un-maximize)
     popEl.addEventListener('click',popOut); popinEl.addEventListener('click',popIn); rsEl.addEventListener('click',resetSize);
 
