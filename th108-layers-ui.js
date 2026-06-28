@@ -306,7 +306,7 @@
           c('.s-showkb').textContent='⌨ Hide Keyboard'; updCount();
           // the board mounts ABOVE this card (pushing it down) — smooth-scroll the page to follow it into view.
           // rAF so the insert's reflow (and any Fill-mode masonry repack) settles before the scroll targets it.
-          requestAnimationFrame(()=>{ try{ wrap.scrollIntoView({behavior:'smooth', block:'center'}); }catch(_){ try{ wrap.scrollIntoView(); }catch(__){ } } });
+          requestAnimationFrame(()=>{ try{ wrap.scrollIntoView({behavior:'smooth', block:'start'}); }catch(_){ try{ wrap.scrollIntoView(); }catch(__){ } } });   // keyboard at the TOP (below the sticky header via scroll-margin) so the layer card stays visible below it
         }
         function unmountBoard(){ if(!pb) return;
           const before=window.scrollY, r=wrap.getBoundingClientRect();
@@ -688,7 +688,7 @@
             peekBtn.textContent='Hide'; };
           const hideDup=()=>{ if(dup.parentNode) dup.parentNode.removeChild(dup); peekBtn.textContent='Show'; };
           const fadePill=(on)=>{ peek.style.opacity=on?'1':'0'; peek.style.pointerEvents=on?'auto':'none'; pillVisible=on; };   // 250ms via the CSS transition
-          peekBtn.addEventListener('click',()=>{ if(dup.parentNode) hideDup(); else showDup(); });
+          peekBtn.addEventListener('click',()=>{ try{ liveWrap.scrollIntoView({behavior:'smooth', block:'center'}); }catch(_){ } });   // jump to the real inline live preview (replaces the floating duplicate, which overlapped neighbors in Fill mode); arriving there auto-hides the pill
           const nowEl=c('.s-srcNow'); let _lastNow=null;
           function frame(now){
             if(!document.body.contains(cvL||cvS)){ [peek,dup].forEach(e=>{ if(e.parentNode) e.parentNode.removeChild(e); }); return; }   // card rebuilt/removed → stop + clean

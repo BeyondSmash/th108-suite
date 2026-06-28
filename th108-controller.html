@@ -473,7 +473,7 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
   body .lcd-tool #lcdPreview,body .lcd-tool #lcdPreviewActual{ border:1px solid var(--border); border-radius:8px; }
   body .lcd-tool .lcd-log{ background:#010409; border:1px solid transparent; border-radius:12px; }
   body .lcd-tool select{ background:var(--inset) !important; color:var(--text) !important; border:1px solid var(--border) !important; }   /* the module sets dark colors inline — !important is the only override */
-    .pb-wrap{ grid-column:1/-1; margin:8px 0; padding:10px; background:var(--inset,#0d1117); border:1px solid var(--line,#30363d); border-radius:12px; user-select:none; -webkit-user-select:none; }
+    .pb-wrap{ grid-column:1/-1; margin:8px 0; padding:10px; background:var(--inset,#0d1117); border:1px solid var(--line,#30363d); border-radius:12px; user-select:none; -webkit-user-select:none; scroll-margin-top:72px; }   /* scroll-margin so 'scroll to top' lands the keyboard just below the sticky header */
     .pb-canvas{ width:100%; height:auto; border-radius:6px; cursor:crosshair; display:block; }
     .pb-wrap.pb-compact .pb-canvas{ max-width:880px; }
     .pb-wrap.pb-large .pb-canvas{ max-width:none; }
