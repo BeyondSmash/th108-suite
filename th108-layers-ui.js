@@ -392,6 +392,9 @@
         if(!Array.isArray(s.frames)) s.frames=[];
         const MAXF=30, MAXDIM=240, NLED=E.NLED, INDICES=E.INDICES, TR=E.BOARDW/E.BOARDH;   // cap frames for /config; source decoded ≤MAXDIM px
         if(s.spd==null) s.spd=100; if(s.zoom==null) s.zoom=100; if(s.panX==null) s.panX=0; if(s.panY==null) s.panY=0; if(s.rot==null) s.rot=0;
+        if(s.map===undefined) s.map='physical'; if(s.sampleMode===undefined) s.sampleMode='average'; if(s.bars===undefined) s.bars='black'; if(s.barColor===undefined) s.barColor='#000000';
+        const SAMPLES=[['average','Average (area)'],['center','Center pixel'],['gaussian','Gaussian (center-weighted)'],['vivid','Most vivid pixel'],['bright','Brightest pixel (text/logos)'],['dominant','Dominant color'],['standout','Standout (max contrast)']];
+        const optList=(arr,sel)=>arr.map(o=>'<option value="'+o[0]+'"'+(o[0]===sel?' selected':'')+'>'+o[1]+'</option>').join('');
         const esc=t=>(t||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');
         const infoTxt=()=> s.frames.length ? (esc(s.mediaName||'clip')+' · '+s.frames.length+' frames') : 'no clip loaded';
         const av=k=>(s[k]==null?100:s[k]);   // Brightness/Saturation/Contrast/Gamma + Freeze live in the shared Adjust block below (engine.applyAdjust)
@@ -407,6 +410,10 @@
           row('Zoom','<input type="range" class="s-mzoom" min="20" max="500" value="'+s.zoom+'"><span class="val s-mzoomV"></span>')+
           row('Rotate','<input type="range" class="s-mrot" min="0" max="360" value="'+s.rot+'"><span class="val s-mrotV"></span>')+
           full('<button type="button" class="s-mframeReset" style="flex:none">Reset framing</button><span class="val" style="opacity:.5;font-size:11px">drag the preview above to pan; zoom/rotate to frame which part of the clip maps onto the keys</span>')+
+          sub('Sampling')+
+          row('Map','<select class="s-mmap"><option value="physical"'+(s.map==='physical'?' selected':'')+'>Physical</option><option value="grid"'+(s.map==='grid'?' selected':'')+'>Grid (uniform)</option></select><span class="val" style="opacity:.5;font-size:11px">Physical = real key positions · Grid = even cells (best for text/pixel art)</span>')+
+          row('Sample','<select class="s-msample">'+optList(SAMPLES,s.sampleMode)+'</select><span></span>')+
+          row('Out-of-frame','<select class="s-mbars"><option value="black"'+(s.bars==='black'?' selected':'')+'>Black</option><option value="sampled"'+(s.bars==='sampled'?' selected':'')+'>Sampled (edge)</option><option value="custom"'+(s.bars==='custom'?' selected':'')+'>Custom…</option></select>'+(s.bars==='custom'?'<input type="color" class="s-mbarcol" value="'+(s.barColor||'#000000')+'" style="width:34px;height:26px;margin-left:6px">':'<span></span>'))+
           row('Speed','<input type="range" class="s-mspd" min="10" max="400" value="'+s.spd+'"><span class="val s-mspdV"></span>')+
           full('<div style="display:flex;align-items:center;justify-content:center;gap:10px;flex-wrap:wrap;flex:1 1 100%"><span style="color:var(--muted);font-size:12px">Color preset</span><button type="button" class="s-mvivid" style="flex:none" title="LED match: sat 170% / gamma 1.8 — reads as vividly on the keys as on screen (sets the Adjust block below)">✨ Vivid</button><button type="button" class="s-mraw" style="flex:none" title="Untouched / raw sRGB (sat 100%, gamma 1.0)">Raw</button><span class="val" style="opacity:.5;font-size:11px;width:100%;text-align:center">presets for the Adjust block below</span></div>')+
           sub('Motion')+
@@ -420,24 +427,37 @@
         async function decodeSource(file){
           const out=[], tmp=document.createElement('canvas'), tx=tmp.getContext('2d',{willReadFrequently:true});
           const draw=(src,vw,vh,delay)=>{ const sc=Math.min(1,MAXDIM/Math.max(vw,vh)), w=Math.max(1,Math.round(vw*sc)), h=Math.max(1,Math.round(vh*sc));
-            tmp.width=w; tmp.height=h; tx.clearRect(0,0,w,h); tx.drawImage(src,0,0,w,h); out.push({img:tx.getImageData(0,0,w,h), w, h, d:Math.max(20,delay|0)}); };
+            tmp.width=w; tmp.height=h; tx.clearRect(0,0,w,h); tx.drawImage(src,0,0,w,h); const id=tx.getImageData(0,0,w,h); out.push({img:id, w, h, d:Math.max(20,delay|0), edge:edgeAvg(id.data,w,h)}); };
           if(window.ImageDecoder){ const dec=new ImageDecoder({data:await file.arrayBuffer(), type:file.type||'image/gif'}); await dec.tracks.ready; const trk=dec.tracks.selectedTrack;
             for(let i=0;i<5000;i++){ let res; try{ res=await dec.decode({frameIndex:i}); }catch(e){ break; } const vf=res.image, w=vf.displayWidth||vf.codedWidth, h=vf.displayHeight||vf.codedHeight; draw(vf,w,h, vf.duration?vf.duration/1000:100); if(vf.close)vf.close(); if(trk.frameCount && i>=trk.frameCount-1) break; if(i>=300) break; } }
           if(!out.length){ const bmp=await createImageBitmap(file); draw(bmp,bmp.width,bmp.height,100); bmp.close&&bmp.close(); }
           if(out.length>MAXF){ const s2=[], step=out.length/MAXF; for(let k=0;k<MAXF;k++){ const a=Math.floor(k*step), b2=Math.floor((k+1)*step); let d=0; for(let i=a;i<Math.max(b2,a+1);i++) d+=out[i].d; s2.push({img:out[a].img, w:out[a].w, h:out[a].h, d}); } return s2; }   // thin frame COUNT, preserve duration
           return out;
         }
-        // sample one source frame onto the keys via the current framing (cover + zoom/pan/rotate), 5x5 area-average
+        // border-pixel average of an RGBA buffer → the "sampled" out-of-frame fill color
+        function edgeAvg(D,dw,dh){ let er=0,eg=0,eb=0,en=0; const rw=y=>{ for(let x=0;x<dw;x++){ const o=(y*dw+x)*4; er+=D[o];eg+=D[o+1];eb+=D[o+2];en++; } }; const cw=x=>{ for(let y=0;y<dh;y++){ const o=(y*dw+x)*4; er+=D[o];eg+=D[o+1];eb+=D[o+2];en++; } }; rw(0);rw(dh-1);cw(0);cw(dw-1); return [er/en|0,eg/en|0,eb/en|0]; }
+        const cellFor=idx=>{ if(s.map==='grid'){ const G=E.GRID[idx]; if(G) return [(G[0]+0.5)/E.GW,(G[1]+0.5)/E.GH,1/E.GW,1/E.GH]; } return E.keyCell(idx); };   // grid = even cells (text/pixel art) · physical = real key positions
+        function barFill(edge){ const m=s.bars||'black'; if(m==='custom'){ const h=s.barColor||'#000000'; return [parseInt(h.substr(1,2),16),parseInt(h.substr(3,2),16),parseInt(h.substr(5,2),16)]; } if(m==='sampled') return edge||[0,0,0]; return [0,0,0]; }
+        // sample one source frame onto the keys via the current framing (cover + zoom/pan/rotate) + sample strategy
         function sampleFrame(fr){
           const data=fr.img.data, SW=fr.w, SH=fr.h, cr=E.computeCrop(SW,SH,TR,(s.zoom||100)/100,s.panX||0,s.panY||0); s.panX=cr.panX; s.panY=cr.panY;
+          const mode=s.sampleMode||'average', N=mode==='center'?0:4, bc=barFill(fr.edge);
           const rot=((s.rot||0))*Math.PI/180, cs=Math.cos(rot), sn=Math.sin(rot), ccx=cr.cx+cr.cw/2, ccy=cr.cy+cr.ch/2, rgb=new Array(INDICES.length*3);
-          for(let k=0;k<INDICES.length;k++){ const cl=E.keyCell(INDICES[k]), t=k*3; if(!cl){ rgb[t]=rgb[t+1]=rgb[t+2]=0; continue; }
+          for(let k=0;k<INDICES.length;k++){ const cl=cellFor(INDICES[k]), t=k*3; if(!cl){ rgb[t]=rgb[t+1]=rgb[t+2]=0; continue; }
             const sx=cr.cx+(cl[0]-cl[2]/2)*cr.cw, sy=cr.cy+(cl[1]-cl[3]/2)*cr.ch, sw=cl[2]*cr.cw, sh=cl[3]*cr.ch;
-            let r=0,g=0,b=0,nn=0;
-            for(let iy=0;iy<=4;iy++)for(let ix=0;ix<=4;ix++){ let fx=sx+sw*(ix/4), fy=sy+sh*(iy/4);
+            const SR=[],SG=[],SB=[],SU=[],SV=[];
+            for(let iy=0;iy<=N;iy++)for(let ix=0;ix<=N;ix++){ const u=N?ix/N:0.5, v=N?iy/N:0.5; let fx=sx+sw*u, fy=sy+sh*v;
               if(rot){ const dx=fx-ccx,dy=fy-ccy; fx=ccx+dx*cs+dy*sn; fy=ccy-dx*sn+dy*cs; }
-              if(fx<0||fy<0||fx>=SW||fy>=SH) continue; const o=((fy|0)*SW+(fx|0))*4; r+=data[o]; g+=data[o+1]; b+=data[o+2]; nn++; }
-            if(!nn){ rgb[t]=rgb[t+1]=rgb[t+2]=0; } else { rgb[t]=r/nn|0; rgb[t+1]=g/nn|0; rgb[t+2]=b/nn|0; }   // outside the source -> black (Phase 2: Bars fill)
+              if(fx<0||fy<0||fx>=SW||fy>=SH) continue; const o=((fy|0)*SW+(fx|0))*4; SR.push(data[o]);SG.push(data[o+1]);SB.push(data[o+2]);SU.push(u);SV.push(v); }
+            const n=SR.length; let R,G,B;
+            if(!n){ rgb[t]=bc[0]; rgb[t+1]=bc[1]; rgb[t+2]=bc[2]; continue; }   // fully outside the source → fill color
+            if(mode==='vivid'){ let bi=0,bs=-1; for(let i=0;i<n;i++){ const sa=Math.max(SR[i],SG[i],SB[i])-Math.min(SR[i],SG[i],SB[i]); if(sa>bs){bs=sa;bi=i;} } R=SR[bi];G=SG[bi];B=SB[bi]; }
+            else if(mode==='bright'){ let bi=0,bl=-1; for(let i=0;i<n;i++){ const L=0.299*SR[i]+0.587*SG[i]+0.114*SB[i]; if(L>bl){bl=L;bi=i;} } R=SR[bi];G=SG[bi];B=SB[bi]; }
+            else if(mode==='standout'){ let mr=0,mg=0,mb=0; for(let i=0;i<n;i++){mr+=SR[i];mg+=SG[i];mb+=SB[i];} mr/=n;mg/=n;mb/=n; let bi=0,bd=-1; for(let i=0;i<n;i++){ const dr=SR[i]-mr,dg=SG[i]-mg,db=SB[i]-mb,d=dr*dr+dg*dg+db*db; if(d>bd){bd=d;bi=i;} } R=SR[bi];G=SG[bi];B=SB[bi]; }
+            else if(mode==='dominant'){ const cnt={}; for(let i=0;i<n;i++){ const q=((SR[i]>>6)<<4)|((SG[i]>>6)<<2)|(SB[i]>>6); (cnt[q]||(cnt[q]=[])).push(i); } let best=null,bn=0; for(const q in cnt){ if(cnt[q].length>bn){bn=cnt[q].length;best=cnt[q];} } let r=0,g=0,b=0; for(const i of best){r+=SR[i];g+=SG[i];b+=SB[i];} R=r/best.length;G=g/best.length;B=b/best.length; }
+            else if(mode==='gaussian'){ let r=0,g=0,b=0,w=0; for(let i=0;i<n;i++){ const du=SU[i]-0.5,dv=SV[i]-0.5,wt=Math.exp(-(du*du+dv*dv)*8); r+=SR[i]*wt;g+=SG[i]*wt;b+=SB[i]*wt;w+=wt; } R=r/w;G=g/w;B=b/w; }
+            else { let r=0,g=0,b=0; for(let i=0;i<n;i++){r+=SR[i];g+=SG[i];b+=SB[i];} R=r/n;G=g/n;B=b/n; }   // average (area) + center
+            rgb[t]=R|0; rgb[t+1]=G|0; rgb[t+2]=B|0;
           }
           return rgb;
         }
@@ -485,6 +505,11 @@
         { const zo=c('.s-mzoom'), zv=c('.s-mzoomV'); const upd=()=>{ if(zv) zv.textContent=(s.zoom||100)+'%'; }; if(zo) zo.addEventListener('input',e=>{ s.zoom=+e.target.value||100; upd(); resampleAll(); scheduleSaveLayers(); }); upd(); }
         { const ro=c('.s-mrot'), rv=c('.s-mrotV'); const upd=()=>{ if(rv) rv.textContent=(s.rot||0)+'°'; }; if(ro) ro.addEventListener('input',e=>{ s.rot=+e.target.value||0; upd(); resampleAll(); scheduleSaveLayers(); }); upd(); }
         { const fb=c('.s-mframeReset'); if(fb) fb.addEventListener('click',()=>{ s.zoom=100; s.panX=0; s.panY=0; s.rot=0; const z=c('.s-mzoom'); if(z)z.value=100; const r=c('.s-mrot'); if(r)r.value=0; const zv=c('.s-mzoomV'); if(zv)zv.textContent='100%'; const rv=c('.s-mrotV'); if(rv)rv.textContent='0°'; resampleAll(); drawSrc(currentIdx()); scheduleSaveLayers(); }); }
+        // sampling: Map (physical/grid) + Sample strategy + Out-of-frame fill — re-sample on change (no decode needed)
+        { const mp=c('.s-mmap'); if(mp) mp.addEventListener('change',e=>{ s.map=e.target.value; resampleAll(); drawSrc(currentIdx()); scheduleSaveLayers(); }); }
+        { const sm=c('.s-msample'); if(sm) sm.addEventListener('change',e=>{ s.sampleMode=e.target.value; resampleAll(); drawSrc(currentIdx()); scheduleSaveLayers(); }); }
+        { const bs=c('.s-mbars'); if(bs) bs.addEventListener('change',e=>{ s.bars=e.target.value; resampleAll(); buildLayerBody(card,L); scheduleSaveLayers(); }); }   // rebuild → show/hide the custom color picker
+        { const bc=c('.s-mbarcol'); if(bc) bc.addEventListener('input',e=>{ s.barColor=e.target.value; resampleAll(); drawSrc(currentIdx()); scheduleSaveLayers(); }); }
         { const cv=c('.s-mediaSrc'); if(cv){
           cv.addEventListener('pointerdown',e=>{ if(!L._srcFrames||!L._srcFrames.length)return; _dragging=true; _dragLast={x:e.clientX,y:e.clientY}; cv.setPointerCapture(e.pointerId); });
           cv.addEventListener('pointermove',e=>{ if(!_dragging||!cv._map)return; s.panX=(s.panX||0)+(e.clientX-_dragLast.x)/cv._map.sc; s.panY=(s.panY||0)+(e.clientY-_dragLast.y)/cv._map.sc; _dragLast={x:e.clientX,y:e.clientY}; const i=currentIdx(); drawSrc(i); resampleOne(i); });

@@ -1090,6 +1090,7 @@
       st.fill='solid'; }   // 'fill' is now per-key (encoded in keys[]); keep the field inert for back-compat
     else if(L.type==='media'){ const s=L.settings; if(!Array.isArray(s.frames)) s.frames=[]; if(s.mediaName===undefined) s.mediaName=''; if(s.mediaId===undefined) s.mediaId=''; if(s.hideStatic===undefined) s.hideStatic=false; if(s.motionThr==null) s.motionThr=16;
       if(s.zoom==null) s.zoom=100; if(s.panX==null) s.panX=0; if(s.panY==null) s.panY=0; if(s.rot==null) s.rot=0;   // framing: how the source maps onto the keys (re-sampled by the page from the IDB-stored source)
+      if(s.map===undefined) s.map='physical'; if(s.sampleMode===undefined) s.sampleMode='average'; if(s.bars===undefined) s.bars='black'; if(s.barColor===undefined) s.barColor='#000000';   // sampling: per-key mapping/strategy + out-of-bounds fill
       if(s.sat==null) s.sat=170; if(s.gam==null) s.gam=180; }   // color via the shared sat/con/gam/bri Adjust; default to the GIF-tool's Vivid look (raw sRGB reads dull on LEDs) — adjustable in the Adjust block. hideStatic = make unchanging keys transparent
     else if(L.type==='audio'){
       const ad={ style:'bars', source:'system', appId:'', deviceId:'', pauseStyle:'linear',
