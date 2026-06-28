@@ -254,9 +254,13 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
   .lcard input, .lcard textarea{ user-select:text; -webkit-user-select:text; }   /* but keep hex/number fields selectable */
   .lcard.coll .lbody{ display:none; }                      /* manual collapse — header row only (the toggle in the top-right corner) */
   .lcoll{ position:absolute; top:10px; right:10px; margin:0; padding:5px 7px; line-height:0; }
+  .lrm{ position:absolute; top:10px; right:46px; margin:0; padding:5px 8px; line-height:0; color:var(--muted); font-size:13px; }
+  .lrm:hover{ color:var(--err,#e5534b); border-color:var(--err,#e5534b); }
+  .laddbtn{ grid-column:1/-1; width:100%; margin:4px 0 0; padding:11px; border-radius:12px; border:1px dashed var(--border); background:transparent; color:var(--muted); cursor:pointer; font:inherit; }
+  .laddbtn:hover{ border-color:var(--mint); color:var(--text); }
   .lcard.off{ opacity:.55; }
   .lcard.off .lbody{ display:none; }   /* disabled layers collapse to just their header row */
-  .lhead{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; padding-right:30px; }   /* keep clear of the corner collapse toggle */
+  .lhead{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; padding-right:66px; }   /* keep clear of the corner collapse + remove buttons */
   .lhead .ln{ font:inherit; background:var(--card); color:var(--text); border:1px solid var(--border); border-radius:9px; padding:4px 8px; width:120px; }
   .lhead select{ padding:3px 6px; }
   .lhead .lfield{ display:flex; align-items:center; gap:6px; color:var(--muted); font-size:12px; }
@@ -547,7 +551,7 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
        <b>Epomaker TH108 V2 PRO</b> keyboard. I run on your PC and drive its per-key RGB and LCD screen with
        effects the keyboard's own firmware can't do on its own:</p>
     <ul style="margin:0 0 10px;padding-left:18px;font-size:13.5px;color:var(--muted);line-height:1.6">
-      <li><b style="color:var(--text)">Layered lighting</b> — stack up to four effects (gradients, reactive, audio-reactive, GIF) and blend them live.</li>
+      <li><b style="color:var(--text)">Layered lighting</b> — stack up to seven effects (gradients, reactive, audio-reactive, GIF…) and blend them live.</li>
       <li><b style="color:var(--text)">Reactive in any app</b> — keys light up as you type, system-wide, via a small always-on background app.</li>
       <li><b style="color:var(--text)">LCD &amp; onboard</b> — upload images/GIFs to the little screen and configure the keyboard's onboard effects.</li>
     </ul>
@@ -683,7 +687,7 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
   <div class="card s2 faqcard" id="profHelpCard" data-pages="profiles">
     <div class="cardbar"><span class="grip">⠿</span></div>
     <h3>What's saved in a profile</h3>
-    <p>The full Lighting-tab setup: all four layers with their pattern settings, plus the stacking order — the same
+    <p>The full Lighting-tab setup: all your layers with their pattern settings, plus the stacking order — the same
        data the background daemon runs. Key bindings live in the keyboard's own flash, so they stay put across
        profile switches. Exported files are daemon-compatible JSON.</p>
   </div>
@@ -810,7 +814,7 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
     <section class="fgsec">
     <h3>Layer Compositor (Lighting tab)</h3>
     <ul>
-      <li>Stack up to <b>four lighting layers</b> and blend them top-to-bottom — each with its own <b>opacity</b>,
+      <li>Stack up to <b>seven lighting layers</b> (one per effect type) and blend them top-to-bottom — each with its own <b>opacity</b>,
           <b>blend mode</b> (Normal, Multiply, Screen, Add, etc.) and <b>frame rate</b>.</li>
       <li>Layer <b>types</b>: <b>Static</b> (solid/per-key paint), <b>Gradient</b> (two-colour, angled, animatable),
           <b>Pulse</b> (breathing), <b>Reactive</b> (lights keys as you press them), <b>Audio</b> (spectrum bars from
@@ -891,7 +895,7 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
       <tr><th>Capability</th><th>Epomaker WebHID</th><th>th108</th></tr>
       <tr><td>Where effects run</td><td>On the keyboard (onboard)</td><td>On your PC, streamed live</td></tr>
       <tr><td>Works after the tab closes</td><td class="yes">Yes (onboard)</td><td class="yes">Yes — via the background daemon</td></tr>
-      <tr><td>Multi-layer live compositing</td><td class="no">One effect at a time</td><td class="yes">Up to 4 blended layers</td></tr>
+      <tr><td>Multi-layer live compositing</td><td class="no">One effect at a time</td><td class="yes">Up to 7 blended layers</td></tr>
       <tr><td>Reactive typing in <em>every</em> app</td><td class="no">Onboard reactive only</td><td class="yes">Yes (daemon sees system-wide keys)</td></tr>
       <tr><td>Audio-reactive lighting</td><td class="no">No</td><td class="yes">System / app / tab / mic</td></tr>
       <tr><td>GIF → keys</td><td class="no">No</td><td class="yes">Yes</td></tr>
@@ -914,7 +918,7 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
           per-gap volumetric aura that deforms with the wave animation.</li>
       <li><span class="ver">Host Actions</span><span class="date">Jun 2026</span><br>Bind keys / chords / holds to PC
           actions — mic &amp; music toggles, profile cycling, launch / switch-to app, window controls, macros.</li>
-      <li><span class="ver">Layer Compositor</span><span class="date">2026</span><br>Up to four host-driven lighting
+      <li><span class="ver">Layer Compositor</span><span class="date">2026</span><br>Up to seven host-driven lighting
           layers with blend modes and global adjust, plus the audio-reactive layer.</li>
       <li><span class="ver">Background Daemon</span><span class="date">2026</span><br>Always-on engine: reactive in any
           app, auto-start, USB-wedge auto-recovery, lights-off-when-monitor-off.</li>

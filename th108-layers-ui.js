@@ -95,6 +95,7 @@
             '<span class="lfield">FPS <input type="range" class="lf" min="1" max="30" value="'+L.fps+'"><input type="number" class="numin lfn" min="1" max="30" value="'+L.fps+'"></span>'+
           '</div>'+
           '<button type="button" class="lcoll" title="collapse / expand this layer card">'+(L.collapsed?CHEV_EXPAND:CHEV_COLLAPSE)+'</button>'+
+          (state.layers.length>1?'<button type="button" class="lrm" title="remove this layer">✕</button>':'')+
           '<div class="lbody"></div>';
         host.appendChild(card);
         // header wiring
@@ -120,8 +121,28 @@
         lf.addEventListener('input',e=>setFps(+e.target.value,true));
         lfn.addEventListener('input',e=>{ if(e.target.value!=='') setFps(+e.target.value,false); });
         lfn.addEventListener('change',e=>setFps(+e.target.value,true));
+        const rmb=card.querySelector('.lrm'); if(rmb) rmb.addEventListener('click',()=>{ if(state.layers.length>1 && confirm('Remove layer "'+L.name+'"?')) removeLayer(n); });
         buildLayerBody(card,L);
       }
+      if(state.layers.length < TYPES.length){   // one layer per effect type → cap at TYPES.length
+        const addb=document.createElement('button'); addb.type='button'; addb.className='laddbtn';
+        addb.textContent='+ Add layer'; addb.title='add another lighting layer (one per effect type, up to '+TYPES.length+')';
+        addb.addEventListener('click',addLayer); host.appendChild(addb);
+      }
+    }
+    function addLayer(){
+      if(state.layers.length>=TYPES.length) return;
+      const used=new Set(state.layers.map(o=>o.type)), type=TYPES.find(t=>!used.has(t));
+      if(!type) return;
+      const blend = type==='individual'?'replace' : type==='audio'?'add' : 'normal';
+      const L={ name:type.charAt(0).toUpperCase()+type.slice(1), enabled:true, type, opacity: type==='audio'?0.85:1, blend, fps:30, settings:{} };
+      E.ensureSettings(L); state.layers.push(L);
+      buildLayerCards(); saveLayerOrder(); saveLayers(); pushConfig();
+    }
+    function removeLayer(n){
+      if(n<0 || n>=state.layers.length || state.layers.length<=1) return;
+      state.layers.splice(n,1);
+      buildLayerCards(); saveLayerOrder(); saveLayers(); pushConfig();
     }
     // Rebuild the layers array from the cards' DOM order — called after a grip drag settles by the page's
     // shared pointer-based card-drag system (same lift/clone/breach-line as the Home cards). Cards list
