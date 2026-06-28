@@ -413,7 +413,7 @@
           row('Zoom','<input type="range" class="s-mzoom" min="20" max="500" value="'+s.zoom+'"><span class="val s-mzoomV"></span>')+
           row('Rotate','<input type="range" class="s-mrot" min="0" max="360" value="'+s.rot+'"><span class="val s-mrotV"></span>')+
           full('<button type="button" class="s-mframeReset" style="flex:none">Reset framing</button><span class="val" style="opacity:.5;font-size:11px">drag the preview above to pan; zoom/rotate to frame which part of the clip maps onto the keys</span>')+
-          sub('Sampling')+
+          '<div class="lsub s-sampleHdr">Sampling</div>'+
           row('Map','<select class="s-mmap"><option value="physical"'+(s.map==='physical'?' selected':'')+'>Physical</option><option value="grid"'+(s.map==='grid'?' selected':'')+'>Grid (uniform)</option></select><span class="val" style="opacity:.5;font-size:11px">Physical = real key positions · Grid = even cells (best for text/pixel art)</span>')+
           row('Sample','<select class="s-msample">'+optList(SAMPLES,s.sampleMode)+'</select><span></span>')+
           row('Out-of-frame','<select class="s-mbars"><option value="black"'+(s.bars==='black'?' selected':'')+'>Black</option><option value="sampled"'+(s.bars==='sampled'?' selected':'')+'>Sampled (edge)</option><option value="custom"'+(s.bars==='custom'?' selected':'')+'>Custom…</option></select>'+(s.bars==='custom'?'<input type="color" class="s-mbarcol" value="'+(s.barColor||'#000000')+'" style="width:34px;height:26px;margin-left:6px">':'<span></span>'))+
@@ -477,9 +477,11 @@
         }
         function resampleAll(){ if(!L._srcFrames||!L._srcFrames.length) return; s.frames=L._srcFrames.map(fr=>({d:fr.d, rgb:sampleFrame(fr)})); L._mediaFrames=null; L.lastTick=0; _rngFor=null; }
         function resampleOne(i){ if(!L._srcFrames||!L._srcFrames[i]||!s.frames[i]) return; s.frames[i].rgb=sampleFrame(L._srcFrames[i]); L._mediaFrames=null; }   // light re-sample of the current frame during a drag
-        // positioning canvas: source frame (fit) + the keyboard crop box overlaid; dims the cropped-out area
-        function drawSrc(idx){
-          const cv=c('.s-mediaSrc'); if(!cv) return; const ctx=cv.getContext('2d');
+        // positioning canvas: source frame (fit) + the keyboard crop box overlaid; dims the cropped-out area. Paints
+        // any canvas (the main draggable one OR the floating-pill duplicate).
+        function drawSrc(idx){ drawSrcOn(c('.s-mediaSrc'), idx); }
+        function drawSrcOn(cv, idx){
+          if(!cv) return; const ctx=cv.getContext('2d');
           ctx.fillStyle='#0d1117'; ctx.fillRect(0,0,cv.width,cv.height);
           const fr=L._srcFrames&&L._srcFrames[idx||0]; if(!fr){ cv._map=null; return; }
           if(!_srcTmp) _srcTmp=document.createElement('canvas');
@@ -511,8 +513,9 @@
         function keyRanges(){ if(_rngFor===s.frames && _rng) return _rng; const N=INDICES.length, lo=new Array(N*3).fill(255), hi=new Array(N*3).fill(0);
           for(const f of s.frames){ const fr=f.rgb; if(!fr) continue; const m=Math.min(N*3,fr.length); for(let i=0;i<m;i++){ const v=fr[i]|0; if(v<lo[i])lo[i]=v; if(v>hi[i])hi[i]=v; } }
           const r=new Array(N); for(let k=0;k<N;k++){ const o=k*3; r[k]=Math.max(hi[o]-lo[o],hi[o+1]-lo[o+1],hi[o+2]-lo[o+2]); } _rngFor=s.frames; _rng=r; return r; }
-        function drawMediaPrev(idx){
-          const cvp=c('.s-mediaPrev'); if(!cvp) return; const ctx=cvp.getContext('2d');
+        function drawMediaPrev(idx){ paintKeysOn(c('.s-mediaPrev'), idx); }
+        function paintKeysOn(cvp, idx){
+          if(!cvp) return; const ctx=cvp.getContext('2d');
           ctx.fillStyle='#0d1117'; ctx.fillRect(0,0,cvp.width,cvp.height);
           if(!s.frames.length || !s.frames[idx]) return;
           const rgb=s.frames[idx].rgb, sa=av('sat')/100, co=av('con')/100, gm=av('gam')/100, br=av('bri')/100;
@@ -524,8 +527,42 @@
             ctx.fillRect(pad+(q[0]-q[2]/2)*W+0.75, pad+(q[1]-q[3]/2)*H+0.75, Math.max(1,q[2]*W-1.5), Math.max(1,q[3]*H-1.5)); }
         }
         ensureSource();
-        (function tick(){ const cvp=c('.s-mediaPrev'); if(!cvp || !document.body.contains(cvp) || L.type!=='media') return;   // canvas detached (card rebuilt) -> stop both
-          if(cvp.offsetParent!==null && !document.hidden){ const idx=_dragging?_dragIdx:currentIdx(); if(!_dragging) drawSrc(idx); drawMediaPrev(idx); }   // freeze on the dragged frame while panning so the preview stays coherent
+        // ===== Floating side-peek (mirrors the audio Live pill): when the previews scroll above the view, a pill docks
+        // to the card's side; Show inserts a DUPLICATE Media+Keyboard preview right above the Sampling section so you can
+        // watch the framing/result while tuning. Scrolling back to the inline previews auto-removes it. =====
+        const peek=document.createElement('div'); peek.className='s-mPeek';
+        peek.style.cssText='position:fixed;z-index:60;display:inline-flex;opacity:0;pointer-events:none;transition:opacity .25s ease;left:-9999px;top:0;align-items:center;gap:10px;background:var(--inset);border:1px solid var(--border);border-radius:10px;padding:7px 12px;box-shadow:0 8px 26px rgba(0,0,0,.32)';
+        peek.innerHTML='<span class="val" style="opacity:.65;font-size:11px;white-space:nowrap">Media preview</span><button type="button" class="s-mPeekBtn" style="margin:0;padding:2px 9px">Show</button>';
+        body.appendChild(peek);
+        const peekBtn=peek.querySelector('.s-mPeekBtn'); let pillVisible=false;
+        const dup=document.createElement('div'); dup.className='s-mPeekDup';
+        dup.style.cssText='grid-column:1/-1;margin:5px 0;background:var(--inset);border-radius:8px;padding:5px 6px';
+        dup.innerHTML='<div style="display:flex;align-items:center;justify-content:center;gap:8px;margin-bottom:3px"><span class="val" style="opacity:.65">Preview</span></div>'+
+          '<canvas class="s-mDupSrc" width="320" height="120" style="display:block;width:100%;height:auto;background:#0d1117;border-radius:6px;margin-bottom:5px"></canvas>'+
+          '<canvas class="s-mDupKeys" width="320" height="92" style="display:block;width:100%;height:auto;background:#0d1117;border-radius:6px"></canvas>';
+        const dupSrc=dup.querySelector('.s-mDupSrc'), dupKeys=dup.querySelector('.s-mDupKeys');
+        const positionPeek=()=>{ const grid=card.parentElement; if(!grid) return; const gr=grid.getBoundingClientRect(), comp=grid.closest('.card')||grid, compR=comp.getBoundingClientRect(), cr=card.getBoundingClientRect();
+          const pw=peek.offsetWidth||160, gap=12; peek.style.top=Math.round(window.innerHeight*0.30)+'px';
+          const onLeft=(cr.left+cr.width/2)<(gr.left+gr.width/2), outside=onLeft?(compR.left-gap-pw):(compR.right+gap);
+          const fits=outside>=4 && outside<=window.innerWidth-4-pw; let left=fits?outside:(onLeft?(compR.left+gap):(compR.right-gap-pw));
+          peek.style.left=Math.round(Math.max(4,Math.min(left,window.innerWidth-4-pw)))+'px'; };
+        const showDup=()=>{ const anchor=card.querySelector('.s-sampleHdr'); if(anchor && anchor.parentNode) anchor.insertAdjacentElement('beforebegin', dup); else body.appendChild(dup);
+          requestAnimationFrame(()=>{ try{ dup.scrollIntoView({behavior:'smooth', block:'center'}); }catch(_){ } }); peekBtn.textContent='Hide'; };
+        const hideDup=()=>{ if(dup.parentNode) dup.parentNode.removeChild(dup); peekBtn.textContent='Show'; };
+        const fadePill=on=>{ peek.style.opacity=on?'1':'0'; peek.style.pointerEvents=on?'auto':'none'; pillVisible=on; };
+        peekBtn.addEventListener('click',()=>{ if(dup.parentNode) hideDup(); else showDup(); });
+        (function tick(){ const cvp=c('.s-mediaPrev'); if(!cvp || !document.body.contains(cvp) || L.type!=='media'){ [peek,dup].forEach(e=>{ if(e.parentNode) e.parentNode.removeChild(e); }); return; }   // card rebuilt -> stop + clean the pill
+          const idx=_dragging?_dragIdx:currentIdx();
+          if(cvp.offsetParent!==null && !document.hidden){ if(!_dragging) drawSrc(idx); drawMediaPrev(idx); }   // freeze on the dragged frame while panning
+          const shown=cvp.offsetParent!==null;
+          if(shown){ const r=cvp.getBoundingClientRect(), cr=card.getBoundingClientRect();
+            const cardInView=cr.bottom>window.innerHeight*0.30+(peek.offsetHeight||36) && cr.top<window.innerHeight-40;
+            const off=cardInView && r.bottom<4;                                   // the inline keyboard preview scrolled above the view
+            const dupOffTop=!!dup.parentNode && dup.getBoundingClientRect().bottom<4;
+            if(off && !dupOffTop){ positionPeek(); if(!pillVisible) fadePill(true); } else if(pillVisible){ fadePill(false); }
+            if(!off && dup.parentNode) hideDup();                                 // scrolled back to the inline previews → drop the duplicate
+            if(dup.parentNode && dup.offsetParent!==null){ drawSrcOn(dupSrc, idx); paintKeysOn(dupKeys, idx); }
+          } else if(pillVisible){ fadePill(false); }
           setTimeout(tick, 1000/30); })();
         // framing controls
         { const zo=c('.s-mzoom'), zv=c('.s-mzoomV'); const upd=()=>{ if(zv) zv.textContent=(s.zoom||100)+'%'; }; if(zo) zo.addEventListener('input',e=>{ s.zoom=+e.target.value||100; upd(); resampleAll(); scheduleSaveLayers(); }); upd(); }
