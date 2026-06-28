@@ -405,6 +405,8 @@
           full('<canvas class="s-mediaPrev" width="378" height="110" style="width:100%;height:auto;display:block;background:#0d1117;border-radius:8px;flex:1 1 100%"></canvas>')+
           full('<span class="val" style="opacity:.55;flex:1 1 100%;font-size:12px;line-height:1.4;text-align:center">Sampled onto the keys, played by the daemon (no Connect) and blended with the other layers. Long GIFs sample down to '+MAXF+' frames. Color &amp; Freeze live in <b>Adjust</b> below.</span>')+
           full('<div style="display:flex;align-items:center;justify-content:center;gap:12px;flex:1 1 100%"><input type="file" class="s-mediaFile" accept="image/*"><button type="button" class="s-mediaClear" style="flex:none" title="Offload the loaded GIF/image from this layer">Release</button></div>')+
+          full('<div style="display:flex;align-items:center;justify-content:center;gap:8px;flex-wrap:wrap;flex:1 1 100%"><input type="text" class="s-murl" placeholder="paste an image / GIF URL…" style="flex:1;min-width:150px"><button type="button" class="s-murlload" style="flex:none">Load URL</button><button type="button" class="s-mpaste" style="flex:none" title="Paste an image from the clipboard">Paste</button><button type="button" class="s-mseqbtn" style="flex:none" title="Pick multiple images = one frame each">+ PNG Frames</button><input type="file" class="s-mseq" accept="image/*" multiple style="display:none"><button type="button" class="s-mfolderbtn" style="flex:none" title="Pick a folder of images = one frame each">+ Folder</button><input type="file" class="s-mfolder" webkitdirectory style="display:none"><button type="button" class="s-mlibbtn" style="flex:none">📚 Library</button><button type="button" class="s-msave" style="flex:none" title="Save the loaded clip to the library">★ Add</button></div>')+
+          full('<div class="s-mlib" style="display:none;width:100%;margin-top:4px;padding:8px;background:var(--inset);border-radius:10px;flex:1 1 100%"></div>')+
           full('<span class="val s-mediaInfo" style="opacity:.85;flex:1 1 100%;text-align:center">'+infoTxt()+'</span>')+
           sub('Framing')+
           row('Zoom','<input type="range" class="s-mzoom" min="20" max="500" value="'+s.zoom+'"><span class="val s-mzoomV"></span>')+
@@ -422,7 +424,7 @@
         '</div>';
         const c=q=>body.querySelector(q);
         const Media=(typeof window!=='undefined'&&window.TH108Media)||null;
-        let _srcTmp=null, _dragging=false, _dragLast=null, _rngFor=null, _rng=null;
+        let _srcTmp=null, _dragging=false, _dragLast=null, _dragIdx=0, _rngFor=null, _rng=null, _currentSrc=null;   // _currentSrc = {kind,name,blob|blobs} for ★ Add to Library
         // ===== decode the source to in-memory frames (FULL image, not pre-cropped) so framing can re-sample live =====
         async function decodeSource(file){
           const out=[], tmp=document.createElement('canvas'), tx=tmp.getContext('2d',{willReadFrequently:true});
@@ -432,6 +434,17 @@
             for(let i=0;i<5000;i++){ let res; try{ res=await dec.decode({frameIndex:i}); }catch(e){ break; } const vf=res.image, w=vf.displayWidth||vf.codedWidth, h=vf.displayHeight||vf.codedHeight; draw(vf,w,h, vf.duration?vf.duration/1000:100); if(vf.close)vf.close(); if(trk.frameCount && i>=trk.frameCount-1) break; if(i>=300) break; } }
           if(!out.length){ const bmp=await createImageBitmap(file); draw(bmp,bmp.width,bmp.height,100); bmp.close&&bmp.close(); }
           if(out.length>MAXF){ const s2=[], step=out.length/MAXF; for(let k=0;k<MAXF;k++){ const a=Math.floor(k*step), b2=Math.floor((k+1)*step); let d=0; for(let i=a;i<Math.max(b2,a+1);i++) d+=out[i].d; s2.push({img:out[a].img, w:out[a].w, h:out[a].h, d}); } return s2; }   // thin frame COUNT, preserve duration
+          return out;
+        }
+        // image sequence (PNG frames / folder) → one source frame each, filename order
+        async function decodeSourceSeq(files){
+          const arr=[...files].filter(f=>/^image\//.test(f.type)).sort((a,b)=>a.name.localeCompare(b.name,undefined,{numeric:true}));
+          const out=[], tmp=document.createElement('canvas'), tx=tmp.getContext('2d',{willReadFrequently:true});
+          for(const f of arr){ const bmp=await createImageBitmap(f).catch(()=>null); if(!bmp) continue;
+            const sc=Math.min(1,MAXDIM/Math.max(bmp.width,bmp.height)), w=Math.max(1,bmp.width*sc|0), h=Math.max(1,bmp.height*sc|0);
+            tmp.width=w; tmp.height=h; tx.clearRect(0,0,w,h); tx.drawImage(bmp,0,0,w,h); if(bmp.close)bmp.close();
+            const id=tx.getImageData(0,0,w,h); out.push({img:id, w, h, d:100, edge:edgeAvg(id.data,w,h)}); }
+          if(out.length>MAXF){ const s2=[], step=out.length/MAXF; for(let k=0;k<MAXF;k++) s2.push(out[Math.floor(k*step)]); return s2; }
           return out;
         }
         // border-pixel average of an RGBA buffer → the "sampled" out-of-frame fill color
@@ -479,7 +492,19 @@
           cv._map={sc};
         }
         async function ensureSource(){ if((L._srcFrames&&L._srcFrames.length) || !s.mediaId || !(Media&&Media.available)) return;   // lazy-load the source from IDB so framing works after a refresh
-          try{ const blob=await Media.getSource(s.mediaId); if(!blob) return; L._srcFrames=await decodeSource(blob); drawSrc(0); }catch(_){ } }
+          try{ const src=await Media.getSource(s.mediaId); if(!src) return; L._srcFrames = Array.isArray(src) ? await decodeSourceSeq(src) : await decodeSource(src); drawSrc(0); }catch(_){ } }
+        // ===== load pipeline (single blob / image sequence) shared by every loader =====
+        const esc2=esc, setInfo=t=>{ const el=c('.s-mediaInfo'); if(el) el.textContent=t; };
+        function finishLoad(name, srcData, kind){
+          s.mediaName=name; if(!s.mediaId) s.mediaId=(typeof crypto!=='undefined'&&crypto.randomUUID)?crypto.randomUUID():('m'+performance.now()+'-'+INDICES.length);
+          resampleAll(); drawSrc(0); _currentSrc={kind, name, blob:kind==='single'?srcData:null, blobs:kind==='seq'?srcData:null};
+          if(Media&&Media.available){ try{ Media.putSource(s.mediaId, srcData); }catch(_){ } }   // persist blob OR blobs array
+          setInfo(esc2(name)+' · '+s.frames.length+' frames'); scheduleSaveLayers();
+        }
+        async function loadBlob(blob,name){ setInfo('decoding '+name+'…'); try{ L._srcFrames=await decodeSource(blob); if(!L._srcFrames.length) throw new Error('no frames'); finishLoad(name, blob, 'single'); }catch(e){ setInfo('decode failed: '+e.message); } }
+        async function loadSeq(files,name){ setInfo('decoding '+files.length+' frames…'); try{ L._srcFrames=await decodeSourceSeq(files); if(!L._srcFrames.length) throw new Error('no images'); finishLoad(name, [...files], 'seq'); }catch(e){ setInfo('decode failed: '+e.message); } }
+        async function loadUrl(url){ if(!url) return; setInfo('fetching…'); try{ const r=await fetch(url,{mode:'cors'}); if(!r.ok) throw new Error('HTTP '+r.status); const blob=await r.blob(); if(!/^image\//.test(blob.type)) throw new Error('not an image ('+(blob.type||'?')+')'); await loadBlob(blob,(url.split('/').pop()||'url-image').split('?')[0]); }catch(e){ setInfo('URL load failed: '+e.message+' (host may block cross-origin fetch)'); } }
+        function refreshLib(){ const el=c('.s-mlib'); if(el && el.style.display!=='none' && Media && Media.available) Media.mountPicker(el, it=>{ if(it.kind==='seq'&&it.blobs) loadSeq(it.blobs, it.name); else loadBlob(it.blob, it.name); }); }
         function currentIdx(){ if(!s.frames.length) return 0; let tot=0; for(const f of s.frames) tot+=Math.max(1,f.d||100); tot=Math.max(1,tot);
           const t=((performance.now()*((s.spd||100)/100))%tot); let acc=0, idx=0; for(let i=0;i<s.frames.length;i++){ idx=i; acc+=Math.max(1,s.frames[i].d||100); if(t<acc) break; } return idx; }
         function keyRanges(){ if(_rngFor===s.frames && _rng) return _rng; const N=INDICES.length, lo=new Array(N*3).fill(255), hi=new Array(N*3).fill(0);
@@ -499,7 +524,7 @@
         }
         ensureSource();
         (function tick(){ const cvp=c('.s-mediaPrev'); if(!cvp || !document.body.contains(cvp) || L.type!=='media') return;   // canvas detached (card rebuilt) -> stop both
-          if(cvp.offsetParent!==null && !document.hidden){ const idx=currentIdx(); if(!_dragging) drawSrc(idx); drawMediaPrev(idx); }
+          if(cvp.offsetParent!==null && !document.hidden){ const idx=_dragging?_dragIdx:currentIdx(); if(!_dragging) drawSrc(idx); drawMediaPrev(idx); }   // freeze on the dragged frame while panning so the preview stays coherent
           setTimeout(tick, 1000/30); })();
         // framing controls
         { const zo=c('.s-mzoom'), zv=c('.s-mzoomV'); const upd=()=>{ if(zv) zv.textContent=(s.zoom||100)+'%'; }; if(zo) zo.addEventListener('input',e=>{ s.zoom=+e.target.value||100; upd(); resampleAll(); scheduleSaveLayers(); }); upd(); }
@@ -511,8 +536,8 @@
         { const bs=c('.s-mbars'); if(bs) bs.addEventListener('change',e=>{ s.bars=e.target.value; resampleAll(); buildLayerBody(card,L); scheduleSaveLayers(); }); }   // rebuild → show/hide the custom color picker
         { const bc=c('.s-mbarcol'); if(bc) bc.addEventListener('input',e=>{ s.barColor=e.target.value; resampleAll(); drawSrc(currentIdx()); scheduleSaveLayers(); }); }
         { const cv=c('.s-mediaSrc'); if(cv){
-          cv.addEventListener('pointerdown',e=>{ if(!L._srcFrames||!L._srcFrames.length)return; _dragging=true; _dragLast={x:e.clientX,y:e.clientY}; cv.setPointerCapture(e.pointerId); });
-          cv.addEventListener('pointermove',e=>{ if(!_dragging||!cv._map)return; s.panX=(s.panX||0)+(e.clientX-_dragLast.x)/cv._map.sc; s.panY=(s.panY||0)+(e.clientY-_dragLast.y)/cv._map.sc; _dragLast={x:e.clientX,y:e.clientY}; const i=currentIdx(); drawSrc(i); resampleOne(i); });
+          cv.addEventListener('pointerdown',e=>{ if(!L._srcFrames||!L._srcFrames.length)return; _dragging=true; _dragIdx=currentIdx(); _dragLast={x:e.clientX,y:e.clientY}; cv.setPointerCapture(e.pointerId); });
+          cv.addEventListener('pointermove',e=>{ if(!_dragging||!cv._map)return; s.panX=(s.panX||0)+(e.clientX-_dragLast.x)/cv._map.sc; s.panY=(s.panY||0)+(e.clientY-_dragLast.y)/cv._map.sc; _dragLast={x:e.clientX,y:e.clientY}; drawSrc(_dragIdx); resampleOne(_dragIdx); drawMediaPrev(_dragIdx); });   // freeze + resample the one dragged frame for an immediate, coherent update
           cv.addEventListener('pointerup',()=>{ if(_dragging){ _dragging=false; resampleAll(); scheduleSaveLayers(); } });
         } }
         { const sp=c('.s-mspd'), spv=c('.s-mspdV'); const upd=()=>{ if(spv) spv.textContent=(s.spd/100).toFixed(1)+'×'; }; if(sp) sp.addEventListener('input',e=>{ s.spd=+e.target.value||100; upd(); scheduleSaveLayers(); }); upd(); }
@@ -520,17 +545,18 @@
         { const rb=c('.s-mraw'); if(rb) rb.addEventListener('click',()=>{ s.sat=100; s.con=100; s.gam=100; s.bri=100; L.lastTick=0; buildLayerBody(card,L); scheduleSaveLayers(); }); }
         { const hb=c('.s-mhide'); if(hb) hb.addEventListener('change',e=>{ s.hideStatic=e.target.checked; L.lastTick=0; buildLayerBody(card,L); scheduleSaveLayers(); }); }   // rebuild -> Threshold row shows/hides
         { const tb=c('.s-mthr'), tv=c('.s-mthrV'); if(tb){ const upd=()=>{ if(tv) tv.textContent=tb.value; }; tb.addEventListener('input',e=>{ s.motionThr=+e.target.value; upd(); L.lastTick=0; scheduleSaveLayers(); }); upd(); } }
-        c('.s-mediaFile').addEventListener('change', async e=>{ const f=e.target.files[0]; if(!f) return; const el=c('.s-mediaInfo'); if(el) el.textContent='decoding '+f.name+'…';
-          try{ L._srcFrames=await decodeSource(f); s.mediaName=f.name;
-            if(!s.mediaId) s.mediaId=(typeof crypto!=='undefined'&&crypto.randomUUID)?crypto.randomUUID():('m'+performance.now()+'-'+INDICES.length);
-            resampleAll(); drawSrc(0);
-            if(Media&&Media.available){ try{ await Media.putSource(s.mediaId, f); }catch(_){ } }   // persist the source so framing survives a refresh
-            if(el) el.textContent=esc(f.name)+' · '+s.frames.length+' frames'; scheduleSaveLayers(); }
-          catch(err){ if(el) el.textContent='decode failed: '+err.message; } });
+        c('.s-mediaFile').addEventListener('change',e=>{ const f=e.target.files[0]; if(f) loadBlob(f, f.name); });
+        { const u=c('.s-murl'), b=c('.s-murlload'); if(b&&u){ b.addEventListener('click',()=>loadUrl(u.value.trim())); u.addEventListener('keydown',e=>{ if(e.key==='Enter') loadUrl(u.value.trim()); }); } }
+        { const pb=c('.s-mpaste'); if(pb) pb.addEventListener('click',async()=>{ try{ const items=await navigator.clipboard.read(); for(const it of items){ const ty=it.types.find(t=>t.startsWith('image/')); if(ty) return loadBlob(await it.getType(ty),'pasted-image'); } setInfo('no image on the clipboard'); }catch(e){ setInfo('clipboard read failed: '+e.message); } }); }
+        { const b=c('.s-mseqbtn'), inp=c('.s-mseq'); if(b&&inp){ b.addEventListener('click',()=>inp.click()); inp.addEventListener('change',e=>{ if(e.target.files.length) loadSeq(e.target.files, e.target.files.length+'-image sequence'); }); } }
+        { const b=c('.s-mfolderbtn'), inp=c('.s-mfolder'); if(b&&inp){ b.addEventListener('click',()=>inp.click()); inp.addEventListener('change',e=>{ if(e.target.files.length) loadSeq(e.target.files, 'folder sequence'); }); } }
+        { const lb=c('.s-mlibbtn'); if(lb) lb.addEventListener('click',()=>{ const el=c('.s-mlib'); if(el){ el.style.display=el.style.display==='none'?'block':'none'; refreshLib(); } }); }
+        { const sv=c('.s-msave'); if(sv) sv.addEventListener('click',async()=>{ if(!_currentSrc){ setInfo('nothing loaded to save'); return; } if(!(Media&&Media.available)){ setInfo('library unavailable — serve via http://localhost:8123'); return; }
+            try{ if(_currentSrc.kind==='seq') await Media.addSequence(_currentSrc.blobs,_currentSrc.name); else await Media.add(_currentSrc.blob,_currentSrc.name); refreshLib(); setInfo('★ added “'+_currentSrc.name+'” to library'); }catch(e){ setInfo('add to library failed: '+e.message); } }); }
         { const cl=c('.s-mediaClear'); if(cl) cl.addEventListener('click',()=>{
             if(s.mediaId && Media&&Media.delSource){ try{ Media.delSource(s.mediaId); }catch(_){ } }
-            s.frames=[]; s.mediaName=''; s.mediaId=''; L._srcFrames=null; L._mediaFrames=null; L.lastTick=0; _srcTmp=null;
-            drawSrc(0); const fi=c('.s-mediaFile'); if(fi) fi.value=''; const el=c('.s-mediaInfo'); if(el) el.textContent='no clip loaded'; scheduleSaveLayers(); }); }   // Release = offload the clip + its stored source
+            s.frames=[]; s.mediaName=''; s.mediaId=''; L._srcFrames=null; L._mediaFrames=null; L.lastTick=0; _srcTmp=null; _currentSrc=null;
+            drawSrc(0); const fi=c('.s-mediaFile'); if(fi) fi.value=''; setInfo('no clip loaded'); scheduleSaveLayers(); }); }   // Release = offload the clip + its stored source
       } else if(L.type==='audio'){
         const style=s.style||'bars', uid=card.dataset.n;
         // All four sources are live: system + app run through the background daemon (loopback / process-loopback);
