@@ -17,7 +17,7 @@
   const root_PaintBoard = () => (typeof window!=='undefined' && window.TH108PaintBoard) || { mount(){ return { draw(){}, recolorSelection(){}, clearSelection(){}, selectNone(){}, selCount(){return 0;}, destroy(){} }; } };
   // lucide chevrons-down-up (= "collapse") / chevrons-up-down (= "expand") for the card corner toggle
   const SVGA='<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">';
-  const CHEV_COLLAPSE=SVGA+'<path d="m17 11-5-5-5 5"/><path d="m17 18-5-5-5 5"/></svg>';   // lucide chevrons-up (collapse — fold the body up)
+  const CHEV_COLLAPSE=SVGA+'<path d="m6 17 5-5-5-5"/><path d="m13 17 5-5-5-5"/></svg>';   // lucide chevrons-right (shown when expanded — click to collapse)
   const CHEV_EXPAND=SVGA+'<path d="m7 6 5 5 5-5"/><path d="m7 13 5 5 5-5"/></svg>';         // lucide chevrons-down (expand — open the body down)
 
   // ----- pure persist helpers (node-testable) -----
