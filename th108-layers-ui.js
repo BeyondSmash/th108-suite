@@ -336,13 +336,16 @@
         const MAXF=30, NLED=E.NLED, INDICES=E.INDICES;   // cap frames so the per-key data fits the daemon's /config size limit
         const esc=t=>(t||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');
         const infoTxt=()=> s.frames.length ? (esc(s.mediaName||'clip')+' · '+s.frames.length+' frames') : 'no clip loaded';
+        if(s.spd==null) s.spd=100;
         body.innerHTML='<div class="ctl">'+
           sec('Media (GIF / image)')+
           full('<input type="file" class="s-mediaFile" accept="image/*">')+
           full('<span class="val s-mediaInfo" style="opacity:.85;flex:1 1 100%">'+infoTxt()+'</span>')+
-          full('<span class="val" style="opacity:.55;flex:1 1 100%;font-size:12px;line-height:1.4">A GIF or image sampled onto the keys — played by the daemon (no Connect) and blended with the other layers. Long GIFs sample down to '+MAXF+' frames; <b>Static</b> freezes it, the layer <b>Speed</b> clock controls playback rate.</span>')+
+          row('Speed','<input type="range" class="s-mspd" min="10" max="400" value="'+s.spd+'"><span class="val s-mspdV"></span>')+
+          full('<span class="val" style="opacity:.55;flex:1 1 100%;font-size:12px;line-height:1.4">A GIF or image sampled onto the keys — played by the daemon (no Connect) and blended with the other layers. Long GIFs sample down to '+MAXF+' frames; <b>Static</b> (below) freezes it.</span>')+
         '</div>';
         const c=q=>body.querySelector(q);
+        { const sp=c('.s-mspd'), spv=c('.s-mspdV'); const upd=()=>{ if(spv) spv.textContent=(s.spd/100).toFixed(1)+'×'; }; if(sp) sp.addEventListener('input',e=>{ s.spd=+e.target.value||100; upd(); scheduleSaveLayers(); }); upd(); }
         // decode a GIF/image → per-frame per-key colours: cover-fit the image, then read the pixel at each key's
         // normalized board position (engine.keyCell) — so the GIF maps across the whole keyboard.
         async function decodeMedia(file){
