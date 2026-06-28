@@ -17,8 +17,9 @@
   const root_PaintBoard = () => (typeof window!=='undefined' && window.TH108PaintBoard) || { mount(){ return { draw(){}, recolorSelection(){}, clearSelection(){}, selectNone(){}, selCount(){return 0;}, destroy(){} }; } };
   // lucide chevrons-down-up (= "collapse") / chevrons-up-down (= "expand") for the card corner toggle
   const SVGA='<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">';
-  const CHEV_COLLAPSE=SVGA+'<path d="m7 20 5-5 5 5"/><path d="m7 4 5 5 5-5"/></svg>';
-  const CHEV_EXPAND=SVGA+'<path d="m7 15 5 5 5-5"/><path d="m7 9 5-5 5 5"/></svg>';
+  const CHEV_COLLAPSE=SVGA+'<rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 15h18"/><path d="m9 10 3 3 3-3"/></svg>';   // lucide panel-bottom-close (collapse the body panel)
+  const CHEV_EXPAND=SVGA+'<rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 15h18"/><path d="m9 13 3-3 3 3"/></svg>';     // lucide panel-bottom-open (expand it)
+  const ICON_RM=SVGA+'<circle cx="12" cy="12" r="10"/><path d="m15 9-6 6"/><path d="m9 9 6 6"/></svg>';   // lucide circle-x (distinct from the collapse panel icon)
 
   // ----- pure persist helpers (node-testable) -----
   function serializeLayers(layers){ return layers.map(L=>({name:L.name,enabled:L.enabled,type:L.type,opacity:L.opacity,blend:L.blend,fps:L.fps,settings:L.settings,collapsed:!!L.collapsed})); }
@@ -95,7 +96,7 @@
             '<span class="lfield">FPS <input type="range" class="lf" min="1" max="30" value="'+L.fps+'"><input type="number" class="numin lfn" min="1" max="30" value="'+L.fps+'"></span>'+
           '</div>'+
           '<button type="button" class="lcoll" title="collapse / expand this layer card">'+(L.collapsed?CHEV_EXPAND:CHEV_COLLAPSE)+'</button>'+
-          (state.layers.length>1?'<button type="button" class="lrm" title="remove this layer">✕</button>':'')+
+          (state.layers.length>1?'<button type="button" class="lrm" title="remove this layer">'+ICON_RM+'</button>':'')+
           '<div class="lbody"></div>';
         host.appendChild(card);
         // header wiring
@@ -141,8 +142,26 @@
     }
     function removeLayer(n){
       if(n<0 || n>=state.layers.length || state.layers.length<=1) return;
+      const removed=state.layers[n], idx=n;
       state.layers.splice(n,1);
       buildLayerCards(); saveLayerOrder(); saveLayers(); pushConfig();
+      showUndoToast('Removed “'+removed.name+'”', ()=>{   // ~6s window to undo a mistaken removal
+        state.layers.splice(Math.min(idx, state.layers.length), 0, removed);
+        buildLayerCards(); saveLayerOrder(); saveLayers(); pushConfig();
+      });
+    }
+    let _toastEl=null, _toastTimer=null;
+    function showUndoToast(msg, onUndo){
+      if(_toastTimer){ clearTimeout(_toastTimer); _toastTimer=null; }
+      if(_toastEl && _toastEl.parentNode) _toastEl.parentNode.removeChild(_toastEl);
+      const t=document.createElement('div'); t.className='undo-toast';
+      t.innerHTML='<span></span><button type="button">Undo</button>';
+      t.querySelector('span').textContent=msg;
+      const close=()=>{ if(_toastTimer){ clearTimeout(_toastTimer); _toastTimer=null; } if(t.parentNode){ t.classList.add('out'); setTimeout(()=>{ if(t.parentNode) t.parentNode.removeChild(t); }, 250); } if(_toastEl===t) _toastEl=null; };
+      t.querySelector('button').addEventListener('click',()=>{ close(); try{ onUndo(); }catch(_){ } });
+      document.body.appendChild(t); _toastEl=t;
+      requestAnimationFrame(()=>t.classList.add('in'));
+      _toastTimer=setTimeout(close, 6000);
     }
     // Rebuild the layers array from the cards' DOM order — called after a grip drag settles by the page's
     // shared pointer-based card-drag system (same lift/clone/breach-line as the Home cards). Cards list
@@ -360,7 +379,7 @@
         if(s.spd==null) s.spd=100;
         body.innerHTML='<div class="ctl">'+
           sec('Media (GIF / image)')+
-          full('<input type="file" class="s-mediaFile" accept="image/*">')+
+          full('<input type="file" class="s-mediaFile" accept="image/*"> <button type="button" class="s-mediaClear" style="margin:0 0 0 8px" title="offload the loaded GIF/image from this layer">Release</button>')+
           full('<span class="val s-mediaInfo" style="opacity:.85;flex:1 1 100%">'+infoTxt()+'</span>')+
           row('Speed','<input type="range" class="s-mspd" min="10" max="400" value="'+s.spd+'"><span class="val s-mspdV"></span>')+
           full('<span class="val" style="opacity:.55;flex:1 1 100%;font-size:12px;line-height:1.4">A GIF or image sampled onto the keys — played by the daemon (no Connect) and blended with the other layers. Long GIFs sample down to '+MAXF+' frames; <b>Static</b> (below) freezes it.</span>')+
@@ -386,6 +405,7 @@
         c('.s-mediaFile').addEventListener('change', async e=>{ const f=e.target.files[0]; if(!f) return; const el=c('.s-mediaInfo'); if(el) el.textContent='decoding '+f.name+'…';
           try{ const fr=await decodeMedia(f); s.frames=fr; s.mediaName=f.name; L._mediaFrames=null; L.lastTick=0; if(el) el.textContent=esc(f.name)+' · '+fr.length+' frames'; scheduleSaveLayers(); }
           catch(err){ if(el) el.textContent='decode failed: '+err.message; } });
+        { const cl=c('.s-mediaClear'); if(cl) cl.addEventListener('click',()=>{ s.frames=[]; s.mediaName=''; L._mediaFrames=null; L.lastTick=0; const fi=c('.s-mediaFile'); if(fi) fi.value=''; const el=c('.s-mediaInfo'); if(el) el.textContent='no clip loaded'; scheduleSaveLayers(); }); }   // Release = offload the GIF data
       } else if(L.type==='audio'){
         const style=s.style||'bars', uid=card.dataset.n;
         // All four sources are live: system + app run through the background daemon (loopback / process-loopback);
