@@ -108,6 +108,8 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
   .npCols > div{ flex:1 1 360px; min-width:300px; }
   .npCols > div + div{ border-left:1px solid var(--border); padding-left:30px; }
   @media (max-width:820px){ .npCols > div + div{ border-left:0; padding-left:0; border-top:1px solid var(--border); padding-top:14px; } }
+  #npCard .npsec{ padding:8px 12px; border-radius:10px; margin:0 0 8px; }                              /* zebra the control groups for scanability */
+  #npCard .npCols > div > .npsec:nth-of-type(even){ background:rgba(127,154,212,.055); }
   @media (max-width:1040px){
     #grid{ grid-template-columns:repeat(2,1fr); }
     .s2{ grid-column:span 1 } .s3,.s4,.s6{ grid-column:span 2 }
@@ -1064,26 +1066,35 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
     <div class="cardbar"><span class="grip">⠿</span><h2>♪ Now Playing</h2><span class="aux" id="npState">daemon off</span></div>
     <div class="npCols">
       <div>
+        <section class="npsec">
         <p class="hint" style="margin:4px 0 10px">The background daemon shows the current song on the LCD with album art (Spotify
            only by default). <b>⚠ Each update writes the LCD flash, which can occasionally softbrick this board.</b> To minimize that:
            it updates <b>only on a track change</b> (never play/pause/resume), waits ≥20&nbsp;s between writes, and caps at 30/hour.
            Still a real risk — leave it off if you can't afford a possible factory reset. While this page holds the keyboard, a new
            song queues and lands when the daemon takes over.</p>
-        <p class="hint" style="margin:0 0 10px"><b>⌨ Heads-up:</b> during each LCD upload the key lighting pauses and the board can briefly drop input (a fraction of a second) — <b>not recommended during gaming or competitive play</b>.</p>
+        <p class="hint" style="margin:0"><b>⌨ Heads-up:</b> during each LCD upload the key lighting pauses and the board can briefly drop input (a fraction of a second) — <b>not recommended during gaming or competitive play</b>.</p>
+        </section>
+        <section class="npsec">
         <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
           <label class="sl" style="margin:0;cursor:pointer"><input type="checkbox" id="lcdNowPlaying" disabled> Show now-playing on the LCD</label>
           <button id="npRefreshLcd" disabled title="force-repaint the current song to the LCD now (debug — bypasses the dedupe/gap when the display looks stuck)" style="margin:0;padding:4px 10px">↻ Refresh LCD</button>
         </div>
         <p class="hint" style="margin:4px 0 0;font-style:italic">⚠ More impact than the bar alone: each song update flashes the keyboard and briefly drops input. The bar below is lighting-only and has no such cost.</p>
-        <label class="sl" style="margin:10px 0 0;cursor:pointer"><input type="checkbox" id="npOnboardMask" disabled> Mask the onboard flash to black</label>
+        </section>
+        <section class="npsec">
+        <label class="sl" style="margin:0;cursor:pointer"><input type="checkbox" id="npOnboardMask" disabled> Mask the onboard flash to black</label>
         <p class="hint" style="margin:4px 0 0">Sets the keyboard's <b>onboard</b> effect to black, so when the board briefly falls back during an update it shows a <b>dark blink</b> instead of the rainbow startup. <i>Best-effort — a true hardware re-init can still flash; A/B it on vs off.</i> Writes a firmware setting + cycles the keyboard once when toggled.</p>
-        <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-top:10px">
+        </section>
+        <section class="npsec">
+        <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
           <label class="hint" style="margin:0;display:flex;align-items:center;gap:6px">Title <input type="color" id="npTitleColor" value="#ffffff" disabled title="now-playing title text color (re-paints the current song)"></label>
           <label class="hint" style="margin:0;display:flex;align-items:center;gap:6px">Artist <input type="color" id="npArtistColor" value="#ffd98c" disabled title="now-playing artist text color (re-paints the current song)"></label>
           <label class="hint" style="margin:0;display:flex;align-items:center;gap:6px" title="Crop = fill the LCD and crop the edges. Fit = show the whole cover letterboxed.">Album art
             <select id="npArtFit" disabled><option value="crop">Crop</option><option value="fit">Fit</option></select></label>
         </div>
-        <div style="display:flex;align-items:center;gap:8px;margin-top:10px;flex-wrap:wrap">
+        </section>
+        <section class="npsec">
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
           <span class="hint" style="margin:0">Return to GIF when paused for</span>
           <span class="srange" id="npRevertWrap" title="when media stays PAUSED this long, the LCD returns to your last GIF Screen upload">
             <div class="tick" id="npRevertTick" style="left:calc(7px + (100% - 14px)*0.1429)"></div>
@@ -1093,19 +1104,27 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
           <button id="npRevertReset" title="reset to 3 seconds" style="margin:0;padding:4px 9px">↺</button>
           <label class="sl" style="margin:0;cursor:pointer"><input type="checkbox" id="npRevertNever"> Never</label>
         </div>
-        <div id="npSources" style="margin-top:12px"></div>
+        </section>
+        <section class="npsec">
+        <div id="npSources"></div>
+        </section>
       </div>
       <div>
+        <section class="npsec">
         <label class="sl" style="margin:0;cursor:pointer"><input type="checkbox" id="npBar"> Song progress on keys 1-0 (light-bar)</label>
-        <p class="hint" style="margin:4px 0 10px">Keys&nbsp;1-0 light up to show how far through the song you are — <b>lighting only, no LCD writes, so it can't softbrick</b>.
+        <p class="hint" style="margin:4px 0 0">Keys&nbsp;1-0 light up to show how far through the song you are — <b>lighting only, no LCD writes, so it can't softbrick</b>.
            Needs the background daemon running (it reads Spotify's playback position). Works whether or not the LCD now-playing on the left is on.</p>
+        </section>
+        <section class="npsec">
         <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
           <label class="hint" style="margin:0;display:flex;align-items:center;gap:6px">Bar color <input type="color" id="npBarColor" value="#11ff00" disabled title="the song-progress bar color"></label>
           <span class="hint" style="margin:0;display:flex;align-items:center;gap:6px">Brightness
             <input type="range" id="npBarBright" min="5" max="100" step="5" value="60" style="width:110px" disabled></span>
           <span class="hint" id="npBarBrightLbl" style="margin:0;min-width:34px;font-weight:700">60%</span>
         </div>
-        <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-top:10px">
+        </section>
+        <section class="npsec">
+        <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
           <label class="hint" style="margin:0;display:flex;align-items:center;gap:6px">Style
             <select id="npBarGrad" disabled title="how the lit bar is colored">
               <option value="solid">Solid</option>
@@ -1119,15 +1138,20 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
               <option value="numpad">Numpad (1-0)</option>
             </select></label>
         </div>
-        <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-top:10px">
+        </section>
+        <section class="npsec">
+        <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
           <label class="sl" style="margin:0;cursor:pointer"><input type="checkbox" id="npFlash" disabled> Flash keys 1-0 on track change</label>
           <label class="hint" style="margin:0;display:flex;align-items:center;gap:6px">Flash color <input type="color" id="npFlashColor" value="#ffd000" disabled title="the 150ms flash when the song changes"></label>
         </div>
-        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:10px">
+        </section>
+        <section class="npsec">
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
           <span class="hint" style="margin:0">Fade the bar out after idle for</span>
           <input type="range" id="npBarIdle" min="0" max="15" step="1" value="3" style="width:120px" disabled title="when nothing's playing this long, the bar crossfades to gone (0 = fade immediately)">
           <span class="hint" id="npBarIdleLbl" style="margin:0;min-width:34px;font-weight:700">3s</span>
         </div>
+        </section>
       </div>
     </div>
     <p class="hint" id="npTrack" style="margin:14px 0 0;font-weight:600"></p>
