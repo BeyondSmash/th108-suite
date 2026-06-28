@@ -403,6 +403,16 @@
       const tt=1-Math.abs(1-2*t);   // triangle (A→B→A) so the scrolling gradient loops with no hard seam
       out[o]=ar+(r2-ar)*tt|0; out[o+1]=ag+(g2-ag)*tt|0; out[o+2]=ab+(b2-ab)*tt|0; }
   }
+  // per-key output conditioning (saturation → contrast → gamma → brightness), ported from the GIF→keys panel.
+  // Raw sRGB pixels look dull/desaturated diffused through the per-key LEDs; this pushes them back to "looks
+  // like the GIF". Multipliers: s=saturation, c=contrast, gm=gamma exponent, br=brightness (all 1 = untouched).
+  function adjustRgb(r,g,b,s,c,gm,br){
+    if(s!==1){ const y=0.299*r+0.587*g+0.114*b; r=y+(r-y)*s; g=y+(g-y)*s; b=y+(b-y)*s; }
+    if(c!==1){ r=(r-128)*c+128; g=(g-128)*c+128; b=(b-128)*c+128; }
+    r=Math.max(0,Math.min(255,r)); g=Math.max(0,Math.min(255,g)); b=Math.max(0,Math.min(255,b));
+    if(gm!==1){ r=255*Math.pow(r/255,gm); g=255*Math.pow(g/255,gm); b=255*Math.pow(b/255,gm); }   // crush faint bleed → truer color
+    return [Math.max(0,Math.min(255,r*br))|0, Math.max(0,Math.min(255,g*br))|0, Math.max(0,Math.min(255,b*br))|0];
+  }
   // media layer: play a stored per-key frame sequence (a GIF sampled to the board) as a compositor layer.
   // settings.frames = [{ d:delayMs, rgb:[r,g,b,…] (NLED*3, physical key order 0..NLED-1) }]. The PAGE decodes
   // + samples the GIF into frames; the shared engine plays them HERE, so a GIF blends with other layers and
@@ -410,13 +420,25 @@
   function renderMedia(L,tnow){
     const s=L.settings||{}, frames=s.frames, out=L.rgb;
     if(!frames || !frames.length){ out.fill(0); return; }
-    if(L._mediaFrames!==frames){ L._mediaFrames=frames; let tt=0; for(const f of frames) tt+=Math.max(1,f.d||100); L._mediaTotal=Math.max(1,tt); }   // (re)cache total on a new clip
+    if(L._mediaFrames!==frames){ L._mediaFrames=frames; let tt=0; for(const f of frames) tt+=Math.max(1,f.d||100); L._mediaTotal=Math.max(1,tt);
+      // per-key temporal range (max channel spread across the whole loop) → static keys (range≤threshold) are the
+      // ones the "hide static pixels" mask makes transparent, so only the animated pixels show on the layer. Cached per clip.
+      const rng=L._mediaRange=new Float32Array(NLED), lo=new Float32Array(NLED*3).fill(255), hi=new Float32Array(NLED*3);
+      for(const f of frames){ const fr=f.rgb; if(!fr) continue; const m=Math.min(NLED*3, fr.length); for(let i=0;i<m;i++){ const v=fr[i]|0; if(v<lo[i])lo[i]=v; if(v>hi[i])hi[i]=v; } }
+      for(let k=0;k<NLED;k++){ const o=k*3; rng[k]=Math.max(hi[o]-lo[o], hi[o+1]-lo[o+1], hi[o+2]-lo[o+2]); }
+    }
     const t = tnow % L._mediaTotal;                                   // loop (tnow ≥ 0); Static holds the frame via a frozen clock
     let acc=0, idx=0;
     for(let i=0;i<frames.length;i++){ idx=i; acc+=Math.max(1,frames[i].d||100); if(t<acc) break; }
     const rgb=frames[idx] && frames[idx].rgb;
-    if(rgb){ const n=Math.min(out.length, rgb.length); for(let i=0;i<n;i++) out[i]=rgb[i]|0; for(let i=n;i<out.length;i++) out[i]=0; }
+    if(rgb){ const n=Math.min(out.length, rgb.length); for(let i=0;i<n;i++) out[i]=rgb[i]|0; for(let i=n;i<out.length;i++) out[i]=0; }   // raw copy; the shared applyAdjust (sat/con/gam/bri) conditions it after, like every layer
     else out.fill(0);
+    // "hide static pixels": drive the per-key alpha mask (0 = fully transparent → passes lower layers through under
+    // ANY blend, incl. Multiply where a black key would instead darken). range>threshold = animated = visible.
+    if(s.hideStatic && L._mediaRange){ const thr=(s.motionThr==null?16:s.motionThr), rng=L._mediaRange;
+      let am=L._alpha; if(!am || am.length!==NLED) am=L._alpha=new Float32Array(NLED);
+      for(let k=0;k<NLED;k++) am[k] = rng[k]>thr ? 1 : 0;
+    } else if(L._alpha){ L._alpha=null; }   // toggle off → uniform opacity (no mask)
   }
   // individual-keys layer: paint explicit per-key colors. settings.keys = {ledIndex:'#rrggbb'};
   // unpainted keys are black, i.e. transparent under the 'replace' blend (painted keys override below).
@@ -799,13 +821,7 @@
     const sat=s.sat/100, con=s.con/100, gam=s.gam/100, bri=s.bri/100;
     if(sat===1 && con===1 && gam===1 && bri===1) return;   // all defaults → skip the work
     const out=L.rgb;
-    for(let k=0;k<NLED;k++){ const o=k*3; let r=out[o], g=out[o+1], b=out[o+2];
-      if(sat!==1){ const y=0.299*r+0.587*g+0.114*b; r=y+(r-y)*sat; g=y+(g-y)*sat; b=y+(b-y)*sat; }
-      if(con!==1){ r=(r-128)*con+128; g=(g-128)*con+128; b=(b-128)*con+128; }
-      r=Math.max(0,Math.min(255,r)); g=Math.max(0,Math.min(255,g)); b=Math.max(0,Math.min(255,b));
-      if(gam!==1){ r=255*Math.pow(r/255,gam); g=255*Math.pow(g/255,gam); b=255*Math.pow(b/255,gam); }
-      out[o]=Math.max(0,Math.min(255,r*bri))|0; out[o+1]=Math.max(0,Math.min(255,g*bri))|0; out[o+2]=Math.max(0,Math.min(255,b*bri))|0;
-    }
+    for(let k=0;k<NLED;k++){ const o=k*3, c=adjustRgb(out[o],out[o+1],out[o+2],sat,con,gam,bri); out[o]=c[0]; out[o+1]=c[1]; out[o+2]=c[2]; }
   }
   // per-layer clock: scales by speed and freezes when static. Returns accumulated ms.
   function layerNow(L, now){
@@ -1062,7 +1078,8 @@
     else if(L.type==='individual'){ const st=L.settings; if(!st.keys || typeof st.keys!=='object') st.keys={}; if(st.current===undefined) st.current='#ff8c00'; if(st.brush!=='sub') st.brush='solid';
       if(st.fill==='subtract'){ for(const k in st.keys){ if(st.keys[k] && st.keys[k][0]==='#') st.keys[k]='sub'; } }   // migrate legacy LAYER-WIDE subtract → per-key silhouette markers
       st.fill='solid'; }   // 'fill' is now per-key (encoded in keys[]); keep the field inert for back-compat
-    else if(L.type==='media'){ if(!Array.isArray(L.settings.frames)) L.settings.frames=[]; if(L.settings.mediaName===undefined) L.settings.mediaName=''; }   // GIF/sequence sampled to per-key frames (page decodes; engine plays)
+    else if(L.type==='media'){ const s=L.settings; if(!Array.isArray(s.frames)) s.frames=[]; if(s.mediaName===undefined) s.mediaName=''; if(s.hideStatic===undefined) s.hideStatic=false; if(s.motionThr==null) s.motionThr=16;
+      if(s.sat==null) s.sat=170; if(s.gam==null) s.gam=180; }   // color via the shared sat/con/gam/bri Adjust; default to the GIF-tool's Vivid look (raw sRGB reads dull on LEDs) — adjustable in the Adjust block. hideStatic = make unchanging keys transparent
     else if(L.type==='audio'){
       const ad={ style:'bars', source:'system', appId:'', deviceId:'', pauseStyle:'linear',
         gain:1, floor:5, attackMs:40, decayMs:220, beatSens:50, micGain:100, micGate:0,
@@ -1169,7 +1186,7 @@
     hexToRgb, hsv2rgb, patHash, patColorize, audioEnvelope, applyAudioFeatures, audioParams, audioVariantKey,
     keyCell, layerCell,
     PAT_DEFAULTS, patParams, ensureSettings, defaultLayers, createState, applyConfig,
-    renderBackground, renderReactive, renderGradient, renderPattern, renderMedia, renderKeys, renderAudio,
+    renderBackground, renderReactive, renderGradient, renderPattern, renderMedia, adjustRgb, renderKeys, renderAudio,
     reactEnvelope, applyAdjust, layerNow, renderLayer, composite, flatEq,
     composeFrame, stampKey, releaseKey, SEND_FPS_CAP,
   };

@@ -781,3 +781,37 @@ test('media layer: Static freezes the frame; no frames → black', () => {
   E.renderLayer(L2, 0, {});
   assert.equal(L2.rgb[0], 0);
 });
+
+test('media layer: shared sat/gam adjust lifts raw pixels; identity = verbatim', () => {
+  const NLED = E.NLED;
+  const mk = (r,g,b) => { const a = new Array(NLED*3); for (let i=0;i<NLED;i++){ a[i*3]=r; a[i*3+1]=g; a[i*3+2]=b; } return a; };
+  const grey = mk(120,90,60);
+  // identity (Raw) → verbatim
+  const raw = { type:'media', enabled:true, settings:{ frames:[{d:100,rgb:grey}], spd:100, bri:100, sat:100, con:100, gam:100, rot:0 }, rgb:new Uint8Array(NLED*3) };
+  E.renderLayer(raw, 0, {});
+  assert.deepEqual([raw.rgb[0],raw.rgb[1],raw.rgb[2]], [120,90,60]);
+  // saturation > 1 pushes the channels apart from their luma (more saturated ≠ verbatim) — same field every layer uses
+  const sat = { type:'media', enabled:true, settings:{ frames:[{d:100,rgb:grey}], spd:100, bri:100, sat:200, con:100, gam:100, rot:0 }, rgb:new Uint8Array(NLED*3) };
+  E.renderLayer(sat, 0, {});
+  assert.notDeepEqual([sat.rgb[0],sat.rgb[1],sat.rgb[2]], [120,90,60]);
+  // pure adjustRgb identity is a no-op
+  assert.deepEqual(E.adjustRgb(200,100,50,1,1,1,1), [200,100,50]);
+});
+
+test('media layer: hide-static drives the per-key alpha mask (animated=1, unchanging=0)', () => {
+  const NLED = E.NLED;
+  // key 0 changes across frames (animated), key 1 is constant (static)
+  const f0 = new Array(NLED*3).fill(0), f1 = new Array(NLED*3).fill(0);
+  f0[0]=200; f1[0]=10;                 // key 0 swings 190 → animated
+  f0[3]=80;  f1[3]=80;                 // key 1 constant → static
+  const base = { type:'media', enabled:true, rgb:new Uint8Array(NLED*3),
+    settings:{ frames:[{d:100,rgb:f0},{d:100,rgb:f1}], spd:100, bri:100, sat:100, con:100, gam:100, rot:0, motionThr:16 } };
+  // off → no mask
+  base.settings.hideStatic=false; E.renderLayer(base, 0, {});
+  assert.equal(base._alpha, null);
+  // on → animated key alpha 1, static key alpha 0
+  base.settings.hideStatic=true; E.renderLayer(base, 0, {});
+  assert.ok(base._alpha, 'alpha mask allocated');
+  assert.equal(base._alpha[0], 1);    // animated → visible
+  assert.equal(base._alpha[1], 0);    // static → transparent (passes layers below through)
+});

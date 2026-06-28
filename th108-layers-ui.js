@@ -17,15 +17,17 @@
   const root_PaintBoard = () => (typeof window!=='undefined' && window.TH108PaintBoard) || { mount(){ return { draw(){}, recolorSelection(){}, clearSelection(){}, selectNone(){}, selCount(){return 0;}, destroy(){} }; } };
   // lucide chevrons-down-up (= "collapse") / chevrons-up-down (= "expand") for the card corner toggle
   const SVGA='<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">';
-  const CHEV_COLLAPSE=SVGA+'<rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 15h18"/><path d="m9 10 3 3 3-3"/></svg>';   // lucide panel-bottom-close (collapse the body panel)
-  const CHEV_EXPAND=SVGA+'<rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 15h18"/><path d="m9 13 3-3 3 3"/></svg>';     // lucide panel-bottom-open (expand it)
-  const ICON_RM=SVGA+'<circle cx="12" cy="12" r="10"/><path d="m15 9-6 6"/><path d="m9 9 6 6"/></svg>';   // lucide circle-x (distinct from the collapse panel icon)
+  const CHEV_COLLAPSE=SVGA+'<path d="m17 11-5-5-5 5"/><path d="m17 18-5-5-5 5"/></svg>';   // lucide chevrons-up (collapse — fold the body up)
+  const CHEV_EXPAND=SVGA+'<path d="m7 6 5 5 5-5"/><path d="m7 13 5 5 5-5"/></svg>';         // lucide chevrons-down (expand — open the body down)
 
   // ----- pure persist helpers (node-testable) -----
   function serializeLayers(layers){ return layers.map(L=>({name:L.name,enabled:L.enabled,type:L.type,opacity:L.opacity,blend:L.blend,fps:L.fps,settings:L.settings,collapsed:!!L.collapsed})); }
   function serializeOrder(layers){ return layers.map(L=>L.type+':'+L.name); }
-  function overlayLayers(layers, a){
+  function overlayLayers(layers, a, makeLayer){
     if(!Array.isArray(a)) return;
+    // reconcile COUNT first so layers added beyond the 4 defaults (or removed below 4) persist across a refresh.
+    // makeLayer (caller-supplied, has the engine's NLED for the rgb buffer) builds a blank live layer to grow into.
+    if(makeLayer){ while(layers.length<a.length) layers.push(makeLayer()); if(layers.length>a.length) layers.length=a.length; }
     for(let i=0;i<layers.length&&i<a.length;i++){ const o=a[i]; if(!o) continue; const L=layers[i];
       if(o.name!=null)L.name=o.name; L.enabled=!!o.enabled; if(o.type)L.type=o.type; if(o.opacity!=null)L.opacity=o.opacity; if(o.blend)L.blend=o.blend; if(o.fps)L.fps=Math.min(30,o.fps);   // clamp any pre-cap saved fps
       L.collapsed=!!o.collapsed;   // card collapse is a UI pref but rides the same persisted object (survives reorders)
@@ -48,7 +50,8 @@
     let _slsT=0;
     function saveLayers(){ try{ localStorage.setItem('th108_layers', JSON.stringify(serializeLayers(state.layers))); }catch(_){ } }
     function scheduleSaveLayers(){ clearTimeout(_slsT); _slsT=setTimeout(()=>{ saveLayers(); pushConfig(); },400); }   // mirror the edit to the daemon's config.json (no-op if no daemon)
-    function restoreLayers(){ try{ overlayLayers(state.layers, JSON.parse(localStorage.getItem('th108_layers')||'null')); }catch(_){ } }
+    const blankLayer=()=>({ name:'Layer', enabled:false, type:'background', opacity:1, blend:'normal', fps:30, settings:{}, rgb:new Uint8Array(E.NLED*3), lastTick:0, _clk:0, _lastNow:undefined });
+    function restoreLayers(){ try{ overlayLayers(state.layers, JSON.parse(localStorage.getItem('th108_layers')||'null'), blankLayer); }catch(_){ } }
     // Per-STYLE render settings (Adjust/crop/pause/ducks share flat key NAMES across styles, so without this they
     // leak between styles WITHIN a source). Bucketed in s.sv[style]; on a style switch we snapshot the outgoing
     // style's flat values, then restore the incoming style's.
@@ -95,8 +98,11 @@
             '<select class="lbl">'+opt(BLENDS,L.blend)+'</select>'+
             '<span class="lfield">FPS <input type="range" class="lf" min="1" max="30" value="'+L.fps+'"><input type="number" class="numin lfn" min="1" max="30" value="'+L.fps+'"></span>'+
           '</div>'+
-          '<button type="button" class="lcoll" title="collapse / expand this layer card">'+(L.collapsed?CHEV_EXPAND:CHEV_COLLAPSE)+'</button>'+
-          (state.layers.length>1?'<button type="button" class="lrm" title="remove this layer">'+ICON_RM+'</button>':'')+
+          '<div class="lcorner">'+
+            '<button type="button" class="lreset" title="reset this layer to its default settings">Reset</button>'+
+            (state.layers.length>1?'<button type="button" class="lrm" title="remove this layer">Delete</button>':'')+
+            '<button type="button" class="lcoll" title="collapse / expand this layer card">'+(L.collapsed?CHEV_EXPAND:CHEV_COLLAPSE)+'</button>'+
+          '</div>'+
           '<div class="lbody"></div>';
         host.appendChild(card);
         // header wiring
@@ -123,6 +129,7 @@
         lfn.addEventListener('input',e=>{ if(e.target.value!=='') setFps(+e.target.value,false); });
         lfn.addEventListener('change',e=>setFps(+e.target.value,true));
         const rmb=card.querySelector('.lrm'); if(rmb) rmb.addEventListener('click',()=>{ if(state.layers.length>1 && confirm('Remove layer "'+L.name+'"?')) removeLayer(n); });
+        const rstb=card.querySelector('.lreset'); if(rstb) rstb.addEventListener('click',()=>resetLayer(n));
         buildLayerBody(card,L);
       }
       if(state.layers.length < TYPES.length){   // one layer per effect type → cap at TYPES.length
@@ -139,6 +146,16 @@
       const L={ name:type.charAt(0).toUpperCase()+type.slice(1), enabled:true, type, opacity: type==='audio'?0.85:1, blend, fps:30, settings:{} };
       E.ensureSettings(L); state.layers.push(L);
       buildLayerCards(); saveLayerOrder(); saveLayers(); pushConfig();
+    }
+    // reset a layer to its type's default settings (same look a freshly-added layer of this type has); keeps its
+    // name/enabled/position. Undo restores the prior settings + opacity/blend/fps.
+    function resetLayer(n){
+      const L=state.layers[n]; if(!L) return;
+      if(!confirm('Reset layer "'+L.name+'" to its default settings?')) return;
+      const prev={ settings:JSON.parse(JSON.stringify(L.settings)), opacity:L.opacity, blend:L.blend, fps:L.fps };
+      const apply=cfg=>{ L.settings=cfg.settings; L.opacity=cfg.opacity; L.blend=cfg.blend; L.fps=cfg.fps; E.ensureSettings(L); L.lastTick=0; buildLayerCards(); saveLayers(); pushConfig(); };
+      apply({ settings:{}, opacity:(L.type==='audio'?0.85:1), blend:(L.type==='individual'?'replace':L.type==='audio'?'add':'normal'), fps:30 });
+      showUndoToast('Reset “'+L.name+'”', ()=>apply(prev));
     }
     function removeLayer(n){
       if(n<0 || n>=state.layers.length || state.layers.length<=1) return;
@@ -377,15 +394,57 @@
         const esc=t=>(t||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');
         const infoTxt=()=> s.frames.length ? (esc(s.mediaName||'clip')+' · '+s.frames.length+' frames') : 'no clip loaded';
         if(s.spd==null) s.spd=100;
+        const av=k=>(s[k]==null?100:s[k]);   // Brightness/Saturation/Contrast/Gamma + Freeze live in the shared Adjust block below (engine.applyAdjust)
         body.innerHTML='<div class="ctl">'+
           sec('Media (GIF / image)')+
-          full('<input type="file" class="s-mediaFile" accept="image/*"> <button type="button" class="s-mediaClear" style="margin:0 0 0 8px" title="offload the loaded GIF/image from this layer">Release</button>')+
-          full('<span class="val s-mediaInfo" style="opacity:.85;flex:1 1 100%">'+infoTxt()+'</span>')+
+          full('<img class="s-mediaImg" alt="" style="max-width:100%;max-height:130px;border-radius:8px;display:none;object-fit:contain;background:#0d1117">')+
+          full('<div style="display:flex;align-items:center;justify-content:center;gap:12px;flex:1 1 100%"><input type="file" class="s-mediaFile" accept="image/*"><button type="button" class="s-mediaClear" style="flex:none" title="offload the loaded GIF/image from this layer">Release</button></div>')+
+          full('<span class="val s-mediaInfo" style="opacity:.85;flex:1 1 100%;text-align:center">'+infoTxt()+'</span>')+
           row('Speed','<input type="range" class="s-mspd" min="10" max="400" value="'+s.spd+'"><span class="val s-mspdV"></span>')+
-          full('<span class="val" style="opacity:.55;flex:1 1 100%;font-size:12px;line-height:1.4">A GIF or image sampled onto the keys — played by the daemon (no Connect) and blended with the other layers. Long GIFs sample down to '+MAXF+' frames; <b>Static</b> (below) freezes it.</span>')+
+          full('<div style="display:flex;align-items:center;justify-content:center;gap:10px;flex-wrap:wrap;flex:1 1 100%"><span style="color:var(--muted);font-size:12px">Color preset</span><button type="button" class="s-mvivid" style="flex:none" title="LED match: sat 170% / gamma 1.8 — reads as vividly on the keys as on screen (sets the Adjust block below)">✨ Vivid</button><button type="button" class="s-mraw" style="flex:none" title="untouched / raw sRGB (sat 100%, gamma 1.0)">Raw</button><span class="val" style="opacity:.5;font-size:11px;width:100%;text-align:center">presets for the Adjust block below</span></div>')+
+          sub('Motion')+
+          row('Hide static','<label class="sl" style="margin:0"><input type="checkbox" class="s-mhide"'+(s.hideStatic?' checked':'')+'> Only animated pixels show — keys whose color never changes across the loop turn transparent (layers below pass through)</label><span></span>')+
+          (s.hideStatic?row('Threshold','<input type="range" class="s-mthr" min="0" max="80" value="'+(s.motionThr==null?16:s.motionThr)+'"><span class="val s-mthrV"></span>'):'')+
+          sec('Keyboard preview')+
+          full('<canvas class="s-mediaPrev" width="378" height="110" style="width:100%;height:auto;display:block;background:#0d1117;border-radius:8px;flex:1 1 100%"></canvas>')+
+          full('<span class="val" style="opacity:.55;flex:1 1 100%;font-size:12px;line-height:1.4;text-align:center">Sampled onto the keys, played by the daemon (no Connect) and blended with the other layers. Long GIFs sample down to '+MAXF+' frames. Color &amp; Freeze live in <b>Adjust</b> below.</span>')+
         '</div>';
         const c=q=>body.querySelector(q);
+        // actual GIF/image source preview (the real file) — object URL kept on L for this session (not persisted; gone on reload, where the keyboard preview still plays from the saved per-key frames)
+        const showImg=()=>{ const im=c('.s-mediaImg'); if(!im) return; if(L._mediaUrl){ im.src=L._mediaUrl; im.style.display='block'; } else { im.removeAttribute('src'); im.style.display='none'; } };
+        showImg();
         { const sp=c('.s-mspd'), spv=c('.s-mspdV'); const upd=()=>{ if(spv) spv.textContent=(s.spd/100).toFixed(1)+'×'; }; if(sp) sp.addEventListener('input',e=>{ s.spd=+e.target.value||100; upd(); scheduleSaveLayers(); }); upd(); }
+        // Vivid / Raw presets drive the shared Adjust fields, then rebuild so the Adjust sliders reflect the new values
+        { const vb=c('.s-mvivid'); if(vb) vb.addEventListener('click',()=>{ s.sat=170; s.con=100; s.gam=180; s.bri=100; L.lastTick=0; buildLayerBody(card,L); scheduleSaveLayers(); }); }
+        { const rb=c('.s-mraw'); if(rb) rb.addEventListener('click',()=>{ s.sat=100; s.con=100; s.gam=100; s.bri=100; L.lastTick=0; buildLayerBody(card,L); scheduleSaveLayers(); }); }
+        // Hide-static toggle + motion threshold — engine zeroes the per-key alpha on keys whose color never changes (transparent under any blend)
+        { const hb=c('.s-mhide'); if(hb) hb.addEventListener('change',e=>{ s.hideStatic=e.target.checked; L.lastTick=0; buildLayerBody(card,L); scheduleSaveLayers(); }); }   // rebuild → Threshold row shows/hides
+        { const tb=c('.s-mthr'), tv=c('.s-mthrV'); if(tb){ const upd=()=>{ if(tv) tv.textContent=tb.value; }; tb.addEventListener('input',e=>{ s.motionThr=+e.target.value; upd(); L.lastTick=0; scheduleSaveLayers(); }); upd(); } }
+        // temporal range per key (cached by frame set) — mirrors the engine's hide-static mask for the preview
+        let _rngFor=null, _rng=null;
+        function keyRanges(){ if(_rngFor===s.frames && _rng) return _rng; const N=INDICES.length, lo=new Array(N*3).fill(255), hi=new Array(N*3).fill(0);
+          for(const f of s.frames){ const fr=f.rgb; if(!fr) continue; const m=Math.min(N*3,fr.length); for(let i=0;i<m;i++){ const v=fr[i]|0; if(v<lo[i])lo[i]=v; if(v>hi[i])hi[i]=v; } }
+          const r=new Array(N); for(let k=0;k<N;k++){ const o=k*3; r[k]=Math.max(hi[o]-lo[o],hi[o+1]-lo[o+1],hi[o+2]-lo[o+2]); } _rngFor=s.frames; _rng=r; return r; }
+        // live keyboard preview: pick the current frame on a wall clock × speed, apply the shared Adjust conditioning,
+        // draw each key at its physical rect. With Hide static on, static keys are left dark to show what's transparent.
+        function drawMediaPrev(){
+          const cvp=c('.s-mediaPrev'); if(!cvp) return; const ctx=cvp.getContext('2d');
+          ctx.fillStyle='#0d1117'; ctx.fillRect(0,0,cvp.width,cvp.height);
+          if(!s.frames.length) return;
+          let tot=0; for(const f of s.frames) tot+=Math.max(1,f.d||100); tot=Math.max(1,tot);
+          const t=((performance.now()*((s.spd||100)/100))%tot); let accT=0, idx=0;
+          for(let i=0;i<s.frames.length;i++){ idx=i; accT+=Math.max(1,s.frames[i].d||100); if(t<accT) break; }
+          const rgb=s.frames[idx].rgb, sa=av('sat')/100, co=av('con')/100, gm=av('gam')/100, br=av('bri')/100;
+          const hide=!!s.hideStatic, thr=(s.motionThr==null?16:s.motionThr), rng=hide?keyRanges():null;
+          const pad=4, W=cvp.width-2*pad, H=cvp.height-2*pad;
+          for(let k=0;k<INDICES.length;k++){ const q=E.keyCell(INDICES[k]); if(!q) continue; if(hide && rng[k]<=thr) continue;   // static → transparent (leave background)
+            const o=k*3, cc=E.adjustRgb(rgb[o],rgb[o+1],rgb[o+2],sa,co,gm,br);
+            ctx.fillStyle='rgb('+cc[0]+','+cc[1]+','+cc[2]+')';
+            ctx.fillRect(pad+(q[0]-q[2]/2)*W+0.75, pad+(q[1]-q[3]/2)*H+0.75, Math.max(1,q[2]*W-1.5), Math.max(1,q[3]*H-1.5)); }
+        }
+        (function tickPrev(){ const cvp=c('.s-mediaPrev'); if(!cvp || !document.body.contains(cvp) || L.type!=='media') return;   // canvas detached (card rebuilt) or no longer a media layer → stop
+          if(cvp.offsetParent!==null && !document.hidden && s.frames.length) drawMediaPrev();                                    // idle cheaply when collapsed / off-screen / tab hidden
+          setTimeout(tickPrev, 1000/30); })();
         // decode a GIF/image → per-frame per-key colours: cover-fit the image, then read the pixel at each key's
         // normalized board position (engine.keyCell) — so the GIF maps across the whole keyboard.
         async function decodeMedia(file){
@@ -403,9 +462,10 @@
           return out;
         }
         c('.s-mediaFile').addEventListener('change', async e=>{ const f=e.target.files[0]; if(!f) return; const el=c('.s-mediaInfo'); if(el) el.textContent='decoding '+f.name+'…';
+          if(L._mediaUrl) URL.revokeObjectURL(L._mediaUrl); L._mediaUrl=URL.createObjectURL(f); showImg();   // show the actual file immediately, before the (async) per-key decode
           try{ const fr=await decodeMedia(f); s.frames=fr; s.mediaName=f.name; L._mediaFrames=null; L.lastTick=0; if(el) el.textContent=esc(f.name)+' · '+fr.length+' frames'; scheduleSaveLayers(); }
           catch(err){ if(el) el.textContent='decode failed: '+err.message; } });
-        { const cl=c('.s-mediaClear'); if(cl) cl.addEventListener('click',()=>{ s.frames=[]; s.mediaName=''; L._mediaFrames=null; L.lastTick=0; const fi=c('.s-mediaFile'); if(fi) fi.value=''; const el=c('.s-mediaInfo'); if(el) el.textContent='no clip loaded'; scheduleSaveLayers(); }); }   // Release = offload the GIF data
+        { const cl=c('.s-mediaClear'); if(cl) cl.addEventListener('click',()=>{ s.frames=[]; s.mediaName=''; L._mediaFrames=null; L.lastTick=0; if(L._mediaUrl){ URL.revokeObjectURL(L._mediaUrl); L._mediaUrl=null; } showImg(); const fi=c('.s-mediaFile'); if(fi) fi.value=''; const el=c('.s-mediaInfo'); if(el) el.textContent='no clip loaded'; scheduleSaveLayers(); }); }   // Release = offload the GIF data + source preview
       } else if(L.type==='audio'){
         const style=s.style||'bars', uid=card.dataset.n;
         // All four sources are live: system + app run through the background daemon (loopback / process-loopback);

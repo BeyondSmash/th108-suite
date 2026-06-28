@@ -77,5 +77,21 @@ test('overlayLayers: non-array is a no-op; null entries skipped; extra saved ent
   assert.equal(layers[0].name, 'a');                // null entry → untouched (incl. enabled)
   assert.equal(layers[0].enabled, true);
   assert.equal(layers[1].name, 'B2');
-  assert.equal(layers.length, 2);
+  assert.equal(layers.length, 2);                   // no factory → extras still ignored (legacy behavior)
+});
+
+// --- count reconciliation: with a factory, the live array GROWS/TRUNCATES to the saved count (layers 5-7 persist) ---
+test('overlayLayers with a factory grows to extra saved layers and truncates removed ones', () => {
+  const made = () => mkLayer({ name: 'blank', type: 'background' });
+  // grow: 2 defaults, 4 saved → 4 layers, all overlaid (the new ones built by the factory)
+  const grow = [mkLayer({ name: 'a' }), mkLayer({ name: 'b' })];
+  LUI.overlayLayers(grow, [{ name: 'L1', type: 'gradient' }, { name: 'L2' }, { name: 'L3', type: 'audio' }, { name: 'L4', type: 'media' }], made);
+  assert.equal(grow.length, 4);
+  assert.equal(grow[3].name, 'L4');
+  assert.equal(grow[3].type, 'media');
+  // truncate: 4 defaults, 1 saved → 1 layer (a removed-down-to-1 stack stays removed)
+  const trim = [mkLayer({ name: 'a' }), mkLayer({ name: 'b' }), mkLayer({ name: 'c' }), mkLayer({ name: 'd' })];
+  LUI.overlayLayers(trim, [{ name: 'only' }], made);
+  assert.equal(trim.length, 1);
+  assert.equal(trim[0].name, 'only');
 });
