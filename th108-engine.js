@@ -403,7 +403,21 @@
       const tt=1-Math.abs(1-2*t);   // triangle (A→B→A) so the scrolling gradient loops with no hard seam
       out[o]=ar+(r2-ar)*tt|0; out[o+1]=ag+(g2-ag)*tt|0; out[o+2]=ab+(b2-ab)*tt|0; }
   }
-  function renderMedia(L,now){ L.rgb.fill(0); }   // media layers are a no-op in the engine (page-only in v1)
+  // media layer: play a stored per-key frame sequence (a GIF sampled to the board) as a compositor layer.
+  // settings.frames = [{ d:delayMs, rgb:[r,g,b,…] (NLED*3, physical key order 0..NLED-1) }]. The PAGE decodes
+  // + samples the GIF into frames; the shared engine plays them HERE, so a GIF blends with other layers and
+  // runs daemon-driven (no Connect). `tnow` is layerNow's per-layer clock (speed-scaled, freezes on Static).
+  function renderMedia(L,tnow){
+    const s=L.settings||{}, frames=s.frames, out=L.rgb;
+    if(!frames || !frames.length){ out.fill(0); return; }
+    if(L._mediaFrames!==frames){ L._mediaFrames=frames; let tt=0; for(const f of frames) tt+=Math.max(1,f.d||100); L._mediaTotal=Math.max(1,tt); }   // (re)cache total on a new clip
+    const t = tnow % L._mediaTotal;                                   // loop (tnow ≥ 0); Static holds the frame via a frozen clock
+    let acc=0, idx=0;
+    for(let i=0;i<frames.length;i++){ idx=i; acc+=Math.max(1,frames[i].d||100); if(t<acc) break; }
+    const rgb=frames[idx] && frames[idx].rgb;
+    if(rgb){ const n=Math.min(out.length, rgb.length); for(let i=0;i<n;i++) out[i]=rgb[i]|0; for(let i=n;i<out.length;i++) out[i]=0; }
+    else out.fill(0);
+  }
   // individual-keys layer: paint explicit per-key colors. settings.keys = {ledIndex:'#rrggbb'};
   // unpainted keys are black, i.e. transparent under the 'replace' blend (painted keys override below).
   // fill 'subtract' (settings.fill): the painted keys CARVE the layers below dark instead of drawing their
@@ -960,7 +974,7 @@
     else if(L.type==='pattern') renderPattern(L,tnow);
     else if(L.type==='individual') renderKeys(L);
     else if(L.type==='audio') renderAudio(L,now,state);
-    else renderMedia(L,now);
+    else renderMedia(L,tnow);   // media plays on the speed/freeze-aware per-layer clock
     applyAdjust(L);   // common color post-process (saturation→contrast→gamma→brightness)
   }
 
@@ -1047,6 +1061,7 @@
     else if(L.type==='individual'){ const st=L.settings; if(!st.keys || typeof st.keys!=='object') st.keys={}; if(st.current===undefined) st.current='#ff8c00'; if(st.brush!=='sub') st.brush='solid';
       if(st.fill==='subtract'){ for(const k in st.keys){ if(st.keys[k] && st.keys[k][0]==='#') st.keys[k]='sub'; } }   // migrate legacy LAYER-WIDE subtract → per-key silhouette markers
       st.fill='solid'; }   // 'fill' is now per-key (encoded in keys[]); keep the field inert for back-compat
+    else if(L.type==='media'){ if(!Array.isArray(L.settings.frames)) L.settings.frames=[]; if(L.settings.mediaName===undefined) L.settings.mediaName=''; }   // GIF/sequence sampled to per-key frames (page decodes; engine plays)
     else if(L.type==='audio'){
       const ad={ style:'bars', source:'system', appId:'', deviceId:'', pauseStyle:'linear',
         gain:1, floor:5, attackMs:40, decayMs:220, beatSens:50, micGain:100, micGate:0,

@@ -753,3 +753,31 @@ test('alpha recede: a steady bar fades see-through (layer below shows), a hit ma
   const f2 = E.composeFrame(st2, 100);
   assert.ok(f2[o+1] > 100 && f2[o+2] < 60, 'a hit makes the bar opaque → red shows, not white (r='+f2[o+1]+' g='+f2[o+2]+')');
 });
+
+// ===== media layer (GIF-as-a-compositor-layer) =====
+test('media layer plays stored per-key frames on its speed/freeze clock', () => {
+  const NLED = E.NLED;
+  const mk = (r, g, b) => { const a = new Array(NLED * 3); for (let i = 0; i < NLED; i++) { a[i*3]=r; a[i*3+1]=g; a[i*3+2]=b; } return a; };
+  const frames = [{ d:100, rgb:mk(10,0,0) }, { d:100, rgb:mk(0,20,0) }, { d:100, rgb:mk(0,0,30) }];
+  const L = { type:'media', enabled:true, settings:{ frames, spd:100, frozen:false, bri:100, sat:100, con:100, gam:100, rot:0 }, rgb:new Uint8Array(NLED*3) };
+  const head = () => [L.rgb[0], L.rgb[1], L.rgb[2]];
+  E.renderLayer(L, 0,   {});            // clock 0   → frame 0
+  assert.deepEqual(head(), [10,0,0]);
+  E.renderLayer(L, 150, {});            // clock 150 → frame 1 (100..200)
+  assert.deepEqual(head(), [0,20,0]);
+  E.renderLayer(L, 250, {});            // clock 250 → frame 2 (200..300)
+  assert.deepEqual(head(), [0,0,30]);
+  E.renderLayer(L, 400, {});            // clock 400 → t=100 → frame 1 (loops)
+  assert.deepEqual(head(), [0,20,0]);
+});
+
+test('media layer: Static freezes the frame; no frames → black', () => {
+  const NLED = E.NLED;
+  const mk = (r) => { const a = new Array(NLED*3).fill(0); a[0]=r; return a; };
+  const L = { type:'media', enabled:true, settings:{ frames:[{d:100,rgb:mk(11)},{d:100,rgb:mk(22)}], spd:100, frozen:true, bri:100, sat:100, con:100, gam:100, rot:0 }, rgb:new Uint8Array(NLED*3) };
+  E.renderLayer(L, 0, {}); E.renderLayer(L, 999, {});   // frozen clock holds → frame 0
+  assert.equal(L.rgb[0], 11);
+  const L2 = { type:'media', enabled:true, settings:{ frames:[], spd:100, frozen:false, bri:100, sat:100, con:100, gam:100, rot:0 }, rgb:new Uint8Array(NLED*3).fill(99) };
+  E.renderLayer(L2, 0, {});
+  assert.equal(L2.rgb[0], 0);
+});
