@@ -705,7 +705,7 @@
               const shown=liveWrap.offsetParent!==null && !s.livePrevOff;   // card expanded/enabled AND the live preview isn't toggled off
               const r=shown?liveWrap.getBoundingClientRect():null;
               const cr=shown?card.getBoundingClientRect():null;
-              const cardInView=shown && cr.bottom>40 && cr.top<window.innerHeight-40;   // you're still within THIS audio card's controls
+              const cardInView=shown && cr.bottom > window.innerHeight*0.30 + (peek.offsetHeight||36) && cr.top<window.innerHeight-40;   // card still reaches the pill's 30% anchor — once its BOTTOM scrolls above the pill, hide it (don't float the pill beside empty space)
               const off=shown && cardInView && r.bottom<4;                              // and the inline preview has scrolled ABOVE the viewport (you're down in the tuner)
               const dupOffTop=!!dup.parentNode && dup.getBoundingClientRect().bottom<4;  // the shown duplicate has scrolled off the top → pill is inapplicable, hide it
               const want=off && !dupOffTop;
