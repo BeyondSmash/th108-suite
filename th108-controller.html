@@ -1709,7 +1709,7 @@ const LUI=TH108LayersUI.create({
   state, engine: TH108Engine,
   cards: document.getElementById('layerCards'),
   panel: document.getElementById('layersPanel'),
-  attachHex, snap,                                           // page UI helpers (hex box per color picker, slider detent)
+  attachHex, snap, snapMul,                                  // page UI helpers (hex box per color picker, slider detent single/multiple)
   pushConfig: ()=>DC.pushConfig(),                           // mirror debounced saves to the daemon's config.json
   isRunning: ()=>running,                                    // reorder warm-renders the new stack only while the loop is live
   onPatternPick: ()=>{ if(obActive && HID.device && !running && !GIF.playing) start(); },   // picking a pattern while a firmware effect is showing = "back to layers", no extra click
