@@ -297,7 +297,12 @@
           if(pb) return;
           wrap=document.createElement('div'); wrap.className='pb-wrap pb-large';
           wrap.innerHTML='<div class="pb-board"></div><div class="pb-hint">Click/drag = paint · Shift = add · Ctrl = deselect · Alt+drag = erase · pick a color to recolor the selection</div>';
-          card.parentNode.insertBefore(wrap, card);   // wedge the board directly ABOVE this layer card
+          // mount the board ABOVE the whole grid row holding this layer (the full-width board would otherwise
+          // split side-by-side cards, e.g. Layer 3 | Layer 4) — find the leftmost card sharing this card's row top
+          const sibs=[...card.parentNode.querySelectorAll('.lcard')], myTop=card.getBoundingClientRect().top;
+          let anchor=card, anchorLeft=card.getBoundingClientRect().left;
+          for(const sc of sibs){ const r=sc.getBoundingClientRect(); if(Math.abs(r.top-myTop)<8 && r.left<anchorLeft){ anchor=sc; anchorLeft=r.left; } }
+          card.parentNode.insertBefore(wrap, anchor);   // full-width board sits above the entire row → side-by-side cards stay together below it
           pb=root_PaintBoard().mount(wrap.querySelector('.pb-board'), {
             engine:E, getKeys:()=>s.keys, getColor:()=> s.brush==='sub' ? 'sub' : s.current,   // brush paints the silhouette marker OR the solid color
             onPaint:(idx,hex)=>{ if(hex) s.keys[idx]=hex; else delete s.keys[idx]; reRender(); },
