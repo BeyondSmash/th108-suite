@@ -428,7 +428,7 @@
           full('<div style="display:flex;align-items:center;justify-content:center;gap:10px;flex-wrap:wrap;flex:1 1 100%"><span style="color:var(--muted);font-size:12px">Color preset</span><button type="button" class="s-mvivid" style="flex:none" title="LED match: sat 170% / gamma 1.8 — reads as vividly on the keys as on screen (sets the Adjust block below)">✨ Vivid</button><button type="button" class="s-mraw" style="flex:none" title="Untouched / raw sRGB (sat 100%, gamma 1.0)">Raw</button><span class="val" style="opacity:.5;font-size:11px;width:100%;text-align:center">presets for the Adjust block below</span></div>')+
           sub('Motion')+
           row('Hide static','<label class="sl" style="margin:0"><input type="checkbox" class="s-mhide"'+(s.hideStatic?' checked':'')+'> Only animated pixels show — keys whose color never changes across the loop turn transparent (layers below pass through)</label><span></span>')+
-          (s.hideStatic?row('Threshold','<input type="range" class="s-mthr" min="0" max="80" value="'+(s.motionThr==null?16:s.motionThr)+'"><span class="val s-mthrV"></span>'):'')+
+          (s.hideStatic?row('Threshold','<span class="srange" style="width:100%"><input type="range" class="s-mthr" min="0" max="80" value="'+(s.motionThr==null?16:s.motionThr)+'"><i class="tick" style="left:calc(7px + (100% - 14px)*0.2)"></i></span><span class="val s-mthrV"></span>'):'')+
         '</div>';
         const c=q=>body.querySelector(q);
         const Media=(typeof window!=='undefined'&&window.TH108Media)||null;
@@ -591,7 +591,7 @@
         { const vb=c('.s-mvivid'); if(vb) vb.addEventListener('click',()=>{ s.sat=170; s.con=100; s.gam=180; s.bri=100; L.lastTick=0; buildLayerBody(card,L); scheduleSaveLayers(); }); }
         { const rb=c('.s-mraw'); if(rb) rb.addEventListener('click',()=>{ s.sat=100; s.con=100; s.gam=100; s.bri=100; L.lastTick=0; buildLayerBody(card,L); scheduleSaveLayers(); }); }
         { const hb=c('.s-mhide'); if(hb) hb.addEventListener('change',e=>{ s.hideStatic=e.target.checked; L.lastTick=0; buildLayerBody(card,L); scheduleSaveLayers(); }); }   // rebuild -> Threshold row shows/hides
-        { const tb=c('.s-mthr'), tv=c('.s-mthrV'); if(tb){ const upd=()=>{ if(tv) tv.textContent=tb.value; }; tb.addEventListener('input',e=>{ s.motionThr=+e.target.value; upd(); L.lastTick=0; scheduleSaveLayers(); }); upd(); } }
+        { const tb=c('.s-mthr'), tv=c('.s-mthrV'); if(tb){ const upd=()=>{ if(tv) tv.textContent=tb.value; }; tb.addEventListener('input',e=>{ snap(e.target,16,3); s.motionThr=+e.target.value; upd(); L.lastTick=0; scheduleSaveLayers(); }); upd(); } }   // detent at the default (16)
         c('.s-mediaFile').addEventListener('change',e=>{ const f=e.target.files[0]; if(f) loadBlob(f, f.name); });
         { const u=c('.s-murl'), b=c('.s-murlload'); if(b&&u){ b.addEventListener('click',()=>loadUrl(u.value.trim())); u.addEventListener('keydown',e=>{ if(e.key==='Enter') loadUrl(u.value.trim()); }); } }
         { const pb=c('.s-mpaste'); if(pb) pb.addEventListener('click',async()=>{ try{ const items=await navigator.clipboard.read(); for(const it of items){ const ty=it.types.find(t=>t.startsWith('image/')); if(ty) return loadBlob(await it.getType(ty),'pasted-image'); } setInfo('no image on the clipboard'); }catch(e){ setInfo('clipboard read failed: '+e.message); } }); }
