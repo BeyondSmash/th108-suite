@@ -417,7 +417,7 @@
           full('<span class="val s-mediaInfo" style="opacity:.85;flex:1 1 100%;text-align:center">'+infoTxt()+'</span>')+
           sub('Framing')+
           ((s.frames.length && !s.mediaId)?full('<span class="val" style="color:var(--warn,#e0a200);opacity:.85;flex:1 1 100%;text-align:center;font-size:12px;line-height:1.4">⚠ Re-load this clip (Choose File) to adjust framing — it was saved before framing existed, so only the baked frames remain.</span>'):'')+
-          row('Zoom','<input type="range" class="s-mzoom" min="20" max="500" value="'+s.zoom+'"><span class="val s-mzoomV"></span>')+
+          row('Zoom','<span class="srange" style="width:100%"><input type="range" class="s-mzoom" min="20" max="500" value="'+s.zoom+'"><i class="tick" style="left:calc(7px + (100% - 14px)*0.1667)"></i></span><span class="val s-mzoomV"></span>')+
           row('Rotate','<input type="range" class="s-mrot" min="0" max="360" value="'+s.rot+'"><span class="val s-mrotV"></span>')+
           full('<button type="button" class="s-mframeReset" style="flex:none">Reset framing</button><span class="val" style="opacity:.5;font-size:11px">drag the preview above to pan; zoom/rotate to frame which part of the clip maps onto the keys</span>')+
           '<div class="lsub s-sampleHdr">Sampling</div>'+
@@ -574,7 +574,7 @@
           } else if(pillVisible){ fadePill(false); }
           setTimeout(tick, 1000/30); })();
         // framing controls
-        { const zo=c('.s-mzoom'), zv=c('.s-mzoomV'); const upd=()=>{ if(zv) zv.textContent=(s.zoom||100)+'%'; }; if(zo) zo.addEventListener('input',e=>{ s.zoom=+e.target.value||100; upd(); resampleAll(); scheduleSaveLayers(); }); upd(); }
+        { const zo=c('.s-mzoom'), zv=c('.s-mzoomV'); const upd=()=>{ if(zv) zv.textContent=(s.zoom||100)+'%'; }; if(zo) zo.addEventListener('input',e=>{ snap(e.target,100,10); s.zoom=+e.target.value||100; upd(); resampleAll(); scheduleSaveLayers(); }); upd(); }   // detent at 100%
         { const ro=c('.s-mrot'), rv=c('.s-mrotV'); const upd=()=>{ if(rv) rv.textContent=(s.rot||0)+'°'; }; if(ro) ro.addEventListener('input',e=>{ s.rot=+e.target.value||0; upd(); resampleAll(); scheduleSaveLayers(); }); upd(); }
         { const fb=c('.s-mframeReset'); if(fb) fb.addEventListener('click',()=>{ s.zoom=100; s.panX=0; s.panY=0; s.rot=0; const z=c('.s-mzoom'); if(z)z.value=100; const r=c('.s-mrot'); if(r)r.value=0; const zv=c('.s-mzoomV'); if(zv)zv.textContent='100%'; const rv=c('.s-mrotV'); if(rv)rv.textContent='0°'; resampleAll(); drawSrc(currentIdx()); scheduleSaveLayers(); }); }
         // sampling: Map (physical/grid) + Sample strategy + Out-of-frame fill — re-sample on change (no decode needed)
