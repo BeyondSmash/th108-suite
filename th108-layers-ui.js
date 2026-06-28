@@ -396,7 +396,14 @@
         const SAMPLES=[['average','Average (area)'],['center','Center pixel'],['gaussian','Gaussian (center-weighted)'],['vivid','Most vivid pixel'],['bright','Brightest pixel (text/logos)'],['dominant','Dominant color'],['standout','Standout (max contrast)']];
         const optList=(arr,sel)=>arr.map(o=>'<option value="'+o[0]+'"'+(o[0]===sel?' selected':'')+'>'+o[1]+'</option>').join('');
         const esc=t=>(t||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');
-        const infoTxt=()=> s.frames.length ? (esc(s.mediaName||'clip')+' · '+s.frames.length+' frames') : 'no clip loaded';
+        const fmtBytes=b=>(b==null?'':b<1024?b+' B':b<1048576?(b/1024).toFixed(0)+' KB':(b/1048576).toFixed(1)+' MB');
+        const infoTxt=()=>{ if(!s.frames.length) return 'no clip loaded';
+          let durMs=0; for(const f of s.frames) durMs+=Math.max(1,f.d||100); const dur=durMs/1000, spd=(s.spd||100)/100, adj=dur/spd;
+          const parts=[esc(s.mediaName||'clip'), s.frames.length+' frames'];
+          if(s.srcW) parts.push(s.srcW+'×'+s.srcH);
+          parts.push(dur.toFixed(1)+'s'+(Math.abs(spd-1)>0.001?' ('+adj.toFixed(1)+'s at '+spd.toFixed(1)+'×)':''));
+          if(s.mediaBytes) parts.push(fmtBytes(s.mediaBytes));
+          return parts.join(' · '); };
         const av=k=>(s[k]==null?100:s[k]);   // Brightness/Saturation/Contrast/Gamma + Freeze live in the shared Adjust block below (engine.applyAdjust)
         body.innerHTML='<div class="ctl">'+
           sec('Media (GIF / image)')+
@@ -497,12 +504,14 @@
         async function ensureSource(){ if((L._srcFrames&&L._srcFrames.length) || !s.mediaId || !(Media&&Media.available)) return;   // lazy-load the source from IDB so framing works after a refresh
           try{ const src=await Media.getSource(s.mediaId); if(!src) return; L._srcFrames = Array.isArray(src) ? await decodeSourceSeq(src) : await decodeSource(src); drawSrc(0); }catch(_){ } }
         // ===== load pipeline (single blob / image sequence) shared by every loader =====
-        const esc2=esc, setInfo=t=>{ const el=c('.s-mediaInfo'); if(el) el.textContent=t; };
+        const setInfo=t=>{ const el=c('.s-mediaInfo'); if(el) el.textContent=t; };
         function finishLoad(name, srcData, kind){
           s.mediaName=name; if(!s.mediaId) s.mediaId=(typeof crypto!=='undefined'&&crypto.randomUUID)?crypto.randomUUID():('m'+performance.now()+'-'+INDICES.length);
           resampleAll(); drawSrc(0); _currentSrc={kind, name, blob:kind==='single'?srcData:null, blobs:kind==='seq'?srcData:null};
+          if(L._srcFrames&&L._srcFrames[0]){ s.srcW=L._srcFrames[0].w; s.srcH=L._srcFrames[0].h; }   // source dims for the stats line
+          s.mediaBytes = kind==='seq' ? srcData.reduce((a,f)=>a+(f.size||0),0) : (srcData.size||0);
           if(Media&&Media.available){ try{ Media.putSource(s.mediaId, srcData); }catch(_){ } }   // persist blob OR blobs array
-          setInfo(esc2(name)+' · '+s.frames.length+' frames'); scheduleSaveLayers();
+          setInfo(infoTxt()); scheduleSaveLayers();
         }
         async function loadBlob(blob,name){ setInfo('decoding '+name+'…'); try{ L._srcFrames=await decodeSource(blob); if(!L._srcFrames.length) throw new Error('no frames'); finishLoad(name, blob, 'single'); }catch(e){ setInfo('decode failed: '+e.message); } }
         async function loadSeq(files,name){ setInfo('decoding '+files.length+' frames…'); try{ L._srcFrames=await decodeSourceSeq(files); if(!L._srcFrames.length) throw new Error('no images'); finishLoad(name, [...files], 'seq'); }catch(e){ setInfo('decode failed: '+e.message); } }
@@ -578,7 +587,7 @@
           cv.addEventListener('pointermove',e=>{ if(!_dragging||!cv._map)return; s.panX=(s.panX||0)+(e.clientX-_dragLast.x)/cv._map.sc; s.panY=(s.panY||0)+(e.clientY-_dragLast.y)/cv._map.sc; _dragLast={x:e.clientX,y:e.clientY}; drawSrc(_dragIdx); resampleOne(_dragIdx); drawMediaPrev(_dragIdx); });   // freeze + resample the one dragged frame for an immediate, coherent update
           cv.addEventListener('pointerup',()=>{ if(_dragging){ _dragging=false; resampleAll(); scheduleSaveLayers(); } });
         } }
-        { const sp=c('.s-mspd'), spv=c('.s-mspdV'); const upd=()=>{ if(spv) spv.textContent=(s.spd/100).toFixed(1)+'×'; }; if(sp) sp.addEventListener('input',e=>{ s.spd=+e.target.value||100; upd(); scheduleSaveLayers(); }); upd(); }
+        { const sp=c('.s-mspd'), spv=c('.s-mspdV'); const upd=()=>{ if(spv) spv.textContent=(s.spd/100).toFixed(1)+'×'; }; if(sp) sp.addEventListener('input',e=>{ s.spd=+e.target.value||100; upd(); setInfo(infoTxt()); scheduleSaveLayers(); }); upd(); }   // refresh the speed-adjusted duration in the stats
         { const vb=c('.s-mvivid'); if(vb) vb.addEventListener('click',()=>{ s.sat=170; s.con=100; s.gam=180; s.bri=100; L.lastTick=0; buildLayerBody(card,L); scheduleSaveLayers(); }); }
         { const rb=c('.s-mraw'); if(rb) rb.addEventListener('click',()=>{ s.sat=100; s.con=100; s.gam=100; s.bri=100; L.lastTick=0; buildLayerBody(card,L); scheduleSaveLayers(); }); }
         { const hb=c('.s-mhide'); if(hb) hb.addEventListener('change',e=>{ s.hideStatic=e.target.checked; L.lastTick=0; buildLayerBody(card,L); scheduleSaveLayers(); }); }   // rebuild -> Threshold row shows/hides
@@ -593,7 +602,7 @@
             try{ if(_currentSrc.kind==='seq') await Media.addSequence(_currentSrc.blobs,_currentSrc.name); else await Media.add(_currentSrc.blob,_currentSrc.name); refreshLib(); setInfo('★ added “'+_currentSrc.name+'” to library'); }catch(e){ setInfo('add to library failed: '+e.message); } }); }
         { const cl=c('.s-mediaClear'); if(cl) cl.addEventListener('click',()=>{
             if(s.mediaId && Media&&Media.delSource){ try{ Media.delSource(s.mediaId); }catch(_){ } }
-            s.frames=[]; s.mediaName=''; s.mediaId=''; L._srcFrames=null; L._mediaFrames=null; L.lastTick=0; _srcTmp=null; _currentSrc=null;
+            s.frames=[]; s.mediaName=''; s.mediaId=''; s.srcW=0; s.srcH=0; s.mediaBytes=0; L._srcFrames=null; L._mediaFrames=null; L.lastTick=0; _srcTmp=null; _currentSrc=null;
             drawSrc(0); const fi=c('.s-mediaFile'); if(fi) fi.value=''; setInfo('no clip loaded'); scheduleSaveLayers(); }); }   // Release = offload the clip + its stored source
       } else if(L.type==='audio'){
         const style=s.style||'bars', uid=card.dataset.n;
