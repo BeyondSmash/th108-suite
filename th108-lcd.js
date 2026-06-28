@@ -57,7 +57,8 @@
     .lcd-tool button:hover:not(:disabled){ border-color:#58a6ff; }
     .lcd-tool button:disabled{ opacity:.4; cursor:not-allowed; }
     .lcd-tool button.go{ background:#238636; border-color:#238636; }
-    .lcd-tool .row{ margin:12px 0; }
+    .lcd-tool .row{ margin:8px 0; padding:8px 12px; border-radius:10px; }
+    .lcd-tool .row:nth-of-type(even){ background:rgba(127,154,212,.055); }   /* zebra the control sections (hidden Library row offsets one stripe — harmless) */
     .lcd-tool #lcdPreview,.lcd-tool #lcdPreviewActual{ image-rendering:pixelated; border:1px solid #30363d; width:320px; height:192px; background:#000; }
     .lcd-tool .lcd-log{ width:646px; max-width:100%; height:130px; overflow:auto; background:#0d1117; border:1px solid #30363d; border-radius:6px; padding:6px 8px; font:11px/1.55 ui-monospace,monospace; color:#8b949e; white-space:pre-wrap; }
     .lcd-tool .lcd-log .err{ color:#f85149; } .lcd-tool .lcd-log .ok{ color:#3fb950; } .lcd-tool .lcd-log .in{ color:#58a6ff; } .lcd-tool .lcd-log .dim{ color:#6e7681; }
