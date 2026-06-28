@@ -808,7 +808,7 @@
           '<span style="display:flex;gap:4px;align-items:center"><input type="number" class="numin a-'+key+'N" min="'+nMin+'" max="'+nMax+'" step="'+nStep+'" value="'+disp(key,s[key])+'"><span class="val" style="min-width:10px">'+c[4]+'</span></span>'; };
       const adj=document.createElement('div');
       adj.innerHTML=
-        '<div class="lbody" style="margin-top:8px"><div class="ph" style="margin-bottom:6px;color:var(--text);font-weight:600;font-size:13px;text-align:center">Adjust <span style="color:var(--muted);font-weight:400;font-size:11px">(changes colors on the keyboard — not the site preview)</span></div><div class="ctl">'+
+        '<div class="lbody" style="margin-top:8px"><div class="ph" style="margin-bottom:6px;color:var(--text);font-weight:600;font-size:13px;text-align:center">Adjust <span style="display:block;margin-top:1px;color:var(--muted);font-weight:400;font-size:11px">(changes colors on the keyboard — not the site preview)</span></div><div class="ctl">'+
           ctl('bri')+ctl('sat')+ctl('con')+ctl('gam')+(CFG.rot?ctl('rot'):'')+
           (showStatic?'<label>Static</label><label class="sl" style="margin:0"><input type="checkbox" class="a-frozen"'+(s.frozen?' checked':'')+'> Freeze Animation</label><span></span>':'')+
         '</div></div>';
