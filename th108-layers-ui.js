@@ -445,7 +445,7 @@
           (bf==='subtract' ? '' :
             row('Bar Color','<select class="s-barColor" title="Bass→Treble = horizontal hue across columns; Gradient = your 2 colors bottom→top; VU = green→yellow→orange→red by bar height">'+bcOpt+'</select><span></span>')+
             (bc==='bassTreble' ? row('Bass Color','<input type="color" class="s-barColorBass" value="'+s.barColorBass+'"><span></span>')+row('Treble Color','<input type="color" class="s-barColorTreble" value="'+s.barColorTreble+'"><span></span>')
-             : bc==='gradient' ? row('Top Color','<input type="color" class="s-barGradB" value="'+s.barGradB+'"><span></span>')+row('Bottom Color','<input type="color" class="s-barGradA" value="'+s.barGradA+'"><span></span>')
+             : bc==='gradient' ? row('Top Color','<input type="color" class="s-barGradB" value="'+s.barGradB+'"><span></span>')+row('Bottom Color','<input type="color" class="s-barGradA" value="'+s.barGradA+'"><span></span>')+row('Reverse','<label class="sl" style="margin:0"><input type="checkbox" class="s-barGradRev"'+(s.barGradRev?' checked':'')+'> Swap gradient colors</label><span></span>')
              : ''))+
           row('Bar Tips','<select class="s-barTip" title="outline the top key of each bar so the silhouette stands out">'+btOpt+'</select><span></span>')+
           (bt==='color' ? row('Tip Color','<input type="color" class="s-barTipColor" value="'+s.barTipColor+'"><span></span>') : '')+
@@ -585,7 +585,7 @@
         { const bsp=c('.s-barSpread'); if(bsp) bsp.addEventListener('change',e=>s.barSpread=e.target.checked); }
         { const bc=c('.s-barColor'); if(bc) bc.addEventListener('change',e=>{ s.barColor=e.target.value; buildLayerBody(card,L); }); }   // rebuild so bass/treble vs gradient vs vu color pickers swap
         ['pulseGrad','bloomGrad','waveGrad'].forEach(key=>{ const el=c('.s-'+key); if(el) el.addEventListener('change',e=>{ s[key]=e.target.checked; buildLayerBody(card,L); }); });   // rebuild so the 2nd-color picker shows/hides
-        ['pulseGradRev','bloomGradRev','waveGradRev'].forEach(key=>{ const el=c('.s-'+key); if(el) el.addEventListener('change',e=>s[key]=e.target.checked); });   // swap gradient ends — no rebuild (preview reads s live)
+        ['pulseGradRev','bloomGradRev','waveGradRev','barGradRev'].forEach(key=>{ const el=c('.s-'+key); if(el) el.addEventListener('change',e=>s[key]=e.target.checked); });   // swap gradient ends — no rebuild (preview reads s live)
         ['pulse','bloom','wave','aurora'].forEach(p=>{ const el=c('.s-'+p+'Drive'); if(el) el.addEventListener('change',e=>s[p+'Drive']=e.target.value); });   // Volume/Beat drive for the non-bars styles
         const slider=(cls,key,fmt,xform,snapTo,tol)=>{ const el=c('.s-'+cls), v=c('.s-'+cls+'V'); if(!el||!v) return; const up=()=>v.textContent=fmt(ap[key]); el.addEventListener('input',e=>{ if(snapTo!=null) snap(el,snapTo,tol==null?4:tol); ap[key]=xform(+el.value); up(); }); up(); };   // writes the PER-STYLE param (ap); tol = snap approach width (smaller on short-range sliders); guard !v so a class mismatch can't crash init
         slider('gain','gain',x=>Math.round(x*100)+'%',v=>v/100,100);

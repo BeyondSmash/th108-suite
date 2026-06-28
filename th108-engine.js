@@ -571,7 +571,8 @@
   // bar BODY into the layers below (a silhouette) while the tips still draw.
   function renderBars(s, out, A, now, L){
     const bass = hexToRgb(s.barColorBass||'#ff2200'), treb = hexToRgb(s.barColorTreble||'#22aaff');
-    const gradA = hexToRgb(s.barGradA||'#00ff66'), gradB = hexToRgb(s.barGradB||'#ff00aa');
+    const _gA = hexToRgb(s.barGradA||'#00ff66'), _gB = hexToRgb(s.barGradB||'#ff00aa');
+    const gradA = s.barGradRev ? _gB : _gA, gradB = s.barGradRev ? _gA : _gB;   // Reverse = swap the gradient ends (base↔tip)
     const tip = s.barTip || 'off', tipCol = hexToRgb(s.barTipColor||'#ffffff'), t = (now||0)/1000;
     const barColor = s.barColor || 'bassTreble';            // bassTreble (horizontal) | gradient (vert 2-color) | vu (green→red by height)
     const subtract = s.barFill === 'subtract';
@@ -1066,7 +1067,7 @@
       const ad={ style:'bars', source:'system', appId:'', deviceId:'', pauseStyle:'linear',
         gain:1, floor:5, attackMs:40, decayMs:220, beatSens:50, micGain:100, micGate:0,
         barColorBass:'#ff2200', barColorTreble:'#22aaff', barTip:'off', barTipColor:'#ffffff', barFill:'solid',
-        barColor:'bassTreble', barGradA:'#00ff66', barGradB:'#ff00aa', barLayout:'standard', barDrive:'spectrum', barSpread:false, barDynamics:false, barDynamicsAlpha:false, barDynamicsDepth:60,
+        barColor:'bassTreble', barGradA:'#00ff66', barGradB:'#ff00aa', barGradRev:false, barLayout:'standard', barDrive:'spectrum', barSpread:false, barDynamics:false, barDynamicsAlpha:false, barDynamicsDepth:60,
         pulseColor:'#19b6ff', pulseColor2:'#ff00aa', pulseGrad:false, pulseGradRev:false, pulseMin:0, pulseMax:100, pulseDrive:'beat',
         pulseDynamics:false, pulseDynamicsAlpha:false, pulseDynamicsDepth:60,
         bloomColor:'#ff5a00', bloomColor2:'#ffd000', bloomGrad:false, bloomGradRev:false, bloomDrive:'beat',
