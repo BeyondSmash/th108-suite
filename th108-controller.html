@@ -1992,6 +1992,11 @@ try{ const mObs=new ResizeObserver(()=>scheduleMasonry());
   cardsAll().forEach(c=>mObs.observe(c));
   if(layerCardsEl) mObs.observe(layerCardsEl);           // compositor cards rebuild on edits → observe their container so Fill re-packs them
 }catch(_){ }   // catches content/theme/font/resize/tab-switch (hidden↔shown) + drag-drop reflows
+// In Fill, a card's grid area is PINNED by its row-span, so content that grows inside it (the audio
+// live-peek duplicate, a mounted paint board, an expanded sub-panel) overflows onto the neighbor without
+// resizing the container → the ResizeObserver never fires. A MutationObserver on structural changes catches
+// those so we re-span. (childList only — our own gridRowEnd writes are attribute changes, so no loop.)
+try{ if(layerCardsEl) new MutationObserver(()=>scheduleMasonry()).observe(layerCardsEl, {childList:true, subtree:true}); }catch(_){ }
 window.addEventListener('resize',scheduleMasonry);
 if(document.fonts && document.fonts.ready) document.fonts.ready.then(scheduleMasonry);
 function setFillMode(on){
