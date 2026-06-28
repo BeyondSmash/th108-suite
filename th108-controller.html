@@ -1982,7 +1982,11 @@ function masonryGrid(g, sel){   // pack one grid's cards into their vertical gap
 function layoutMasonry(){
   if(drag) return;                                       // never reflow mid-drag — it fights the FLIP rect measurements
   masonryGrid(gridEl, '.card');                          // bento grid
-  masonryGrid(layerCardsEl, '.lcard, .pb-wrap');         // Layer Compositor cards + the mounted paint board (else Fill's 8px auto-rows collapse the keyboard → it overflows onto the card)
+  // Layer-compositor cards are deliberately NOT masonry-packed: masonry's column auto-placement reorders them
+  // away from their logical top-to-bottom order, which (a) showed cards in the wrong column and (b) broke
+  // drag-to-reorder (DOM order ≠ visual order → adjacent layers wouldn't swap). It also caused the mounted
+  // paint board + audio dup to collapse/overflow. They keep clean DOM-order rows in BOTH Grid and Fill.
+  if(layerCardsEl){ layerCardsEl.style.gridAutoRows=''; layerCardsEl.querySelectorAll('.lcard, .pb-wrap').forEach(c=>{ c.style.gridRowEnd=''; }); }
 }
 let mRaf=0;
 // ponytail: rAF-coalesced; the ResizeObserver may re-fire from our own span writes, but height is content-driven
