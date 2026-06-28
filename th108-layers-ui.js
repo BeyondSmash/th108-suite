@@ -17,8 +17,8 @@
   const root_PaintBoard = () => (typeof window!=='undefined' && window.TH108PaintBoard) || { mount(){ return { draw(){}, recolorSelection(){}, clearSelection(){}, selectNone(){}, selCount(){return 0;}, destroy(){} }; } };
   // lucide chevrons-down-up (= "collapse") / chevrons-up-down (= "expand") for the card corner toggle
   const SVGA='<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">';
-  const CHEV_COLLAPSE=SVGA+'<path d="m6 17 5-5-5-5"/><path d="m13 17 5-5-5-5"/></svg>';   // lucide chevrons-right (shown when expanded — click to collapse)
-  const CHEV_EXPAND=SVGA+'<path d="m7 6 5 5 5-5"/><path d="m7 13 5 5 5-5"/></svg>';         // lucide chevrons-down (expand — open the body down)
+  const CHEV_COLLAPSE=SVGA+'<path d="m7 6 5 5 5-5"/><path d="m7 13 5 5 5-5"/></svg>';   // lucide chevrons-down (shown when expanded — click to collapse)
+  const CHEV_EXPAND=SVGA+'<path d="m6 17 5-5-5-5"/><path d="m13 17 5-5-5-5"/></svg>';   // lucide chevrons-right (shown when collapsed — click to expand)
 
   // ----- pure persist helpers (node-testable) -----
   function serializeLayers(layers){ return layers.map(L=>({name:L.name,enabled:L.enabled,type:L.type,opacity:L.opacity,blend:L.blend,fps:L.fps,settings:L.settings,collapsed:!!L.collapsed})); }
