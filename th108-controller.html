@@ -95,7 +95,7 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
               transition:color .2s, border-color .2s; }
   #layoutBtn:hover{ color:var(--text); border-color:var(--muted); }
   #layoutBtn.active{ color:var(--text); border-color:var(--mint); }
-  #layoutBtn .gi{ font-size:13px; line-height:1; }
+  #layoutBtn .gi{ display:inline-flex; align-items:center; }
 
   /* ===== bento grid ===== */
   #grid{ display:grid; grid-template-columns:repeat(6,1fr); gap:16px; max-width:1240px; margin:8px auto 0;
@@ -520,7 +520,7 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
   </nav>
   <button id="connectHdr" class="hdrconnect" hidden title="this page takes over the keyboard (WebHID) — needed for key binding and for editing while the daemon is off">⌨ Connect</button>
   <span id="dmnOnline" class="dmnTag" hidden><i></i><span id="dmnTagTxt">Online</span></span>
-  <button id="layoutBtn" title="Card layout — Grid: even rows · Fill: pack cards up into the empty gaps below shorter cards"><span class="gi">▦</span><span id="layoutBtnTxt">Grid</span></button>
+  <button id="layoutBtn" title="Card layout — Grid: even rows · Fill: pack cards up into the empty gaps below shorter cards"><span class="gi"></span><span id="layoutBtnTxt">Grid</span></button>
   <button id="themeBtn" title="toggle light / dark (crossfades)" aria-label="Toggle light or dark theme">
     <span class="knob"><svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true">
       <mask id="kmask"><rect width="24" height="24" fill="#fff"/><circle class="kcut" cx="32" cy="2" r="7" fill="#000"/></mask>
@@ -2038,10 +2038,14 @@ try{ const mObs=new ResizeObserver(()=>scheduleMasonry());
 try{ if(layerCardsEl) new MutationObserver(()=>scheduleMasonry()).observe(layerCardsEl, {childList:true, subtree:true}); }catch(_){ }
 window.addEventListener('resize',scheduleMasonry);
 if(document.fonts && document.fonts.ready) document.fonts.ready.then(scheduleMasonry);
+const _LSVG='<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">';
+const ICON_GRID=_LSVG+'<rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 12h18"/><path d="M12 3v18"/></svg>';                      // lucide grid-2x2
+const ICON_FILL=_LSVG+'<rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18"/><path d="M3 15h18"/><path d="M12 3v6"/><path d="M12 15v6"/></svg>';   // lucide table-cells-merge (middle row merged = packed)
 function setFillMode(on){
   const sy=window.scrollY;                               // a Grid↔Fill relayout changes total page height → the browser can clamp/reset scroll; restore it
   fillMode=on; try{ localStorage.setItem(FILL_KEY, on?'1':'0'); }catch(_){ }
   const txt=document.getElementById('layoutBtnTxt'); if(txt) txt.textContent=on?'Fill':'Grid';
+  const gi=document.querySelector('#layoutBtn .gi'); if(gi) gi.innerHTML=on?ICON_FILL:ICON_GRID;
   const btn=document.getElementById('layoutBtn'); if(btn) btn.classList.toggle('active',on);
   layoutMasonry();
   window.scrollTo(0, sy);
