@@ -685,10 +685,11 @@
           const showDup=()=>{ const aim=window.innerHeight*0.16; let best=null, bd=1e9;
             card.querySelectorAll('.lsec').forEach(sc=>{ const t=sc.getBoundingClientRect().top; if(Math.abs(t-aim)<bd){ bd=Math.abs(t-aim); best=sc; } });
             if(best && best.parentNode) best.insertAdjacentElement('afterend', dup); else body.appendChild(dup);
+            requestAnimationFrame(()=>{ try{ dup.scrollIntoView({behavior:'smooth', block:'center'}); }catch(_){ } });   // lerp-scroll to the new second/lower live preview
             peekBtn.textContent='Hide'; };
           const hideDup=()=>{ if(dup.parentNode) dup.parentNode.removeChild(dup); peekBtn.textContent='Show'; };
           const fadePill=(on)=>{ peek.style.opacity=on?'1':'0'; peek.style.pointerEvents=on?'auto':'none'; pillVisible=on; };   // 250ms via the CSS transition
-          peekBtn.addEventListener('click',()=>{ try{ liveWrap.scrollIntoView({behavior:'smooth', block:'center'}); }catch(_){ } });   // jump to the real inline live preview (replaces the floating duplicate, which overlapped neighbors in Fill mode); arriving there auto-hides the pill
+          peekBtn.addEventListener('click',()=>{ if(dup.parentNode) hideDup(); else showDup(); });   // Show inserts the second/lower live preview (and lerp-scrolls to it); Hide removes it
           const nowEl=c('.s-srcNow'); let _lastNow=null;
           function frame(now){
             if(!document.body.contains(cvL||cvS)){ [peek,dup].forEach(e=>{ if(e.parentNode) e.parentNode.removeChild(e); }); return; }   // card rebuilt/removed → stop + clean
