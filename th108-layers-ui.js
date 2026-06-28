@@ -308,7 +308,14 @@
           // rAF so the insert's reflow (and any Fill-mode masonry repack) settles before the scroll targets it.
           requestAnimationFrame(()=>{ try{ wrap.scrollIntoView({behavior:'smooth', block:'center'}); }catch(_){ try{ wrap.scrollIntoView(); }catch(__){ } } });
         }
-        function unmountBoard(){ if(!pb) return; pb.destroy(); pb=null; if(wrap&&wrap.parentNode) wrap.parentNode.removeChild(wrap); wrap=null; c('.s-showkb').textContent='⌨ Show Keyboard'; updCount(); }
+        function unmountBoard(){ if(!pb) return;
+          const before=window.scrollY, r=wrap.getBoundingClientRect();
+          pb.destroy(); pb=null; const w=wrap; wrap=null; if(w&&w.parentNode) w.parentNode.removeChild(w);
+          const shift=Math.max(0, Math.min(r.height, -r.top));   // the board sat ABOVE the viewport top → its removal teleports content up by this much
+          if(shift>0) window.scrollTo(0, before-shift);          // cancel that instant jump so the next step can lerp instead
+          c('.s-showkb').textContent='⌨ Show Keyboard'; updCount();
+          requestAnimationFrame(()=>{ try{ card.scrollIntoView({behavior:'smooth', block:'center'}); }catch(_){ } });   // smooth-scroll back to the card instead of teleporting
+        }
         body.querySelectorAll('.s-brush').forEach(b=>b.addEventListener('click',()=>{   // switch the active brush in place (no rebuild — that would orphan the mounted paint board, a card sibling)
           s.brush=b.dataset.brush;
           body.querySelectorAll('.s-brush').forEach(x=>x.classList.toggle('on',x.dataset.brush===s.brush));
@@ -668,8 +675,11 @@
           const positionPeek=()=>{ const grid=card.parentElement, gr=grid.getBoundingClientRect(), comp=grid.closest('.card')||grid, compR=comp.getBoundingClientRect(), cr=card.getBoundingClientRect();
             const pw=peek.offsetWidth||200, gap=12; peek.style.transform='none'; peek.style.right='auto';
             peek.style.top=Math.round(window.innerHeight*0.30)+'px';
-            let left = (cr.left+cr.width/2) < (gr.left+gr.width/2) ? (compR.left+gap) : (compR.right-gap-pw);   // dock INSIDE the compositor's near edge (LEFT col → inside-left, RIGHT col → inside-right) — never the page margin
-            left = Math.max(compR.left+4, Math.min(left, compR.right-4-pw));   // clamp WITHIN the compositor region (user: pill must not leak outside the layer-compositor zone)
+            const onLeft = (cr.left+cr.width/2) < (gr.left+gr.width/2);
+            const outside = onLeft ? (compR.left-gap-pw) : (compR.right+gap);   // HUG the compositor's OUTSIDE edge (in the adjacent page margin)
+            const fits = outside >= 4 && outside <= window.innerWidth-4-pw;      // room in the margin for it?
+            let left = fits ? outside : (onLeft ? (compR.left+gap) : (compR.right-gap-pw));   // no room (compositor spans the viewport) → tuck just inside instead of detaching to the page edge
+            left = Math.max(4, Math.min(left, window.innerWidth-4-pw));
             peek.style.left=Math.round(left)+'px'; };
           // insert the duplicate INLINE right after the section header nearest the top of the view (what you're tuning)
           const showDup=()=>{ const aim=window.innerHeight*0.16; let best=null, bd=1e9;
