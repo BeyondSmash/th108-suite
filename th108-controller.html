@@ -1982,7 +1982,7 @@ function masonryGrid(g, sel){   // pack one grid's cards into their vertical gap
 function layoutMasonry(){
   if(drag) return;                                       // never reflow mid-drag — it fights the FLIP rect measurements
   masonryGrid(gridEl, '.card');                          // bento grid
-  masonryGrid(layerCardsEl, '.lcard');                   // Layer Compositor cards (their own grid, inside a bento card)
+  masonryGrid(layerCardsEl, '.lcard, .pb-wrap');         // Layer Compositor cards + the mounted paint board (else Fill's 8px auto-rows collapse the keyboard → it overflows onto the card)
 }
 let mRaf=0;
 // ponytail: rAF-coalesced; the ResizeObserver may re-fire from our own span writes, but height is content-driven
