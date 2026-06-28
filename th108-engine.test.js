@@ -798,6 +798,19 @@ test('media layer: shared sat/gam adjust lifts raw pixels; identity = verbatim',
   assert.deepEqual(E.adjustRgb(200,100,50,1,1,1,1), [200,100,50]);
 });
 
+test('computeCrop: cover-fits to the target aspect at zoom 1, clamps pan, scales the crop by zoom', () => {
+  // wide source (200x100, ar 2.0), target ar 1.0 → crop is a centered 100x100 box
+  const a = E.computeCrop(200,100, 1, 1, 0, 0);
+  assert.equal(Math.round(a.cw), 100); assert.equal(Math.round(a.ch), 100);
+  assert.equal(Math.round(a.cx), 50);  assert.equal(Math.round(a.cy), 0);
+  // pan clamps to the source margins (can't pan past the left edge)
+  const b = E.computeCrop(200,100, 1, 1, -9999, 0);
+  assert.equal(Math.round(b.cx), 0);
+  // zoom 2 halves the crop size (closer in)
+  const z = E.computeCrop(200,100, 1, 2, 0, 0);
+  assert.equal(Math.round(z.cw), 50); assert.equal(Math.round(z.ch), 50);
+});
+
 test('media layer: hide-static drives the per-key alpha mask (animated=1, unchanging=0)', () => {
   const NLED = E.NLED;
   // key 0 changes across frames (animated), key 1 is constant (static)

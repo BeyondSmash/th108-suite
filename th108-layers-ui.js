@@ -89,9 +89,9 @@
         const tOpt=TYPES.map(v=>'<option value="'+v+'"'+(v===L.type?' selected':'')+(usedT.has(v)?' disabled':'')+'>'+cap(v)+'</option>').join('');
         card.innerHTML=
           '<div class="lhead">'+
-            '<span class="lgrip" title="drag to change layer level">⠿</span>'+   // drag handle for the page's pointer-based card-drag system (same lift/clone/breach-line as the Home cards)
+            '<span class="lgrip" title="Drag to change layer level">⠿</span>'+   // drag handle for the page's pointer-based card-drag system (same lift/clone/breach-line as the Home cards)
             '<span class="llvl">Layer '+(n+1)+'</span>'+
-            '<input type="checkbox" class="le"'+(L.enabled?' checked':'')+' title="enable layer">'+
+            '<input type="checkbox" class="le"'+(L.enabled?' checked':'')+' title="Enable layer">'+
             '<input type="text" class="ln" value="'+L.name.replace(/"/g,'&quot;')+'">'+
             '<select class="lt">'+tOpt+'</select>'+
             '<span class="lfield">Opacity <input type="range" class="lo" min="0" max="100" value="'+Math.round(L.opacity*100)+'"><input type="number" class="numin lon" min="0" max="100" value="'+Math.round(L.opacity*100)+'"></span>'+
@@ -99,9 +99,9 @@
             '<span class="lfield">FPS <input type="range" class="lf" min="1" max="30" value="'+L.fps+'"><input type="number" class="numin lfn" min="1" max="30" value="'+L.fps+'"></span>'+
           '</div>'+
           '<div class="lcorner">'+
-            '<button type="button" class="lreset" title="reset this layer to its default settings">Reset</button>'+
-            (state.layers.length>1?'<button type="button" class="lrm" title="remove this layer">Delete</button>':'')+
-            '<button type="button" class="lcoll" title="collapse / expand this layer card">'+(L.collapsed?CHEV_EXPAND:CHEV_COLLAPSE)+'</button>'+
+            '<button type="button" class="lreset" title="Reset this layer to its default settings">Reset</button>'+
+            (state.layers.length>1?'<button type="button" class="lrm" title="Remove this layer">Delete</button>':'')+
+            '<button type="button" class="lcoll" title="Collapse / expand this layer card">'+(L.collapsed?CHEV_EXPAND:CHEV_COLLAPSE)+'</button>'+
           '</div>'+
           '<div class="lbody"></div>';
         host.appendChild(card);
@@ -390,82 +390,122 @@
         c('.s-clearall').addEventListener('click',()=>{ s.keys={}; if(pb){ pb.selectNone(); pb.draw(); } reRender(); scheduleSaveLayers(); });
       } else if(L.type==='media'){
         if(!Array.isArray(s.frames)) s.frames=[];
-        const MAXF=30, NLED=E.NLED, INDICES=E.INDICES;   // cap frames so the per-key data fits the daemon's /config size limit
+        const MAXF=30, MAXDIM=240, NLED=E.NLED, INDICES=E.INDICES, TR=E.BOARDW/E.BOARDH;   // cap frames for /config; source decoded ≤MAXDIM px
+        if(s.spd==null) s.spd=100; if(s.zoom==null) s.zoom=100; if(s.panX==null) s.panX=0; if(s.panY==null) s.panY=0; if(s.rot==null) s.rot=0;
         const esc=t=>(t||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');
         const infoTxt=()=> s.frames.length ? (esc(s.mediaName||'clip')+' · '+s.frames.length+' frames') : 'no clip loaded';
-        if(s.spd==null) s.spd=100;
         const av=k=>(s[k]==null?100:s[k]);   // Brightness/Saturation/Contrast/Gamma + Freeze live in the shared Adjust block below (engine.applyAdjust)
         body.innerHTML='<div class="ctl">'+
           sec('Media (GIF / image)')+
-          full('<img class="s-mediaImg" alt="" style="max-width:100%;max-height:130px;border-radius:8px;display:none;object-fit:contain;background:#0d1117">')+
-          full('<div style="display:flex;align-items:center;justify-content:center;gap:12px;flex:1 1 100%"><input type="file" class="s-mediaFile" accept="image/*"><button type="button" class="s-mediaClear" style="flex:none" title="offload the loaded GIF/image from this layer">Release</button></div>')+
-          full('<span class="val s-mediaInfo" style="opacity:.85;flex:1 1 100%;text-align:center">'+infoTxt()+'</span>')+
-          row('Speed','<input type="range" class="s-mspd" min="10" max="400" value="'+s.spd+'"><span class="val s-mspdV"></span>')+
-          full('<div style="display:flex;align-items:center;justify-content:center;gap:10px;flex-wrap:wrap;flex:1 1 100%"><span style="color:var(--muted);font-size:12px">Color preset</span><button type="button" class="s-mvivid" style="flex:none" title="LED match: sat 170% / gamma 1.8 — reads as vividly on the keys as on screen (sets the Adjust block below)">✨ Vivid</button><button type="button" class="s-mraw" style="flex:none" title="untouched / raw sRGB (sat 100%, gamma 1.0)">Raw</button><span class="val" style="opacity:.5;font-size:11px;width:100%;text-align:center">presets for the Adjust block below</span></div>')+
-          sub('Motion')+
-          row('Hide static','<label class="sl" style="margin:0"><input type="checkbox" class="s-mhide"'+(s.hideStatic?' checked':'')+'> Only animated pixels show — keys whose color never changes across the loop turn transparent (layers below pass through)</label><span></span>')+
-          (s.hideStatic?row('Threshold','<input type="range" class="s-mthr" min="0" max="80" value="'+(s.motionThr==null?16:s.motionThr)+'"><span class="val s-mthrV"></span>'):'')+
+          full('<canvas class="s-mediaSrc" width="378" height="150" style="width:100%;height:auto;display:block;background:#0d1117;border-radius:8px;cursor:move;touch-action:none;flex:1 1 100%" title="Drag to pan · the blue box is the keyboard area"></canvas>')+
           sec('Keyboard preview')+
           full('<canvas class="s-mediaPrev" width="378" height="110" style="width:100%;height:auto;display:block;background:#0d1117;border-radius:8px;flex:1 1 100%"></canvas>')+
           full('<span class="val" style="opacity:.55;flex:1 1 100%;font-size:12px;line-height:1.4;text-align:center">Sampled onto the keys, played by the daemon (no Connect) and blended with the other layers. Long GIFs sample down to '+MAXF+' frames. Color &amp; Freeze live in <b>Adjust</b> below.</span>')+
+          full('<div style="display:flex;align-items:center;justify-content:center;gap:12px;flex:1 1 100%"><input type="file" class="s-mediaFile" accept="image/*"><button type="button" class="s-mediaClear" style="flex:none" title="Offload the loaded GIF/image from this layer">Release</button></div>')+
+          full('<span class="val s-mediaInfo" style="opacity:.85;flex:1 1 100%;text-align:center">'+infoTxt()+'</span>')+
+          sub('Framing')+
+          row('Zoom','<input type="range" class="s-mzoom" min="20" max="500" value="'+s.zoom+'"><span class="val s-mzoomV"></span>')+
+          row('Rotate','<input type="range" class="s-mrot" min="0" max="360" value="'+s.rot+'"><span class="val s-mrotV"></span>')+
+          full('<button type="button" class="s-mframeReset" style="flex:none">Reset framing</button><span class="val" style="opacity:.5;font-size:11px">drag the preview above to pan; zoom/rotate to frame which part of the clip maps onto the keys</span>')+
+          row('Speed','<input type="range" class="s-mspd" min="10" max="400" value="'+s.spd+'"><span class="val s-mspdV"></span>')+
+          full('<div style="display:flex;align-items:center;justify-content:center;gap:10px;flex-wrap:wrap;flex:1 1 100%"><span style="color:var(--muted);font-size:12px">Color preset</span><button type="button" class="s-mvivid" style="flex:none" title="LED match: sat 170% / gamma 1.8 — reads as vividly on the keys as on screen (sets the Adjust block below)">✨ Vivid</button><button type="button" class="s-mraw" style="flex:none" title="Untouched / raw sRGB (sat 100%, gamma 1.0)">Raw</button><span class="val" style="opacity:.5;font-size:11px;width:100%;text-align:center">presets for the Adjust block below</span></div>')+
+          sub('Motion')+
+          row('Hide static','<label class="sl" style="margin:0"><input type="checkbox" class="s-mhide"'+(s.hideStatic?' checked':'')+'> Only animated pixels show — keys whose color never changes across the loop turn transparent (layers below pass through)</label><span></span>')+
+          (s.hideStatic?row('Threshold','<input type="range" class="s-mthr" min="0" max="80" value="'+(s.motionThr==null?16:s.motionThr)+'"><span class="val s-mthrV"></span>'):'')+
         '</div>';
         const c=q=>body.querySelector(q);
-        // actual GIF/image source preview (the real file) — object URL kept on L for this session (not persisted; gone on reload, where the keyboard preview still plays from the saved per-key frames)
-        const showImg=()=>{ const im=c('.s-mediaImg'); if(!im) return; if(L._mediaUrl){ im.src=L._mediaUrl; im.style.display='block'; } else { im.removeAttribute('src'); im.style.display='none'; } };
-        showImg();
-        { const sp=c('.s-mspd'), spv=c('.s-mspdV'); const upd=()=>{ if(spv) spv.textContent=(s.spd/100).toFixed(1)+'×'; }; if(sp) sp.addEventListener('input',e=>{ s.spd=+e.target.value||100; upd(); scheduleSaveLayers(); }); upd(); }
-        // Vivid / Raw presets drive the shared Adjust fields, then rebuild so the Adjust sliders reflect the new values
-        { const vb=c('.s-mvivid'); if(vb) vb.addEventListener('click',()=>{ s.sat=170; s.con=100; s.gam=180; s.bri=100; L.lastTick=0; buildLayerBody(card,L); scheduleSaveLayers(); }); }
-        { const rb=c('.s-mraw'); if(rb) rb.addEventListener('click',()=>{ s.sat=100; s.con=100; s.gam=100; s.bri=100; L.lastTick=0; buildLayerBody(card,L); scheduleSaveLayers(); }); }
-        // Hide-static toggle + motion threshold — engine zeroes the per-key alpha on keys whose color never changes (transparent under any blend)
-        { const hb=c('.s-mhide'); if(hb) hb.addEventListener('change',e=>{ s.hideStatic=e.target.checked; L.lastTick=0; buildLayerBody(card,L); scheduleSaveLayers(); }); }   // rebuild → Threshold row shows/hides
-        { const tb=c('.s-mthr'), tv=c('.s-mthrV'); if(tb){ const upd=()=>{ if(tv) tv.textContent=tb.value; }; tb.addEventListener('input',e=>{ s.motionThr=+e.target.value; upd(); L.lastTick=0; scheduleSaveLayers(); }); upd(); } }
-        // temporal range per key (cached by frame set) — mirrors the engine's hide-static mask for the preview
-        let _rngFor=null, _rng=null;
+        const Media=(typeof window!=='undefined'&&window.TH108Media)||null;
+        let _srcTmp=null, _dragging=false, _dragLast=null, _rngFor=null, _rng=null;
+        // ===== decode the source to in-memory frames (FULL image, not pre-cropped) so framing can re-sample live =====
+        async function decodeSource(file){
+          const out=[], tmp=document.createElement('canvas'), tx=tmp.getContext('2d',{willReadFrequently:true});
+          const draw=(src,vw,vh,delay)=>{ const sc=Math.min(1,MAXDIM/Math.max(vw,vh)), w=Math.max(1,Math.round(vw*sc)), h=Math.max(1,Math.round(vh*sc));
+            tmp.width=w; tmp.height=h; tx.clearRect(0,0,w,h); tx.drawImage(src,0,0,w,h); out.push({img:tx.getImageData(0,0,w,h), w, h, d:Math.max(20,delay|0)}); };
+          if(window.ImageDecoder){ const dec=new ImageDecoder({data:await file.arrayBuffer(), type:file.type||'image/gif'}); await dec.tracks.ready; const trk=dec.tracks.selectedTrack;
+            for(let i=0;i<5000;i++){ let res; try{ res=await dec.decode({frameIndex:i}); }catch(e){ break; } const vf=res.image, w=vf.displayWidth||vf.codedWidth, h=vf.displayHeight||vf.codedHeight; draw(vf,w,h, vf.duration?vf.duration/1000:100); if(vf.close)vf.close(); if(trk.frameCount && i>=trk.frameCount-1) break; if(i>=300) break; } }
+          if(!out.length){ const bmp=await createImageBitmap(file); draw(bmp,bmp.width,bmp.height,100); bmp.close&&bmp.close(); }
+          if(out.length>MAXF){ const s2=[], step=out.length/MAXF; for(let k=0;k<MAXF;k++){ const a=Math.floor(k*step), b2=Math.floor((k+1)*step); let d=0; for(let i=a;i<Math.max(b2,a+1);i++) d+=out[i].d; s2.push({img:out[a].img, w:out[a].w, h:out[a].h, d}); } return s2; }   // thin frame COUNT, preserve duration
+          return out;
+        }
+        // sample one source frame onto the keys via the current framing (cover + zoom/pan/rotate), 5x5 area-average
+        function sampleFrame(fr){
+          const data=fr.img.data, SW=fr.w, SH=fr.h, cr=E.computeCrop(SW,SH,TR,(s.zoom||100)/100,s.panX||0,s.panY||0); s.panX=cr.panX; s.panY=cr.panY;
+          const rot=((s.rot||0))*Math.PI/180, cs=Math.cos(rot), sn=Math.sin(rot), ccx=cr.cx+cr.cw/2, ccy=cr.cy+cr.ch/2, rgb=new Array(INDICES.length*3);
+          for(let k=0;k<INDICES.length;k++){ const cl=E.keyCell(INDICES[k]), t=k*3; if(!cl){ rgb[t]=rgb[t+1]=rgb[t+2]=0; continue; }
+            const sx=cr.cx+(cl[0]-cl[2]/2)*cr.cw, sy=cr.cy+(cl[1]-cl[3]/2)*cr.ch, sw=cl[2]*cr.cw, sh=cl[3]*cr.ch;
+            let r=0,g=0,b=0,nn=0;
+            for(let iy=0;iy<=4;iy++)for(let ix=0;ix<=4;ix++){ let fx=sx+sw*(ix/4), fy=sy+sh*(iy/4);
+              if(rot){ const dx=fx-ccx,dy=fy-ccy; fx=ccx+dx*cs+dy*sn; fy=ccy-dx*sn+dy*cs; }
+              if(fx<0||fy<0||fx>=SW||fy>=SH) continue; const o=((fy|0)*SW+(fx|0))*4; r+=data[o]; g+=data[o+1]; b+=data[o+2]; nn++; }
+            if(!nn){ rgb[t]=rgb[t+1]=rgb[t+2]=0; } else { rgb[t]=r/nn|0; rgb[t+1]=g/nn|0; rgb[t+2]=b/nn|0; }   // outside the source -> black (Phase 2: Bars fill)
+          }
+          return rgb;
+        }
+        function resampleAll(){ if(!L._srcFrames||!L._srcFrames.length) return; s.frames=L._srcFrames.map(fr=>({d:fr.d, rgb:sampleFrame(fr)})); L._mediaFrames=null; L.lastTick=0; _rngFor=null; }
+        function resampleOne(i){ if(!L._srcFrames||!L._srcFrames[i]||!s.frames[i]) return; s.frames[i].rgb=sampleFrame(L._srcFrames[i]); L._mediaFrames=null; }   // light re-sample of the current frame during a drag
+        // positioning canvas: source frame (fit) + the keyboard crop box overlaid; dims the cropped-out area
+        function drawSrc(idx){
+          const cv=c('.s-mediaSrc'); if(!cv) return; const ctx=cv.getContext('2d');
+          ctx.fillStyle='#0d1117'; ctx.fillRect(0,0,cv.width,cv.height);
+          const fr=L._srcFrames&&L._srcFrames[idx||0]; if(!fr){ cv._map=null; return; }
+          if(!_srcTmp) _srcTmp=document.createElement('canvas');
+          _srcTmp.width=fr.w; _srcTmp.height=fr.h; _srcTmp.getContext('2d').putImageData(fr.img,0,0);
+          const sc=Math.min(cv.width/fr.w, cv.height/fr.h), dw=fr.w*sc, dh=fr.h*sc, ox=(cv.width-dw)/2, oy=(cv.height-dh)/2;
+          ctx.drawImage(_srcTmp, ox,oy,dw,dh);
+          const cr=E.computeCrop(fr.w,fr.h,TR,(s.zoom||100)/100,s.panX||0,s.panY||0); s.panX=cr.panX; s.panY=cr.panY;
+          const rx=ox+cr.cx*sc, ry=oy+cr.cy*sc, rw=cr.cw*sc, rh=cr.ch*sc, rot=((s.rot||0))*Math.PI/180;
+          if(rot){ ctx.save(); ctx.translate(rx+rw/2, ry+rh/2); ctx.rotate(-rot); ctx.strokeStyle='#58a6ff'; ctx.lineWidth=2; ctx.strokeRect(-rw/2,-rh/2,rw,rh); ctx.restore(); }
+          else { ctx.fillStyle='rgba(1,4,9,.6)'; ctx.fillRect(ox,oy,dw,ry-oy); ctx.fillRect(ox,ry+rh,dw,oy+dh-(ry+rh)); ctx.fillRect(ox,ry,rx-ox,rh); ctx.fillRect(rx+rw,ry,ox+dw-(rx+rw),rh); ctx.strokeStyle='#58a6ff'; ctx.lineWidth=2; ctx.strokeRect(rx,ry,rw,rh); }
+          cv._map={sc};
+        }
+        async function ensureSource(){ if((L._srcFrames&&L._srcFrames.length) || !s.mediaId || !(Media&&Media.available)) return;   // lazy-load the source from IDB so framing works after a refresh
+          try{ const blob=await Media.getSource(s.mediaId); if(!blob) return; L._srcFrames=await decodeSource(blob); drawSrc(0); }catch(_){ } }
+        function currentIdx(){ if(!s.frames.length) return 0; let tot=0; for(const f of s.frames) tot+=Math.max(1,f.d||100); tot=Math.max(1,tot);
+          const t=((performance.now()*((s.spd||100)/100))%tot); let acc=0, idx=0; for(let i=0;i<s.frames.length;i++){ idx=i; acc+=Math.max(1,s.frames[i].d||100); if(t<acc) break; } return idx; }
         function keyRanges(){ if(_rngFor===s.frames && _rng) return _rng; const N=INDICES.length, lo=new Array(N*3).fill(255), hi=new Array(N*3).fill(0);
           for(const f of s.frames){ const fr=f.rgb; if(!fr) continue; const m=Math.min(N*3,fr.length); for(let i=0;i<m;i++){ const v=fr[i]|0; if(v<lo[i])lo[i]=v; if(v>hi[i])hi[i]=v; } }
           const r=new Array(N); for(let k=0;k<N;k++){ const o=k*3; r[k]=Math.max(hi[o]-lo[o],hi[o+1]-lo[o+1],hi[o+2]-lo[o+2]); } _rngFor=s.frames; _rng=r; return r; }
-        // live keyboard preview: pick the current frame on a wall clock × speed, apply the shared Adjust conditioning,
-        // draw each key at its physical rect. With Hide static on, static keys are left dark to show what's transparent.
-        function drawMediaPrev(){
+        function drawMediaPrev(idx){
           const cvp=c('.s-mediaPrev'); if(!cvp) return; const ctx=cvp.getContext('2d');
           ctx.fillStyle='#0d1117'; ctx.fillRect(0,0,cvp.width,cvp.height);
-          if(!s.frames.length) return;
-          let tot=0; for(const f of s.frames) tot+=Math.max(1,f.d||100); tot=Math.max(1,tot);
-          const t=((performance.now()*((s.spd||100)/100))%tot); let accT=0, idx=0;
-          for(let i=0;i<s.frames.length;i++){ idx=i; accT+=Math.max(1,s.frames[i].d||100); if(t<accT) break; }
+          if(!s.frames.length || !s.frames[idx]) return;
           const rgb=s.frames[idx].rgb, sa=av('sat')/100, co=av('con')/100, gm=av('gam')/100, br=av('bri')/100;
           const hide=!!s.hideStatic, thr=(s.motionThr==null?16:s.motionThr), rng=hide?keyRanges():null;
           const pad=4, W=cvp.width-2*pad, H=cvp.height-2*pad;
-          for(let k=0;k<INDICES.length;k++){ const q=E.keyCell(INDICES[k]); if(!q) continue; if(hide && rng[k]<=thr) continue;   // static → transparent (leave background)
+          for(let k=0;k<INDICES.length;k++){ const q=E.keyCell(INDICES[k]); if(!q) continue; if(hide && rng[k]<=thr) continue;   // static -> transparent (leave background)
             const o=k*3, cc=E.adjustRgb(rgb[o],rgb[o+1],rgb[o+2],sa,co,gm,br);
             ctx.fillStyle='rgb('+cc[0]+','+cc[1]+','+cc[2]+')';
             ctx.fillRect(pad+(q[0]-q[2]/2)*W+0.75, pad+(q[1]-q[3]/2)*H+0.75, Math.max(1,q[2]*W-1.5), Math.max(1,q[3]*H-1.5)); }
         }
-        (function tickPrev(){ const cvp=c('.s-mediaPrev'); if(!cvp || !document.body.contains(cvp) || L.type!=='media') return;   // canvas detached (card rebuilt) or no longer a media layer → stop
-          if(cvp.offsetParent!==null && !document.hidden && s.frames.length) drawMediaPrev();                                    // idle cheaply when collapsed / off-screen / tab hidden
-          setTimeout(tickPrev, 1000/30); })();
-        // decode a GIF/image → per-frame per-key colours: cover-fit the image, then read the pixel at each key's
-        // normalized board position (engine.keyCell) — so the GIF maps across the whole keyboard.
-        async function decodeMedia(file){
-          const W=160,H=96, cv=document.createElement('canvas'); cv.width=W; cv.height=H;
-          const cx=cv.getContext('2d',{willReadFrequently:true}), out=[];
-          const samp=(d,dw,dh,delay)=>{ cx.clearRect(0,0,W,H);
-            const ir=dw/dh,tr=W/H; let sw,sh,sx,sy; if(ir>tr){ sh=dh; sw=dh*tr; sx=(dw-sw)/2; sy=0; } else { sw=dw; sh=dw/tr; sx=0; sy=(dh-sh)/2; }
-            cx.drawImage(d,sx,sy,sw,sh,0,0,W,H); const px=cx.getImageData(0,0,W,H).data, rgb=new Array(NLED*3);
-            for(let k=0;k<NLED;k++){ const cell=E.keyCell(INDICES[k]); let x=W>>1,y=H>>1; if(cell){ x=Math.max(0,Math.min(W-1,Math.round(cell[0]*W))); y=Math.max(0,Math.min(H-1,Math.round(cell[1]*H))); } const o=(y*W+x)*4; rgb[k*3]=px[o]; rgb[k*3+1]=px[o+1]; rgb[k*3+2]=px[o+2]; }
-            out.push({d:Math.max(20,delay|0), rgb}); };
-          if(window.ImageDecoder){ const dec=new ImageDecoder({data:await file.arrayBuffer(), type:file.type||'image/gif'}); await dec.tracks.ready; const trk=dec.tracks.selectedTrack;
-            for(let i=0;i<5000;i++){ let res; try{ res=await dec.decode({frameIndex:i}); }catch(e){ break; } const vf=res.image, w=vf.displayWidth||vf.codedWidth, h=vf.displayHeight||vf.codedHeight; samp(vf,w,h, vf.duration?vf.duration/1000:100); vf.close(); if(trk.frameCount && i>=trk.frameCount-1) break; } }
-          if(!out.length){ const bmp=await createImageBitmap(file); samp(bmp,bmp.width,bmp.height,100); bmp.close&&bmp.close(); }
-          if(out.length>MAXF){ const s2=[], step=out.length/MAXF; for(let k=0;k<MAXF;k++){ const a=Math.floor(k*step), b2=Math.floor((k+1)*step); let d=0; for(let i=a;i<Math.max(b2,a+1);i++) d+=out[i].d; s2.push({d, rgb:out[a].rgb}); } return s2; }   // sample down, preserving total duration
-          return out;
-        }
+        ensureSource();
+        (function tick(){ const cvp=c('.s-mediaPrev'); if(!cvp || !document.body.contains(cvp) || L.type!=='media') return;   // canvas detached (card rebuilt) -> stop both
+          if(cvp.offsetParent!==null && !document.hidden){ const idx=currentIdx(); if(!_dragging) drawSrc(idx); drawMediaPrev(idx); }
+          setTimeout(tick, 1000/30); })();
+        // framing controls
+        { const zo=c('.s-mzoom'), zv=c('.s-mzoomV'); const upd=()=>{ if(zv) zv.textContent=(s.zoom||100)+'%'; }; if(zo) zo.addEventListener('input',e=>{ s.zoom=+e.target.value||100; upd(); resampleAll(); scheduleSaveLayers(); }); upd(); }
+        { const ro=c('.s-mrot'), rv=c('.s-mrotV'); const upd=()=>{ if(rv) rv.textContent=(s.rot||0)+'°'; }; if(ro) ro.addEventListener('input',e=>{ s.rot=+e.target.value||0; upd(); resampleAll(); scheduleSaveLayers(); }); upd(); }
+        { const fb=c('.s-mframeReset'); if(fb) fb.addEventListener('click',()=>{ s.zoom=100; s.panX=0; s.panY=0; s.rot=0; const z=c('.s-mzoom'); if(z)z.value=100; const r=c('.s-mrot'); if(r)r.value=0; const zv=c('.s-mzoomV'); if(zv)zv.textContent='100%'; const rv=c('.s-mrotV'); if(rv)rv.textContent='0°'; resampleAll(); drawSrc(currentIdx()); scheduleSaveLayers(); }); }
+        { const cv=c('.s-mediaSrc'); if(cv){
+          cv.addEventListener('pointerdown',e=>{ if(!L._srcFrames||!L._srcFrames.length)return; _dragging=true; _dragLast={x:e.clientX,y:e.clientY}; cv.setPointerCapture(e.pointerId); });
+          cv.addEventListener('pointermove',e=>{ if(!_dragging||!cv._map)return; s.panX=(s.panX||0)+(e.clientX-_dragLast.x)/cv._map.sc; s.panY=(s.panY||0)+(e.clientY-_dragLast.y)/cv._map.sc; _dragLast={x:e.clientX,y:e.clientY}; const i=currentIdx(); drawSrc(i); resampleOne(i); });
+          cv.addEventListener('pointerup',()=>{ if(_dragging){ _dragging=false; resampleAll(); scheduleSaveLayers(); } });
+        } }
+        { const sp=c('.s-mspd'), spv=c('.s-mspdV'); const upd=()=>{ if(spv) spv.textContent=(s.spd/100).toFixed(1)+'×'; }; if(sp) sp.addEventListener('input',e=>{ s.spd=+e.target.value||100; upd(); scheduleSaveLayers(); }); upd(); }
+        { const vb=c('.s-mvivid'); if(vb) vb.addEventListener('click',()=>{ s.sat=170; s.con=100; s.gam=180; s.bri=100; L.lastTick=0; buildLayerBody(card,L); scheduleSaveLayers(); }); }
+        { const rb=c('.s-mraw'); if(rb) rb.addEventListener('click',()=>{ s.sat=100; s.con=100; s.gam=100; s.bri=100; L.lastTick=0; buildLayerBody(card,L); scheduleSaveLayers(); }); }
+        { const hb=c('.s-mhide'); if(hb) hb.addEventListener('change',e=>{ s.hideStatic=e.target.checked; L.lastTick=0; buildLayerBody(card,L); scheduleSaveLayers(); }); }   // rebuild -> Threshold row shows/hides
+        { const tb=c('.s-mthr'), tv=c('.s-mthrV'); if(tb){ const upd=()=>{ if(tv) tv.textContent=tb.value; }; tb.addEventListener('input',e=>{ s.motionThr=+e.target.value; upd(); L.lastTick=0; scheduleSaveLayers(); }); upd(); } }
         c('.s-mediaFile').addEventListener('change', async e=>{ const f=e.target.files[0]; if(!f) return; const el=c('.s-mediaInfo'); if(el) el.textContent='decoding '+f.name+'…';
-          if(L._mediaUrl) URL.revokeObjectURL(L._mediaUrl); L._mediaUrl=URL.createObjectURL(f); showImg();   // show the actual file immediately, before the (async) per-key decode
-          try{ const fr=await decodeMedia(f); s.frames=fr; s.mediaName=f.name; L._mediaFrames=null; L.lastTick=0; if(el) el.textContent=esc(f.name)+' · '+fr.length+' frames'; scheduleSaveLayers(); }
+          try{ L._srcFrames=await decodeSource(f); s.mediaName=f.name;
+            if(!s.mediaId) s.mediaId=(typeof crypto!=='undefined'&&crypto.randomUUID)?crypto.randomUUID():('m'+performance.now()+'-'+INDICES.length);
+            resampleAll(); drawSrc(0);
+            if(Media&&Media.available){ try{ await Media.putSource(s.mediaId, f); }catch(_){ } }   // persist the source so framing survives a refresh
+            if(el) el.textContent=esc(f.name)+' · '+s.frames.length+' frames'; scheduleSaveLayers(); }
           catch(err){ if(el) el.textContent='decode failed: '+err.message; } });
-        { const cl=c('.s-mediaClear'); if(cl) cl.addEventListener('click',()=>{ s.frames=[]; s.mediaName=''; L._mediaFrames=null; L.lastTick=0; if(L._mediaUrl){ URL.revokeObjectURL(L._mediaUrl); L._mediaUrl=null; } showImg(); const fi=c('.s-mediaFile'); if(fi) fi.value=''; const el=c('.s-mediaInfo'); if(el) el.textContent='no clip loaded'; scheduleSaveLayers(); }); }   // Release = offload the GIF data + source preview
+        { const cl=c('.s-mediaClear'); if(cl) cl.addEventListener('click',()=>{
+            if(s.mediaId && Media&&Media.delSource){ try{ Media.delSource(s.mediaId); }catch(_){ } }
+            s.frames=[]; s.mediaName=''; s.mediaId=''; L._srcFrames=null; L._mediaFrames=null; L.lastTick=0; _srcTmp=null;
+            drawSrc(0); const fi=c('.s-mediaFile'); if(fi) fi.value=''; const el=c('.s-mediaInfo'); if(el) el.textContent='no clip loaded'; scheduleSaveLayers(); }); }   // Release = offload the clip + its stored source
       } else if(L.type==='audio'){
         const style=s.style||'bars', uid=card.dataset.n;
         // All four sources are live: system + app run through the background daemon (loopback / process-loopback);
@@ -480,9 +520,9 @@
           full('<span style="display:grid;grid-template-columns:auto auto;gap:7px 24px;justify-content:center;flex:1 1 100%">'+srcBubbles+'</span>')+
           full('<span class="val s-srcNow" style="opacity:.8;flex:1 1 100%;text-align:center;font-size:12px;min-height:1em"></span>')+   // "▶ what's playing" (tab/mic = shared-tab title; + a hint when this tab isn't driving the keyboard)
           full('<span class="val" style="opacity:.55;flex:1 1 100%;text-align:center;font-size:12px;line-height:1.4">Specific Tab &amp; Mic / Line-in are captured in this page (reliable mic pick) — they show on the keyboard while this site is open AND driving it. System Audio &amp; Specific App run in the daemon (work with this page closed); Mic also has a daemon fallback for when the tab is closed (pick its device below).</span>')+   // centered note: capture-location gotcha + mic page/daemon split
-          (s.source==='app' ? sub('Specific App')+full('<select class="s-appId" style="max-width:180px"></select><button type="button" class="s-appRefresh" title="rescan currently-playing apps" style="flex:none">Refresh</button><span class="val s-appNote" style="opacity:.7"></span>') : '')+
+          (s.source==='app' ? sub('Specific App')+full('<select class="s-appId" style="max-width:180px"></select><button type="button" class="s-appRefresh" title="Rescan currently-playing apps" style="flex:none">Refresh</button><span class="val s-appNote" style="opacity:.7"></span>') : '')+
           (s.source==='mic' ? sub('Mic Input')+
-            row('Device','<select class="s-micDev" style="max-width:200px;padding-right:24px"><option value="">— Default Recording Device —</option></select><button type="button" class="s-micDevRefresh" title="rescan recording devices" style="flex:none">⟳</button>')+
+            row('Device','<select class="s-micDev" style="max-width:200px;padding-right:24px"><option value="">— Default Recording Device —</option></select><button type="button" class="s-micDevRefresh" title="Rescan recording devices" style="flex:none">⟳</button>')+
             full('<span class="val" style="opacity:.55;flex:1 1 100%;text-align:center;font-size:11px;line-height:1.4">Which mic the DAEMON captures when this tab is CLOSED (the default endpoint is often silent). While the tab drives, your browser-picked mic is used instead.</span>')+
             row('Mic Gain','<span class="srange" style="width:100%"><input type="range" class="s-micGain" min="0" max="1000" step="1" value="'+Math.round(1000*Math.log((s.micGain==null?100:s.micGain)/50)/Math.log(144))+'" title="SENSITIVITY — how little input drives the bars to full (LOG scale: each step is a meaningful multiplier, 50% … 7200%). Higher = less voice/volume needed to fill the board."></span><span class="val s-micGainV"></span>')+
             row('Noise Gate','<span class="srange" style="width:100%"><input type="range" class="s-micGate" min="0" max="20" step="0.25" value="'+(s.micGate==null?0:s.micGate)+'" title="Mute the keys until the mic exceeds this absolute level — raise it just above your room/fan noise so background hum stops lighting the board. Scaled 0–20% to match a real mic’s RMS range. 0 = off"><i class="tick" style="left:calc(7px + (100% - 14px)*0.0)"></i></span><span class="val s-micGateV"></span>')+
@@ -527,7 +567,7 @@
             (bc==='bassTreble' ? row('Bass Color','<input type="color" class="s-barColorBass" value="'+s.barColorBass+'"><span></span>')+row('Treble Color','<input type="color" class="s-barColorTreble" value="'+s.barColorTreble+'"><span></span>')
              : bc==='gradient' ? row('Top Color','<input type="color" class="s-barGradB" value="'+s.barGradB+'"><span></span>')+row('Bottom Color','<input type="color" class="s-barGradA" value="'+s.barGradA+'"><span></span>')+row('Reverse','<label class="sl" style="margin:0"><input type="checkbox" class="s-barGradRev"'+(s.barGradRev?' checked':'')+'> Swap gradient colors</label><span></span>')
              : ''))+
-          row('Bar Tips','<select class="s-barTip" title="outline the top key of each bar so the silhouette stands out">'+btOpt+'</select><span></span>')+
+          row('Bar Tips','<select class="s-barTip" title="Outline the top key of each bar so the silhouette stands out">'+btOpt+'</select><span></span>')+
           (bt==='color' ? row('Tip Color','<input type="color" class="s-barTipColor" value="'+s.barTipColor+'"><span></span>') : '')+
           row('Dynamics','<label class="sl" style="margin:0"><input type="checkbox" class="s-barDynamics"'+(s.barDynamics?' checked':'')+'> Steady bars recede (dim); a beat or spectral shift pops a bright rebound — depth instead of a flat constant-volume wall</label><span></span>')+
           row('Transparency','<label class="sl" style="margin:0"><input type="checkbox" class="s-barDynamicsAlpha"'+(s.barDynamicsAlpha?' checked':'')+'> Recede as SEE-THROUGH — steady bars fade transparent so the layers below show through (real front/back depth), pop solid on a hit. Stacks with Dynamics</label><span></span>')+
@@ -572,7 +612,7 @@
         // setting — so those aren't offered (nothing to copy). Source list = styles you've actually tuned.
         const STYLE_LABELS={bars:'Spectrum Bars',pulse:'Beat Pulse',bloom:'Radial Bloom',wave:'Waveform',aurora:'Aurora'};
         const tunedStyles=Object.keys(s.ap||{}).filter(st=>st!==style && STYLE_LABELS[st]);
-        const copyCtl = tunedStyles.length ? full('<span style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;flex:1 1 100%;justify-content:center"><span class="val" style="opacity:.7">Copy From</span><select class="s-copyFrom">'+tunedStyles.map(st=>'<option value="'+st+'">'+STYLE_LABELS[st]+'</option>').join('')+'</select><label class="sl" style="margin:0"><input type="checkbox" class="s-copyTuning" checked> Tuning</label><label class="sl" style="margin:0"><input type="checkbox" class="s-copyDyn" checked> Dynamics</label><button type="button" class="s-copyApply" style="flex:none">Apply</button>'+(s._copyUndo?'<button type="button" class="s-copyUndo" style="flex:none" title="revert the last Apply">Undo</button>':'')+'</span>') : '';
+        const copyCtl = tunedStyles.length ? full('<span style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;flex:1 1 100%;justify-content:center"><span class="val" style="opacity:.7">Copy From</span><select class="s-copyFrom">'+tunedStyles.map(st=>'<option value="'+st+'">'+STYLE_LABELS[st]+'</option>').join('')+'</select><label class="sl" style="margin:0"><input type="checkbox" class="s-copyTuning" checked> Tuning</label><label class="sl" style="margin:0"><input type="checkbox" class="s-copyDyn" checked> Dynamics</label><button type="button" class="s-copyApply" style="flex:none">Apply</button>'+(s._copyUndo?'<button type="button" class="s-copyUndo" style="flex:none" title="Revert the last Apply">Undo</button>':'')+'</span>') : '';
         html+=
           '</div><div class="ctl s-tuningCtl">'+   // close the colors .ctl and open a separate Tuning .ctl so the shared Adjust block can sit BETWEEN them (under color editing, above Tuning)
           sec('Tuning')+

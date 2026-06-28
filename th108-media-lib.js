@@ -5,14 +5,18 @@
 //
 // window.TH108Media: { available, add(blob,name), list(), get(id), remove(id), mountPicker(el,onPick) }
 (function(){
-  const DB='th108media', STORE='items'; let dbp=null;
+  const DB='th108media', STORE='items', SRC='layersrc'; let dbp=null;   // SRC = hidden per-layer source blobs (Media layer re-framing), NOT shown in the user's library
   const available = typeof indexedDB!=='undefined';
   function db(){ return dbp || (dbp=new Promise((res,rej)=>{
-    const r=indexedDB.open(DB,1);
-    r.onupgradeneeded=()=>{ if(!r.result.objectStoreNames.contains(STORE)) r.result.createObjectStore(STORE,{keyPath:'id',autoIncrement:true}); };
+    const r=indexedDB.open(DB,2);
+    r.onupgradeneeded=()=>{ const d=r.result; if(!d.objectStoreNames.contains(STORE)) d.createObjectStore(STORE,{keyPath:'id',autoIncrement:true}); if(!d.objectStoreNames.contains(SRC)) d.createObjectStore(SRC); };   // SRC keyed by an explicit string id (the layer's mediaId)
     r.onsuccess=()=>res(r.result); r.onerror=()=>rej(r.error);
   })); }
   async function store(mode){ const d=await db(); return d.transaction(STORE,mode).objectStore(STORE); }
+  // per-layer source blob store (re-framing keeps the original image across reloads)
+  async function putSource(id,blob){ const d=await db(); return reqP(d.transaction(SRC,'readwrite').objectStore(SRC).put(blob,id)); }
+  async function getSource(id){ const d=await db(); return reqP(d.transaction(SRC,'readonly').objectStore(SRC).get(id)); }
+  async function delSource(id){ const d=await db(); return reqP(d.transaction(SRC,'readwrite').objectStore(SRC).delete(id)); }
   const reqP=req=>new Promise((res,rej)=>{ req.onsuccess=()=>res(req.result); req.onerror=()=>rej(req.error); });
 
   // first-frame thumbnail -> small PNG dataURL (works for images/GIF/WebP; videos fall back to a label tile)
@@ -69,5 +73,5 @@
     }
   }
 
-  window.TH108Media={ available, add, addSequence, list, get, remove, mountPicker };
+  window.TH108Media={ available, add, addSequence, list, get, remove, mountPicker, putSource, getSource, delSource };
 })();

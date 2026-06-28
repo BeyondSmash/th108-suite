@@ -403,6 +403,16 @@
       const tt=1-Math.abs(1-2*t);   // triangle (A→B→A) so the scrolling gradient loops with no hard seam
       out[o]=ar+(r2-ar)*tt|0; out[o+1]=ag+(g2-ag)*tt|0; out[o+2]=ab+(b2-ab)*tt|0; }
   }
+  // the target-aspect source rect that maps onto the keyboard, given zoom/pan (pan clamped to the source). Pure,
+  // shared by the Media-layer framing sampler and the positioning canvas. Mirrors the GIF→keys panel's computeCrop.
+  function computeCrop(SW, SH, tr, zoom, panX, panY){
+    const ir=SW/SH; let cw0,ch0;
+    if(ir>tr){ ch0=SH; cw0=SH*tr; } else { cw0=SW; ch0=SW/tr; }
+    const cw=cw0/zoom, ch=ch0/zoom, mX=(SW-cw)/2, mY=(SH-ch)/2;
+    panX = mX>0 ? Math.max(-mX,Math.min(mX,panX)) : 0;   // zoomed out past cover → crop exceeds source → center it
+    panY = mY>0 ? Math.max(-mY,Math.min(mY,panY)) : 0;
+    return {cx:(SW-cw)/2+panX, cy:(SH-ch)/2+panY, cw, ch, panX, panY};
+  }
   // per-key output conditioning (saturation → contrast → gamma → brightness), ported from the GIF→keys panel.
   // Raw sRGB pixels look dull/desaturated diffused through the per-key LEDs; this pushes them back to "looks
   // like the GIF". Multipliers: s=saturation, c=contrast, gm=gamma exponent, br=brightness (all 1 = untouched).
@@ -1078,7 +1088,8 @@
     else if(L.type==='individual'){ const st=L.settings; if(!st.keys || typeof st.keys!=='object') st.keys={}; if(st.current===undefined) st.current='#ff8c00'; if(st.brush!=='sub') st.brush='solid';
       if(st.fill==='subtract'){ for(const k in st.keys){ if(st.keys[k] && st.keys[k][0]==='#') st.keys[k]='sub'; } }   // migrate legacy LAYER-WIDE subtract → per-key silhouette markers
       st.fill='solid'; }   // 'fill' is now per-key (encoded in keys[]); keep the field inert for back-compat
-    else if(L.type==='media'){ const s=L.settings; if(!Array.isArray(s.frames)) s.frames=[]; if(s.mediaName===undefined) s.mediaName=''; if(s.hideStatic===undefined) s.hideStatic=false; if(s.motionThr==null) s.motionThr=16;
+    else if(L.type==='media'){ const s=L.settings; if(!Array.isArray(s.frames)) s.frames=[]; if(s.mediaName===undefined) s.mediaName=''; if(s.mediaId===undefined) s.mediaId=''; if(s.hideStatic===undefined) s.hideStatic=false; if(s.motionThr==null) s.motionThr=16;
+      if(s.zoom==null) s.zoom=100; if(s.panX==null) s.panX=0; if(s.panY==null) s.panY=0; if(s.rot==null) s.rot=0;   // framing: how the source maps onto the keys (re-sampled by the page from the IDB-stored source)
       if(s.sat==null) s.sat=170; if(s.gam==null) s.gam=180; }   // color via the shared sat/con/gam/bri Adjust; default to the GIF-tool's Vivid look (raw sRGB reads dull on LEDs) — adjustable in the Adjust block. hideStatic = make unchanging keys transparent
     else if(L.type==='audio'){
       const ad={ style:'bars', source:'system', appId:'', deviceId:'', pauseStyle:'linear',
@@ -1186,7 +1197,7 @@
     hexToRgb, hsv2rgb, patHash, patColorize, audioEnvelope, applyAudioFeatures, audioParams, audioVariantKey,
     keyCell, layerCell,
     PAT_DEFAULTS, patParams, ensureSettings, defaultLayers, createState, applyConfig,
-    renderBackground, renderReactive, renderGradient, renderPattern, renderMedia, adjustRgb, renderKeys, renderAudio,
+    renderBackground, renderReactive, renderGradient, renderPattern, renderMedia, adjustRgb, computeCrop, renderKeys, renderAudio,
     reactEnvelope, applyAdjust, layerNow, renderLayer, composite, flatEq,
     composeFrame, stampKey, releaseKey, SEND_FPS_CAP,
   };
