@@ -331,6 +331,37 @@
         c('.s-showkb').addEventListener('click',()=>{ pb?unmountBoard():mountBoard(); });
         c('.s-clearsel').addEventListener('click',()=>{ if(pb){ pb.clearSelection(); } reRender(); scheduleSaveLayers(); });
         c('.s-clearall').addEventListener('click',()=>{ s.keys={}; if(pb){ pb.selectNone(); pb.draw(); } reRender(); scheduleSaveLayers(); });
+      } else if(L.type==='media'){
+        if(!Array.isArray(s.frames)) s.frames=[];
+        const MAXF=30, NLED=E.NLED, INDICES=E.INDICES;   // cap frames so the per-key data fits the daemon's /config size limit
+        const esc=t=>(t||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');
+        const infoTxt=()=> s.frames.length ? (esc(s.mediaName||'clip')+' · '+s.frames.length+' frames') : 'no clip loaded';
+        body.innerHTML='<div class="ctl">'+
+          sec('Media (GIF / image)')+
+          full('<input type="file" class="s-mediaFile" accept="image/*">')+
+          full('<span class="val s-mediaInfo" style="opacity:.85;flex:1 1 100%">'+infoTxt()+'</span>')+
+          full('<span class="val" style="opacity:.55;flex:1 1 100%;font-size:12px;line-height:1.4">A GIF or image sampled onto the keys — played by the daemon (no Connect) and blended with the other layers. Long GIFs sample down to '+MAXF+' frames; <b>Static</b> freezes it, the layer <b>Speed</b> clock controls playback rate.</span>')+
+        '</div>';
+        const c=q=>body.querySelector(q);
+        // decode a GIF/image → per-frame per-key colours: cover-fit the image, then read the pixel at each key's
+        // normalized board position (engine.keyCell) — so the GIF maps across the whole keyboard.
+        async function decodeMedia(file){
+          const W=160,H=96, cv=document.createElement('canvas'); cv.width=W; cv.height=H;
+          const cx=cv.getContext('2d',{willReadFrequently:true}), out=[];
+          const samp=(d,dw,dh,delay)=>{ cx.clearRect(0,0,W,H);
+            const ir=dw/dh,tr=W/H; let sw,sh,sx,sy; if(ir>tr){ sh=dh; sw=dh*tr; sx=(dw-sw)/2; sy=0; } else { sw=dw; sh=dw/tr; sx=0; sy=(dh-sh)/2; }
+            cx.drawImage(d,sx,sy,sw,sh,0,0,W,H); const px=cx.getImageData(0,0,W,H).data, rgb=new Array(NLED*3);
+            for(let k=0;k<NLED;k++){ const cell=E.keyCell(INDICES[k]); let x=W>>1,y=H>>1; if(cell){ x=Math.max(0,Math.min(W-1,Math.round(cell[0]*W))); y=Math.max(0,Math.min(H-1,Math.round(cell[1]*H))); } const o=(y*W+x)*4; rgb[k*3]=px[o]; rgb[k*3+1]=px[o+1]; rgb[k*3+2]=px[o+2]; }
+            out.push({d:Math.max(20,delay|0), rgb}); };
+          if(window.ImageDecoder){ const dec=new ImageDecoder({data:await file.arrayBuffer(), type:file.type||'image/gif'}); await dec.tracks.ready; const trk=dec.tracks.selectedTrack;
+            for(let i=0;i<5000;i++){ let res; try{ res=await dec.decode({frameIndex:i}); }catch(e){ break; } const vf=res.image, w=vf.displayWidth||vf.codedWidth, h=vf.displayHeight||vf.codedHeight; samp(vf,w,h, vf.duration?vf.duration/1000:100); vf.close(); if(trk.frameCount && i>=trk.frameCount-1) break; } }
+          if(!out.length){ const bmp=await createImageBitmap(file); samp(bmp,bmp.width,bmp.height,100); bmp.close&&bmp.close(); }
+          if(out.length>MAXF){ const s2=[], step=out.length/MAXF; for(let k=0;k<MAXF;k++){ const a=Math.floor(k*step), b2=Math.floor((k+1)*step); let d=0; for(let i=a;i<Math.max(b2,a+1);i++) d+=out[i].d; s2.push({d, rgb:out[a].rgb}); } return s2; }   // sample down, preserving total duration
+          return out;
+        }
+        c('.s-mediaFile').addEventListener('change', async e=>{ const f=e.target.files[0]; if(!f) return; const el=c('.s-mediaInfo'); if(el) el.textContent='decoding '+f.name+'…';
+          try{ const fr=await decodeMedia(f); s.frames=fr; s.mediaName=f.name; L._mediaFrames=null; L.lastTick=0; if(el) el.textContent=esc(f.name)+' · '+fr.length+' frames'; scheduleSaveLayers(); }
+          catch(err){ if(el) el.textContent='decode failed: '+err.message; } });
       } else if(L.type==='audio'){
         const style=s.style||'bars', uid=card.dataset.n;
         // All four sources are live: system + app run through the background daemon (loopback / process-loopback);
@@ -764,6 +795,7 @@
       if(L.type==='individual'){ CFG.bri=['Brightness',0,100,0,'%',100]; if(s.bri>100) s.bri=100; }
       if(L.type==='audio') delete CFG.rot;   // audio styles map to discrete columns/rows — Rotate has no effect, so don't show a dead control
       if(L.type==='individual') delete CFG.rot;   // per-key paint = explicit positions; rotating would scramble the painted layout — dead control
+      if(L.type==='media') delete CFG.rot;   // media frames are pre-sampled per-key; applyAdjust has no rotate → dead control
       const showStatic = L.type!=='individual';   // individual paints a fixed color set — there's no animation to freeze, so Static is meaningless here
       const disp=(key,raw)=>{ const d=CFG[key][3]; return d?(raw/100).toFixed(d):String(raw); };
       const ctl=key=>{ const c=CFG[key], dec=c[3], frac=(c[5]-c[1])/(c[2]-c[1]);   // tick at the default value
