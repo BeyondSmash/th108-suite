@@ -107,6 +107,13 @@ function createServer({ control, root, port = 8123, watchdogMs = 12000 }) {
         const b = await readBody(req, 1_048_576); let body;   // profiles carry full layer configs → raise the body cap
         try { body = JSON.parse(b || '{}'); } catch { return sendJson(res, 400, { error: 'bad json' }); }
         if (control.setProfiles) control.setProfiles(body.profiles || []);
+        if (control.setIndicator && body.indicator) control.setIndicator(body.indicator);
+        return sendJson(res, 200, { ok: true });
+      }
+      if (req.method === 'POST' && u === '/apply-profile') {   // page-side manual Apply → daemon applies live + flashes
+        const b = await readBody(req); let body;
+        try { body = JSON.parse(b || '{}'); } catch { return sendJson(res, 400, { error: 'bad json' }); }
+        if (control.applyProfileByIndex) control.applyProfileByIndex(body.index | 0);
         return sendJson(res, 200, { ok: true });
       }
       if (req.method === 'GET' && u === '/audio/frame') return sendJson(res, 200, { frame: control.audioFrame ? control.audioFrame() : null });   // latest system/app audio frame for the page preview/drive
