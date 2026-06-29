@@ -1203,6 +1203,7 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
 
 <script src="th108-media-lib.js"></script>
 <script src="th108-engine.js"></script>
+<script src="profile-cycle.js"></script>
 <script src="th108-audio-synth.js"></script>
 <script src="th108-audio-webcapture.js"></script>
 <script src="th108-lcd-upload.js"></script>
@@ -2432,13 +2433,22 @@ const PROFILES=TH108Profiles.create({
   flushSave: ()=>LUI.save(),
   getCurrent: ()=>({ layers: JSON.parse(localStorage.getItem('th108_layers')||'[]'),
                      order: JSON.parse(localStorage.getItem('th108_layerOrder')||'null') }),
-  applyData: d=>{
-    localStorage.setItem('th108_layers', JSON.stringify(d.layers||[]));
-    if(d.order) localStorage.setItem('th108_layerOrder', JSON.stringify(d.order));
-    else localStorage.removeItem('th108_layerOrder');
-    DC.pushConfig();                                       // hand it straight to the daemon if one is serving this page
-    log('profile applied — reloading…','ok');
-    location.reload();                                     // layer cards rebuild from storage on boot (same flow as Toolbox Import)
+  applyData: (prof, index)=>{
+    const type = (prof && prof.type) || 'lighting';
+    if(type !== 'hotkey'){                                                   // lighting/global → swap layers live (no reload)
+      localStorage.setItem('th108_layers', JSON.stringify((prof && prof.layers) || []));
+      if(prof && prof.order) localStorage.setItem('th108_layerOrder', JSON.stringify(prof.order));
+      else localStorage.removeItem('th108_layerOrder');
+      try{ LUI.restore(); LUI.buildCards(); }catch(_){}                      // rebuild the layer cards in place from storage (no page reload)
+      DC.pushConfig();                                                       // hand it to the daemon if one is serving this page
+    }
+    if(type === 'hotkey' || type === 'global'){                             // mirror host-actions into THIS page so the Host Actions tab reflects them
+      let live=[]; try{ live=JSON.parse(localStorage.getItem('th108_host_actions')||'[]'); }catch(_){}
+      const merged = (window.TH108ProfileCycle ? TH108ProfileCycle.mergeKeepingCycle((prof&&prof.hostActions)||[], live) : ((prof&&prof.hostActions)||[]));
+      localStorage.setItem('th108_host_actions', JSON.stringify(merged));
+    }
+    try{ fetch('/apply-profile',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({index:index|0})}).catch(()=>{}); }catch(_){}   // daemon applies live + renders the flash
+    log('profile "'+((prof&&prof.name)||'')+'" applied (live)','ok');
   }
 });
 
