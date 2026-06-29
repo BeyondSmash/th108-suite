@@ -184,7 +184,9 @@
         btn('Copy from…', 'copy Lighting or Hotkeys from another profile into this one', () => {
           const l = load(), others = l.map((p, j) => ({ p, j })).filter(o => o.j !== i);
           if (!others.length) { log('no other profile to copy from', 'dim'); return; }
+          const mineOpen = !!row.querySelector('.profCopyInline');
           host.querySelectorAll('.profCopyInline').forEach(e => e.remove());   // one open at a time
+          if (mineOpen) return;   // clicking Copy from… again toggles it off
           const panel = document.createElement('span'); panel.className = 'profCopyInline';
           panel.style.cssText = 'margin-left:auto;display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap;padding:0 9px;border-radius:10px;background:rgba(0,0,0,.22);outline:1px solid var(--border);outline-offset:-1px';   // right-align beside the ✕; outline (not border) + no vertical padding → no row-height growth
           const lab = document.createElement('span'); lab.textContent = 'Copy from'; lab.style.opacity = '.7'; panel.appendChild(lab);
@@ -193,8 +195,7 @@
           panel.appendChild(sel);
           const mk = (label, aspect) => { const b = document.createElement('button'); b.textContent = label; b.addEventListener('click', () => doCopy(i, +sel.value, aspect)); panel.appendChild(b); };
           mk('Lighting', 'lighting'); mk('Hotkeys', 'hotkeys');
-          const cancel = document.createElement('button'); cancel.textContent = 'Cancel'; cancel.addEventListener('click', () => panel.remove()); panel.appendChild(cancel);
-          row.appendChild(panel);   // inline in the same row; margin-left:auto pushes it to the right, beside the wrapped ✕
+          row.appendChild(panel);   // inline in the same row; margin-left:auto pushes it to the right, beside the wrapped ✕ (click Copy from… again to close)
         });
         btn('✕', 'delete this profile', () => {
           if (!confirm('Delete profile "' + prof.name + '"?')) return;
