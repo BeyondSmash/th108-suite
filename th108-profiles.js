@@ -33,11 +33,14 @@
   }
   // accept a profile file {name?, layers, order?} OR a bare layer array (the Toolbox Export format)
   function normalizeImport(parsed) {
-    if (Array.isArray(parsed)) return { name: null, layers: parsed, order: null };
+    if (Array.isArray(parsed)) return { name: null, type: 'lighting', color: '', layers: parsed, order: null, hostActions: [] };
     if (parsed && Array.isArray(parsed.layers)) {
       return { name: typeof parsed.name === 'string' ? parsed.name : null,
+               type: (parsed.type === 'hotkey' || parsed.type === 'global') ? parsed.type : 'lighting',
+               color: typeof parsed.color === 'string' ? parsed.color : '',
                layers: parsed.layers,
-               order: Array.isArray(parsed.order) ? parsed.order : null };
+               order: Array.isArray(parsed.order) ? parsed.order : null,
+               hostActions: Array.isArray(parsed.hostActions) ? parsed.hostActions : [] };
     }
     throw new Error('not a profile file or a layer array');
   }
@@ -133,7 +136,7 @@
         });
         btn('Export', 'download this profile as JSON', () => {
           const a = document.createElement('a');
-          a.href = URL.createObjectURL(new Blob([JSON.stringify({ name: prof.name, layers: prof.layers, order: prof.order })], { type: 'application/json' }));
+          a.href = URL.createObjectURL(new Blob([JSON.stringify({ name: prof.name, type: prof.type || 'lighting', color: prof.color || '', layers: prof.layers || [], order: prof.order || null, hostActions: prof.hostActions || [] })], { type: 'application/json' }));
           a.download = 'th108-profile-' + fileSlug(prof.name) + '.json'; a.click();
           setTimeout(() => URL.revokeObjectURL(a.href), 1000);
           log('✓ exported profile "' + prof.name + '"', 'ok');
@@ -165,7 +168,7 @@
         const list = load();
         if (!canAdd(list)) { log('profile limit reached (' + MAX_PROFILES + ') — delete one first', 'err'); return; }
         const name = sanitizeName(imp.name, defaultName(list));
-        list.push({ name, type: 'lighting', color: defaultColor(list.length), layers: imp.layers, order: imp.order, savedAt: Date.now() }); store(list);
+        list.push({ name, type: imp.type, color: imp.color || defaultColor(list.length), layers: imp.layers, order: imp.order, hostActions: imp.hostActions, savedAt: Date.now() }); store(list);
         log('✓ imported profile "' + name + '" (' + imp.layers.length + ' layers)', 'ok');
         render();
       } catch (err) { log('profile import failed: ' + (err && err.message || err), 'err'); }

@@ -26,11 +26,13 @@ test('defaultName picks the first free "Profile N"', () => {
 
 test('normalizeImport accepts a profile file or a bare layer array, rejects junk', () => {
   const bare = P.normalizeImport([{ type: 'static' }]);
-  assert.deepEqual(bare, { name: null, layers: [{ type: 'static' }], order: null });
+  assert.deepEqual(bare, { name: null, type: 'lighting', color: '', layers: [{ type: 'static' }], order: null, hostActions: [] });
   const full = P.normalizeImport({ name: 'Desk', layers: [], order: [2, 0, 1, 3] });
-  assert.deepEqual(full, { name: 'Desk', layers: [], order: [2, 0, 1, 3] });
+  assert.deepEqual(full, { name: 'Desk', type: 'lighting', color: '', layers: [], order: [2, 0, 1, 3], hostActions: [] });
   const noName = P.normalizeImport({ layers: [], order: 'bogus' });
-  assert.deepEqual(noName, { name: null, layers: [], order: null });
+  assert.deepEqual(noName, { name: null, type: 'lighting', color: '', layers: [], order: null, hostActions: [] });
+  const hk = P.normalizeImport({ name: 'Keys', type: 'hotkey', color: '#0a84ff', layers: [], hostActions: [{ trigger: { type: 'key', led: 4 }, action: { type: 'micToggle' } }] });
+  assert.deepEqual(hk, { name: 'Keys', type: 'hotkey', color: '#0a84ff', layers: [], order: null, hostActions: [{ trigger: { type: 'key', led: 4 }, action: { type: 'micToggle' } }] });
   assert.throws(() => P.normalizeImport({ foo: 1 }), /not a profile/);
   assert.throws(() => P.normalizeImport('nope'), /not a profile/);
 });

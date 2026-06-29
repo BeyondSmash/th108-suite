@@ -2440,7 +2440,7 @@ const PROFILES=TH108Profiles.create({
       if(prof && prof.order) localStorage.setItem('th108_layerOrder', JSON.stringify(prof.order));
       else localStorage.removeItem('th108_layerOrder');
       try{ LUI.restore(); LUI.buildCards(); }catch(_){}                      // rebuild the layer cards in place from storage (no page reload)
-      DC.pushConfig();                                                       // hand it to the daemon if one is serving this page
+      // (no DC.pushConfig here — the daemon path below, POST /apply-profile, applies + flashes; a no-daemon page drives via the rebuilt layer state)
     }
     if(type === 'hotkey' || type === 'global'){                             // mirror host-actions into THIS page so the Host Actions tab reflects them
       let live=[]; try{ live=JSON.parse(localStorage.getItem('th108_host_actions')||'[]'); }catch(_){}
