@@ -87,6 +87,7 @@
 
     function render() {
       const list = load(), host = $('profList');
+      let _bf = false; list.forEach((p, i) => { if (!p.color) { p.color = defaultColor(i); _bf = true; } }); if (_bf) store(list);   // backfill distinct default colors onto any profile saved before colors existed
       host.textContent = '';
       $('profCount').textContent = list.length + ' / ' + MAX_PROFILES;
       $('profSave').disabled = !canAdd(list);
@@ -107,6 +108,10 @@
           name.value = l[i].name;
           log('profile renamed → "' + l[i].name + '"', 'dim');
         });
+        const color = document.createElement('input');
+        color.type = 'color'; color.value = prof.color || defaultColor(i); color.title = 'on-keyboard flash color for this profile';
+        color.addEventListener('input', () => { const l = load(); l[i].color = color.value; store(l); });
+        row.appendChild(color);   // swatch to the LEFT of the name
         row.appendChild(name);
         const typeSel = document.createElement('select');
         typeSel.title = 'what this profile switches when applied or cycled';
@@ -116,10 +121,6 @@
         });
         typeSel.addEventListener('change', () => { const l = load(); l[i].type = typeSel.value; store(l); render(); });
         row.appendChild(typeSel);
-        const color = document.createElement('input');
-        color.type = 'color'; color.value = prof.color || '#888888'; color.title = 'on-keyboard flash color for this profile';
-        color.addEventListener('input', () => { const l = load(); l[i].color = color.value; store(l); });
-        row.appendChild(color);
         const btn = (label, title, fn, cls) => {
           const b = document.createElement('button'); b.textContent = label; b.title = title;
           if (cls) b.className = cls;
@@ -181,10 +182,10 @@
       row.style.cssText = 'display:flex;align-items:center;gap:14px;margin:0 0 10px;flex-wrap:wrap';
       row.innerHTML =
         '<label style="display:flex;align-items:center;gap:6px;margin:0"><input type="checkbox" id="profIndOn"' + (ind.on ? ' checked' : '') + '> Flash the profile number on switch</label>' +
-        '<label style="display:flex;align-items:center;gap:6px;margin:0">Keys <select id="profIndKeys"><option value="numberRow"' + (ind.keys !== 'numpad' ? ' selected' : '') + '>Number row</option><option value="numpad"' + (ind.keys === 'numpad' ? ' selected' : '') + '>Numpad</option></select></label>' +
+        '<label id="profIndKeysBox" style="display:flex;align-items:center;gap:6px;margin:0;border:1px solid var(--border);border-radius:8px;padding:4px 10px;transition:opacity .15s;opacity:' + (ind.on ? '1' : '.45') + '">Keys <select id="profIndKeys"><option value="numberRow"' + (ind.keys !== 'numpad' ? ' selected' : '') + '>Number row</option><option value="numpad"' + (ind.keys === 'numpad' ? ' selected' : '') + '>Numpad</option></select></label>' +
         '<span style="opacity:.65">Bind the cycle key on the <b>Host Actions</b> tab (Profile → Next / Previous / Jump).</span>';
       host.parentNode.insertBefore(row, host);
-      $('profIndOn').addEventListener('change', () => { const v = loadIndicator(); v.on = $('profIndOn').checked; saveIndicator(v); });
+      $('profIndOn').addEventListener('change', () => { const v = loadIndicator(); v.on = $('profIndOn').checked; saveIndicator(v); const box = $('profIndKeysBox'); if (box) box.style.opacity = v.on ? '1' : '.45'; });   // dim the Keys box when the flash is off (it only applies when flashing)
       $('profIndKeys').addEventListener('change', () => { const v = loadIndicator(); v.keys = $('profIndKeys').value; saveIndicator(v); });
     })();
 
