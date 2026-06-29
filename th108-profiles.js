@@ -64,6 +64,35 @@
       let acts = []; try { acts = JSON.parse(localStorage.getItem('th108_host_actions') || '[]'); } catch (_) {}
       return (typeof window !== 'undefined' && window.TH108ProfileCycle) ? window.TH108ProfileCycle.stripCycleBindings(acts) : acts;
     }
+    function defaultLayersConf() { try { return (typeof window !== 'undefined' && window.TH108Engine) ? window.TH108Engine.defaultLayers() : []; } catch (_) { return []; } }
+    function stripCyc(acts) { return (typeof window !== 'undefined' && window.TH108ProfileCycle) ? window.TH108ProfileCycle.stripCycleBindings(acts || []) : (acts || []); }
+    // undo toast (reuses the controller's .undo-toast styling)
+    let _toastEl = null, _toastT = null;
+    function showUndoToast(msg, onUndo) {
+      if (_toastT) { clearTimeout(_toastT); _toastT = null; }
+      if (_toastEl && _toastEl.parentNode) _toastEl.parentNode.removeChild(_toastEl);
+      const t = document.createElement('div'); t.className = 'undo-toast';
+      t.innerHTML = '<span></span><button type="button">Undo</button>';
+      t.querySelector('span').textContent = msg;
+      const close = () => { if (_toastT) { clearTimeout(_toastT); _toastT = null; } if (t.parentNode) { t.classList.add('out'); setTimeout(() => { if (t.parentNode) t.parentNode.removeChild(t); }, 250); } if (_toastEl === t) _toastEl = null; };
+      t.querySelector('button').addEventListener('click', () => { close(); try { onUndo(); } catch (_) {} });
+      document.body.appendChild(t); _toastEl = t;
+      requestAnimationFrame(() => t.classList.add('in'));
+      _toastT = setTimeout(close, 6000);
+    }
+    // copy one aspect (lighting layers OR hotkey bindings) from source profile srcIdx into target profile targetIdx, with undo
+    function doCopy(targetIdx, srcIdx, aspect) {
+      const l = load(); const tgt = l[targetIdx], src = l[srcIdx];
+      if (!tgt || !src) return;
+      const before = JSON.parse(JSON.stringify(tgt));   // snapshot for undo
+      if (aspect === 'lighting') { tgt.layers = JSON.parse(JSON.stringify(src.layers || [])); tgt.order = src.order ? JSON.parse(JSON.stringify(src.order)) : null; }
+      else { tgt.hostActions = JSON.parse(JSON.stringify(stripCyc(src.hostActions))); }
+      store(l); render();
+      log('✓ copied ' + aspect + ' from "' + src.name + '" into "' + tgt.name + '"', 'ok');
+      showUndoToast('Copied ' + aspect + ' from "' + src.name + '" into "' + tgt.name + '"', () => {
+        const l2 = load(); if (l2[targetIdx]) { l2[targetIdx] = before; store(l2); render(); log('↩ copy undone', 'dim'); }
+      });
+    }
     // Mirror the profile list to the daemon so the Host Actions "Profile → Next/Prev" key can cycle them with
     // this page closed (the daemon applies a profile's layers + config.json straight to the board).
     function pushToDaemon(list) {
@@ -142,6 +171,30 @@
           setTimeout(() => URL.revokeObjectURL(a.href), 1000);
           log('✓ exported profile "' + prof.name + '"', 'ok');
         });
+        btn('Duplicate', 'clone this profile as a starting point', () => {
+          const l = load();
+          if (!canAdd(l)) { log('profile limit reached (' + MAX_PROFILES + ') — delete one first', 'err'); return; }
+          const src = l[i], clone = JSON.parse(JSON.stringify(src));
+          clone.name = sanitizeName(src.name + ' (cloned from #' + (i + 1) + ' ' + src.name + ')', src.name);
+          clone.savedAt = Date.now();
+          l.push(clone); store(l);
+          log('✓ duplicated "' + src.name + '" → "' + clone.name + '"', 'ok');
+          render();
+        });
+        btn('Copy from…', 'copy Lighting or Hotkeys from another profile into this one', () => {
+          const l = load(), others = l.map((p, j) => ({ p, j })).filter(o => o.j !== i);
+          if (!others.length) { log('no other profile to copy from', 'dim'); return; }
+          const existing = host.querySelector('.profCopyPanel'); if (existing) existing.remove();   // one panel at a time
+          const panel = document.createElement('div'); panel.className = 'profrow profCopyPanel'; panel.style.background = 'var(--card)';
+          const lab = document.createElement('span'); lab.textContent = 'Copy from'; lab.style.opacity = '.7'; panel.appendChild(lab);
+          const sel = document.createElement('select');
+          others.forEach(o => { const op = document.createElement('option'); op.value = o.j; op.textContent = '#' + (o.j + 1) + ' ' + o.p.name; sel.appendChild(op); });
+          panel.appendChild(sel);
+          const mk = (label, aspect) => { const b = document.createElement('button'); b.textContent = label; b.addEventListener('click', () => doCopy(i, +sel.value, aspect)); panel.appendChild(b); };
+          mk('Lighting', 'lighting'); mk('Hotkeys', 'hotkeys');
+          const cancel = document.createElement('button'); cancel.textContent = 'Cancel'; cancel.addEventListener('click', () => panel.remove()); panel.appendChild(cancel);
+          row.insertAdjacentElement('afterend', panel);
+        });
         btn('✕', 'delete this profile', () => {
           if (!confirm('Delete profile "' + prof.name + '"?')) return;
           const l = load(); l.splice(i, 1); store(l);
@@ -158,6 +211,14 @@
       const prof = snapshot(defaultName(list), 'lighting', defaultColor(list.length));
       list.push(prof); store(list);
       log('✓ saved current setup as "' + prof.name + '" (' + prof.layers.length + ' layers) — click its name to rename', 'ok');
+      render();
+    });
+    $('profAddNew').addEventListener('click', () => {
+      const list = load();
+      if (!canAdd(list)) { log('profile limit reached (' + MAX_PROFILES + ') — delete one first', 'err'); return; }
+      const p = { name: defaultName(list), type: 'lighting', color: defaultColor(list.length), layers: defaultLayersConf(), order: null, savedAt: Date.now() };
+      list.push(p); store(list);
+      log('✓ added new profile "' + p.name + '" with default settings — click its name to rename', 'ok');
       render();
     });
     $('profImport').addEventListener('click', () => $('profFile').click());
