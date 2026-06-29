@@ -61,7 +61,7 @@ let lcdBusy = false;     // a now-playing flash upload is running — the 0x32 s
 let npBlinkAt = 0;       // timestamp of a throttled-skip → blink the spacebar red twice
 let npFlashAt = 0;       // timestamp of a track change → flash the number row (keys 1-0) for 150ms
 let profileFlashAt = 0, profileFlashColor = '#ffffff', profileFlashLed = -1;   // profile-switch number flash
-const PROFILE_FLASH_MS = 1000;   // ~1s number flash on profile switch
+const PROFILE_FLASH_MS = 990, PROFILE_BLINK_MS = 330, PROFILE_BLINK_ON = 180;   // ~1s number flash, blinking ~3× (180ms on / 150ms off)
 let barCount = 0, barStepAt = 0;   // ANIMATED lit-key count for the progress-bar (lerps toward target one key per BAR_STEP_MS — a seek visibly counts up/down)
 const BAR_STEP_MS = 50, BAR_FADE_MS = 600;   // 50ms per key (the sequential walk) / 600ms idle crossfade-out
 const SPACE_K = INDICES.indexOf(KEYMAP['Space']);   // spacebar's slot in the flat frame (for the blink overlay)
@@ -478,10 +478,10 @@ async function runTick() {
         if (ft >= 0 && ft < 150) { const [fr, fg, fb] = hexRGB(settings.npFlashColor); const fks = settings.npBarKeys === 'numpad' ? NUMPAD_KS : DIGIT_KS; for (const k of fks) { const o = k * 4; flat[o + 1] = fr; flat[o + 2] = fg; flat[o + 3] = fb; } }   // flatEq sends the flash on its on/off edges
         else if (ft >= 150) npFlashAt = 0;
       } else if (npFlashAt && !settings.npFlash) npFlashAt = 0;
-      if (profileFlashAt && profileFlashLed >= 0) {   // ~1s profile-switch number flash, in the profile's color
+      if (profileFlashAt && profileFlashLed >= 0) {   // ~1s profile-switch number flash, in the profile's color, blinking ~3×
         const pt = Date.now() - profileFlashAt;
-        if (pt >= 0 && pt < PROFILE_FLASH_MS) { const [pr, pg, pb] = hexRGB(profileFlashColor); const o = profileFlashLed * 4; flat[o + 1] = pr; flat[o + 2] = pg; flat[o + 3] = pb; }
-        else if (pt >= PROFILE_FLASH_MS) profileFlashAt = 0;
+        if (pt >= PROFILE_FLASH_MS) profileFlashAt = 0;
+        else if (pt >= 0 && (pt % PROFILE_BLINK_MS) < PROFILE_BLINK_ON) { const [pr, pg, pb] = hexRGB(profileFlashColor); const o = profileFlashLed * 4; flat[o + 1] = pr; flat[o + 2] = pg; flat[o + 3] = pb; }
       }
     }
     if (!E.flatEq(flat, state.lastFlat) || now - state.lastSent >= 1000) {

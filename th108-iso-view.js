@@ -50,6 +50,10 @@
     const ZOOM_LO = 40, ZOOM_HI = 240;
     const sliderToZoom = v => { v=+v; return v<=50 ? Math.round(ZOOM_LO + v/50*(100-ZOOM_LO)) : Math.round(100 + (v-50)/50*(ZOOM_HI-100)); };
     const zoomToSlider = z => z<=100 ? Math.round((z-ZOOM_LO)/(100-ZOOM_LO)*50) : Math.round(50 + (z-100)/(ZOOM_HI-100)*50);
+    // default/reset zoom scales with the layer count: -11% per layer off a 3-layer = 100% baseline, so the taller
+    // stack from added layers (e.g. Media) fits without manual zoom-out. 4 layers → 89%, 5 → 78%, etc. Clamped to range.
+    const ZOOM_REF = 3;
+    function defZoom(){ const n = (state && state.layers) ? state.layers.length : ZOOM_REF; return Math.max(ZOOM_LO, Math.min(ZOOM_HI, 100 - 11*(n - ZOOM_REF))); }
 
     // ---- panel chrome ----
     const panel = document.createElement('div'); panel.className = 'iso-panel'; panel.hidden = true;
@@ -163,9 +167,9 @@
     function saveSettings(){ try{ localStorage.setItem(SKEY, JSON.stringify({yaw,pitch,zoom,gap,drawer,enhanced,fxAnim,fxParticles,fxAura,glass,showKeys,faceOn,waveStyle,
       lockK:lock.known,lockN:lock.NumLock,lockC:lock.CapsLock,lockS:lock.ScrollLock})); }catch(_){ } }
     let _saveT=0; function saveSoon(){ clearTimeout(_saveT); _saveT=setTimeout(saveSettings, 350); }
-    function loadSettings(){ let s; try{ s=JSON.parse(localStorage.getItem(SKEY)); }catch(_){ } if(!s||typeof s!=='object') return;
+    function loadSettings(){ let s; try{ s=JSON.parse(localStorage.getItem(SKEY)); }catch(_){ } if(!s||typeof s!=='object'){ zoom=defZoom(); return; }
       if(typeof s.yaw==='number') yaw=s.yaw; if(typeof s.pitch==='number') pitch=s.pitch;
-      if(typeof s.zoom==='number') zoom=s.zoom; if(typeof s.gap==='number') gap=Math.min(55,Math.max(14,s.gap));   // clamp to the slider range
+      if(typeof s.zoom==='number') zoom=s.zoom; else zoom=defZoom(); if(typeof s.gap==='number') gap=Math.min(55,Math.max(14,s.gap));   // no saved zoom → layer-count default; clamp gap to the slider range
       if(typeof s.drawer==='number') drawer=Math.min(100,Math.max(0,s.drawer));
       enhanced=!!s.enhanced; glass=!!s.glass; showKeys=s.showKeys!==false; faceOn=!!s.faceOn; if(s.waveStyle==='ripple'||s.waveStyle==='waveX') waveStyle=s.waveStyle;
       if(s.lockK){ lock.known=true; lock.NumLock=!!s.lockN; lock.CapsLock=!!s.lockC; lock.ScrollLock=!!s.lockS; }   // restore last-known lock state → System plane shows on refresh
@@ -255,7 +259,7 @@
     // Face-on: snap to a flat front-facing (top-down) view AND lock tilt (so a drag can't knock it off); yaw still spins.
     faceEl.addEventListener('click', ()=>{ faceOn=!faceOn; pitch=faceOn?FACE_PITCH:ISO_PITCH; if(faceOn) yaw=0; faceEl.classList.toggle('on',faceOn); lockEl.hidden=!faceOn; saveSoon(); });
     // Reset Orientation: restore the whole view (zoom / rotation / gap / drawer) to the default and clear focus / Face-on
-    $('.iso-reset').addEventListener('click', ()=>{ yaw=DEF_YAW; pitch=DEF_PITCH; zoom=DEF_ZOOM; gap=DEF_GAP; drawer=DEF_DRAWER; focusIdx=null; faceOn=false; backEl.hidden=true; lockEl.hidden=true; faceEl.classList.remove('on'); buildLegend(); syncControls(); saveSoon(); });
+    $('.iso-reset').addEventListener('click', ()=>{ yaw=DEF_YAW; pitch=DEF_PITCH; zoom=defZoom(); gap=DEF_GAP; drawer=DEF_DRAWER; focusIdx=null; faceOn=false; backEl.hidden=true; lockEl.hidden=true; faceEl.classList.remove('on'); buildLegend(); syncControls(); saveSoon(); });
     loadSettings(); syncControls();
 
     // ---- drag the panel by its header ----
