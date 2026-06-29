@@ -150,9 +150,13 @@
     document.body.appendChild(panel);
 
     const cv = panel.querySelector('.iso-cv'), ctx = cv.getContext('2d');
-    const SS = 2, DEF_W = 720, DEF_H = 392;
-    let CW = DEF_W, CH = DEF_H;
-    function sizeCanvas(w,h){ CW=Math.max(160,Math.round(w)); CH=Math.max(120,Math.round(h)); cv.width=CW*SS; cv.height=CH*SS; }
+    const SS_MAX = 2, PIX_BUDGET = 1650000, DEF_W = 720, DEF_H = 392;   // budget caps the backing store: ~1.65M px ≈ 1080p, the same cap the renderer rule uses
+    let CW = DEF_W, CH = DEF_H, SS = SS_MAX;
+    // supersample for crispness, but cap so a maximized pop-out doesn't render an enormous backing store (fill cost ∝ SS²).
+    // Docked (720×392 → 282k px) stays at the full 2× (1.13M backing); a big window scales SS down toward 1.
+    function sizeCanvas(w,h){ CW=Math.max(160,Math.round(w)); CH=Math.max(120,Math.round(h));
+      SS=Math.max(1, Math.min(SS_MAX, Math.sqrt(PIX_BUDGET/(CW*CH))));
+      cv.width=Math.round(CW*SS); cv.height=Math.round(CH*SS); }
     sizeCanvas(DEF_W, DEF_H);
     // In the popped window the canvas flex-shrinks when the header grows (Glass slider / Enhanced sub-toggles wrap
     // a new row) WITHOUT a window resize — re-fit the buffer to the canvas's live size so content can't clip up.
@@ -279,7 +283,7 @@
       cv.setPointerCapture(e.pointerId); e.preventDefault(); });
     cv.addEventListener('pointermove', e=>{ if(!rot) return; ctrlDown=e.ctrlKey; const dx=e.clientX-rot.x, dy=e.clientY-rot.y;
       rot.moved=Math.max(rot.moved,Math.abs(dx)+Math.abs(dy));
-      yaw=rot.y0 + dx*0.7*D2R; if(!faceOn) pitch=Math.max(8*D2R, Math.min(90*D2R, rot.p0 + dy*0.5*D2R));   // Face-on locks tilt
+      yaw=rot.y0 - dx*0.7*D2R; if(!faceOn) pitch=Math.max(8*D2R, Math.min(90*D2R, rot.p0 + dy*0.5*D2R));   // horizontal drag → yaw (negated so the grabbed point follows the cursor); Face-on locks tilt
       if(e.ctrlKey){   // hold Ctrl → snap yaw/tilt to the nearest 90° interval when within ~12°
         const snap=(rad)=>{ const d=rad/D2R, n=Math.round(d/90)*90; return Math.abs(d-n)<12 ? n*D2R : rad; };
         yaw=snap(yaw); if(!faceOn){ const ps=snap(pitch); pitch=Math.max(8*D2R,Math.min(90*D2R,ps)); }
@@ -296,11 +300,14 @@
     const LOCK_K = LOCKS.map(L=>({...L, k:INDICES.indexOf(L.led)})).filter(L=>L.k>=0);
     const sysRgb = new Uint8Array(NLED*3);
 
+    // proj is called ~1300×/frame (every key × every plane + aura footprints). yaw/pitch/zoom are constant
+    // within a frame, so cache their trig and only recompute when one actually changes — saves ~5k trig ops/frame.
+    let _pY=NaN,_pP=NaN,_pZ=NaN,_cY=1,_sY=0,_cP=1,_sP=0,_Z=1;
     function proj(bx,bz,by,cx,cy){
-      const cY=Math.cos(yaw),sY=Math.sin(yaw),cP=Math.cos(pitch),sP=Math.sin(pitch), Z=zoom/100;
-      const rx=bx*cY - bz*sY, rz=bx*sY + bz*cY;
-      const up=by*cP - rz*sP, depth=by*sP + rz*cP;
-      return [ cx + rx*Z, cy - up*Z, depth ];
+      if(yaw!==_pY||pitch!==_pP||zoom!==_pZ){ _pY=yaw;_pP=pitch;_pZ=zoom; _cY=Math.cos(yaw);_sY=Math.sin(yaw);_cP=Math.cos(pitch);_sP=Math.sin(pitch);_Z=zoom/100; }
+      const rx=bx*_cY - bz*_sY, rz=bx*_sY + bz*_cY;
+      const up=by*_cP - rz*_sP, depth=by*_sP + rz*_cP;
+      return [ cx + rx*_Z, cy - up*_Z, depth ];
     }
     // enhanced-wave height offset per key (u,v normalized; j = plane index; t seconds). waveFreqs[style] sets the
     // spatial frequency (the slider, per style). Ripple = diagonal; Wave X = horizontal traveling wave.
@@ -319,7 +326,8 @@
     function gather(){ fillSysRgb();
       const out = state.layers.map((L,i)=>({L, i, id:i, num:i+1, name:L.name||('Layer '+(i+1)), rgb:L.rgb, off:!L.enabled, toggle:true, sys:false}));
       let xi=0; for(const ex of extraPlanes()) if(ex && ex.rgb) out.push({L:null, i:-1, id:'x'+(xi++), num:0, name:ex.name||'Extra', rgb:ex.rgb, off:false, toggle:false, sys:false});
-      out.push({L:null, i:-1, id:'sys', num:0, name:'System', rgb:sysRgb, off:false, toggle:false, sys:true});
+      const sysOn = lock.known && LOCK_K.some(L=>lock[L.code]);   // no lock LED lit → the System plane is inactive (off), like any other empty layer
+      out.push({L:null, i:-1, id:'sys', num:0, name:'System', rgb:sysRgb, off:!sysOn, toggle:false, sys:true});
       return out;
     }
     function planeList(){ const g=gather(); if(focusIdx==null) return g; const f=g.find(p=>p.id===focusIdx); return f?[f]:g; }
@@ -346,9 +354,11 @@
     // height (by) and sway a little along the board x-axis.
     function spawnParticles(dt, byOf, dzOf){
       if(_planes.length<1) return;
+      const act=[]; for(let p=0;p<_planes.length;p++) if(!_planes[p].off) act.push(p);   // off/inactive layers emit no stardust
+      if(!act.length) return;
       const rate = 60*dt/1000;   // small dust → spawn more of them
       let n = rate + (Math.random()<(rate%1)?1:0);
-      for(let s=0;s<n;s++){ const p=(Math.random()*_planes.length)|0; const col=_planes[p].col||[150,170,210];
+      for(let s=0;s<n;s++){ const p=act[(Math.random()*act.length)|0]; const col=_planes[p].col||[150,170,210];
         P.push({ bx:(Math.random()-0.5)*0.9*BW0, bz:(Math.random()-0.5)*0.9*BD+(dzOf?dzOf(p):0), by:byOf(p)+gap*0.12,
                  vby:14+Math.random()*22, life:0, max:0.8+Math.random()*1.0, col,
                  sz:0.45+Math.random()*0.7, seed:Math.random()*TAU, tw:14+Math.random()*16, sway:5+Math.random()*7 }); }   // board-space rise + sway; seed/tw = twinkle
@@ -424,7 +434,7 @@
     }
 
     // ---- main draw ----
-    let _last=0;
+    let _last=0, _fam=null;
     function draw(now){
       const dt=Math.min(80, _last?now-_last:16); _last=now; const tSec=now/1000;
       const P0=planeList(), N=P0.length;
@@ -441,8 +451,9 @@
       const dzOf = j => (N>1 ? (N-1-j)/(N-1) : 0) * (drawer/100*DRAWER_CAP) * DRAW_MAX;
       // measure the widest label first so the board can sit just right of a column wide enough to never clip them
       ctx.setTransform(SS,0,0,SS,0,0);
-      const FAM=getComputedStyle(document.body).fontFamily||'system-ui,sans-serif';
-      const labelStr = pl => (pl.num?pl.num+' · ':'')+pl.name+(pl.off?'  (off)':'')+(pl.sys&&!lock.known?'  (press a key)':'');
+      const FAM=_fam||(_fam=getComputedStyle(document.body).fontFamily||'system-ui,sans-serif');   // cached — body font doesn't change frame-to-frame, and getComputedStyle forces a style recalc
+      // suffix: System reads "(press a key)" until its lock state is known, then "(inactive)" when no lock LED is lit; ordinary layers read "(off)" when disabled
+      const labelStr = pl => { const suf = pl.sys ? (!lock.known ? '  (press a key)' : (pl.off ? '  (inactive)' : '')) : (pl.off ? '  (off)' : ''); return (pl.num?pl.num+' · ':'')+pl.name+suf; };
       ctx.font='600 12.65px '+FAM;
       let maxLW=0; for(const pl of P0){ const w=ctx.measureText(labelStr(pl)).width; if(w>maxLW)maxLW=w; }
       // layout pass: bbox of plane backdrops at cx=cy=0
@@ -473,13 +484,13 @@
         else if(sm){ sm[0]*=0.94; sm[1]*=0.94; sm[2]*=0.94; if(sm[0]+sm[1]+sm[2]<6){ _csm[j]=null; sm=null; } }
         const rep = sm ? [sm[0]|0,sm[1]|0,sm[2]|0] : null;
         const bg=[proj(-BW0/2,-BD/2+dz,by,cx,cy),proj(BW0/2,-BD/2+dz,by,cx,cy),proj(BW0/2,BD/2+dz,by,cx,cy),proj(-BW0/2,BD/2+dz,by,cx,cy)];
-        _planes.push({ quad:bg.map(c=>[c[0],c[1]]), id:pl.id, sys:pl.sys, col:rep,
+        _planes.push({ quad:bg.map(c=>[c[0],c[1]]), id:pl.id, sys:pl.sys, off:pl.off, col:rep,
           cx:(bg[0][0]+bg[2][0])/2, cy:(bg[0][1]+bg[2][1])/2, hw:Math.abs(bg[1][0]-bg[0][0])/2+Math.abs(bg[2][0]-bg[1][0])/2 });
       }
 
       for(let j=0;j<N;j++){ const pl=P0[j], rgb=pl.rgb, by=byOf(j), dz=dzOf(j), mask=pl.L?carveMask(pl.L):null;
         if(showKeys){   // the per-layer plane backdrop is part of "show keys" → hidden too when Keys is off (only lit keys float)
-          ctx.fillStyle = pl.sys?'rgba(120,90,160,.10)':(pl.off?'rgba(120,130,150,.05)':'rgba(90,110,140,.09)');
+          ctx.fillStyle = pl.sys?(pl.off?'rgba(120,90,160,.04)':'rgba(120,90,160,.10)'):(pl.off?'rgba(120,130,150,.05)':'rgba(90,110,140,.09)');
           if(AMP>0){   // subdivide the backdrop into a wave-displaced mesh so it ripples WITH the keys (one flat quad can't)
             const NU=16, NV=6;
             for(let gv=0; gv<NV; gv++){ const v0=gv/NV, v1=(gv+1)/NV; ctx.beginPath();
@@ -497,15 +508,15 @@
           ctx.beginPath(); ctx.moveTo(cor[0][0],cor[0][1]); for(let i=1;i<4;i++) ctx.lineTo(cor[i][0],cor[i][1]); ctx.closePath();
           if(lum>6){ ctx.shadowBlur=pl.off?0:Math.min(14,lum/14); ctx.shadowColor='rgb('+cr+','+cg+','+cb+')';
             ctx.fillStyle=pl.off?'rgba('+cr+','+cg+','+cb+',.22)':'rgb('+cr+','+cg+','+cb+')'; ctx.fill(); ctx.shadowBlur=0; }
-          else if(showKeys){ ctx.shadowBlur=0; ctx.fillStyle='rgba(150,160,175,.10)'; ctx.fill();   // inactive key → a faint keycap + outline so the layout reads
-            ctx.strokeStyle='rgba(180,190,205,.17)'; ctx.lineWidth=1; ctx.stroke(); }
+          else if(showKeys){ ctx.shadowBlur=0; ctx.fillStyle=pl.off?'rgba(150,160,175,.045)':'rgba(150,160,175,.10)'; ctx.fill();   // inactive key → a faint keycap + outline so the layout reads; off/inactive planes get an even fainter keycap so the whole plane reads dim
+            ctx.strokeStyle=pl.off?'rgba(180,190,205,.075)':'rgba(180,190,205,.17)'; ctx.lineWidth=1; ctx.stroke(); }
           if(mask && mask[r.k]>0.15){   // silhouetted/carving key → black it out (it removes light from below), then a red minus on top
             ctx.shadowBlur=0; ctx.fillStyle='#000'; ctx.fill();   // re-fill the same key quad black
             const m=proj((r.u-0.5)*BW0,(r.v-0.5)*BD+dz,by+wz,cx,cy);
             ctx.fillStyle=RED; ctx.font='700 '+Math.max(9,11*zoom/100)+'px '+FAM; ctx.textAlign='center'; ctx.textBaseline='middle';
             ctx.fillText('−', m[0], m[1]); }
         }
-        if(enhanced && fxAura) drawPlaneGlow(j, rgb, tSec, cx, cy, AMP, by, dz);   // key-aware glow rising from THIS layer's lit keys, drawn after its keys + before the next plane up → occluded by it (depth)
+        if(enhanced && fxAura && !pl.off) drawPlaneGlow(j, rgb, tSec, cx, cy, AMP, by, dz);   // key-aware glow rising from THIS layer's lit keys (skipped for off/inactive layers), drawn after its keys + before the next plane up → occluded by it (depth)
       }
 
       if(enhanced && fxParticles){ spawnParticles(dt, byOf, dzOf); drawParticles(dt, cx, cy); } else if(P.length) P.length=0;
@@ -521,7 +532,7 @@
         const tc=8-LB[0].y; if(tc>0) for(const L of LB) L.y+=tc; }
       ctx.font='600 12.65px '+FAM; ctx.textAlign='right'; ctx.textBaseline='middle';
       for(const L of LB){ const pl=L.pl;
-        ctx.fillStyle=pl.sys?'rgba(190,170,230,.95)':(pl.off?'rgba(139,148,158,.55)':'rgba(230,237,243,.92)');
+        ctx.fillStyle=pl.sys?(pl.off?'rgba(190,170,230,.5)':'rgba(190,170,230,.95)'):(pl.off?'rgba(139,148,158,.55)':'rgba(230,237,243,.92)');
         ctx.fillText(labelStr(pl), labelRight, L.y); }
       readEl.textContent = 'zoom '+zoom+'% · yaw '+Math.round(((yaw/D2R)%360+360)%360)+'° · tilt '+Math.round(pitch/D2R)+'° · gap '+gapToSlider(gap)+(drawer?' · drawer '+drawer:'');
 
