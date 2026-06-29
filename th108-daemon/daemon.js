@@ -10,6 +10,7 @@ const path = require('path');
 const { execFile } = require('child_process');
 const { uIOhook, UiohookKey } = require('uiohook-napi');
 const E = require('../th108-engine.js');
+const PC = require('../profile-cycle.js');
 const OBP = require('../th108-onboard.js');   // packAllled() — build the cmd-0x23 onboard-effect payload (for the "mask onboard flash to black" toggle)
 const T = require('./hid-transport.js');
 const U = require('./usb-reset.js');
@@ -59,6 +60,8 @@ let state = null, device = null, send = null, paused = false, timer = null;
 let lcdBusy = false;     // a now-playing flash upload is running — the 0x32 stream must stay quiet
 let npBlinkAt = 0;       // timestamp of a throttled-skip → blink the spacebar red twice
 let npFlashAt = 0;       // timestamp of a track change → flash the number row (keys 1-0) for 150ms
+let profileFlashAt = 0, profileFlashColor = '#ffffff', profileFlashLed = -1;   // profile-switch number flash
+const PROFILE_FLASH_MS = 1000;   // ~1s number flash on profile switch
 let barCount = 0, barStepAt = 0;   // ANIMATED lit-key count for the progress-bar (lerps toward target one key per BAR_STEP_MS — a seek visibly counts up/down)
 const BAR_STEP_MS = 50, BAR_FADE_MS = 600;   // 50ms per key (the sequential walk) / 600ms idle crossfade-out
 const SPACE_K = INDICES.indexOf(KEYMAP['Space']);   // spacebar's slot in the flat frame (for the blink overlay)
@@ -151,6 +154,9 @@ const PROFILES_PATH = path.join(__dirname, 'profiles.json');
 function loadJSON(p) { try { return JSON.parse(fs.readFileSync(p, 'utf8')); } catch { return null; } }
 let hostActions = HA.normalize(loadJSON(HOST_ACTIONS_PATH) || []);
 let profiles = loadJSON(PROFILES_PATH) || [];          // [{name, layers, order}] — pushed by the page so cycling works page-closed
+const INDICATOR_PATH = path.join(__dirname, 'profile-indicator.json');
+let indicator = loadJSON(INDICATOR_PATH) || { on: true, keys: 'numberRow' };   // profile-switch number flash settings
+function saveIndicator() { try { fs.writeFileSync(INDICATOR_PATH, JSON.stringify(indicator)); } catch {} }
 let curProfile = -1;                                   // index of the last-applied profile (best-effort; -1 = unknown)
 function saveHostActions() { try { fs.writeFileSync(HOST_ACTIONS_PATH, JSON.stringify(hostActions)); } catch {} }
 // Migrate the OLD per-layer Mic toggle-hotkey (settings.toggleKeyLed) into a key→micToggle binding, once.
@@ -171,12 +177,19 @@ function toggleAudioLayer() {
   syncAudioCapture();   // disabling the audio layer stops capture; enabling restarts it
   log('🎚 host action: audio layer "' + (L.name || '') + '" ' + (L.enabled ? 'ON' : 'OFF'));
 }
-function applyProfile(p, label) {   // shared apply path (cycle + direct-select)
-  if (!p || !Array.isArray(p.layers)) return;
-  try { fs.writeFileSync(CONFIG_PATH, JSON.stringify(p.layers)); } catch {}   // persist so it survives + the page sees it
-  if (!paused && state) { state = E.applyConfig(state, p.layers);   // apply live unless the page holds the device
-    if (state) { state.bri = Math.max(0, Math.min(100, settings.brightness != null ? settings.brightness : 100)) / 100; state.lastFlat = null; } }
+function applyProfile(p, label) {   // shared apply path (cycle + direct-select); applies aspects per profile type
+  if (!p) return;
+  const asp = PC.applyAspects(p.type);
+  if (asp.layers && Array.isArray(p.layers)) {
+    try { fs.writeFileSync(CONFIG_PATH, JSON.stringify(p.layers)); } catch {}   // persist so it survives + the page sees it
+    if (!paused && state) { state = E.applyConfig(state, p.layers);   // apply live unless the page holds the device
+      if (state) { state.bri = Math.max(0, Math.min(100, settings.brightness != null ? settings.brightness : 100)) / 100; state.lastFlat = null; } }
+  }
+  if (asp.hotkeys) {   // swap Host Actions, preserving the LIVE profile-cycle bindings so the cycle key survives
+    hostActions = HA.normalize(PC.mergeKeepingCycle(p.hostActions || [], hostActions)); saveHostActions(); _haReset();
+  }
   syncAudioCapture();
+  if (indicator.on) { profileFlashAt = Date.now(); profileFlashColor = p.color || '#ffffff'; profileFlashLed = PC.flashLed(indicator.keys, curProfile, DIGIT_KS, NUMPAD_KS); }
   log('🎚 host action: profile → "' + label + '"');
 }
 function cycleProfile(dir) {
@@ -465,6 +478,11 @@ async function runTick() {
         if (ft >= 0 && ft < 150) { const [fr, fg, fb] = hexRGB(settings.npFlashColor); const fks = settings.npBarKeys === 'numpad' ? NUMPAD_KS : DIGIT_KS; for (const k of fks) { const o = k * 4; flat[o + 1] = fr; flat[o + 2] = fg; flat[o + 3] = fb; } }   // flatEq sends the flash on its on/off edges
         else if (ft >= 150) npFlashAt = 0;
       } else if (npFlashAt && !settings.npFlash) npFlashAt = 0;
+      if (profileFlashAt && profileFlashLed >= 0) {   // ~1s profile-switch number flash, in the profile's color
+        const pt = Date.now() - profileFlashAt;
+        if (pt >= 0 && pt < PROFILE_FLASH_MS) { const [pr, pg, pb] = hexRGB(profileFlashColor); const o = profileFlashLed * 4; flat[o + 1] = pr; flat[o + 2] = pg; flat[o + 3] = pb; }
+        else if (pt >= PROFILE_FLASH_MS) profileFlashAt = 0;
+      }
     }
     if (!E.flatEq(flat, state.lastFlat) || now - state.lastSent >= 1000) {
       sendingFrame = true;
@@ -719,6 +737,8 @@ const control = {
 
   // Saved profiles, pushed by the page so profileNext/profilePrev can switch lighting with the page CLOSED.
   setProfiles(arr) { profiles = Array.isArray(arr) ? arr : []; try { fs.writeFileSync(PROFILES_PATH, JSON.stringify(profiles)); } catch {} curProfile = -1; },
+  setIndicator(ind) { if (ind && typeof ind === 'object') { indicator = { on: ind.on !== false, keys: ind.keys === 'numpad' ? 'numpad' : 'numberRow' }; saveIndicator(); } },   // profile-switch flash settings
+  applyProfileByIndex(i) { selectProfile(i | 0); },   // page-side manual Apply → live apply + flash
   // Native file picker for the "Launch" host action — the browser can't see real filesystem paths, but the daemon
   // can't show a GUI itself (its window has no desktop — OpenFileDialog hangs). So it asks the TRAY (which has a
   // real message loop + GUI) to show the dialog: write _pickreq.txt, the tray writes the chosen path to
