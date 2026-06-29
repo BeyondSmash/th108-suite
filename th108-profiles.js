@@ -186,7 +186,7 @@
           if (!others.length) { log('no other profile to copy from', 'dim'); return; }
           host.querySelectorAll('.profCopyInline').forEach(e => e.remove());   // one open at a time
           const panel = document.createElement('span'); panel.className = 'profCopyInline';
-          panel.style.cssText = 'margin-left:auto;display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap;border:1px solid var(--border);border-radius:10px;padding:5px 9px;background:rgba(0,0,0,.22)';   // right-align into the wrapped row (beside the ✕); outlined + darker to stand apart
+          panel.style.cssText = 'margin-left:auto;display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap;padding:0 9px;border-radius:10px;background:rgba(0,0,0,.22);outline:1px solid var(--border);outline-offset:-1px';   // right-align beside the ✕; outline (not border) + no vertical padding → no row-height growth
           const lab = document.createElement('span'); lab.textContent = 'Copy from'; lab.style.opacity = '.7'; panel.appendChild(lab);
           const sel = document.createElement('select');
           others.forEach(o => { const op = document.createElement('option'); op.value = o.j; op.textContent = '#' + (o.j + 1) + ' ' + o.p.name; sel.appendChild(op); });
