@@ -45,6 +45,19 @@
   const SPACE_VAL = 83, SPACE_HID = 0x2c;
   const FN_VAL = 85;   // Fn stays non-bindable: overwriting it loses the whole FN layer (its factory entry is 02 00 af 00 — restorable, but the lockout isn't worth it)
 
+  // Numpad → digit-row workaround for the firmware-forced white NumLock LED. That light is asserted by
+  // the firmware from the OS NumLock state (below where our 0x32 per-key paint reaches — proven dead at
+  // 30 fps) and Epomaker's own software exposes NO toggle for it (full UI recon 2026-06-29). The only
+  // way to lose it is to keep NumLock OFF — but then the numpad sends nav keys, not digits. So we remap
+  // the 11 NumLock-sensitive keys (0-9 + decimal) to the TOP-ROW number scancodes, which type the same
+  // digit regardless of NumLock state. The operator keys (/ * - + Enter) are NOT NumLock-sensitive, so
+  // they already work with NumLock off and are left untouched. [keyValue (engine LED idx), top-row HID, label]
+  const NUMPAD_REMAP = [
+    [77, 30, '1'], [78, 31, '2'], [79, 32, '3'], [61, 33, '4'], [62, 34, '5'],
+    [63, 35, '6'], [45, 36, '7'], [46, 37, '8'], [47, 38, '9'], [93, 39, '0'], [94, 55, '.']
+  ];
+  const NUMLOCK_VAL = 29;   // the NumLock key itself — neutralized to a no-event key (HID usage 0), which also frees it to be rebound to anything via the palette
+
   // ---- pure keymap-entry encoders ----
   function encodeNormal(hid)  { return [0x02, 0x00, hid & 0xFF, 0x00]; }
   function encodeMedia(usage) { return [0x03, usage & 0xFF, (usage >> 8) & 0xFF, 0x00]; }   // 16-bit LE (Calculator capture: 03 92 01 00)
@@ -774,6 +787,8 @@
       const noBytes = Object.values(mods).filter(e => !e.bytes).length;
       $('bdToggleLbl').textContent = suspended ? 'Remapped Keys → Back to Custom' : 'All Remapped Keys → Typing';
       $('bdToggleAll').disabled = !(en && plan.writes.length);
+      $('bdNumpad').disabled = !en;   // connect-gated like the other keymap-pass buttons (doesn't need a key selected)
+      $('bdNumpadRevert').disabled = !en;
       $('bdToggleInfo').textContent =
         !nMods    ? 'no keys remapped yet' :
         suspended ? plan.writes.length + ' key' + (plan.writes.length === 1 ? '' : 's') + ' parked on typing defaults' :
@@ -887,6 +902,36 @@
                    : '✓ custom assignments re-applied', 'ok');
     }
     $('bdToggleAll').addEventListener('click', toggleAll);
+
+    // ---- one-click numpad → digit-row workaround (kills the firmware-forced white NumLock LED) ----
+    // Remaps 0-9 + decimal to the top-row scancodes (NumLock-independent) and neutralizes the NumLock
+    // key (HID 0 = no event), all in one keymap pass. Routed through setMods so the board marks, the
+    // group toggle, per-key Restore Default, and Export all treat these like any other binding.
+    async function numpadWorkaround() {
+      const ok = await keymapRMW(km => {
+        NUMPAD_REMAP.forEach(([kv, hid]) => setEntry(km, kv, encodeNormal(hid)));
+        setEntry(km, NUMLOCK_VAL, encodeNormal(0));   // ponytail: HID 0 = "no event" (KC_NO) — inert + reversible via Restore Default (NumLock factory HID 83)
+      }, 'Remapping the numpad → digit row…');
+      if (!ok) return;
+      const entries = {};
+      NUMPAD_REMAP.forEach(([kv, hid, lbl]) => { entries[kv] = { label: lbl, bytes: encodeNormal(hid) }; });
+      entries[NUMLOCK_VAL] = { label: '—', bytes: encodeNormal(0) };
+      setMods(entries);
+      log('✓ Numpad now types digits with NumLock OFF — turn NumLock off and the white indicator LED is gone. The NumLock key is now free: pick it on the board and bind it to a macro/hotkey/light. Undo with Revert Numpad.', 'ok');
+    }
+    // one-click inverse: restore the 11 digit/decimal keys + the NumLock key to their factory entries
+    // (saves the user from Restore-Default-ing each numpad key by hand).
+    async function numpadRevert() {
+      const targets = NUMPAD_REMAP.map(([kv]) => kv).concat([NUMLOCK_VAL]);
+      const ok = await keymapRMW(km => targets.forEach(kv => setEntry(km, kv, defaultEntry(kv))), 'Reverting the numpad → factory…');
+      if (!ok) return;
+      setMods(Object.fromEntries(targets.map(kv => [kv, null])));
+      log('✓ Numpad restored to factory — NumLock works normally again (its white LED returns whenever NumLock is on).', 'ok');
+    }
+    $('bdNumpad').addEventListener('click', numpadWorkaround);
+    $('bdNumpadRevert').addEventListener('click', numpadRevert);
+    { const ex = $('bdNumpadExplain'), det = $('bdNumpadDetail'), car = $('bdNumpadCaret');   // Explanation = pure show/hide, no device needed
+      if (ex && det) ex.addEventListener('click', () => { const open = det.hidden; det.hidden = !open; ex.setAttribute('aria-expanded', String(open)); if (car) car.textContent = open ? '▾' : '▸'; }); }
 
     // ---- re-apply every saved binding to the keyboard (the "Refresh" button on the Pick-a-Key card).
     // After a factory reset the board is at defaults but th108_key_mods still holds your bindings —

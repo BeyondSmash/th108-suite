@@ -178,20 +178,23 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
   .rlbox{ background:var(--card); border-radius:18px; padding:22px 26px; box-shadow:0 18px 50px rgba(13,17,23,.35); max-width:340px; }
   .rlbox h3{ margin:0 0 6px; }
 
-  /* daemon online tag (header) — dim at rest, ripple only on hover so it never distracts passively */
+  /* daemon online tag (header) — dim at rest so it never distracts passively; the orb itself emits a
+     soft glow (a blurred halo), and hover just un-dims the tag, which naturally brightens that glow.
+     (Replaces the old expanding-ring "ping" — a 0-spread box-shadow pulsing outward — which reads as an AI tell.) */
   .dmnTag{ display:inline-flex; align-items:center; gap:6px; font-size:12px; font-weight:600;
            color:var(--muted); opacity:.65; cursor:default; }
   .dmnTag[hidden]{ display:none !important; }   /* display:inline-flex would otherwise beat the UA's [hidden] rule */
-  .dmnTag i{ width:8px; height:8px; border-radius:50%; background:var(--mint); }
-  .dmnTag.off i{ background:var(--err); }
+  .dmnTag i{ width:8px; height:8px; border-radius:50%; background:var(--mint);
+             box-shadow:0 0 6px 1px color-mix(in srgb, var(--mint) 55%, transparent); }   /* the primary orb emits a soft glow */
+  .dmnTag.off i{ background:var(--err); box-shadow:none; }   /* offline: plain dot, no glow */
   .dmnTag.reconnecting{ opacity:1; }
-  .dmnTag.reconnecting i{ background:var(--warn); animation:dpulseA 1s ease-in-out infinite; }   /* amber dot + amber glow during a restart */
-  .dmnTag:hover{ opacity:1; }
-  .dmnTag:hover i{ animation:dpulse 1.2s ease-in-out infinite; }
-  .dmnTag.reconnecting:hover i{ animation:dpulseA 1s ease-in-out infinite; }   /* keep it amber even while hovered */
-  .dmnTag.off:hover i{ animation:none; }
-  @keyframes dpulse{ 50%{ box-shadow:0 0 0 5px color-mix(in srgb, var(--mint) 30%, transparent); } }
-  @keyframes dpulseA{ 50%{ box-shadow:0 0 0 5px color-mix(in srgb, var(--warn) 35%, transparent); } }
+  .dmnTag.reconnecting i{ background:var(--warn); animation:dglowA 1.4s ease-in-out infinite; }   /* amber: the soft glow gently breathes during a restart */
+  .dmnTag:hover{ opacity:1; }   /* hover un-dims the whole tag */
+  .dmnTag:hover i{ animation:dglow 1.6s ease-in-out infinite; }   /* hover: the soft glow breathes (still a blurred halo, not the old expanding ring) */
+  .dmnTag.reconnecting:hover i{ animation:dglowA 1.4s ease-in-out infinite; }   /* keep the amber breathe while hovered during a restart */
+  .dmnTag.off:hover i{ animation:none; }   /* offline: stays a plain dot */
+  @keyframes dglow{ 0%,100%{ box-shadow:0 0 5px 1px color-mix(in srgb, var(--mint) 45%, transparent); } 50%{ box-shadow:0 0 11px 3px color-mix(in srgb, var(--mint) 75%, transparent); } }
+  @keyframes dglowA{ 0%,100%{ box-shadow:0 0 5px 1px color-mix(in srgb, var(--warn) 45%, transparent); } 50%{ box-shadow:0 0 11px 3px color-mix(in srgb, var(--warn) 75%, transparent); } }
   /* header Connect — on every tab while this page doesn't hold the keyboard; flashes yellow on connect, then leaves */
   .hdrconnect{ margin:0; padding:7px 14px; font-size:12.5px; transition:opacity .3s ease; }
   .hdrconnect[hidden]{ display:none !important; }
@@ -650,6 +653,26 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
     <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:8px">
       <button id="bdToggleAll" disabled title="one keymap pass flips every remapped key back to its normal typing character; a second pass re-applies your custom assignments — for when the letters need to just type"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="m8 3-4 4 4 4"/><path d="M4 7h16"/><path d="m16 21 4-4-4-4"/><path d="M20 17H4"/></svg> <span id="bdToggleLbl">All Remapped Keys → Typing</span></button>
       <span class="hint" id="bdToggleInfo" style="margin:0"></span>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:8px;margin-top:8px">
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <button id="bdNumpad" disabled title="Workaround for the firmware-forced white NumLock LED — remap the numpad to type digits with NumLock OFF (so the white light never appears). See Explanation below."><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 7h.01M12 7h.01M16 7h.01M8 11h.01M12 11h.01M16 11h.01M8 15h4"/></svg> Numpad → Digits (kill NumLock LED)</button>
+        <button id="bdNumpadRevert" disabled title="undo the remap — restore 0–9, the decimal, and the NumLock key to factory in one keymap pass"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg> Revert Numpad</button>
+        <span class="hint" id="bdNumpadInfo" style="margin:0"></span>
+      </div>
+      <div style="margin-left:16px;max-width:560px;border:1px solid var(--border);border-radius:8px;overflow:hidden">
+        <button id="bdNumpadExplain" type="button" aria-expanded="false" aria-controls="bdNumpadDetail" style="width:100%;margin:0;border:none;border-radius:0;background:transparent;justify-content:flex-start;gap:6px;font-weight:600"><span id="bdNumpadCaret" aria-hidden="true">▸</span> Explanation</button>
+        <div class="hint" id="bdNumpadDetail" hidden style="margin:0;padding:12px 14px 14px;line-height:1.55;border-top:1px solid var(--border)">
+          <p style="margin:0 0 9px">That white NumLock LED is forced on by the firmware whenever NumLock is <b>ON</b> — it can't be painted over (proven at 30&nbsp;fps) and Epomaker's own software has no setting to disable it. The only fix is to keep NumLock <b>off</b>, so this makes the numpad still type numbers in that state:</p>
+          <ul style="margin:0;padding-left:18px;display:flex;flex-direction:column;gap:7px">
+            <li>Remaps <b>0–9</b> and the decimal to the top-row number scancodes, which don't depend on NumLock — leave NumLock <b>off</b> and the numpad still types numbers, with no white light.</li>
+            <li>The operator keys (<b>/ * − + Enter</b>) already work with NumLock off, so they're left untouched.</li>
+            <li><b>Frees the NumLock key</b> itself (made inert) — select it on the board and bind it to a macro, hotkey, or light function.</li>
+            <li>Fully reversible with <b>Revert Numpad</b>.</li>
+            <li><b>Trade-off:</b> Shift+numpad gives the top-row symbols, and the NumLock-off nav functions (Home/End/arrows) on the numpad are gone.</li>
+          </ul>
+        </div>
+      </div>
     </div>
   </div>
 
