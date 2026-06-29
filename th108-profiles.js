@@ -52,18 +52,34 @@
     const $ = id => document.getElementById(id);
 
     function load() { try { const a = JSON.parse(localStorage.getItem(KEY) || '[]'); return Array.isArray(a) ? a : []; } catch (_) { return []; } }
+    const PALETTE = ['#ff3b30', '#ff9500', '#ffcc00', '#34c759', '#00c7be', '#0a84ff', '#5e5ce6', '#bf5af2', '#ff2d55', '#a2845e'];
+    const defaultColor = i => PALETTE[((i % PALETTE.length) + PALETTE.length) % PALETTE.length];
+    function loadIndicator() { try { return Object.assign({ on: true, keys: 'numberRow' }, JSON.parse(localStorage.getItem('th108_profileIndicator') || '{}')); } catch (_) { return { on: true, keys: 'numberRow' }; } }
+    function saveIndicator(ind) { try { localStorage.setItem('th108_profileIndicator', JSON.stringify(ind)); } catch (_) {} pushToDaemon(); }
+    // current Host Actions, minus the profile-cycle bindings (those must never be captured into a profile)
+    function captureHotkeys() {
+      let acts = []; try { acts = JSON.parse(localStorage.getItem('th108_host_actions') || '[]'); } catch (_) {}
+      return (typeof window !== 'undefined' && window.TH108ProfileCycle) ? window.TH108ProfileCycle.stripCycleBindings(acts) : acts;
+    }
     // Mirror the profile list to the daemon so the Host Actions "Profile → Next/Prev" key can cycle them with
     // this page closed (the daemon applies a profile's layers + config.json straight to the board).
     function pushToDaemon(list) {
       try { fetch('/profiles', { method: 'POST', headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ profiles: (list || load()).map(p => ({ name: p.name, layers: p.layers, order: p.order })) }) }).catch(() => {}); } catch (_) {}
+        body: JSON.stringify({
+          profiles: (list || load()).map(p => ({ name: p.name, layers: p.layers || [], order: p.order || null, type: p.type || 'lighting', color: p.color || '', hostActions: p.hostActions || [] })),
+          indicator: loadIndicator()
+        }) }).catch(() => {}); } catch (_) {}
     }
     function store(list) { try { localStorage.setItem(KEY, JSON.stringify(list)); } catch (_) { } pushToDaemon(list); }
 
-    function snapshot(name) {
+    function snapshot(name, type, color) {
       flushSave();   // flush the live layer state to localStorage first, same as Toolbox Export
-      const cur = getCurrent();
-      return { name, layers: cur.layers, order: cur.order, savedAt: Date.now() };
+      const t = type || 'lighting';
+      const p = { name, type: t, color: color || '', savedAt: Date.now() };
+      if (t !== 'hotkey') { const cur = getCurrent(); p.layers = cur.layers; p.order = cur.order; }   // lighting/global capture layers
+      else { p.layers = []; p.order = null; }
+      if (t === 'hotkey' || t === 'global') p.hostActions = captureHotkeys();
+      return p;
     }
 
     function render() {
@@ -89,18 +105,30 @@
           log('profile renamed → "' + l[i].name + '"', 'dim');
         });
         row.appendChild(name);
+        const typeSel = document.createElement('select');
+        typeSel.title = 'what this profile switches when applied or cycled';
+        [['lighting', 'Lighting'], ['hotkey', 'Hotkey'], ['global', 'Global']].forEach(o => {
+          const op = document.createElement('option'); op.value = o[0]; op.textContent = o[1];
+          if ((prof.type || 'lighting') === o[0]) op.selected = true; typeSel.appendChild(op);
+        });
+        typeSel.addEventListener('change', () => { const l = load(); l[i].type = typeSel.value; store(l); render(); });
+        row.appendChild(typeSel);
+        const color = document.createElement('input');
+        color.type = 'color'; color.value = prof.color || '#888888'; color.title = 'on-keyboard flash color for this profile';
+        color.addEventListener('input', () => { const l = load(); l[i].color = color.value; store(l); });
+        row.appendChild(color);
         const btn = (label, title, fn, cls) => {
           const b = document.createElement('button'); b.textContent = label; b.title = title;
           if (cls) b.className = cls;
           b.addEventListener('click', fn); row.appendChild(b); return b;
         };
-        btn('Apply', 'load this profile (replaces the current layer setup) and reload', () => {
-          if (!confirm('Apply "' + prof.name + '"?\n\nThis replaces your current layer setup (save it as a profile first if you want to keep it). The page will reload.')) return;
-          applyData({ layers: prof.layers, order: prof.order });
+        btn('Apply', 'apply this profile live (no reload)', () => {
+          if (!confirm('Apply "' + prof.name + '"?\n\nThis replaces your current setup live (save it as a profile first to keep it).')) return;
+          applyData(prof, i);
         }, 'go');
-        btn('Update', 'overwrite this profile with the current layer setup', () => {
-          const l = load(); l[i] = Object.assign({}, snapshot(l[i].name)); store(l);
-          log('✓ profile "' + l[i].name + '" updated from the current setup', 'ok');
+        btn('Update', 'overwrite this profile from the current setup (per its type)', () => {
+          const l = load(); l[i] = snapshot(l[i].name, l[i].type, l[i].color); store(l);
+          log('✓ profile "' + l[i].name + '" updated', 'ok');
           render();
         });
         btn('Export', 'download this profile as JSON', () => {
@@ -123,7 +151,7 @@
     $('profSave').addEventListener('click', () => {
       const list = load();
       if (!canAdd(list)) { log('profile limit reached (' + MAX_PROFILES + ') — delete one first', 'err'); return; }
-      const prof = snapshot(defaultName(list));
+      const prof = snapshot(defaultName(list), 'lighting', defaultColor(list.length));
       list.push(prof); store(list);
       log('✓ saved current setup as "' + prof.name + '" (' + prof.layers.length + ' layers) — click its name to rename', 'ok');
       render();
@@ -137,11 +165,25 @@
         const list = load();
         if (!canAdd(list)) { log('profile limit reached (' + MAX_PROFILES + ') — delete one first', 'err'); return; }
         const name = sanitizeName(imp.name, defaultName(list));
-        list.push({ name, layers: imp.layers, order: imp.order, savedAt: Date.now() }); store(list);
+        list.push({ name, type: 'lighting', color: defaultColor(list.length), layers: imp.layers, order: imp.order, savedAt: Date.now() }); store(list);
         log('✓ imported profile "' + name + '" (' + imp.layers.length + ' layers)', 'ok');
         render();
       } catch (err) { log('profile import failed: ' + (err && err.message || err), 'err'); }
     });
+
+    (function buildIndicatorRow() {
+      const host = $('profList'); if (!host || !host.parentNode || $('profIndRow')) return;
+      const ind = loadIndicator();
+      const row = document.createElement('div'); row.id = 'profIndRow'; row.className = 'hint';
+      row.style.cssText = 'display:flex;align-items:center;gap:14px;margin:0 0 10px;flex-wrap:wrap';
+      row.innerHTML =
+        '<label style="display:flex;align-items:center;gap:6px;margin:0"><input type="checkbox" id="profIndOn"' + (ind.on ? ' checked' : '') + '> Flash the profile number on switch</label>' +
+        '<label style="display:flex;align-items:center;gap:6px;margin:0">Keys <select id="profIndKeys"><option value="numberRow"' + (ind.keys !== 'numpad' ? ' selected' : '') + '>Number row</option><option value="numpad"' + (ind.keys === 'numpad' ? ' selected' : '') + '>Numpad</option></select></label>' +
+        '<span style="opacity:.65">Bind the cycle key on the <b>Host Actions</b> tab (Profile → Next / Previous / Jump).</span>';
+      host.parentNode.insertBefore(row, host);
+      $('profIndOn').addEventListener('change', () => { const v = loadIndicator(); v.on = $('profIndOn').checked; saveIndicator(v); });
+      $('profIndKeys').addEventListener('change', () => { const v = loadIndicator(); v.keys = $('profIndKeys').value; saveIndicator(v); });
+    })();
 
     render();
     pushToDaemon();   // initial sync so the daemon has the current profiles even with no edit this session
