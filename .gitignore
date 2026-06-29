@@ -58,6 +58,7 @@ th108-daemon/_pausecap.js
 # --- daemon runtime config (written by the daemon, like config.json) ---
 th108-daemon/host-actions.json
 th108-daemon/profiles.json
+th108-daemon/profile-indicator.json
 th108-profile-*.json
 
 # --- machine-specific audio wake fix (never shipped — see packaging exclusions) ---

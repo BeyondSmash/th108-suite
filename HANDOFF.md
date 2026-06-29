@@ -1,56 +1,38 @@
-# HANDOFF — 2026-06-27 → next session: fold the GIF panel into the Media layer
+# HANDOFF — 2026-06-28 — NumLock / System white-LED RE (fresh chat)
 
-> Durable rules/protocol/roadmap: **`_HANDOFF.md`** (gitignored) + project memory. This file = session resume.
-> **The focused next task is at the bottom (## NEXT SESSION).** The rest is today's state.
+> Durable rules/protocol/roadmap: **`_HANDOFF.md`** (gitignored) + project memory. This file = the focused next-task brief.
+> Start a **NEW chat** on this; deeper context auto-loads from the `th108-numlock-re-handoff` memory. Read this whole file, then [[th108-numlock-re-handoff]], [[th108-lighting-protocol]], [[th108-keymap-binder]].
 
-## Where things stand
-Huge UI/UX day on top of the iso-view work, plus the **headline feature shipped (v1): GIF-as-a-compositor Media layer** (engine-tested). HEAD `3c8f567`, working tree clean. **Almost everything today is committed but NOT browser/hardware-verified by me** — I stopped reloading the controller because my reloads churn the page↔daemon handoff and **wedged the board twice**. The user must **reload the page + restart the daemon** (no hot-reload) to exercise today's engine changes.
+## The mission
+Suppress the white LED the firmware forces on a **lock key** (NumLock / CapsLock / ScrollLock) while that lock is ON. The user keeps **NumLock ON** (uses the numpad), so its key is permanently white and overrides custom lighting. **NumLock is the priority** (Caps off, Scroll already rebound). User-flagged **"major"** want.
 
-## Ledger
+## ✅ Proven dead — DO NOT REDO
+- Our full-frame `0x32` paint **does reach** the lock keys (INDICES: NumLock=33, CapsLock=58, ScrollLock=14).
+- **Paint-over is DEAD.** A 30fps hardware diagnostic (forcing true 30fps sends, well above the engine's 1fps static keepalive) ran on all three lock keys: a lock key with its lock **ON stays SOLID WHITE** even at 30fps; **OFF** keys take our color fine. The firmware asserts the USB-HID lock-LED state **below** where `0x32` per-key paint reaches. The diagnostic was reverted. **Do not try to beat it with lighting.**
 
-### ✅ Solved (verified)
-- **Lights-on board mute** — user hardware-confirmed. `914c50a` · [daemon.js:817](th108-daemon/daemon.js#L817). Memory `th108-mute-lightson-reopen.md`.
-- **Engine `renderMedia`** — Media layer plays stored per-key frames on the speed/freeze clock; **+2 unit tests, 65/65 green** (`node --test th108-engine.test.js`). `bd98f85` · [th108-engine.js renderMedia](th108-engine.js).
-- **Layer 3↔4 swap + wrong-column** (Fill) — fixed by not masonry-packing layer cards. `3db0f25`. (User confirmed both modes.)
+## The RE plan (recon-first, clean-room, NEVER fuzz)
+1. **Tooling already at repo root:** `_hid-sniff.js` (paste into the OFFICIAL Epomaker tool's DevTools console — hooks `HIDDevice.prototype.sendReport` + `inputreport`; `__hidlog_dump()` auto-copies) and `_parse_sniff.js` (`node _parse_sniff.js capture.txt` — census of OUT cmds, reassembles `0x22` keymaps, prints unknown cmds in full). User has sniffed the official tool before (LCD work).
+2. **Recon FIRST:** open the official Epomaker software and hunt the UI for ANY setting touching lock/indicator lights ("indicator", "lock light", Caps/Num/Scroll light, "indicator color", Lighting→indicators). RE can only succeed if such a setting EXISTS — the white may be hardwired firmware behavior the vendor's own software can't disable either.
+3. If a setting exists: `__hidlog_clear()` → toggle ONLY that setting once → `__hidlog_dump()` → `node _parse_sniff.js` → replicate the captured command safely.
+4. If NO setting exists: RE is a dead end → use the fallback.
+5. **CONFIRM WITH USER AT START:** is their official Epomaker tool the **WEB** one (browser WebHID — DevTools paste works as-is) or a **DESKTOP** app (needs DevTools access via its webview)?
 
-### 🟡 Open / committed but USER must reload + (for engine) restart daemon to verify
-- **Media layer v1** — set a layer type=Media → Choose File → decodes + cover-samples per-key → `settings.frames=[{d,rgb[NLED*3]}]` (capped 30 to fit /config) → plays via engine (page+daemon), blends, no Connect. + Speed slider, Static freeze, **Release** button (offload). `d70420a`,`7e47f95`,`3c8f567`.
-- **Add/remove layers** — "+ Add layer" + per-card circle-x remove; up to 7 (one per type); **undo toast ~6s** on removal; docs 4→7. `8e043d4`,`3c8f567`.
-- **Bars Reverse** — swap-gradient-colors checkbox for the gradient Bar Color (engine swaps ends). `4b62d75`.
-- **Card icons** — collapse=panel-bottom-open/close, remove=circle-x (matched size). `3c8f567`.
-- **Fill-mode hardening** — pill hugs outside edge / hides past anchor; Show-pill lerp-scrolls to the dup; Show-Keyboard mounts above the row + scrolls to top; MutationObserver re-spans on content growth. `c1bf5bf`,`2381fe8`,`50a087b`,`40ef26f`,`05a172b`,`187bdae`,`ecf1ca7`.
-- **Docs/FAQ/NowPlaying/GIF-Screen zebra + readability**, scrollbar-gutter (Profiles shift), theme-knob contrast, Individual per-key Solid/Silhouette brush, GIF-panel local preview + Connect hint. `093ffc5`,`b4be89c`,`7f9f52b`,`9c0a54a`,`91e949d`,`0e57120`,`732aba5`,`cf9cb26`,`e019200`,`eed50d1`.
+## 🛑 CRITICAL SAFETY
+**NEVER blind-fuzz command bytes.** The board **soft-bricked once** from a bad flash write and not even the in-app factory reset recovered it — only Epomaker's official site reset did. **Only send commands captured verbatim from the official software.** Known cmds: `0x32` full-frame paint · `0x22` keymap write · `0x23` onboard effect · `0x50` LCD · `0x0F` reset.
 
-### 🔴 Regressed / suspect
-- **Board wedged ~3× today** — 2 from MY chrome-devtools reload storms (page↔daemon yield/resume churn), 1 environmental long-stream USB-power mute. All self-recovered. **NOT** any code change. Rule below.
+## Fallback (host-side, no RE, tools we already have)
+Keep **NumLock OFF** (→ no white) and **remap the numpad keys → top-row digit scancodes** via the keymap binder (`0x22`, see [[th108-keymap-binder]]) so the numpad still types 1-0 with NumLock off.
+**Caveats (get user buy-in):** numpad keys become top-row digits → Shift gives symbols not digits, and the NumLock-off nav-cluster funcs (Home/End/arrows) are lost. Likely acceptable since the user only uses it as a number pad.
 
-## Build / run / test
-- **Daemon (always-on):** `node th108-daemon/daemon.js` → http://localhost:8123. **ONE device owner at a time.** No hot-reload — **restart to load engine/daemon changes.**
-- **Static (page sole owner):** `node _serve.js` → :8123.
-- **Tests:** `node --test th108-engine.test.js` (65) · `cd th108-daemon && node --test` (50) · `node --test th108-gif-panel.test.js th108-profiles.test.js`.
-- **HTML inline check:** `node -e "const fs=require('fs');const h=fs.readFileSync('th108-controller.html','utf8');const b=[...h.matchAll(/<script>([\s\S]*?)<\/script>/g)].map(x=>x[1]).filter(s=>s.length>500).pop();new Function(b);console.log('OK')"`
+## Repo state right now
+- **Branch `profile-cycling`** holds the just-finished **Profile Cycling** feature (types lighting/hotkey/global · per-profile color + ~1s blinking number-flash · live Apply (no reload) · Duplicate / Add-New / Copy-from with undo · indicator on/off + numpad toggle · iso-view default zoom scales −11%/layer). It is **NOT yet merged to `master`** — user said it "seems finished"; awaiting an explicit "merge it." The white-LED work is unrelated and can start from `master` (merge profile-cycling first if you want a clean line).
+- Unit suites green at last check: `node --test profile-cycle.test.js th108-engine.test.js th108-layers-ui.test.js th108-profiles.test.js` + `cd th108-daemon && node --test`.
+- Daemon is running/supervised — **ONE controller at a time** ([[th108-daemon]]). For the RE you'll drive the OFFICIAL tool, so **quit/yield our daemon first** to avoid two device owners fighting.
 
-## Gotchas
-- **DO NOT rapid-reload the controller while the daemon drives** — handoff churn → two-writer wedge (bit me 2× today). Have the USER reload once; do ≤1 careful reload yourself.
-- **Commits:** author `Beyon <you@example.com>`, **NO Claude/Co-Authored-By trailer.** `node --check`/inline-check before commit. American spelling.
-- **TDZ trap:** load-time ReferenceError blanks the whole page; `node --check` can't catch it → verify interactive in Chrome.
-- **Media frame format:** `settings.frames = [{ d:delayMs, rgb:[r,g,b,…] NLED*3 physical order }]`. Engine `renderMedia(L,tnow)` plays it; `tnow`=`layerNow` clock (speed=`s.spd`, freezes on Static). **Cap 30 frames** — per-key number-array data must fit the daemon's **64 KB /config POST cap** (`th108-daemon/server.js`). Persisted because `serializeLayers` (layers-ui:24) includes full `settings`.
-- **One-layer-per-type** rule (`usedT`, layers-ui:84) caps layers at 7. To allow duplicates, drop `usedT`.
+## Hard rules (project-wide)
+- Commits authored as `Beyon <you@example.com>`, **NO Claude / Co-Authored-By trailer**: `git -c user.name="Beyon" -c user.email="you@example.com" commit --author="Beyon <you@example.com>" -m "..."`
+- Never commit Epomaker's copyrighted bundles (`app.*.js`, `chunk-*.js`, `*.js.txt`) — reference-only, clean-room.
+- American spelling. PowerShell host (win32). After editing an HTML page, syntax-check its inline `<script>`; after editing a `.js`, `node --check`.
 
----
-
-## NEXT SESSION — port the GIF→Keyboard framing + previews into the Media layer
-
-**Goal (user request):** the Media layer should have *all* the **GIF → Keyboard Lighting** card's settings, **including the previews** — i.e. fold the standalone panel's capability into the compositor layer.
-
-**Already present in the Media layer** (don't rebuild): Brightness/Saturation/Contrast/Gamma (shared **Adjust** block), **Speed**, **Static**, blend, opacity, fps, Release.
-
-**Still to port from `th108-gif-panel.js` → Media layer (`th108-layers-ui.js` `L.type==='media'` branch, ~line 334):**
-1. **Framing:** zoom / pan (drag) / **rotate**, **Map** (physical vs grid), **Sample** (average-area vs nearest), **Bars fill** for letterbox. The standalone panel's sampler is `sampleKeyColors` / `pushFrame` / the crop transform in `th108-gif-panel.js` — currently baked into its own UI/DOM.
-2. **Two live previews:** the **position canvas** (image + blue crop box, drag-to-pan/zoom) and the **keyboard preview** (per-key result). See gif-panel `drawSrc()` / `drawKb()` / `refresh()`.
-
-**Recommended approach:** extract the gif-panel's **decode + crop + sample** into a shared, DOM-light module (e.g. `th108-gif-decode.js`) that BOTH the standalone panel and the Media layer call, returning `frames=[{d,rgb[NLED*3]}]`. The Media layer's current `decodeMedia()` (cover-only, layers-ui ~line 345) is the seam to replace. Keep the **30-frame cap** + number-array `rgb` (or switch to base64 + an engine-side decode helper if you need more frames — note the /config 64 KB cap either way).
-
-**Build/verify discipline:** pure decode/sample logic → unit-test it (no hardware). UI/previews → the USER reloads + restarts the daemon to verify (don't reload-churn). Commit per logical step. Consider whether to eventually retire the standalone "GIF → Keyboard Lighting" panel once the Media layer supersedes it (it needs Connect; the Media layer doesn't).
-
-**Files:** `th108-gif-panel.js` (source of decode/sample/crop + previews), `th108-layers-ui.js` (Media branch + `decodeMedia`), `th108-engine.js` (`renderMedia`, `keyCell`, `NLED`/`INDICES`), `th108-engine.test.js`. Memory: `th108-gif-as-layer.md`.
+## Next action
+Confirm with the user whether their official Epomaker tool is **web or desktop**, then **recon the official software's UI for a lock/indicator-light setting** before any sniff. If such a setting exists, sniff that ONE toggle and replicate it; if not, present the NumLock-off + numpad-remap fallback for buy-in. **Do not fuzz.**
