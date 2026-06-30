@@ -771,8 +771,8 @@
     // enable/disable everything + keep the readout and the why-disabled hint honest
     function refresh() {
       const sel = selKey(), ok = bindable(sel);
-      $('bdKey').textContent = sel ? 'Key: ' + (sel.label || 'Space') + ' (value ' + sel.idx + ')' : 'no key selected';
-      $('bdState').textContent = !connected ? 'needs Connect' : (ok ? 'ready' : 'pick a key');
+      $('bdKey').textContent = sel ? 'Key: ' + (sel.label || 'Space') + ' (value ' + sel.idx + ')' : 'No key is selected.';
+      $('bdState').textContent = !connected ? 'Connect to use all hotkey features.' : (ok ? 'ready' : 'pick a key');
       const en = connected && !busy;
       $('bdRevert').disabled = !(en && ok);
       document.querySelectorAll('#spaceBtns [data-space]').forEach(b => { b.disabled = !en; });
@@ -1014,7 +1014,7 @@
       const sel = selKey(), ok = bindable(sel), en = connected && !busy && ok;
       $('akApply').disabled = !en;
       $('akApply').textContent = 'Apply to ' + (ok ? (sel.label || 'Space') : 'selected key');
-      $('akState').textContent = !connected ? 'needs Connect' : (ok ? '' : 'pick a key on the board above');
+      $('akState').textContent = !connected ? 'Connect to use advanced keys.' : (ok ? '' : 'pick a key on the board above');
     }
     async function akApply() {
       const sel = selKey(); if (!bindable(sel) || busy) return;

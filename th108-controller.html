@@ -632,14 +632,14 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
 
   <!-- ========== HOTKEYS ========== -->
   <div class="card s6" id="kbBoardCard" data-pages="hotkeys">
-    <div class="cardbar"><span class="grip">⠿</span><h2>Pick a Key</h2><button id="kbRefresh" title="re-apply your saved key bindings to the keyboard — use after a factory reset put the keys back to default" style="margin:0;padding:5px 11px">↻ Refresh</button><span class="aux" style="display:flex;flex-direction:column;align-items:flex-end;gap:1px;margin-left:auto"><span id="kbSelInfo">no key selected</span><span id="kbSelSub" style="color:var(--warn)" hidden></span></span></div>
+    <div class="cardbar"><span class="grip">⠿</span><h2>Pick a Key</h2><button id="kbRefresh" title="re-apply your saved key bindings to the keyboard — use after a factory reset put the keys back to default" style="margin:0;padding:5px 11px">↻ Refresh</button><span class="aux" style="display:flex;flex-direction:column;align-items:flex-end;gap:1px;margin-left:auto"><span id="kbSelInfo">No key is selected.</span><span id="kbSelSub" style="color:var(--warn)" hidden></span></span></div>
     <div id="kbBoard"></div>
   </div>
 
   <div class="card s4" id="bindCard" data-pages="hotkeys">
-    <div class="cardbar"><span class="grip">⠿</span><h2>Assign to Key</h2><span class="aux" id="bdState">needs Connect</span></div>
+    <div class="cardbar"><span class="grip">⠿</span><h2>Assign to Key</h2><span class="aux" id="bdState">Connect to use all hotkey features.</span></div>
     <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:0 0 10px">
-      <span class="hint" id="bdKey" style="font-weight:600">no key selected</span>
+      <span class="hint" id="bdKey" style="font-weight:600">No key is selected.</span>
       <button id="bdRevert" disabled title="put the selected key back to its factory character"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg> Restore Default</button>
     </div>
     <div class="bdtabs" id="bdTabs"></div>
@@ -654,15 +654,18 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
       <button id="bdToggleAll" disabled title="one keymap pass flips every remapped key back to its normal typing character; a second pass re-applies your custom assignments — for when the letters need to just type"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="m8 3-4 4 4 4"/><path d="M4 7h16"/><path d="m16 21 4-4-4-4"/><path d="M20 17H4"/></svg> <span id="bdToggleLbl">All Remapped Keys → Typing</span></button>
       <span class="hint" id="bdToggleInfo" style="margin:0"></span>
     </div>
-    <div style="display:flex;flex-direction:column;gap:8px;margin-top:8px">
-      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-        <button id="bdNumpad" disabled title="Workaround for the firmware-forced white NumLock LED — remap the numpad to type digits with NumLock OFF (so the white light never appears). See Explanation below."><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 7h.01M12 7h.01M16 7h.01M8 11h.01M12 11h.01M16 11h.01M8 15h4"/></svg> Numpad → Digits (kill NumLock LED)</button>
-        <button id="bdNumpadRevert" disabled title="undo the remap — restore 0–9, the decimal, and the NumLock key to factory in one keymap pass"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg> Revert Numpad</button>
-        <span class="hint" id="bdNumpadInfo" style="margin:0"></span>
+    <div style="margin-top:8px;max-width:580px">
+      <div style="display:flex;flex-direction:column;gap:10px;border:1px solid var(--border);border-radius:10px;padding:11px 13px">
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <button id="bdNumpad" disabled style="display:inline-flex;align-items:center;gap:7px" title="Workaround for the firmware-forced white NumLock LED — remap the numpad to type digits with NumLock OFF (so the white light never appears). See Explanation below."><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 7h.01M12 7h.01M16 7h.01M8 11h.01M12 11h.01M16 11h.01M8 15h4"/></svg>Numpad → Digits (kill NumLock LED)</button>
+          <button id="bdNumpadRevert" disabled style="display:inline-flex;align-items:center;gap:7px" title="undo the remap — restore 0–9, the decimal, and the NumLock key to factory in one keymap pass"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>Revert Numpad</button>
+          <span class="hint" id="bdNumpadInfo" style="margin:0"></span>
+        </div>
+        <div style="border-top:1px solid var(--border);padding-top:6px">
+          <button id="bdNumpadExplain" type="button" aria-expanded="false" aria-controls="bdNumpadDetail" style="margin:0;border:none;background:transparent;display:inline-flex;align-items:center;gap:6px;font-weight:600;padding:6px 13px"><span id="bdNumpadCaret" aria-hidden="true">▸</span>Explanation</button>
+        </div>
       </div>
-      <div style="margin-left:16px;max-width:560px;border:1px solid var(--border);border-radius:8px;overflow:hidden">
-        <button id="bdNumpadExplain" type="button" aria-expanded="false" aria-controls="bdNumpadDetail" style="width:100%;margin:0;border:none;border-radius:0;background:transparent;justify-content:flex-start;gap:6px;font-weight:600"><span id="bdNumpadCaret" aria-hidden="true">▸</span> Explanation</button>
-        <div class="hint" id="bdNumpadDetail" hidden style="margin:0;padding:12px 14px 14px;line-height:1.55;border-top:1px solid var(--border)">
+      <div class="hint" id="bdNumpadDetail" hidden style="margin:0;padding:12px 14px;line-height:1.55;border:1px solid var(--border);border-radius:8px">
           <p style="margin:0 0 9px">That white NumLock LED is forced on by the firmware whenever NumLock is <b>ON</b> — it can't be painted over (proven at 30&nbsp;fps) and Epomaker's own software has no setting to disable it. The only fix is to keep NumLock <b>off</b>, so this makes the numpad still type numbers in that state:</p>
           <ul style="margin:0;padding-left:18px;display:flex;flex-direction:column;gap:7px">
             <li>Remaps <b>0–9</b> and the decimal to the top-row number scancodes, which don't depend on NumLock — leave NumLock <b>off</b> and the numpad still types numbers, with no white light.</li>
@@ -671,7 +674,6 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
             <li>Fully reversible with <b>Revert Numpad</b>.</li>
             <li><b>Trade-off:</b> Shift+numpad gives the top-row symbols, and the NumLock-off nav functions (Home/End/arrows) on the numpad are gone.</li>
           </ul>
-        </div>
       </div>
     </div>
   </div>
@@ -992,7 +994,7 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
     <div class="cardbar"><span class="grip">⠿</span><h2>Layer Compositor</h2>
       <span class="aux">card order = layer stack · last card = top layer</span>
       <button type="button" id="isoBtn" style="margin:0 0 0 auto;padding:5px 13px;font-size:12px" title="Float the layer stack as separate isometric key-planes, each glowing live">◳ Isometric View</button>
-      <label class="aux" style="display:inline-flex;align-items:center;gap:7px;cursor:pointer" title="Contrast of the alternating row shading on every layer card — left darkens the row, right brightens it, center is off"><button type="button" id="zebraReset" title="Reset row shading to the default (-60%)" onclick="setZebra(-60)" style="background:none;border:0;color:var(--muted);cursor:pointer;font:inherit;font-size:14px;padding:0;line-height:1">↺</button>Row shading
+      <label class="aux" style="display:inline-flex;align-items:center;gap:7px;cursor:pointer" title="Contrast of the alternating row shading on every layer card — left darkens the row, right brightens it, center is off"><button type="button" id="zebraReset" title="Reset row shading to the default (-60%)" onclick="setZebra(-60)" style="background:none;border:0;color:var(--muted);cursor:pointer;font:inherit;font-size:14px;padding:4px 8px;line-height:1">↺</button>Row shading
         <span class="srange" style="width:96px"><input type="range" id="zebraAmt" min="-100" max="100" value="-60" oninput="setZebra(this.value)"><i class="tick" style="left:50%"></i></span>
         <span id="zebraAmtV" class="val" style="min-width:40px">0%</span></label></div>
     <div id="layerCards"></div>
@@ -2358,7 +2360,7 @@ const KBOARD=(function(){
     byIdx[idx]={el:d, base, full};
     d.addEventListener('click',()=>{
       if(selEl) selEl.classList.remove('sel');
-      if(selEl===d){ selEl=null; sel=null; document.getElementById('kbSelInfo').textContent='no key selected'; subSync(); notify(); return; }   // click again = deselect
+      if(selEl===d){ selEl=null; sel=null; document.getElementById('kbSelInfo').textContent='No key is selected.'; subSync(); notify(); return; }   // click again = deselect
       selEl=d; sel={idx, code, label:full}; d.classList.add('sel');
       d.classList.remove('pop'); void d.offsetWidth; d.classList.add('pop');   // restart the pop animation
       document.getElementById('kbSelInfo').textContent='Selected: '+friendly(full,idx);
@@ -2386,7 +2388,7 @@ const KBOARD=(function(){
   // the card's padding, the card's grabbable title bar, and the page background between cards.
   // Clicks on other cards/controls deliberately KEEP the selection — the palette acts on it.
   function clearSel(){ if(selEl){ selEl.classList.remove('sel'); selEl=null; } sel=null;
-    document.getElementById('kbSelInfo').textContent='no key selected'; subSync(); notify(); }
+    document.getElementById('kbSelInfo').textContent='No key is selected.'; subSync(); notify(); }
   const kbCard=document.getElementById('kbBoardCard');
   const kbBar=kbCard&&kbCard.querySelector('.cardbar');
   document.addEventListener('click',e=>{
