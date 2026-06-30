@@ -613,24 +613,27 @@
         const styles=[['bars','Spectrum Bars'],['pulse','Beat Pulse'],['bloom','Radial Bloom'],['wave','Waveform'],['aurora','Aurora']];
         const sopt=styles.map(m=>'<option value="'+m[0]+'"'+(m[0]===style?' selected':'')+'>'+m[1]+'</option>').join('');
         const esc=t=>(t||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');
+        // Center the PRIMARY control optically, float the secondary (Reset / Show / Refresh …) absolutely to its
+        // right so it doesn't shift the primary off-center. left:100% anchors it just past the primary's edge.
+        const centerAside=(primary,aside)=>'<span style="position:relative;display:inline-flex;align-items:center;max-width:100%">'+primary+'<span style="position:absolute;left:100%;top:50%;transform:translateY(-50%);margin-left:8px;display:inline-flex;align-items:center;gap:6px;white-space:nowrap">'+aside+'</span></span>';
         let html='<div class="ctl">'+
           sec('Source')+
           full('<span style="display:grid;grid-template-columns:auto auto;gap:7px 24px;justify-content:center;flex:1 1 100%">'+srcBubbles+'</span>')+
           full('<span class="val s-srcNow" style="opacity:.8;flex:1 1 100%;text-align:center;font-size:12px;min-height:1em"></span>')+   // "▶ what's playing" (tab/mic = shared-tab title; + a hint when this tab isn't driving the keyboard)
           full('<span class="val" style="opacity:.55;flex:1 1 100%;text-align:center;font-size:12px;line-height:1.4">Specific Tab &amp; Mic / Line-in are captured in this page (reliable mic pick) — they show on the keyboard while this site is open AND driving it. System Audio &amp; Specific App run in the daemon (work with this page closed); Mic also has a daemon fallback for when the tab is closed (pick its device below).</span>')+   // centered note: capture-location gotcha + mic page/daemon split
-          (s.source==='app' ? sub('Specific App')+full('<select class="s-appId" style="max-width:180px"></select><button type="button" class="s-appRefresh" title="Rescan currently-playing apps" style="flex:none">Refresh</button><span class="val s-appNote" style="opacity:.7"></span>') : '')+
+          (s.source==='app' ? sub('Specific App')+full(centerAside('<select class="s-appId" style="max-width:180px"></select>', '<button type="button" class="s-appRefresh" title="Rescan currently-playing apps" style="flex:none">Refresh</button><span class="val s-appNote" style="opacity:.7"></span>')) : '')+
           (s.source==='mic' ? sub('Mic Input')+
-            row('Device','<select class="s-micDev" style="max-width:200px;padding-right:24px"><option value="">— Default Recording Device —</option></select><button type="button" class="s-micDevRefresh" title="Rescan recording devices" style="flex:none">⟳</button>')+
+            row('Device',centerAside('<select class="s-micDev" style="max-width:200px;padding-right:24px"><option value="">— Default Recording Device —</option></select>', '<button type="button" class="s-micDevRefresh" title="Rescan recording devices" style="flex:none">⟳</button>'))+
             full('<span class="val" style="opacity:.55;flex:1 1 100%;text-align:center;font-size:11px;line-height:1.4">Which mic the DAEMON captures when this tab is CLOSED (the default endpoint is often silent). While the tab drives, your browser-picked mic is used instead.</span>')+
             row('Mic Gain','<span class="srange" style="width:100%"><input type="range" class="s-micGain" min="0" max="1000" step="1" value="'+Math.round(1000*Math.log((s.micGain==null?100:s.micGain)/50)/Math.log(144))+'" title="SENSITIVITY — how little input drives the bars to full (LOG scale: each step is a meaningful multiplier, 50% … 7200%). Higher = less voice/volume needed to fill the board."></span><span class="val s-micGainV"></span>')+
             row('Noise Gate','<span class="srange" style="width:100%"><input type="range" class="s-micGate" min="0" max="20" step="0.25" value="'+(s.micGate==null?0:s.micGate)+'" title="Mute the keys until the mic exceeds this absolute level — raise it just above your room/fan noise so background hum stops lighting the board. Scaled 0–20% to match a real mic’s RMS range. 0 = off"><i class="tick" style="left:calc(7px + (100% - 14px)*0.0)"></i></span><span class="val s-micGateV"></span>')+
             row('Input Level','<span style="position:relative;display:block;width:100%;height:11px;background:#0d1117;border-radius:6px;overflow:hidden;border:1px solid var(--border)"><span class="s-micMeterFill" style="position:absolute;left:0;top:0;bottom:0;width:0%;background:linear-gradient(90deg,#2ea043,#d29922 80%,#f85149);border-radius:6px"></span><span class="s-micMeterGate" style="position:absolute;top:-1px;bottom:-1px;width:2px;background:#e0a200;left:0%"></span></span><span class="val" style="opacity:.6">live mic level (yellow line = gate)</span>') : '')+
-          sec('Style')+ '<div class="lfull" style="justify-content:center;gap:8px"><select class="s-style">'+sopt+'</select><button type="button" class="s-styleReset" title="Reset THIS style\'s appearance + tuning to default (other styles untouched)">Reset</button></div>'+   // no left label → center it under the header
+          sec('Style')+ '<div class="lfull" style="justify-content:center">'+centerAside('<select class="s-style">'+sopt+'</select>', '<button type="button" class="s-styleReset" title="Reset THIS style\'s appearance + tuning to default (other styles untouched)">Reset</button>')+'</div>'+   // primary (select) optically centered; Reset floats to its right
           sec('Preview')+ full('<div style="display:flex;flex-direction:column;gap:9px;flex:1 1 100%">'+
-            '<div><div style="display:flex;align-items:center;justify-content:center;gap:8px;margin-bottom:3px"><span class="val" style="opacity:.65">Sample — test signal</span><button type="button" class="s-samplePrevToggle">'+(s.samplePrevOff?'Show':'Hide')+'</button></div>'+
+            '<div><div style="display:flex;justify-content:center;margin-bottom:3px">'+centerAside('<span class="val" style="opacity:.65">Sample — test signal</span>', '<button type="button" class="s-samplePrevToggle">'+(s.samplePrevOff?'Show':'Hide')+'</button>')+'</div>'+
               '<canvas class="s-audioPrev" width="378" height="92" style="width:100%;height:auto;display:'+(s.samplePrevOff?'none':'block')+';background:#0d1117;border-radius:8px"></canvas></div>'+
             '<div class="s-liveWrap" style="background:var(--inset);border-radius:8px;padding:4px 0">'+   // scrolls with the controls; once it leaves the viewport the floating side-peek (built below) takes over
-              '<div style="display:flex;align-items:center;justify-content:center;gap:8px;margin-bottom:3px"><span class="val" style="opacity:.65">Live — real audio</span><button type="button" class="s-livePrevToggle">'+(s.livePrevOff?'Show':'Hide')+'</button></div>'+
+              '<div style="display:flex;justify-content:center;margin-bottom:3px">'+centerAside('<span class="val" style="opacity:.65">Live — real audio</span>', '<button type="button" class="s-livePrevToggle">'+(s.livePrevOff?'Show':'Hide')+'</button>')+'</div>'+
               '<canvas class="s-audioPrevLive" width="378" height="92" style="width:100%;height:auto;display:'+(s.livePrevOff?'none':'block')+';background:#0d1117;border-radius:8px"></canvas></div>'+
           '</div>');
         // Crop: confine the audio light to a region of the board. The box is drawn + dragged on the previews above.
@@ -713,7 +716,7 @@
         // setting — so those aren't offered (nothing to copy). Source list = styles you've actually tuned.
         const STYLE_LABELS={bars:'Spectrum Bars',pulse:'Beat Pulse',bloom:'Radial Bloom',wave:'Waveform',aurora:'Aurora'};
         const tunedStyles=Object.keys(s.ap||{}).filter(st=>st!==style && STYLE_LABELS[st]);
-        const copyCtl = tunedStyles.length ? full('<span style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;flex:1 1 100%;justify-content:center;border:1px solid var(--border);border-radius:9px;padding:7px 12px"><span class="val" style="opacity:.7">Copy From</span><select class="s-copyFrom">'+tunedStyles.map(st=>'<option value="'+st+'">'+STYLE_LABELS[st]+'</option>').join('')+'</select><label class="sl" style="margin:0"><input type="checkbox" class="s-copyTuning" checked> Tuning</label><label class="sl" style="margin:0"><input type="checkbox" class="s-copyDyn" checked> Dynamics</label><button type="button" class="s-copyApply" style="flex:none">Apply</button>'+(s._copyUndo?'<button type="button" class="s-copyUndo" style="flex:none" title="Revert the last Apply">Undo</button>':'')+'</span>') : '';
+        const copyCtl = tunedStyles.length ? full('<span style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;flex:1 1 100%;justify-content:center;border:1.5px solid rgba(145,150,160,.42);border-radius:9px;padding:7px 12px"><span class="val" style="opacity:.7">Copy From</span><select class="s-copyFrom">'+tunedStyles.map(st=>'<option value="'+st+'">'+STYLE_LABELS[st]+'</option>').join('')+'</select><label class="sl" style="margin:0"><input type="checkbox" class="s-copyTuning" checked> Tuning</label><label class="sl" style="margin:0"><input type="checkbox" class="s-copyDyn" checked> Dynamics</label><button type="button" class="s-copyApply" style="flex:none">Apply</button>'+(s._copyUndo?'<button type="button" class="s-copyUndo" style="flex:none" title="Revert the last Apply">Undo</button>':'')+'</span>') : '';
         html+=
           '</div><div class="ctl s-tuningCtl">'+   // close the colors .ctl and open a separate Tuning .ctl so the shared Adjust block can sit BETWEEN them (under color editing, above Tuning)
           sec('Tuning')+
@@ -1063,16 +1066,24 @@
     function ensureSecStyles(){ if(document.getElementById('th108-secchrome')) return;
       const st=document.createElement('style'); st.id='th108-secchrome';
       st.textContent=
-        '.lbody .ctl .lsecbox{ grid-column:1/-1; }'+
-        '.lbody .ctl .lsecbox:first-child > .lsec{ margin-top:0; padding-top:2px; }'+
-        '.lbody .ctl .lsecbody{ display:grid; grid-template-columns:84px minmax(30px,1fr) 84px; gap:7px 8px; border:1px solid var(--border,#30363d); border-radius:10px; padding:8px 8px 10px; margin:3px 0 7px; }'+
+        '.lbody .ctl .lsecbox{ grid-column:1/-1; margin:3px 0 8px; }'+
+        // header band: tall enough to fully contain the action buttons (no clipping); title flex-centered, symmetric
+        // horizontal padding reserves the action space so the centered title never overlaps the buttons.
+        '.lbody .ctl .lsecbox > .lsec, .lbody .ctl .lsecbox > .lsub{ position:relative; box-sizing:border-box; min-height:36px; margin:0; padding:5px 38px; display:flex; align-items:center; justify-content:center; border:1.5px solid rgba(145,150,160,.42); border-bottom:none; border-radius:11px 11px 0 0; }'+
+        '.lbody .ctl .lsecbox > .lsec::before, .lbody .ctl .lsecbox > .lsub::before{ display:none; }'+   // the box border replaces the old divider rule
+        '.lbody .ctl .lsecbody{ display:grid; grid-template-columns:84px minmax(30px,1fr) 84px; gap:7px 8px; border:1.5px solid rgba(145,150,160,.42); border-top:none; border-radius:0 0 11px 11px; padding:9px 9px 11px; margin:0; }'+
+        // zebra: tint the WHOLE box (header + body) and alternate it with clear contrast so sections are easy to follow
+        '.lbody .ctl .lsecbox > .lsec, .lbody .ctl .lsecbox > .lsub{ background:rgba(145,150,160,.05); }'+
+        '.lbody .ctl .lsecbody{ background:rgba(145,150,160,.05); }'+
+        '.lbody .ctl .lsecbox.zeb > .lsec, .lbody .ctl .lsecbox.zeb > .lsub{ background:rgba(145,150,160,.16); }'+
+        '.lbody .ctl .lsecbox.zeb > .lsecbody{ background:rgba(145,150,160,.16); }'+
+        '.lbody .ctl .lsecbox.collapsed > .lsec, .lbody .ctl .lsecbox.collapsed > .lsub{ border-bottom:1.5px solid rgba(145,150,160,.42); border-radius:11px; }'+   // collapsed → header is the whole box: full rounding + a bottom border
         '.lbody .ctl .lsecbox.collapsed > .lsecbody{ display:none; }'+
         '.lbody .ctl .lsecbox.locked > .lsecbody{ pointer-events:none; }'+
         '.lbody .ctl .lsecbox.locked > .lsecbody input[type=range]{ opacity:.4; filter:grayscale(1); }'+
-        '.lbody .ctl .lsecbox.zeb > .lsec, .lbody .ctl .lsecbox.zeb > .lsub{ background:rgba(127,127,127,.06); border-radius:8px; }'+
-        '.lsec-actions{ position:absolute; right:2px; top:50%; transform:translateY(-50%); display:flex; gap:1px; align-items:center; }'+
+        '.lsec-actions{ position:absolute; right:7px; top:50%; transform:translateY(-50%); display:flex; gap:2px; align-items:center; }'+
         '.lsec-actions button{ background:none; border:none; cursor:pointer; color:var(--muted,#8b949e); padding:3px; display:flex; align-items:center; border-radius:6px; }'+
-        '.lsec-actions button:hover{ color:var(--text); background:rgba(127,127,127,.16); }'+
+        '.lsec-actions button:hover{ color:var(--text); background:rgba(145,150,160,.22); }'+
         '.lsec-actions button.on{ color:var(--warn,#e0a200); }'+
         '.lsec-actions svg{ width:14px; height:14px; display:block; }'+
         '.lsec-chevwrap svg{ transition:transform .15s ease; }'+
