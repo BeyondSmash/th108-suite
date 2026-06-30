@@ -1044,7 +1044,7 @@
       buildAdjustBlock(body,L);   // shared per-layer adjust controls appended to every type
       attachHex(body);            // typeable hex box on every color picker (incl. reactive palette)
       wrapCheckboxRows(body);     // checkbox in the gap + descriptor in its own column (option-1 layout)
-      if(L.type==='audio') applySectionChrome(body, L);   // audio: box + lock + collapse each labeled section (run LAST so all controls are wired/finalized before re-parenting)
+      applySectionChrome(body, L);   // box + lock + collapse each labeled section on EVERY layer type (run LAST so all controls are wired/finalized before re-parenting); flat bodies get one synthesized "Settings" box
     }
     // For a simple checkbox row [label | (checkbox + descriptor) | empty cell], split the descriptor into its
     // own span and tag the row 'cbrow' so CSS can center the checkbox in the gap and give the text its own
@@ -1108,8 +1108,15 @@
         colBtn.addEventListener('click',e=>{ e.stopPropagation(); st.collapsed=!st.collapsed; box.classList.toggle('collapsed',st.collapsed); scheduleSaveLayers(); });
         actions.appendChild(lockBtn); actions.appendChild(colBtn); header.appendChild(actions);
       };
+      // shared "Adjust" block = a nested .lbody (header .ph + its own .ctl) → box it FIRST so the .ctl loop below
+      // can safely synthesize headers for flat bodies without re-touching the Adjust .ctl.
+      const adj=body.querySelector(':scope > .lbody');
+      if(adj){ const ph=adj.querySelector(':scope > .ph'), actl=adj.querySelector(':scope > .ctl');
+        if(ph && actl && !adj.classList.contains('lsecbox')){ adj.classList.add('lsecbox'); adj.dataset.sec='adjust'; ph.style.marginBottom='0'; addSecActions(adj, ph, 'adjust'); } }
       body.querySelectorAll('.ctl').forEach(ctl=>{
-        if(ctl.closest('.lsecbox')) return;   // the Adjust .ctl is boxed separately below
+        if(ctl.closest('.lsecbox')) return;   // already boxed (e.g. the Adjust .ctl)
+        if(!ctl.querySelector(':scope > .lsec, :scope > .lsub')){   // a flat body (background/reactive/gradient/pattern) → wrap its controls in one boxed "Settings" section so it gets lock/collapse too
+          const h=document.createElement('div'); h.className='lsec'; h.textContent='Settings'; ctl.insertBefore(h, ctl.firstChild); }
         const kids=[...ctl.children];
         for(let i=0;i<kids.length;i++){ const node=kids[i];
           if(!(node.classList && (node.classList.contains('lsec')||node.classList.contains('lsub')))) continue;   // only labeled headers start a section
@@ -1123,10 +1130,6 @@
           i=j-1;   // resume scanning from the next header (kids snapshot indices stay valid after re-parenting)
         }
       });
-      // shared "Adjust" block = a nested .lbody (header .ph + its own .ctl) → box it the same way (header=.ph, body=.ctl)
-      const adj=body.querySelector(':scope > .lbody');
-      if(adj){ const ph=adj.querySelector(':scope > .ph'), actl=adj.querySelector(':scope > .ctl');
-        if(ph && actl && !adj.classList.contains('lsecbox')){ adj.classList.add('lsecbox'); adj.dataset.sec='adjust'; ph.style.marginBottom='0'; addSecActions(adj, ph, 'adjust'); } }
       let z=0; body.querySelectorAll('.lsecbox').forEach(b=>{ if(z%2===1) b.classList.add('zeb'); z++; });   // zebra alternate boxes across the whole card (incl. Adjust)
     }
     // shared "Adjust" block (brightness / saturation / contrast / gamma / rotate / speed + Static) on every card
