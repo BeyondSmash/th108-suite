@@ -1070,21 +1070,22 @@
     function ensureSecStyles(){ if(document.getElementById('th108-secchrome')) return;
       const st=document.createElement('style'); st.id='th108-secchrome';
       st.textContent=
-        '.lbody .ctl .lsecbox{ grid-column:1/-1; margin:3px 0 8px; }'+
-        // header band: tall enough to fully contain the action buttons (no clipping); title flex-centered, symmetric
-        // horizontal padding reserves the action space so the centered title never overlaps the buttons.
-        '.lbody .ctl .lsecbox > .lsec, .lbody .ctl .lsecbox > .lsub{ position:relative; box-sizing:border-box; min-height:36px; margin:0; padding:5px 38px; display:flex; align-items:center; justify-content:center; border:1.5px solid rgba(145,150,160,.42); border-bottom:none; border-radius:11px 11px 0 0; }'+
-        '.lbody .ctl .lsecbox > .lsec::before, .lbody .ctl .lsecbox > .lsub::before{ display:none; }'+   // the box border replaces the old divider rule
-        '.lbody .ctl .lsecbody{ display:grid; grid-template-columns:84px minmax(30px,1fr) 124px; gap:7px 8px; border:1.5px solid rgba(145,150,160,.42); border-top:none; border-radius:0 0 11px 11px; padding:9px 9px 11px; margin:0; }'+   // col3 widened (84->124) so the value number + unit + reset button fit without clipping the box edge
+        '.lbody .lsecbox{ grid-column:1/-1; margin:3px 0 8px; }'+
+        // header band: tall enough to fully contain the action buttons (no clipping); title centered (column so the
+        // shared Adjust block's subtitle stacks under it); symmetric padding reserves the action space so the
+        // centered title never overlaps the buttons. .ph = the Adjust block's header.
+        '.lbody .lsecbox > .lsec, .lbody .lsecbox > .lsub, .lbody .lsecbox > .ph{ position:relative; box-sizing:border-box; min-height:36px; margin:0; padding:5px 38px; display:flex; flex-direction:column; align-items:center; justify-content:center; border:1.5px solid rgba(145,150,160,.42); border-bottom:none; border-radius:11px 11px 0 0; }'+
+        '.lbody .lsecbox > .lsec::before, .lbody .lsecbox > .lsub::before{ display:none; }'+   // the box border replaces the old divider rule
+        '.lbody .lsecbox > .lsecbody{ display:grid; grid-template-columns:84px minmax(30px,1fr) 124px; gap:7px 8px; }'+   // col3 widened (84->124) so the value number + unit + reset button fit without clipping the box edge
+        // body box: audio sections use .lsecbody (3-col grid); the shared Adjust block keeps its own .ctl grid — both get the box border/padding.
+        '.lbody .lsecbox > .lsecbody, .lbody .lsecbox > .ctl{ border:1.5px solid rgba(145,150,160,.42); border-top:none; border-radius:0 0 11px 11px; padding:9px 9px 11px; margin:0; }'+
         // zebra: tint the WHOLE box (header + body) and alternate it with clear contrast so sections are easy to follow
-        '.lbody .ctl .lsecbox > .lsec, .lbody .ctl .lsecbox > .lsub{ background:rgba(145,150,160,.05); }'+
-        '.lbody .ctl .lsecbody{ background:rgba(145,150,160,.05); }'+
-        '.lbody .ctl .lsecbox.zeb > .lsec, .lbody .ctl .lsecbox.zeb > .lsub{ background:rgba(145,150,160,.16); }'+
-        '.lbody .ctl .lsecbox.zeb > .lsecbody{ background:rgba(145,150,160,.16); }'+
-        '.lbody .ctl .lsecbox.collapsed > .lsec, .lbody .ctl .lsecbox.collapsed > .lsub{ border-bottom:1.5px solid rgba(145,150,160,.42); border-radius:11px; }'+   // collapsed → header is the whole box: full rounding + a bottom border
-        '.lbody .ctl .lsecbox.collapsed > .lsecbody{ display:none; }'+
-        '.lbody .ctl .lsecbox.locked > .lsecbody{ pointer-events:none; }'+
-        '.lbody .ctl .lsecbox.locked > .lsecbody input[type=range]{ opacity:.4; filter:grayscale(1); }'+
+        '.lbody .lsecbox > .lsec, .lbody .lsecbox > .lsub, .lbody .lsecbox > .ph, .lbody .lsecbox > .lsecbody, .lbody .lsecbox > .ctl{ background:rgba(145,150,160,.05); }'+
+        '.lbody .lsecbox.zeb > .lsec, .lbody .lsecbox.zeb > .lsub, .lbody .lsecbox.zeb > .ph, .lbody .lsecbox.zeb > .lsecbody, .lbody .lsecbox.zeb > .ctl{ background:rgba(145,150,160,.16); }'+
+        '.lbody .lsecbox.collapsed > .lsec, .lbody .lsecbox.collapsed > .lsub, .lbody .lsecbox.collapsed > .ph{ border-bottom:1.5px solid rgba(145,150,160,.42); border-radius:11px; }'+   // collapsed → header is the whole box: full rounding + a bottom border
+        '.lbody .lsecbox.collapsed > .lsecbody, .lbody .lsecbox.collapsed > .ctl{ display:none; }'+
+        '.lbody .lsecbox.locked > .lsecbody, .lbody .lsecbox.locked > .ctl{ pointer-events:none; }'+
+        '.lbody .lsecbox.locked > .lsecbody input[type=range], .lbody .lsecbox.locked > .ctl input[type=range]{ opacity:.4; filter:grayscale(1); }'+
         '.lsec-actions{ position:absolute; right:7px; top:50%; transform:translateY(-50%); display:flex; gap:2px; align-items:center; }'+
         '.lsec-actions button{ background:rgba(13,17,23,.82); border:1px solid rgba(145,150,160,.45); cursor:pointer; color:var(--text); padding:3px; display:flex; align-items:center; border-radius:7px; }'+   // dark chip so the icon contrasts/reads
         '.lsec-actions button:hover{ background:rgba(40,46,56,.95); border-color:rgba(145,150,160,.7); }'+
@@ -1095,7 +1096,20 @@
       document.head.appendChild(st); }
     function applySectionChrome(body, L){ ensureSecStyles();
       const s=L.settings; if(!s._secUI) s._secUI={};
+      // add the lock + collapse buttons to a box's header, wired to s._secUI[slug] (remembered per layer)
+      const addSecActions=(box, header, slug)=>{
+        const st=s._secUI[slug] || (s._secUI[slug]={collapsed:false, locked:false});
+        if(st.collapsed) box.classList.add('collapsed'); if(st.locked) box.classList.add('locked');
+        const actions=document.createElement('span'); actions.className='lsec-actions';
+        const lockBtn=document.createElement('button'); lockBtn.type='button'; lockBtn.className='lsec-lock'+(st.locked?' on':'');
+        const setLock=()=>{ lockBtn.innerHTML=st.locked?SEC_LOCK:SEC_UNLOCK; lockBtn.title=st.locked?'Locked — click to allow changes to this section':'Unlocked — click to protect this section from changes'; lockBtn.classList.toggle('on',st.locked); }; setLock();
+        lockBtn.addEventListener('click',e=>{ e.stopPropagation(); st.locked=!st.locked; box.classList.toggle('locked',st.locked); setLock(); scheduleSaveLayers(); });
+        const colBtn=document.createElement('button'); colBtn.type='button'; colBtn.className='lsec-chevwrap'; colBtn.title='Collapse / expand this section'; colBtn.innerHTML=SEC_CHEV;
+        colBtn.addEventListener('click',e=>{ e.stopPropagation(); st.collapsed=!st.collapsed; box.classList.toggle('collapsed',st.collapsed); scheduleSaveLayers(); });
+        actions.appendChild(lockBtn); actions.appendChild(colBtn); header.appendChild(actions);
+      };
       body.querySelectorAll('.ctl').forEach(ctl=>{
+        if(ctl.closest('.lsecbox')) return;   // the Adjust .ctl is boxed separately below
         const kids=[...ctl.children];
         for(let i=0;i<kids.length;i++){ const node=kids[i];
           if(!(node.classList && (node.classList.contains('lsec')||node.classList.contains('lsub')))) continue;   // only labeled headers start a section
@@ -1105,19 +1119,15 @@
           const box=document.createElement('div'); box.className='lsecbox'; box.dataset.sec=slug;
           ctl.insertBefore(box, node); box.appendChild(node);
           const wrap=document.createElement('div'); wrap.className='lsecbody'; content.forEach(n=>wrap.appendChild(n)); box.appendChild(wrap);
-          const st=s._secUI[slug] || (s._secUI[slug]={collapsed:false, locked:false});
-          if(st.collapsed) box.classList.add('collapsed'); if(st.locked) box.classList.add('locked');
-          const actions=document.createElement('span'); actions.className='lsec-actions';
-          const lockBtn=document.createElement('button'); lockBtn.type='button'; lockBtn.className='lsec-lock'+(st.locked?' on':'');
-          const setLock=()=>{ lockBtn.innerHTML=st.locked?SEC_LOCK:SEC_UNLOCK; lockBtn.title=st.locked?'Locked — click to allow changes to this section':'Unlocked — click to protect this section from changes'; lockBtn.classList.toggle('on',st.locked); }; setLock();
-          lockBtn.addEventListener('click',e=>{ e.stopPropagation(); st.locked=!st.locked; box.classList.toggle('locked',st.locked); setLock(); scheduleSaveLayers(); });
-          const colBtn=document.createElement('button'); colBtn.type='button'; colBtn.className='lsec-chevwrap'; colBtn.title='Collapse / expand this section'; colBtn.innerHTML=SEC_CHEV;
-          colBtn.addEventListener('click',e=>{ e.stopPropagation(); st.collapsed=!st.collapsed; box.classList.toggle('collapsed',st.collapsed); scheduleSaveLayers(); });
-          actions.appendChild(lockBtn); actions.appendChild(colBtn); node.appendChild(actions);
+          addSecActions(box, node, slug);
           i=j-1;   // resume scanning from the next header (kids snapshot indices stay valid after re-parenting)
         }
       });
-      let z=0; body.querySelectorAll('.ctl .lsecbox').forEach(b=>{ if(z%2===1) b.classList.add('zeb'); z++; });   // zebra alternate boxes across the whole card
+      // shared "Adjust" block = a nested .lbody (header .ph + its own .ctl) → box it the same way (header=.ph, body=.ctl)
+      const adj=body.querySelector(':scope > .lbody');
+      if(adj){ const ph=adj.querySelector(':scope > .ph'), actl=adj.querySelector(':scope > .ctl');
+        if(ph && actl && !adj.classList.contains('lsecbox')){ adj.classList.add('lsecbox'); adj.dataset.sec='adjust'; ph.style.marginBottom='0'; addSecActions(adj, ph, 'adjust'); } }
+      let z=0; body.querySelectorAll('.lsecbox').forEach(b=>{ if(z%2===1) b.classList.add('zeb'); z++; });   // zebra alternate boxes across the whole card (incl. Adjust)
     }
     // shared "Adjust" block (brightness / saturation / contrast / gamma / rotate / speed + Static) on every card
     function buildAdjustBlock(body,L){
