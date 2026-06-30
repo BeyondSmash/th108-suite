@@ -994,8 +994,10 @@
             peek.style.left=Math.round(left)+'px'; };
           // insert the duplicate INLINE right after the section header nearest the top of the view (what you're tuning)
           const showDup=()=>{ const aim=window.innerHeight*0.16; let best=null, bd=1e9;
-            card.querySelectorAll('.lsec').forEach(sc=>{ const t=sc.getBoundingClientRect().top; if(Math.abs(t-aim)<bd){ bd=Math.abs(t-aim); best=sc; } });
-            if(best && best.parentNode) best.insertAdjacentElement('afterend', dup); else body.appendChild(dup);
+            card.querySelectorAll('.lsec,.lsub').forEach(sc=>{ const t=sc.getBoundingClientRect().top; if(Math.abs(t-aim)<bd){ bd=Math.abs(t-aim); best=sc; } });
+            const sbody = best && best.closest('.lsecbox') && best.closest('.lsecbox').querySelector('.lsecbody');
+            if(sbody) sbody.insertBefore(dup, sbody.firstChild);   // INSIDE the section's boxed body so the dup respects the box padding/border (was landing between header and body → broke out of the box)
+            else if(best && best.parentNode) best.insertAdjacentElement('afterend', dup); else body.appendChild(dup);
             requestAnimationFrame(()=>{ try{ dup.scrollIntoView({behavior:'smooth', block:'center'}); }catch(_){ } });   // lerp-scroll to the new second/lower live preview
             peekBtn.textContent='Hide'; };
           const hideDup=()=>{ if(dup.parentNode) dup.parentNode.removeChild(dup); peekBtn.textContent='Show'; };

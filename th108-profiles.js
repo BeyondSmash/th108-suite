@@ -80,6 +80,17 @@
       requestAnimationFrame(() => t.classList.add('in'));
       _toastT = setTimeout(close, 6000);
     }
+    // plain confirmation toast (no Undo button) — same styling, auto-dismisses
+    function showToast(msg, ms) {
+      if (_toastT) { clearTimeout(_toastT); _toastT = null; }
+      if (_toastEl && _toastEl.parentNode) _toastEl.parentNode.removeChild(_toastEl);
+      const t = document.createElement('div'); t.className = 'undo-toast';
+      const s = document.createElement('span'); s.textContent = msg; t.appendChild(s);
+      const close = () => { if (_toastT) { clearTimeout(_toastT); _toastT = null; } if (t.parentNode) { t.classList.add('out'); setTimeout(() => { if (t.parentNode) t.parentNode.removeChild(t); }, 250); } if (_toastEl === t) _toastEl = null; };
+      document.body.appendChild(t); _toastEl = t;
+      requestAnimationFrame(() => t.classList.add('in'));
+      _toastT = setTimeout(close, ms || 3000);
+    }
     // copy one aspect (lighting layers OR hotkey bindings) from source profile srcIdx into target profile targetIdx, with undo
     function doCopy(targetIdx, srcIdx, aspect) {
       const l = load(); const tgt = l[targetIdx], src = l[srcIdx];
@@ -158,10 +169,13 @@
         btn('Apply', 'apply this profile live (no reload)', () => {
           if (!confirm('Apply "' + prof.name + '"?\n\nThis replaces your current setup live (save it as a profile first to keep it).')) return;
           applyData(prof, i);
+          showToast('✓ applied profile “' + prof.name + '”');
         }, 'go');
         btn('Update', 'overwrite this profile from the current setup (per its type)', () => {
+          if (!confirm('Overwrite “' + prof.name + '” with your current on-screen settings?')) return;
           const l = load(); l[i] = snapshot(l[i].name, l[i].type, l[i].color); store(l);
           log('✓ profile "' + l[i].name + '" updated', 'ok');
+          showToast('✓ profile “' + l[i].name + '” updated');
           render();
         });
         btn('Export', 'download this profile as JSON', () => {
@@ -170,6 +184,7 @@
           a.download = 'th108-profile-' + fileSlug(prof.name) + '.json'; a.click();
           setTimeout(() => URL.revokeObjectURL(a.href), 1000);
           log('✓ exported profile "' + prof.name + '"', 'ok');
+          showToast('✓ exported “' + prof.name + '”');
         });
         btn('Duplicate', 'clone this profile as a starting point', () => {
           const l = load();
@@ -235,6 +250,7 @@
         const name = sanitizeName(imp.name, defaultName(list));
         list.push({ name, type: imp.type, color: imp.color || defaultColor(list.length), layers: imp.layers, order: imp.order, hostActions: imp.hostActions, savedAt: Date.now() }); store(list);
         log('✓ imported profile "' + name + '" (' + imp.layers.length + ' layers)', 'ok');
+        showToast('✓ imported “' + name + '” (' + imp.layers.length + ' layers)');
         render();
       } catch (err) { log('profile import failed: ' + (err && err.message || err), 'err'); }
     });
