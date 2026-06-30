@@ -36,7 +36,7 @@
 
     // ---- view params ----
     const DEF_YAW = 35*D2R, DEF_PITCH = 20*D2R, DEF_ZOOM = 100, DEF_GAP = 47, DEF_DRAWER = 20;   // default view (DEF_GAP 47 = Gap slider 80); reused by Reset Orientation
-    let yaw = DEF_YAW, pitch = DEF_PITCH, zoom = DEF_ZOOM, gap = DEF_GAP, drawer = DEF_DRAWER, enhanced = false, focusIdx = null, auraI = 0.0075, faceOn = false, showKeys = true, partSize = 0.55, glass = false, waveStyle = 'ripple';   // auraI baked (slider removed); 0.0075 = old slider value 0.75
+    let yaw = DEF_YAW, pitch = DEF_PITCH, zoom = DEF_ZOOM, gap = DEF_GAP, drawer = DEF_DRAWER, enhanced = false, focusIdx = null, auraI = 0.0075, faceOn = false, showKeys = true, hideOff = true, partSize = 0.55, glass = false, waveStyle = 'ripple';   // auraI baked (slider removed); 0.0075 = old slider value 0.75
     let fxAnim = true, fxParticles = true, fxAura = true;   // Enhanced sub-toggles; all off ⇒ Enhanced off
     const glassAmt = 50, chromaAmt = 6;   // baked (sliders removed): blur/translucency/edge-bend + chromatic-aberration strength
     let ctrlDown = false, ctrlGuide = 0;   // ctrlDown = Ctrl held; ctrlGuide = eased alpha of the Ctrl-drag corner overlay
@@ -74,9 +74,10 @@
       '</div>' +
       '<div class="iso-ctl">' +   // row 2: buttons
         '<button type="button" class="iso-back" hidden>‹ Back</button>' +
-        '<button type="button" class="iso-keys on" title="Show the inactive/unused keys so the full keyboard layout reads (esp. face-on / top-down)">⌨ Keys</button>' +
-        '<button type="button" class="iso-glass" title="Swap the window background between solid and frosted glass (the page shows through, refracted)">🫧 Glass</button>' +
-        '<button type="button" class="iso-enh" title="Wave + rising stardust + aura wisps">✨ Enhanced</button>' +
+        '<button type="button" class="iso-keys on" title="Show the inactive/unused keys so the full keyboard layout reads (esp. face-on / top-down)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 8h.01"/><path d="M12 12h.01"/><path d="M14 8h.01"/><path d="M16 12h.01"/><path d="M18 8h.01"/><path d="M6 8h.01"/><path d="M7 16h10"/><path d="M8 12h.01"/><rect width="20" height="16" x="2" y="4" rx="2"/></svg>Keys</button>' +
+        '<button type="button" class="iso-hideoff on" title="Hide off/inactive layers from the stack (they still appear as legend chips so you can toggle them back on)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.733 5.076a10.744 10.744 0 0 1 11.205 6.575 1 1 0 0 1 0 .696 10.747 10.747 0 0 1-1.444 2.49"/><path d="M14.084 14.158a3 3 0 0 1-4.242-4.242"/><path d="M17.479 17.499a10.75 10.75 0 0 1-15.417-5.151 1 1 0 0 1 0-.696 10.75 10.75 0 0 1 4.446-5.143"/><path d="m2 2 20 20"/></svg>Hide off</button>' +
+        '<button type="button" class="iso-glass" title="Swap the window background between solid and frosted glass (the page shows through, refracted)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 6 8 9"/><path d="m16 7-8 8"/><rect x="4" y="2" width="16" height="20" rx="2"/></svg>Glass</button>' +
+        '<button type="button" class="iso-enh" title="Wave + rising stardust + aura wisps"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11.017 2.814a1 1 0 0 1 1.966 0l1.051 5.558a2 2 0 0 0 1.594 1.594l5.558 1.051a1 1 0 0 1 0 1.966l-5.558 1.051a2 2 0 0 0-1.594 1.594l-1.051 5.558a1 1 0 0 1-1.966 0l-1.051-5.558a2 2 0 0 0-1.594-1.594l-5.558-1.051a1 1 0 0 1 0-1.966l5.558-1.051a2 2 0 0 0 1.594-1.594z"/><path d="M20 2v4"/><path d="M22 4h-4"/><circle cx="4" cy="20" r="2"/></svg>Enhanced</button>' +
         '<span class="iso-fxgroup iso-efx" style="display:none" title="Enhanced sub-effects — toggle each independently; turning all three off turns Enhanced off">' +
           '<button type="button" class="iso-fxanim" title="Wave ripple animation of the keys + aura">Animation</button>' +
           '<button type="button" class="iso-fxp" title="Rising stardust particles">Particles</button>' +
@@ -84,7 +85,7 @@
         '</span>' +
         '<select class="iso-wave iso-efx" style="display:none" title="Enhanced wave pattern">' +
           '<option value="ripple">〜 Ripple</option><option value="waveX">→ Wave X</option></select>' +
-        '<button type="button" class="iso-face" title="Tilt the board front-flat (keys facing you) vs isometric">Face-on</button>' +
+        '<button type="button" class="iso-face" title="Tilt the board front-flat (keys facing you) vs isometric"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="m8 14 4-4 4 4"/></svg>Face-on</button>' +
         '<span class="iso-lock" hidden title="Tilt is locked while Face-on is active — the board faces you flat. Click Face-on again to unlock and tilt freely (you can still spin/yaw).">' +
           '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></span>' +
       '</div>' +
@@ -117,6 +118,7 @@
         '.iso-ctl button:hover,.iso-head>button.iso-pop:hover,.iso-head>button.iso-popin:hover,.iso-head>button.iso-rs:hover,.iso-head>button.iso-reset:hover,.iso-head>button.iso-wmax:hover{background:rgba(255,255,255,.13);border-color:rgba(255,255,255,.22)}' +
         '.iso-ctl button:active,.iso-head>button.iso-pop:active,.iso-head>button.iso-popin:active,.iso-head>button.iso-rs:active,.iso-head>button.iso-reset:active,.iso-head>button.iso-wmax:active{transform:translateY(1px)}' +
         '.iso-ctl button.on{background:var(--blue,#58a6ff);border-color:transparent;color:#0d1117;box-shadow:0 2px 10px rgba(88,166,255,.35)}' +
+        '.iso-ctl button svg{width:14px;height:14px;vertical-align:-2.5px;margin-right:2px}' +
         // the three Enhanced sub-toggles framed as a subset (blue tint ties them to the Enhanced button); negative left margin tucks the frame up against Enhanced
         '.iso-fxgroup{display:inline-flex;align-items:center;gap:7px;padding:4px 8px;margin-left:-3px;border-radius:11px;border:1px solid rgba(88,166,255,.40);background:rgba(88,166,255,.07)}' +
         '.iso-fxgroup button{font-size:11.5px;padding:4px 10px}' +
@@ -163,19 +165,19 @@
     if(window.ResizeObserver){ new ResizeObserver(()=>{ if(popWin && cv.clientWidth>0 && cv.clientHeight>0) sizeCanvas(cv.clientWidth, cv.clientHeight); }).observe(cv); }
     const $ = s => panel.querySelector(s);
     const zoomEl=$('.iso-zoom'), zvalEl=$('.iso-zval'), gapEl=$('.iso-gapr'), gvalEl=$('.iso-gval'), drawEl=$('.iso-draw'), dvalEl=$('.iso-dval'), enhEl=$('.iso-enh'),
-          fxanimEl=$('.iso-fxanim'), fxpEl=$('.iso-fxp'), fxaEl=$('.iso-fxa'), keysEl=$('.iso-keys'),
+          fxanimEl=$('.iso-fxanim'), fxpEl=$('.iso-fxp'), fxaEl=$('.iso-fxa'), keysEl=$('.iso-keys'), hideOffEl=$('.iso-hideoff'),
           glassEl=$('.iso-glass'), waveEl=$('.iso-wave'),
           backEl=$('.iso-back'), faceEl=$('.iso-face'), lockEl=$('.iso-lock'), legendEl=$('.iso-legend'), readEl=$('.iso-read');
     // ---- persistence: remember the view settings between sessions ----
     const SKEY='th108_iso_view';
-    function saveSettings(){ try{ localStorage.setItem(SKEY, JSON.stringify({yaw,pitch,zoom,gap,drawer,enhanced,fxAnim,fxParticles,fxAura,glass,showKeys,faceOn,waveStyle,
+    function saveSettings(){ try{ localStorage.setItem(SKEY, JSON.stringify({yaw,pitch,zoom,gap,drawer,enhanced,fxAnim,fxParticles,fxAura,glass,showKeys,hideOff,faceOn,waveStyle,
       lockK:lock.known,lockN:lock.NumLock,lockC:lock.CapsLock,lockS:lock.ScrollLock})); }catch(_){ } }
     let _saveT=0; function saveSoon(){ clearTimeout(_saveT); _saveT=setTimeout(saveSettings, 350); }
     function loadSettings(){ let s; try{ s=JSON.parse(localStorage.getItem(SKEY)); }catch(_){ } if(!s||typeof s!=='object'){ zoom=defZoom(); return; }
       if(typeof s.yaw==='number') yaw=s.yaw; if(typeof s.pitch==='number') pitch=s.pitch;
       if(typeof s.zoom==='number') zoom=s.zoom; else zoom=defZoom(); if(typeof s.gap==='number') gap=Math.min(55,Math.max(14,s.gap));   // no saved zoom → layer-count default; clamp gap to the slider range
       if(typeof s.drawer==='number') drawer=Math.min(100,Math.max(0,s.drawer));
-      enhanced=!!s.enhanced; glass=!!s.glass; showKeys=s.showKeys!==false; faceOn=!!s.faceOn; if(s.waveStyle==='ripple'||s.waveStyle==='waveX') waveStyle=s.waveStyle;
+      enhanced=!!s.enhanced; glass=!!s.glass; showKeys=s.showKeys!==false; hideOff=s.hideOff!==false; faceOn=!!s.faceOn; if(s.waveStyle==='ripple'||s.waveStyle==='waveX') waveStyle=s.waveStyle;
       if(s.lockK){ lock.known=true; lock.NumLock=!!s.lockN; lock.CapsLock=!!s.lockC; lock.ScrollLock=!!s.lockS; }   // restore last-known lock state → System plane shows on refresh
       if(typeof s.fxAnim==='boolean') fxAnim=s.fxAnim; if(typeof s.fxParticles==='boolean') fxParticles=s.fxParticles; if(typeof s.fxAura==='boolean') fxAura=s.fxAura;
       if(enhanced && !(fxAnim||fxParticles||fxAura)){ fxAnim=fxParticles=fxAura=true; } }   // never "Enhanced on" with all three sub-features off
@@ -186,7 +188,7 @@
       // each sub-feature's extra widget gates on its own flag too: the Aura slider only with Aura on, the wave dropdown only with Animation on
       waveEl.style.display=(enhanced&&fxAnim)?'':'none';
       fxanimEl.classList.toggle('on',fxAnim); fxpEl.classList.toggle('on',fxParticles); fxaEl.classList.toggle('on',fxAura);
-      keysEl.classList.toggle('on',showKeys); glassEl.classList.toggle('on',glass); applyGlass();
+      keysEl.classList.toggle('on',showKeys); hideOffEl.classList.toggle('on',hideOff); glassEl.classList.toggle('on',glass); applyGlass();
       faceEl.classList.toggle('on',faceOn); lockEl.hidden=!faceOn; }
     // Build the SVG displacement-map filter (#iso-glass-ref) ONCE per document: a normal-map that's neutral in the
     // centre and bends outward at the rim, so backdrop-filter:url() refracts the page through the panel EDGES (not
@@ -238,6 +240,7 @@
         fdms[0].setAttribute('scale',(base+sp).toFixed(1)); fdms[1].setAttribute('scale',base.toFixed(1)); fdms[2].setAttribute('scale',(base-sp).toFixed(1));
         const lite=doc.querySelector('#iso-glass-ref-lite feDisplacementMap'); if(lite) lite.setAttribute('scale',base.toFixed(1)); } }
     keysEl.addEventListener('click', ()=>{ showKeys=!showKeys; keysEl.classList.toggle('on',showKeys); saveSoon(); });
+    hideOffEl.addEventListener('click', ()=>{ hideOff=!hideOff; hideOffEl.classList.toggle('on',hideOff); buildLegend(); saveSoon(); });   // hide off/inactive planes from the stack (legend chips still list them so they can be toggled back on)
     glassEl.addEventListener('click', ()=>{ glass=!glass; glassEl.classList.toggle('on',glass); applyGlass(); saveSoon(); });   // frosted-glass window (glassiness baked)
     waveEl.addEventListener('change', e=>{ waveStyle=e.target.value; saveSoon(); });
     // keys must NOT interact with the iso UI (Enter was re-toggling the focused Face-on button) — blur any control
@@ -330,7 +333,7 @@
       out.push({L:null, i:-1, id:'sys', num:0, name:'System', rgb:sysRgb, off:!sysOn, toggle:false, sys:true});
       return out;
     }
-    function planeList(){ const g=gather(); if(focusIdx==null) return g; const f=g.find(p=>p.id===focusIdx); return f?[f]:g; }
+    function planeList(){ let g=gather(); if(focusIdx==null){ return hideOff ? g.filter(p=>!p.off) : g; } const f=g.find(p=>p.id===focusIdx); return f?[f]:g; }   // when focused, always show the focused plane even if off
     function focusTo(id){ focusIdx=(focusIdx===id)?null:id; backEl.hidden=(focusIdx==null); if(focusIdx==null && !faceOn) pitch=ISO_PITCH; buildLegend(); }
 
     // ---- legend chips (focus on click; power dot toggles enabled, mirrored to the compositor) ----
