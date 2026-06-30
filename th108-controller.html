@@ -213,7 +213,7 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
   a.btnlink{ display:inline-block; text-decoration:none; font:600 13.5px/1.4 "Plus Jakarta Sans",system-ui,sans-serif;
              background:var(--card); color:var(--text); box-shadow:0 0 0 2px var(--ring); border-radius:999px; padding:9px 16px; }
   a.btnlink:hover{ box-shadow:0 0 0 2px var(--accent); }
-  select{ font:inherit; background:var(--bg); color:var(--text); border:1px solid var(--border); border-radius:10px; padding:4px 8px; transition:border-color .12s; }   /* --bg is a touch darker than the card → dropdowns contrast (was --inset, which is lighter) */
+  select{ font:inherit; background:var(--bg); color:var(--text); border:1px solid var(--border); border-radius:10px; padding:4px 8px; transition:border-color .12s; text-align:center; text-align-last:center; }   /* --bg is a touch darker than the card → dropdowns contrast (was --inset, which is lighter); text-align-last centers the selected value in the button */
   select:hover{ background-image:linear-gradient(0deg,rgba(255,255,255,.13),rgba(255,255,255,.13)); }   /* brighten via a flat overlay — a pure paint; box-shadow/filter re-raster a native <select> and jiggle its text */
   select:focus{ outline:none; }   /* kill the lingering focus ring (selects match :focus-visible even on mouse click, so :not() didn't work) */
   select:focus-visible{ border-color:var(--accent); }   /* keyboard focus → subtle accent border instead of the ring */
@@ -243,9 +243,9 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
   .sl{ color:var(--muted); display:inline-flex; align-items:center; gap:6px; justify-self:start; width:fit-content; }   /* shrink + don't stretch in grid → clicking empty row space won't toggle the checkbox */
   .srange{ position:relative; display:inline-block; width:110px; height:20px; }
   .srange input[type=range]{ -webkit-appearance:none; appearance:none; position:absolute; left:0; top:50%; transform:translateY(-50%); width:100%; height:14px; margin:0; background:transparent; }
-  .srange input[type=range]::-webkit-slider-runnable-track{ height:4px; background:var(--border); border-radius:2px; }
-  .srange input[type=range]::-moz-range-track{ height:4px; background:var(--border); border-radius:2px; }
-  .srange input[type=range]::-webkit-slider-thumb{ -webkit-appearance:none; appearance:none; width:14px; height:14px; border-radius:50%; background:var(--text); margin-top:-5px; cursor:pointer; }
+  .srange input[type=range]::-webkit-slider-runnable-track{ height:5px; background:rgba(176,182,196,.5); border-radius:3px; }   /* brighter than --border so the track doesn't vanish on the tinted zebra section boxes */
+  .srange input[type=range]::-moz-range-track{ height:5px; background:rgba(176,182,196,.5); border-radius:3px; }
+  .srange input[type=range]::-webkit-slider-thumb{ -webkit-appearance:none; appearance:none; width:14px; height:14px; border-radius:50%; background:var(--text); margin-top:-4.5px; cursor:pointer; }
   .srange input[type=range]::-moz-range-thumb{ width:14px; height:14px; border:none; border-radius:50%; background:var(--text); cursor:pointer; }
   .srange input[type=range].snapped::-webkit-slider-thumb{ background:var(--accent); }
   .srange input[type=range].snapped::-moz-range-thumb{ background:var(--accent); }
@@ -276,6 +276,7 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
   .lhead{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; padding-right:156px; }   /* keep clear of the corner Reset / Delete / collapse cluster */
   .lhead .ln{ font:inherit; background:var(--card); color:var(--text); border:1px solid var(--border); border-radius:9px; padding:4px 8px; width:120px; }
   .lhead select{ padding:3px 6px; }
+  .lhead .lctrls{ flex:1 1 calc(100% + 156px); margin-right:-156px; display:flex; flex-wrap:wrap; align-items:center; justify-content:center; gap:8px 16px; }   /* Opacity + composite + FPS share one centered line. It sits BELOW the name/type row (and the top-right corner buttons), so it reclaims the 156px right-padding (calc + negative margin) to use the full card width and stay truly centered. */
   .lhead .lfield{ display:flex; align-items:center; gap:6px; color:var(--muted); font-size:12px; }
   .lhead .lfield input[type=range]{ width:90px; }
   .lhead .lfield .lv{ font-family:ui-monospace,monospace; color:var(--num); min-width:34px; text-align:right; }
@@ -508,9 +509,11 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
     <svg class="ic" viewBox="0 0 24 24" aria-hidden="true" style="opacity:.7"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg>
     <span class="srange" id="briWrap" title="global brightness — 100% = full colour, drag left to dim (preserves colour); snaps at 25 / 50 / 75">
       <!-- tick left = thumb-CENTER position: 7px edge inset + (track - thumb) * v/100 (min=0) -->
+      <div class="tick" data-v="0" style="left:7px"></div>
       <div class="tick" data-v="25" style="left:calc(7px + (100% - 14px)*0.25)"></div>
       <div class="tick" data-v="50" style="left:calc(7px + (100% - 14px)*0.50)"></div>
       <div class="tick" data-v="75" style="left:calc(7px + (100% - 14px)*0.75)"></div>
+      <div class="tick" data-v="100" style="left:calc(7px + (100% - 14px)*1.0)"></div>
       <input type="range" id="briSlider" min="0" max="100" value="100">
     </span>
   </div>
@@ -991,9 +994,8 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
 
   <!-- ========== LIGHTING ========== -->
   <div class="card s6" id="layersPanel" data-pages="lighting">
-    <div class="cardbar"><span class="grip">⠿</span><h2>Layer Compositor</h2>
-      <span class="aux">card order = layer stack · last card = top layer</span>
-      <button type="button" id="isoBtn" style="margin:0 0 0 auto;padding:5px 13px;font-size:12px" title="Float the layer stack as separate isometric key-planes, each glowing live">◳ Isometric View</button>
+    <div class="cardbar" style="position:relative"><span class="grip">⠿</span><h2>Layer Compositor</h2>
+      <button type="button" id="isoBtn" style="position:absolute;left:50%;transform:translateX(-50%);padding:6px 15.6px;font-size:14.4px" title="Float the layer stack as separate isometric key-planes, each glowing live">◳ Isometric View</button>
       <label class="aux" style="display:inline-flex;align-items:center;gap:7px;cursor:pointer" title="Contrast of the alternating row shading on every layer card — left darkens the row, right brightens it, center is off"><button type="button" id="zebraReset" title="Reset row shading to the default (-60%)" onclick="setZebra(-60)" style="background:none;border:0;color:var(--muted);cursor:pointer;font:inherit;font-size:14px;padding:4px 8px;line-height:1">↺</button>Row shading
         <span class="srange" style="width:96px"><input type="range" id="zebraAmt" min="-100" max="100" value="-60" oninput="setZebra(this.value)"><i class="tick" style="left:50%"></i></span>
         <span id="zebraAmtV" class="val" style="min-width:40px">0%</span></label></div>
@@ -1006,8 +1008,8 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
        Kept in the DOM with data-pages="" so TH108Onboard's bindings stay intact — just never shown. -->
   <div class="card s3" id="onboardPanel" data-pages="lighting">   <!-- un-parked 2026-06-13: lets the user write a fresh onboard effect to overwrite a possibly-corrupt lighting config after the softbrick -->
     <div class="cardbar"><span class="grip">⠿</span><h2>Onboard Effects</h2></div>
-    <p class="hint" style="margin:4px 0 10px">Firmware effects — run on the keyboard itself, persist without a PC. Setting one stops the live layers/GIF.</p>
-    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+    <p class="hint" style="margin:4px 0 10px;text-align:center">Firmware effects — run on the keyboard itself, persist without a PC. Setting one stops the live layers/GIF.</p>
+    <div style="display:flex;align-items:center;justify-content:center;gap:10px;flex-wrap:wrap">
       <label class="sl">effect
         <select id="obEffect">
           <option value="1">1 · Static Bright</option>
@@ -1035,7 +1037,7 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
       <label class="sl">primary <input type="color" id="obPrimary" value="#00ffff"></label>
       <label class="sl">secondary <input type="color" id="obSecondary" value="#ff00ff"></label>
     </div>
-    <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-top:10px">
+    <div style="display:flex;align-items:center;justify-content:center;gap:14px;flex-wrap:wrap;margin-top:10px">
       <label class="sl">brightness <span class="srange"><input type="range" id="obBri" min="1" max="6" value="4"></span><span class="val" id="obBriV" style="min-width:18px">4</span></label>
       <label class="sl">speed <span class="srange"><input type="range" id="obSpeed" min="1" max="6" value="4"></span><span class="val" id="obSpeedV" style="min-width:18px">4</span></label>
       <button id="obApply" class="go">Apply to keyboard</button>
@@ -2047,7 +2049,7 @@ setFillMode(fillMode);   // apply persisted state + label on load
   }
   sl.addEventListener('input',()=>{
     let v=+sl.value, snapped=false;
-    for(const t of [25,50,75]) if(Math.abs(v-t)<=3){ v=t; sl.value=v; snapped=true; break; }   // approach-snap ticks
+    for(const t of [0,25,50,75,100]) if(Math.abs(v-t)<=3){ v=t; sl.value=v; snapped=true; break; }   // approach-snap ticks (incl. the 0/100 ends)
     document.querySelectorAll('#briWrap .tick').forEach(t=>t.classList.toggle('lit', snapped && +t.dataset.v===v));
     if(snapped){ if(!tickLbl||tickLbl.textContent!==v+'%') showTickLbl(v); }
     else clearTickLbl();

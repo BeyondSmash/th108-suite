@@ -181,9 +181,9 @@
           log('✓ duplicated "' + src.name + '" → "' + clone.name + '"', 'ok');
           render();
         });
-        btn('Copy from…', 'copy Lighting or Hotkeys from another profile into this one', () => {
+        const copyBtn = btn('Copy from…', list.length < 2 ? 'Needs another profile to copy from — add or duplicate a profile first' : 'copy Lighting or Hotkeys from another profile into this one', () => {
           const l = load(), others = l.map((p, j) => ({ p, j })).filter(o => o.j !== i);
-          if (!others.length) { log('no other profile to copy from', 'dim'); return; }
+          if (!others.length) { return; }   // disabled-styled when alone (tooltip explains why)
           const mineOpen = !!row.querySelector('.profCopyInline');
           host.querySelectorAll('.profCopyInline').forEach(e => e.remove());   // one open at a time
           if (mineOpen) return;   // clicking Copy from… again toggles it off
@@ -197,6 +197,7 @@
           mk('Lighting', 'lighting'); mk('Hotkeys', 'hotkeys');
           row.appendChild(panel);   // inline in the same row; margin-left:auto pushes it to the right, beside the wrapped ✕ (click Copy from… again to close)
         });
+        if (list.length < 2) { copyBtn.style.opacity = '.45'; copyBtn.style.cursor = 'not-allowed'; }   // only this profile → nothing to copy from; grayed + not-allowed cursor, tooltip explains (kept hoverable so the tooltip shows)
         btn('✕', 'delete this profile', () => {
           if (!confirm('Delete profile "' + prof.name + '"?')) return;
           const l = load(); l.splice(i, 1); store(l);

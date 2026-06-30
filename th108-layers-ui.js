@@ -94,9 +94,11 @@
             '<input type="checkbox" class="le"'+(L.enabled?' checked':'')+' title="Enable layer">'+
             '<input type="text" class="ln" value="'+L.name.replace(/"/g,'&quot;')+'">'+
             '<select class="lt">'+tOpt+'</select>'+
-            '<span class="lfield">Opacity <input type="range" class="lo" min="0" max="100" value="'+Math.round(L.opacity*100)+'"><input type="number" class="numin lon" min="0" max="100" value="'+Math.round(L.opacity*100)+'"></span>'+
-            '<select class="lbl">'+opt(BLENDS,L.blend)+'</select>'+
-            '<span class="lfield">FPS <input type="range" class="lf" min="1" max="30" value="'+L.fps+'"><input type="number" class="numin lfn" min="1" max="30" value="'+L.fps+'"></span>'+
+            '<span class="lctrls">'+   // Opacity + composite mode + FPS on one centered row (own line below name/type)
+              '<span class="lfield">Opacity <input type="range" class="lo" min="0" max="100" value="'+Math.round(L.opacity*100)+'"><input type="number" class="numin lon" min="0" max="100" value="'+Math.round(L.opacity*100)+'"></span>'+
+              '<select class="lbl">'+opt(BLENDS,L.blend)+'</select>'+
+              '<span class="lfield">FPS <input type="range" class="lf" min="1" max="30" value="'+L.fps+'"><input type="number" class="numin lfn" min="1" max="30" value="'+L.fps+'"></span>'+
+            '</span>'+
           '</div>'+
           '<div class="lcorner">'+
             '<button type="button" class="lreset" title="Reset this layer to its default settings">Reset</button>'+
@@ -630,10 +632,10 @@
             row('Input Level','<span style="position:relative;display:block;width:100%;height:11px;background:#0d1117;border-radius:6px;overflow:hidden;border:1px solid var(--border)"><span class="s-micMeterFill" style="position:absolute;left:0;top:0;bottom:0;width:0%;background:linear-gradient(90deg,#2ea043,#d29922 80%,#f85149);border-radius:6px"></span><span class="s-micMeterGate" style="position:absolute;top:-1px;bottom:-1px;width:2px;background:#e0a200;left:0%"></span></span><span class="val" style="opacity:.6">live mic level (yellow line = gate)</span>') : '')+
           sec('Style')+ '<div class="lfull" style="justify-content:center">'+centerAside('<select class="s-style">'+sopt+'</select>', '<button type="button" class="s-styleReset" title="Reset THIS style\'s appearance + tuning to default (other styles untouched)">Reset</button>')+'</div>'+   // primary (select) optically centered; Reset floats to its right
           sec('Preview')+ full('<div style="display:flex;flex-direction:column;gap:9px;flex:1 1 100%">'+
-            '<div><div style="display:flex;justify-content:center;margin-bottom:3px">'+centerAside('<span class="val" style="opacity:.65">Sample — test signal</span>', '<button type="button" class="s-samplePrevToggle">'+(s.samplePrevOff?'Show':'Hide')+'</button>')+'</div>'+
+            '<div><div style="display:flex;justify-content:center;align-items:center;min-height:30px;margin-bottom:3px">'+centerAside('<span class="val" style="opacity:.65">Sample — test signal</span>', '<button type="button" class="s-samplePrevToggle" style="padding:2px 11px;font-size:12px;margin:0">'+(s.samplePrevOff?'Show':'Hide')+'</button>')+'</div>'+
               '<canvas class="s-audioPrev" width="378" height="92" style="width:100%;height:auto;display:'+(s.samplePrevOff?'none':'block')+';background:#0d1117;border-radius:8px"></canvas></div>'+
             '<div class="s-liveWrap" style="background:var(--inset);border-radius:8px;padding:4px 0">'+   // scrolls with the controls; once it leaves the viewport the floating side-peek (built below) takes over
-              '<div style="display:flex;justify-content:center;margin-bottom:3px">'+centerAside('<span class="val" style="opacity:.65">Live — real audio</span>', '<button type="button" class="s-livePrevToggle">'+(s.livePrevOff?'Show':'Hide')+'</button>')+'</div>'+
+              '<div style="display:flex;justify-content:center;align-items:center;min-height:30px;margin-bottom:3px">'+centerAside('<span class="val" style="opacity:.65">Live — real audio</span>', '<button type="button" class="s-livePrevToggle" style="padding:2px 11px;font-size:12px;margin:0">'+(s.livePrevOff?'Show':'Hide')+'</button>')+'</div>'+
               '<canvas class="s-audioPrevLive" width="378" height="92" style="width:100%;height:auto;display:'+(s.livePrevOff?'none':'block')+';background:#0d1117;border-radius:8px"></canvas></div>'+
           '</div>');
         // Crop: confine the audio light to a region of the board. The box is drawn + dragged on the previews above.
@@ -876,7 +878,7 @@
           barDynamicsDepth:60, pulseDynamicsDepth:60, bloomDynamicsDepth:60, duckDim:30 };
         if(s.source==='mic'){ SLIDER_DEF.attackMs=80; SLIDER_DEF.decayMs=300; SLIDER_DEF.pauseDecayMs=1500; }
         const mkReset=(range,def)=>{ const b=document.createElement('button'); b.type='button'; b.className='sreset'; b.title='Reset to default'; b.textContent='↺';
-          b.style.cssText='flex:none;padding:0 5px;line-height:1.5;font-size:13px;opacity:.65;background:none;border:none;cursor:pointer;color:inherit';
+          b.style.cssText='flex:none;padding:1px 5px;line-height:1.4;font-size:13px;background:rgba(13,17,23,.82);border:1px solid rgba(145,150,160,.45);border-radius:6px;cursor:pointer;color:var(--text,#e6edf3)';   // dark chip so the icon contrasts/reads against the tinted box
           b.addEventListener('click',()=>{ if(range.disabled) return; range.value=def; range.dispatchEvent(new Event('input',{bubbles:true})); range.dispatchEvent(new Event('change',{bubbles:true})); }); return b; };
         body.querySelectorAll('span.val').forEach(span=>{ const cls=[...span.classList].find(x=>/^s-.+V$/.test(x)); if(!cls||cls==='s-micGainV') return;
           const rc=cls.slice(0,-1), range = span.dataset.i!=null ? body.querySelector('input[type=range].'+rc+'[data-i="'+span.dataset.i+'"]') : body.querySelector('input[type=range].'+rc);
@@ -1071,7 +1073,7 @@
         // horizontal padding reserves the action space so the centered title never overlaps the buttons.
         '.lbody .ctl .lsecbox > .lsec, .lbody .ctl .lsecbox > .lsub{ position:relative; box-sizing:border-box; min-height:36px; margin:0; padding:5px 38px; display:flex; align-items:center; justify-content:center; border:1.5px solid rgba(145,150,160,.42); border-bottom:none; border-radius:11px 11px 0 0; }'+
         '.lbody .ctl .lsecbox > .lsec::before, .lbody .ctl .lsecbox > .lsub::before{ display:none; }'+   // the box border replaces the old divider rule
-        '.lbody .ctl .lsecbody{ display:grid; grid-template-columns:84px minmax(30px,1fr) 84px; gap:7px 8px; border:1.5px solid rgba(145,150,160,.42); border-top:none; border-radius:0 0 11px 11px; padding:9px 9px 11px; margin:0; }'+
+        '.lbody .ctl .lsecbody{ display:grid; grid-template-columns:84px minmax(30px,1fr) 124px; gap:7px 8px; border:1.5px solid rgba(145,150,160,.42); border-top:none; border-radius:0 0 11px 11px; padding:9px 9px 11px; margin:0; }'+   // col3 widened (84->124) so the value number + unit + reset button fit without clipping the box edge
         // zebra: tint the WHOLE box (header + body) and alternate it with clear contrast so sections are easy to follow
         '.lbody .ctl .lsecbox > .lsec, .lbody .ctl .lsecbox > .lsub{ background:rgba(145,150,160,.05); }'+
         '.lbody .ctl .lsecbody{ background:rgba(145,150,160,.05); }'+
@@ -1082,8 +1084,8 @@
         '.lbody .ctl .lsecbox.locked > .lsecbody{ pointer-events:none; }'+
         '.lbody .ctl .lsecbox.locked > .lsecbody input[type=range]{ opacity:.4; filter:grayscale(1); }'+
         '.lsec-actions{ position:absolute; right:7px; top:50%; transform:translateY(-50%); display:flex; gap:2px; align-items:center; }'+
-        '.lsec-actions button{ background:none; border:none; cursor:pointer; color:var(--muted,#8b949e); padding:3px; display:flex; align-items:center; border-radius:6px; }'+
-        '.lsec-actions button:hover{ color:var(--text); background:rgba(145,150,160,.22); }'+
+        '.lsec-actions button{ background:rgba(13,17,23,.82); border:1px solid rgba(145,150,160,.45); cursor:pointer; color:var(--text); padding:3px; display:flex; align-items:center; border-radius:7px; }'+   // dark chip so the icon contrasts/reads
+        '.lsec-actions button:hover{ background:rgba(40,46,56,.95); border-color:rgba(145,150,160,.7); }'+
         '.lsec-actions button.on{ color:var(--warn,#e0a200); }'+
         '.lsec-actions svg{ width:14px; height:14px; display:block; }'+
         '.lsec-chevwrap svg{ transition:transform .15s ease; }'+
