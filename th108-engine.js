@@ -586,12 +586,16 @@
     const wf = Math.max(0.8, 4.5 - 0.042*(s.auroraWidth==null?50:s.auroraWidth));
     // Drive: Volume (default) = curtains brighten with loudness; Beat = they surge on kicks.
     const energy = (s.auroraDrive==='beat') ? (A.level*0.3 + A.beat*0.85) : (0.85*A.level + A.beat*0.4);
+    // Translucency: faint curtain areas go see-through (per-key alpha = brightness) so the layers below show through.
+    const alphaOn = !!s.auroraAlpha; let aBuf = null;
+    if(L){ if(alphaOn){ aBuf = L._alpha = (L._alphaBuf || (L._alphaBuf = new Float32Array(NLED))); aBuf.fill(1); } else L._alpha = null; }
     for(let k=0;k<NLED;k++){ const cell=GRID[INDICES[k]]; if(!cell) continue; const o=k*3;
       const x=GW>1?cell[0]/(GW-1):0, y=GH>1?cell[1]/(GH-1):0;
       const mag=A.bands[Math.min(31,Math.round(x*31))];
       const centerY = 0.5 - 0.28*Math.sin(t*0.6 + x*4) - mag*0.35;   // y=0 top
       const v=Math.max(0,Math.min(1, Math.exp(-Math.pow((y-centerY)*wf,2)) * energy));   // no idle floor → dark on silence
-      if(v<0.03){ out[o]=out[o+1]=out[o+2]=0; continue; }
+      if(v<0.03){ out[o]=out[o+1]=out[o+2]=0; if(aBuf) aBuf[k]=0; continue; }
+      if(aBuf) aBuf[k]=v;   // dim = see-through, bright = opaque
       const c=hsv2rgb(0.45 + A.centroid*0.35 + x*0.12, 0.85, v); out[o]=c[0]|0; out[o+1]=c[1]|0; out[o+2]=c[2]|0; }
   }
   // Bars: column (GRID col 0..GW-1) → frequency band; each bar fills by that band's magnitude.
@@ -608,8 +612,9 @@
     const tip = s.barTip || 'off', tipCol = hexToRgb(s.barTipColor||'#ffffff'), t = (now||0)/1000;
     const barColor = s.barColor || 'bassTreble';            // bassTreble (horizontal) | gradient (vert 2-color) | vu (green→red by height)
     const subtract = s.barFill === 'subtract';
+    const silTip = tip === 'silhouette';   // tip carves the layers below at the moving top edge (a contrast outline) instead of drawing a color
     const layout = s.barLayout || 'standard';
-    const drive = s.barDrive || 'spectrum';   // what the bar HEIGHT follows: per-column frequency | overall volume | beat
+    const drive = s.barDrive || 'spectrum';   // what the bar HEIGHT follows. The 'spectrum' analyzer path stays as the internal fallback, but the UI no longer offers it — real layers are normalized to Volume + Spread (which reproduces the analyzer); only settings objects that bypass normalize (unit tests) hit this default
     const spread = !!s.barSpread;             // volume/beat: shape columns by the per-column spectrum/stereo (per Layout) so they rise individually instead of as one wall
     // Dynamics depth: a STEADY band recedes (A.hit→0) and a change/beat pops it to full. Two independent recede
     // styles share one depth: 'barDynamics' dims the bar's BRIGHTNESS; 'barDynamicsAlpha' fades its per-key OPACITY
@@ -626,7 +631,7 @@
     const useSpread = spread && drive!=='spectrum' && A.bandsRaw;
     let maxRaw = 0.05; if(useSpread){ for(let i=0;i<32;i++) if(A.bandsRaw[i]>maxRaw) maxRaw=A.bandsRaw[i]; }
     let cb = null, any = false;
-    if(subtract && L){ cb = L._carveBuf || (L._carveBuf = new Float32Array(NLED)); cb.fill(0); }
+    if((subtract||silTip) && L){ cb = L._carveBuf || (L._carveBuf = new Float32Array(NLED)); cb.fill(0); }
     // alpha-recede: a per-key opacity mask the compositor reads (1 = opaque). Only solid fills (not the subtract
     // silhouette, which carves separately). Default 1 at every key (unlit keys stay pass-through per blend mode).
     let aBuf = null;
@@ -671,11 +676,12 @@
       const isTip = tip!=='off' && partial <= 1;              // the topmost (partial) level of this bar = its tip
       if(subtract){
         if(cb){ cb[k]=1; any=true; }                          // carve the layers below at every bar-body key
-        if(isTip){ const tc = tipColorAt(fc, vuFb); out[o]=(tc[0]*fillF)|0; out[o+1]=(tc[1]*fillF)|0; out[o+2]=(tc[2]*fillF)|0; }
+        if(isTip && !silTip){ const tc = tipColorAt(fc, vuFb); out[o]=(tc[0]*fillF)|0; out[o+1]=(tc[1]*fillF)|0; out[o+2]=(tc[2]*fillF)|0; }
         else { out[o]=out[o+1]=out[o+2]=0; }                  // empty body → reads as a dark silhouette via the carve
         continue;
       }
-      if(isTip){ const tc = tipColorAt(fc, vuFb); out[o]=(tc[0]*fillF)|0; out[o+1]=(tc[1]*fillF)|0; out[o+2]=(tc[2]*fillF)|0; continue; }
+      if(isTip){ if(silTip){ if(cb){ cb[k]=1; any=true; } out[o]=out[o+1]=out[o+2]=0; }   // silhouette tip: carve the layers below at the bar's moving top edge so the bar shape pops against busy layers
+        else { const tc = tipColorAt(fc, vuFb); out[o]=(tc[0]*fillF)|0; out[o+1]=(tc[1]*fillF)|0; out[o+2]=(tc[2]*fillF)|0; } continue; }
       let c, v;
       if(barColor==='vu'){ c = vuRow(vuFb); v = fillF; }                                      // discrete green→yellow→red by fill level
       else { v = (0.45 + 0.55*h) * fillF;                                                     // ramp only for the solid/gradient fills
@@ -683,7 +689,7 @@
         else c = [bass[0]+(treb[0]-bass[0])*fc, bass[1]+(treb[1]-bass[1])*fc, bass[2]+(treb[2]-bass[2])*fc]; }   // bass→treble (per column)
       out[o]=(c[0]*v)|0; out[o+1]=(c[1]*v)|0; out[o+2]=(c[2]*v)|0;
     }
-    if(L) L._carve = (subtract && any) ? cb : null;
+    if(L) L._carve = ((subtract||silTip) && any) ? cb : null;
   }
 
   // Pulse: uniform wash; hue from centroid, brightness from level+beat, faint per-key shimmer.
@@ -721,7 +727,7 @@
     // keeps the kick's POP; slow release lets the ring expand smoothly. dt-based → frame-rate independent.
     const W = L || A;
     const dt = W._blT ? Math.min(100, now - W._blT) : 16; W._blT = now;
-    const sigRaw = (s.bloomDrive==='volume') ? A.level : A.beat;
+    const sigRaw = A.beat;   // Beat-driven only (Volume drive retired) — a kick lights the center, the ring expands as it decays
     const aUp = 1-Math.exp(-dt/40), aDn = 1-Math.exp(-dt/260);
     W._blSig = W._blSig==null ? sigRaw : W._blSig + (sigRaw - W._blSig)*(sigRaw>W._blSig ? aUp : aDn);
     W._blLvl = W._blLvl==null ? A.level : W._blLvl + (A.level - W._blLvl)*(1-Math.exp(-dt/120));
@@ -1102,10 +1108,11 @@
         bloomColor:'#ff5a00', bloomColor2:'#ffd000', bloomGrad:false, bloomGradRev:false, bloomDrive:'beat',
         bloomDynamics:false, bloomDynamicsAlpha:false, bloomDynamicsDepth:60,
         waveColor:'#00e0ff', waveColor2:'#ff00aa', waveGrad:false, waveGradRev:false, waveReverse:false, waveAmp:100, waveThick:50, waveDensity:50, waveAdaptive:0, waveDrive:'volume',
-        auroraWidth:50, auroraDrive:'volume',
+        auroraWidth:50, auroraDrive:'volume', auroraAlpha:false,
         cropOn:false, cropFit:true, cropX:0.1, cropY:0.1, cropW:0.8, cropH:0.8 };
       Object.keys(ad).forEach(k=>{ if(s[k]===undefined)s[k]=ad[k]; });
       if(s.style==='plasma') s.style='aurora'; else if(s.style==='radial') s.style='bars';   // retired styles → nearest survivor (so an old saved layer doesn't show a blank picker)
+      if(s.bloomDrive==='volume') s.bloomDrive='beat';   // Bloom Volume drive retired → Beat-only (the analyzer-style Spectrum drive migration happens in the UI, where the synth preview provides level+bandsRaw)
       if(!Array.isArray(s.ducks)) s.ducks=[];   // [{layer:<index>, dim:<0..100 max-brightness %>}] — dim these while the audio layer emits
     }
     // common per-layer adjust fields — backfilled for EVERY layer type

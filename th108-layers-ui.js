@@ -625,7 +625,7 @@
             row('Mic Gain','<span class="srange" style="width:100%"><input type="range" class="s-micGain" min="0" max="1000" step="1" value="'+Math.round(1000*Math.log((s.micGain==null?100:s.micGain)/50)/Math.log(144))+'" title="SENSITIVITY — how little input drives the bars to full (LOG scale: each step is a meaningful multiplier, 50% … 7200%). Higher = less voice/volume needed to fill the board."></span><span class="val s-micGainV"></span>')+
             row('Noise Gate','<span class="srange" style="width:100%"><input type="range" class="s-micGate" min="0" max="20" step="0.25" value="'+(s.micGate==null?0:s.micGate)+'" title="Mute the keys until the mic exceeds this absolute level — raise it just above your room/fan noise so background hum stops lighting the board. Scaled 0–20% to match a real mic’s RMS range. 0 = off"><i class="tick" style="left:calc(7px + (100% - 14px)*0.0)"></i></span><span class="val s-micGateV"></span>')+
             row('Input Level','<span style="position:relative;display:block;width:100%;height:11px;background:#0d1117;border-radius:6px;overflow:hidden;border:1px solid var(--border)"><span class="s-micMeterFill" style="position:absolute;left:0;top:0;bottom:0;width:0%;background:linear-gradient(90deg,#2ea043,#d29922 80%,#f85149);border-radius:6px"></span><span class="s-micMeterGate" style="position:absolute;top:-1px;bottom:-1px;width:2px;background:#e0a200;left:0%"></span></span><span class="val" style="opacity:.6">live mic level (yellow line = gate)</span>') : '')+
-          sec('Style')+ '<div class="lfull" style="justify-content:center"><select class="s-style">'+sopt+'</select></div>'+   // no left label → center it under the header
+          sec('Style')+ '<div class="lfull" style="justify-content:center;gap:8px"><select class="s-style">'+sopt+'</select><button type="button" class="s-styleReset" title="Reset THIS style\'s appearance + tuning to default (other styles untouched)">Reset</button></div>'+   // no left label → center it under the header
           sec('Preview')+ full('<div style="display:flex;flex-direction:column;gap:9px;flex:1 1 100%">'+
             '<div><div style="display:flex;align-items:center;justify-content:center;gap:8px;margin-bottom:3px"><span class="val" style="opacity:.65">Sample — test signal</span><button type="button" class="s-samplePrevToggle">'+(s.samplePrevOff?'Show':'Hide')+'</button></div>'+
               '<canvas class="s-audioPrev" width="378" height="92" style="width:100%;height:auto;display:'+(s.samplePrevOff?'none':'block')+';background:#0d1117;border-radius:8px"></canvas></div>'+
@@ -649,15 +649,17 @@
         // Drive selector for the non-bars styles: Volume (overall loudness) vs Beat (pump on kicks). p = style prefix.
         const driveRow=(p,def)=>row('Drive','<select class="s-'+p+'Drive" title="What the effect follows — Volume = overall loudness (a steady wash); Beat = pumps on each kick/onset">'+[['volume','Volume (loudness)'],['beat','Beat (kicks)']].map(o=>'<option value="'+o[0]+'"'+(o[0]===(s[p+'Drive']||def)?' selected':'')+'>'+o[1]+'</option>').join('')+'</select><span></span>');
         html+=sub('Appearance');   // every surviving style now has at least one appearance control
-        if(style==='bars'){ const bt=s.barTip||'off', bf=s.barFill||'solid', bc=s.barColor||'bassTreble', blo=s.barLayout||'standard', bdr=s.barDrive||'spectrum', bsp=!!s.barSpread;
-          const btOpt=[['off','Off'],['color','Solid color'],['rainbow','Rainbow'],['vu','VU (green→red by level)']].map(o=>'<option value="'+o[0]+'"'+(o[0]===bt?' selected':'')+'>'+o[1]+'</option>').join('');
+        if(style==='bars'){
+          if(s.barDrive==='spectrum' || !s.barDrive){ s.barDrive='volume'; s.barSpread=true; }   // Spectrum drive retired → migrate to Volume + per-column Spread (identical analyzer look; the synth/live previews supply level+bandsRaw)
+          const bt=s.barTip||'off', bf=s.barFill||'solid', bc=s.barColor||'bassTreble', blo=s.barLayout||'standard', bdr=s.barDrive, bsp=!!s.barSpread;
+          const btOpt=[['off','Off'],['color','Solid color'],['rainbow','Rainbow'],['vu','VU (green→red by level)'],['silhouette','Silhouette (carve below)']].map(o=>'<option value="'+o[0]+'"'+(o[0]===bt?' selected':'')+'>'+o[1]+'</option>').join('');
           const bfOpt=[['solid','Solid'],['subtract','Subtract (silhouette)']].map(o=>'<option value="'+o[0]+'"'+(o[0]===bf?' selected':'')+'>'+o[1]+'</option>').join('');
           const bcOpt=[['bassTreble','Bass → Treble'],['gradient','Gradient (bottom→top)'],['vu','VU (green→red by level)']].map(o=>'<option value="'+o[0]+'"'+(o[0]===bc?' selected':'')+'>'+o[1]+'</option>').join('');
           const bloOpt=[['standard','Standard (bass L → treble R)'],['reverse','Reverse (treble L → bass R)'],['mirror','Mirror (bass centered, treble at edges)'],['stereo','Stereo (left half = L channel, right = R)'],['topdown','Top-down (bars hang from the top)'],['centerout','Center-out (bars grow from the middle row)']].map(o=>'<option value="'+o[0]+'"'+(o[0]===blo?' selected':'')+'>'+o[1]+'</option>').join('');
-          const bdrOpt=[['spectrum','Spectrum (per-column frequency)'],['volume','Volume (overall loudness)'],['beat','Beat (pumps on kicks)']].map(o=>'<option value="'+o[0]+'"'+(o[0]===bdr?' selected':'')+'>'+o[1]+'</option>').join('');
+          const bdrOpt=[['volume','Volume (overall loudness)'],['beat','Beat (pumps on kicks)']].map(o=>'<option value="'+o[0]+'"'+(o[0]===bdr?' selected':'')+'>'+o[1]+'</option>').join('');
           html+=
-          row('Drive','<select class="s-barDrive" title="What the bar HEIGHT follows. Spectrum = each column is its frequency band (classic analyzer). Volume = every bar tracks the song’s overall loudness (a level wall). Beat = bars pump on each kick. (Color still varies across columns regardless.)">'+bdrOpt+'</select><span></span>')+
-          (bdr!=='spectrum' ? row('Spread','<label class="sl" style="margin:0"><input type="checkbox" class="s-barSpread"'+(bsp?' checked':'')+'> Shape columns by spectrum / stereo (per Layout) instead of a flat wall</label><span></span>') : '')+
+          row('Drive','<select class="s-barDrive" title="What the bar HEIGHT follows. Volume = every bar tracks the song’s overall loudness. Beat = bars pump on each kick. Turn on Spread below to shape the columns by the per-column spectrum (the classic analyzer). (Color still varies across columns regardless.)">'+bdrOpt+'</select><span></span>')+
+          row('Spread','<label class="sl" style="margin:0"><input type="checkbox" class="s-barSpread"'+(bsp?' checked':'')+'> Shape columns by spectrum / stereo (per Layout) instead of a flat wall</label><span></span>')+
           row('Layout','<select class="s-barLayout" title="How the spectrum maps to the keys. Standard = bass left → treble right, bars grow up. Reverse = treble left → bass right. Mirror = bass centered, treble at both edges. Stereo = left half is the LEFT audio channel, right half the RIGHT (bass meets in the middle) — needs a stereo source. Top-down = bars hang from the top. Center-out = bars grow from the middle row outward.">'+bloOpt+'</select><span></span>')+
           row('Bar Fill','<select class="s-barFill" title="Solid = filled bars. Subtract = empty bars that carve the layers below into a spectrum silhouette (the tips still draw).">'+bfOpt+'</select><span></span>')+
           (bf==='subtract' ? '' :
@@ -676,7 +678,7 @@
           row('Min Brightness','<span class="srange" style="width:100%"><input type="range" class="s-pulseMin" min="0" max="100" value="'+(s.pulseMin==null?0:s.pulseMin)+'" title="Resting glow held even at silence (0 = goes fully dark on silence)"><i class="tick" style="left:calc(7px + (100% - 14px)*0.0)"></i></span><span class="val s-pulseMinV"></span>')+
           row('Max Brightness','<span class="srange" style="width:100%"><input type="range" class="s-pulseMax" min="0" max="100" value="'+(s.pulseMax==null?100:s.pulseMax)+'" title="Brightness a FULL beat reaches (the ceiling of the pump)"><i class="tick" style="left:calc(7px + (100% - 14px)*1.0)"></i></span><span class="val s-pulseMaxV"></span>')+
           dynRows('pulse');
-        else if(style==='bloom') html+=driveRow('bloom','beat')+row('Color','<input type="color" class="s-bloomColor" value="'+s.bloomColor+'"><span></span>')+
+        else if(style==='bloom') html+=row('Color','<input type="color" class="s-bloomColor" value="'+s.bloomColor+'"><span></span>')+   // Beat-driven only (Volume drive retired) — no Drive selector
           row('Gradient','<label class="sl" style="margin:0"><input type="checkbox" class="s-bloomGrad"'+(s.bloomGrad?' checked':'')+'> Two-color (center→edge)</label><span></span>')+
           (s.bloomGrad ? row('Edge Color','<input type="color" class="s-bloomColor2" value="'+s.bloomColor2+'"><span></span>')+row('Reverse','<label class="sl" style="margin:0"><input type="checkbox" class="s-bloomGradRev"'+(s.bloomGradRev?' checked':'')+'> Swap gradient colors</label><span></span>') : '')+
           dynRows('bloom');
@@ -688,7 +690,8 @@
           row('Max Density','<span class="srange" style="width:100%"><input type="range" class="s-waveDensity" min="0" max="100" value="'+(s.waveDensity==null?50:s.waveDensity)+'" title="Ceiling on how fine the wave is allowed to get. The wave still freely responds to the audio below this; bright/complex parts only reach this fineness and never exceed it — past the cap the excess turns into faster scroll instead of cramming smaller waves. Lower it if the busy parts get too fine to read."><i class="tick" style="left:calc(7px + (100% - 14px)*0.5)"></i></span><span class="val s-waveDensityV"></span>')+
           row('Adaptive Intensity','<span class="srange" style="width:100%"><input type="range" class="s-waveAdaptive" min="0" max="100" value="'+(s.waveAdaptive==null?0:s.waveAdaptive)+'" title="On intense (loud) parts of a song, ramps the line thickness 50%→100% and brightness 100%→200% for that stretch. 0 = off"><i class="tick" style="left:7px"></i></span><span class="val s-waveAdaptiveV"></span>')+
           row('Direction','<label class="sl" style="margin:0"><input type="checkbox" class="s-waveReverse"'+(s.waveReverse?' checked':'')+'> Reverse flow</label><span></span>');
-        else if(style==='aurora') html+=driveRow('aurora','volume')+row('Width','<span class="srange" style="width:100%"><input type="range" class="s-auroraWidth" min="0" max="100" value="'+(s.auroraWidth==null?50:s.auroraWidth)+'" title="Thickness of the aurora curtains — higher = fatter, softer bands; lower = thin ribbons"><i class="tick" style="left:calc(7px + (100% - 14px)*0.5)"></i></span><span class="val s-auroraWidthV"></span>');
+        else if(style==='aurora') html+=driveRow('aurora','volume')+row('Width','<span class="srange" style="width:100%"><input type="range" class="s-auroraWidth" min="0" max="100" value="'+(s.auroraWidth==null?50:s.auroraWidth)+'" title="Thickness of the aurora curtains — higher = fatter, softer bands; lower = thin ribbons"><i class="tick" style="left:calc(7px + (100% - 14px)*0.5)"></i></span><span class="val s-auroraWidthV"></span>')+
+          row('Translucency','<label class="sl" style="margin:0"><input type="checkbox" class="s-auroraAlpha"'+(s.auroraAlpha?' checked':'')+'> See-through — dim parts of the curtain let the layers below show through (bright bands stay opaque), so the aurora reads over other layers</label><span></span>');
         // Dim-while-active: pick OTHER layers to quiet while this audio layer is emitting, each with its
         // own max-brightness slider — so the music keys read against a darker base. Stored in s.ducks.
         if(!Array.isArray(s.ducks)) s.ducks=[];
@@ -710,7 +713,7 @@
         // setting — so those aren't offered (nothing to copy). Source list = styles you've actually tuned.
         const STYLE_LABELS={bars:'Spectrum Bars',pulse:'Beat Pulse',bloom:'Radial Bloom',wave:'Waveform',aurora:'Aurora'};
         const tunedStyles=Object.keys(s.ap||{}).filter(st=>st!==style && STYLE_LABELS[st]);
-        const copyCtl = tunedStyles.length ? full('<span style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;flex:1 1 100%;justify-content:center"><span class="val" style="opacity:.7">Copy From</span><select class="s-copyFrom">'+tunedStyles.map(st=>'<option value="'+st+'">'+STYLE_LABELS[st]+'</option>').join('')+'</select><label class="sl" style="margin:0"><input type="checkbox" class="s-copyTuning" checked> Tuning</label><label class="sl" style="margin:0"><input type="checkbox" class="s-copyDyn" checked> Dynamics</label><button type="button" class="s-copyApply" style="flex:none">Apply</button>'+(s._copyUndo?'<button type="button" class="s-copyUndo" style="flex:none" title="Revert the last Apply">Undo</button>':'')+'</span>') : '';
+        const copyCtl = tunedStyles.length ? full('<span style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;flex:1 1 100%;justify-content:center;border:1px solid var(--border);border-radius:9px;padding:7px 12px"><span class="val" style="opacity:.7">Copy From</span><select class="s-copyFrom">'+tunedStyles.map(st=>'<option value="'+st+'">'+STYLE_LABELS[st]+'</option>').join('')+'</select><label class="sl" style="margin:0"><input type="checkbox" class="s-copyTuning" checked> Tuning</label><label class="sl" style="margin:0"><input type="checkbox" class="s-copyDyn" checked> Dynamics</label><button type="button" class="s-copyApply" style="flex:none">Apply</button>'+(s._copyUndo?'<button type="button" class="s-copyUndo" style="flex:none" title="Revert the last Apply">Undo</button>':'')+'</span>') : '';
         html+=
           '</div><div class="ctl s-tuningCtl">'+   // close the colors .ctl and open a separate Tuning .ctl so the shared Adjust block can sit BETWEEN them (under color editing, above Tuning)
           sec('Tuning')+
@@ -722,7 +725,10 @@
           row('Attack','<span class="srange" style="width:100%"><input type="range" class="s-attackMs" min="0" max="300" step="5" value="'+ap.attackMs+'" title="How fast keys brighten on a rise (ms). Lower = snappier (this style only)"><i class="tick" style="left:calc(7px + (100% - 14px)*0.133)"></i></span><span class="val s-attackMsV"></span>')+
           row('Decay','<span class="srange" style="width:100%"><input type="range" class="s-decayMs" min="40" max="800" step="10" value="'+ap.decayMs+'" title="How slowly keys fade after a peak (ms). Higher = smoother (this style only)"><i class="tick" style="left:calc(7px + (100% - 14px)*0.237)"></i></span><span class="val s-decayMsV"></span>')+
           row('Pause Decay','<span class="srange" style="width:100%"><input type="range" class="s-pauseDecayMs" min="100" max="3000" step="50" value="'+(ap.pauseDecayMs==null?700:ap.pauseDecayMs)+'" title="When the music STOPS (sustained silence), how slowly the bars settle to 0 (ms). Separate from Decay so playback stays snappy but a pause glides down gracefully (this style only)"><i class="tick" style="left:calc(7px + (100% - 14px)*0.207)"></i></span><span class="val s-pauseDecayMsV"></span>')+
-          row('Pause As','<select class="s-pauseStyle" title="What the keys do when the music STOPS. Settle = bars glide down to 0 over Pause decay. Twinkle out = the last frame FREEZES, then each lit key sparkles away individually over Pause decay (applies to every style).">'+[['linear','Settle (glide down)'],['twinkle','Twinkle out (freeze + sparkle away)']].map(o=>'<option value="'+o[0]+'"'+(o[0]===(s.pauseStyle||'linear')?' selected':'')+'>'+o[1]+'</option>').join('')+'</select><span></span>')+
+          (function(){ const twinkleOK = !(style==='bars' && !s.barSpread);   // Twinkle needs per-column structure to sparkle away; a flat wall (Spread off) can only Settle
+            if(!twinkleOK && s.pauseStyle==='twinkle') s.pauseStyle='linear';
+            const pOpt=[['linear','Settle (glide down)']].concat(twinkleOK?[['twinkle','Twinkle out (freeze + sparkle away)']]:[]);
+            return row('Pause As','<select class="s-pauseStyle" title="What the keys do when the music STOPS. Settle = bars glide down to 0 over Pause decay. Twinkle out = the last frame FREEZES, then each lit key sparkles away individually over Pause decay.'+(twinkleOK?'':' (Twinkle out needs Spread on — a flat wall can only Settle.)')+'">'+pOpt.map(o=>'<option value="'+o[0]+'"'+(o[0]===(s.pauseStyle||'linear')?' selected':'')+'>'+o[1]+'</option>').join('')+'</select><span></span>'); })()+
           row('Beat Sensitivity','<span class="srange" style="width:100%"><input type="range" class="s-beatSens" min="0" max="100" value="'+ap.beatSens+'" title="How strongly kicks/onsets pop in pulse and bloom (this style only)"><i class="tick" style="left:calc(7px + (100% - 14px)*0.5)"></i></span><span class="val s-beatSensV"></span>')+
           copyCtl+   // Copy-from moved here (below Beat Sensitivity) — under the 'Tuning' header it read as a confusing duplicate of the Tuning checkbox
           (duckRows ? sub('Dim While Active')+full('<span class="val" style="opacity:.7;flex:1 1 100%;text-align:center">Quiet these layers while the music shows</span>')+duckRows : '')+
@@ -762,6 +768,14 @@
           load();
         }
         c('.s-style').addEventListener('change',e=>{ const oldK=E.audioVariantKey(s); s.style=e.target.value; swapVariant(s, oldK, E.audioVariantKey(s)); buildLayerBody(card,L); scheduleSaveLayers(); });   // carry each variant's own Adjust/crop/pause/ducks
+        // Per-style Reset: restore just THIS style's appearance keys + its per-style tuning (s.ap[variant]) to default; leaves the other styles, source, crop, ducks and the shared pause alone.
+        const STYLE_DEFAULTS={
+          bars:{ barTip:'off', barTipColor:'#ffffff', barFill:'solid', barColor:'bassTreble', barColorBass:'#ff2200', barColorTreble:'#22aaff', barGradA:'#00ff66', barGradB:'#ff00aa', barGradRev:false, barLayout:'standard', barDrive:'volume', barSpread:true, barDynamics:false, barDynamicsAlpha:false, barDynamicsDepth:60 },
+          pulse:{ pulseColor:'#19b6ff', pulseColor2:'#ff00aa', pulseGrad:false, pulseGradRev:false, pulseMin:0, pulseMax:100, pulseDynamics:false, pulseDynamicsAlpha:false, pulseDynamicsDepth:60 },
+          bloom:{ bloomColor:'#ff5a00', bloomColor2:'#ffd000', bloomGrad:false, bloomGradRev:false, bloomDynamics:false, bloomDynamicsAlpha:false, bloomDynamicsDepth:60 },
+          wave:{ waveColor:'#00e0ff', waveColor2:'#ff00aa', waveGrad:false, waveGradRev:false, waveReverse:false, waveAmp:100, waveThick:50, waveDensity:50, waveAdaptive:0 },
+          aurora:{ auroraWidth:50, auroraDrive:'volume', auroraAlpha:false } };
+        { const sr=c('.s-styleReset'); if(sr) sr.addEventListener('click',()=>{ const d=STYLE_DEFAULTS[style]; if(d) Object.assign(s,d); if(s.ap) delete s.ap[E.audioVariantKey(s)]; buildLayerBody(card,L); scheduleSaveLayers(); }); }
         ['barColorBass','barColorTreble','barTipColor','barGradA','barGradB','pulseColor','pulseColor2','bloomColor','bloomColor2','waveColor','waveColor2'].forEach(key=>{ const el=c('.s-'+key); if(el) el.addEventListener('input',e=>s[key]=e.target.value); });
         // per-style appearance VALUE sliders that write to s directly (not the per-style tuner `ap`): pulse min/max, aurora width
         [['pulseMin','%'],['pulseMax','%'],['auroraWidth',''],['waveAmp','%'],['waveThick','%'],['waveDensity','%'],['waveAdaptive','%'],['micGate','%']].forEach(pair=>{ const key=pair[0], unit=pair[1], el=c('.s-'+key), v=c('.s-'+key+'V'); if(el&&v){ const up=()=>v.textContent=el.value+unit; el.addEventListener('input',()=>{ s[key]=+el.value; up(); }); up(); } });
@@ -771,6 +785,7 @@
         // (Mic toggle-hotkey moved to the Hotkeys → "Host Actions" binder tab; the daemon migrates an old per-layer
         // toggleKeyLed bind into the registry on startup.)
         { const wr=c('.s-waveReverse'); if(wr) wr.addEventListener('change',e=>s.waveReverse=e.target.checked); }
+        { const aa=c('.s-auroraAlpha'); if(aa) aa.addEventListener('change',e=>s.auroraAlpha=e.target.checked); }
         { const bt=c('.s-barTip'); if(bt) bt.addEventListener('change',e=>{ s.barTip=e.target.value; buildLayerBody(card,L); }); }   // rebuild so the tip-color picker shows/hides
         { const bf=c('.s-barFill'); if(bf) bf.addEventListener('change',e=>{ s.barFill=e.target.value; buildLayerBody(card,L); }); }   // rebuild so the color controls show/hide with solid/subtract
         { const bl=c('.s-barLayout'); if(bl) bl.addEventListener('change',e=>s.barLayout=e.target.value); }   // no dependent controls — no rebuild needed
@@ -800,7 +815,7 @@
             if(u.dyn&&dp){ s[dp+'Dynamics']=u.dyn.Dynamics; s[dp+'DynamicsAlpha']=u.dyn.DynamicsAlpha; s[dp+'DynamicsDepth']=u.dyn.DynamicsDepth; }
             delete s._copyUndo; buildLayerBody(card,L); scheduleSaveLayers(); }); }
         { const bd=c('.s-barDrive'); if(bd) bd.addEventListener('change',e=>{ s.barDrive=e.target.value; buildLayerBody(card,L); }); }   // rebuild so the Spread toggle shows/hides
-        { const bsp=c('.s-barSpread'); if(bsp) bsp.addEventListener('change',e=>s.barSpread=e.target.checked); }
+        { const bsp=c('.s-barSpread'); if(bsp) bsp.addEventListener('change',e=>{ s.barSpread=e.target.checked; buildLayerBody(card,L); }); }   // rebuild so Pause As re-gates Twinkle on Spread
         { const bc=c('.s-barColor'); if(bc) bc.addEventListener('change',e=>{ s.barColor=e.target.value; buildLayerBody(card,L); }); }   // rebuild so bass/treble vs gradient vs vu color pickers swap
         ['pulseGrad','bloomGrad','waveGrad'].forEach(key=>{ const el=c('.s-'+key); if(el) el.addEventListener('change',e=>{ s[key]=e.target.checked; buildLayerBody(card,L); }); });   // rebuild so the 2nd-color picker shows/hides
         ['pulseGradRev','bloomGradRev','waveGradRev','barGradRev'].forEach(key=>{ const el=c('.s-'+key); if(el) el.addEventListener('change',e=>s[key]=e.target.checked); });   // swap gradient ends — no rebuild (preview reads s live)
@@ -851,9 +866,21 @@
           const drive=()=>{ let v=parseFloat(num.value); if(isNaN(v)) return; rangeEl.value=clamp(v); rangeEl.dispatchEvent(new Event('input',{bubbles:true})); };
           num.addEventListener('input',drive);
           num.addEventListener('change',()=>{ let v=parseFloat(num.value); if(isNaN(v)) v=parseFloat(rangeEl.value); v=clamp(v); num.value=v; rangeEl.value=v; rangeEl.dispatchEvent(new Event('input',{bubbles:true})); }); };
+        // Per-slider "reset to default" — one table of default RANGE values keyed by slider class (no 's-' prefix / 'V' suffix).
+        // Tuning defaults mirror the engine's AUDIO_TUNE_DEFAULTS (gain stored ×100); mic uses smoother attack/decay/pause.
+        const SLIDER_DEF={ gain:100, floor:5, ceil:100, contrast:50, attackMs:40, decayMs:220, pauseDecayMs:700, beatSens:50,
+          pulseMin:0, pulseMax:100, auroraWidth:50, waveAmp:100, waveThick:50, waveDensity:50, waveAdaptive:0, micGate:0,
+          barDynamicsDepth:60, pulseDynamicsDepth:60, bloomDynamicsDepth:60, duckDim:30 };
+        if(s.source==='mic'){ SLIDER_DEF.attackMs=80; SLIDER_DEF.decayMs=300; SLIDER_DEF.pauseDecayMs=1500; }
+        const mkReset=(range,def)=>{ const b=document.createElement('button'); b.type='button'; b.className='sreset'; b.title='Reset to default'; b.textContent='↺';
+          b.style.cssText='flex:none;padding:0 5px;line-height:1.5;font-size:13px;opacity:.65;background:none;border:none;cursor:pointer;color:inherit';
+          b.addEventListener('click',()=>{ if(range.disabled) return; range.value=def; range.dispatchEvent(new Event('input',{bubbles:true})); range.dispatchEvent(new Event('change',{bubbles:true})); }); return b; };
         body.querySelectorAll('span.val').forEach(span=>{ const cls=[...span.classList].find(x=>/^s-.+V$/.test(x)); if(!cls||cls==='s-micGainV') return;
           const rc=cls.slice(0,-1), range = span.dataset.i!=null ? body.querySelector('input[type=range].'+rc+'[data-i="'+span.dataset.i+'"]') : body.querySelector('input[type=range].'+rc);
-          if(range) typableVal(range, span); });
+          if(!range) return; typableVal(range, span);
+          const dkey=cls.slice(2,-1), def=SLIDER_DEF[dkey];
+          if(def!=null){ const wrap=span.previousElementSibling; if(wrap && wrap.tagName==='SPAN') wrap.appendChild(mkReset(range,def)); }   // wrap = the typable num+unit span typableVal inserted before the value span
+        });
         // micGain: log slider (position 0–1000 ↔ 50–7200%). Make the % itself typable with the inverse map.
         { const el=c('.s-micGain'), span=c('.s-micGainV'); if(el&&span){ span.style.display='none';
             const wrap=document.createElement('span'); wrap.style.cssText='display:flex;gap:4px;align-items:center;justify-content:flex-end;flex:none';
@@ -861,6 +888,7 @@
             const u=document.createElement('span'); u.className='val'; u.style.cssText='opacity:.6'; u.textContent='%';
             wrap.appendChild(num); wrap.appendChild(u); span.parentNode.insertBefore(wrap, span);
             const toPos=g=>Math.round(1000*Math.log(Math.max(50,g)/50)/Math.log(144)), clampG=g=>Math.max(50,Math.min(7200,g));
+            wrap.appendChild(mkReset(el, toPos(100)));   // reset Mic Gain to 100% (the log slider's position for 100)
             el.addEventListener('input',()=>{ if(document.activeElement!==num) num.value=(s.micGain==null?100:s.micGain); });
             const drive=()=>{ let g=parseFloat(num.value); if(isNaN(g)) return; s.micGain=clampG(g); el.value=toPos(s.micGain); };
             num.addEventListener('input',drive);
@@ -1009,6 +1037,7 @@
       buildAdjustBlock(body,L);   // shared per-layer adjust controls appended to every type
       attachHex(body);            // typeable hex box on every color picker (incl. reactive palette)
       wrapCheckboxRows(body);     // checkbox in the gap + descriptor in its own column (option-1 layout)
+      if(L.type==='audio') applySectionChrome(body, L);   // audio: box + lock + collapse each labeled section (run LAST so all controls are wired/finalized before re-parenting)
     }
     // For a simple checkbox row [label | (checkbox + descriptor) | empty cell], split the descriptor into its
     // own span and tag the row 'cbrow' so CSS can center the checkbox in the gap and give the text its own
@@ -1025,6 +1054,55 @@
         }
         row.classList.add('cbrow'); last.remove();
       });
+    }
+    // ---- Section chrome (audio cards): wrap each labeled section (.lsec/.lsub) in a box with a lock + collapse
+    // toggle on the right of the header, zebra-stripe the boxes, and remember collapsed/locked per layer (s._secUI).
+    const SEC_LOCK='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>';
+    const SEC_UNLOCK='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/></svg>';
+    const SEC_CHEV='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>';
+    function ensureSecStyles(){ if(document.getElementById('th108-secchrome')) return;
+      const st=document.createElement('style'); st.id='th108-secchrome';
+      st.textContent=
+        '.lbody .ctl .lsecbox{ grid-column:1/-1; }'+
+        '.lbody .ctl .lsecbox:first-child > .lsec{ margin-top:0; padding-top:2px; }'+
+        '.lbody .ctl .lsecbody{ display:grid; grid-template-columns:84px minmax(30px,1fr) 84px; gap:7px 8px; border:1px solid var(--border,#30363d); border-radius:10px; padding:8px 8px 10px; margin:3px 0 7px; }'+
+        '.lbody .ctl .lsecbox.collapsed > .lsecbody{ display:none; }'+
+        '.lbody .ctl .lsecbox.locked > .lsecbody{ pointer-events:none; }'+
+        '.lbody .ctl .lsecbox.locked > .lsecbody input[type=range]{ opacity:.4; filter:grayscale(1); }'+
+        '.lbody .ctl .lsecbox.zeb > .lsec, .lbody .ctl .lsecbox.zeb > .lsub{ background:rgba(127,127,127,.06); border-radius:8px; }'+
+        '.lsec-actions{ position:absolute; right:2px; top:50%; transform:translateY(-50%); display:flex; gap:1px; align-items:center; }'+
+        '.lsec-actions button{ background:none; border:none; cursor:pointer; color:var(--muted,#8b949e); padding:3px; display:flex; align-items:center; border-radius:6px; }'+
+        '.lsec-actions button:hover{ color:var(--text); background:rgba(127,127,127,.16); }'+
+        '.lsec-actions button.on{ color:var(--warn,#e0a200); }'+
+        '.lsec-actions svg{ width:14px; height:14px; display:block; }'+
+        '.lsec-chevwrap svg{ transition:transform .15s ease; }'+
+        '.lsecbox.collapsed .lsec-chevwrap svg{ transform:rotate(-90deg); }';
+      document.head.appendChild(st); }
+    function applySectionChrome(body, L){ ensureSecStyles();
+      const s=L.settings; if(!s._secUI) s._secUI={};
+      body.querySelectorAll('.ctl').forEach(ctl=>{
+        const kids=[...ctl.children];
+        for(let i=0;i<kids.length;i++){ const node=kids[i];
+          if(!(node.classList && (node.classList.contains('lsec')||node.classList.contains('lsub')))) continue;   // only labeled headers start a section
+          const title=(node.textContent||'').trim(), slug=title.toLowerCase().replace(/[^a-z0-9]+/g,'-')||('sec'+i);
+          const content=[]; let j=i+1;
+          while(j<kids.length && !(kids[j].classList && (kids[j].classList.contains('lsec')||kids[j].classList.contains('lsub')))){ content.push(kids[j]); j++; }
+          const box=document.createElement('div'); box.className='lsecbox'; box.dataset.sec=slug;
+          ctl.insertBefore(box, node); box.appendChild(node);
+          const wrap=document.createElement('div'); wrap.className='lsecbody'; content.forEach(n=>wrap.appendChild(n)); box.appendChild(wrap);
+          const st=s._secUI[slug] || (s._secUI[slug]={collapsed:false, locked:false});
+          if(st.collapsed) box.classList.add('collapsed'); if(st.locked) box.classList.add('locked');
+          const actions=document.createElement('span'); actions.className='lsec-actions';
+          const lockBtn=document.createElement('button'); lockBtn.type='button'; lockBtn.className='lsec-lock'+(st.locked?' on':'');
+          const setLock=()=>{ lockBtn.innerHTML=st.locked?SEC_LOCK:SEC_UNLOCK; lockBtn.title=st.locked?'Locked — click to allow changes to this section':'Unlocked — click to protect this section from changes'; lockBtn.classList.toggle('on',st.locked); }; setLock();
+          lockBtn.addEventListener('click',e=>{ e.stopPropagation(); st.locked=!st.locked; box.classList.toggle('locked',st.locked); setLock(); scheduleSaveLayers(); });
+          const colBtn=document.createElement('button'); colBtn.type='button'; colBtn.className='lsec-chevwrap'; colBtn.title='Collapse / expand this section'; colBtn.innerHTML=SEC_CHEV;
+          colBtn.addEventListener('click',e=>{ e.stopPropagation(); st.collapsed=!st.collapsed; box.classList.toggle('collapsed',st.collapsed); scheduleSaveLayers(); });
+          actions.appendChild(lockBtn); actions.appendChild(colBtn); node.appendChild(actions);
+          i=j-1;   // resume scanning from the next header (kids snapshot indices stay valid after re-parenting)
+        }
+      });
+      let z=0; body.querySelectorAll('.ctl .lsecbox').forEach(b=>{ if(z%2===1) b.classList.add('zeb'); z++; });   // zebra alternate boxes across the whole card
     }
     // shared "Adjust" block (brightness / saturation / contrast / gamma / rotate / speed + Static) on every card
     function buildAdjustBlock(body,L){
