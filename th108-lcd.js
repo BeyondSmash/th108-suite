@@ -107,10 +107,12 @@
     <div class="row" id="lcdLib" style="display:none"></div>
     <div class="row" style="display:flex;align-items:center;flex-wrap:wrap">
       <button id="lcdUpload" class="go" disabled>Upload to Screen ▶</button>
+      <button id="lcdOff" disabled title="Upload a single all-black frame so the screen goes dark. The backlight stays ON (lit-black, not truly off) — pair it with a light-blocking sticker for full dark." style="margin-left:8px">LCD Off (black)</button>
       <progress id="lcdProg" value="0" max="100"></progress>
       <label style="margin-left:14px">Max Frames <input id="lcdMaxFrames" type="number" value="33" min="1" max="33" title="hard-capped at 33 — the LCD flash region only holds ~33 frames (~1MB); more would overflow into config flash" style="width:56px" /></label>
       <span class="sub">leave high to keep every frame; lower only to shrink a very long GIF.</span>
     </div>
+    <p class="sub" style="margin:-4px 0 10px"><b>LCD Off</b> writes a black frame to the screen flash — the screen shows black, but its <b>backlight stays on</b> (the firmware has no true display-off the host can set). For full dark, add a small light-blocking sticker over the LCD.</p>
     <p class="sub" style="margin:-4px 0 10px;color:#d29922">
       <b>Note:</b> Uploading writes the GIF to flash — the key lighting briefly blanks during the write, then resumes.</p>
     <div class="row sub" id="lcdStats" style="margin:-4px 0 10px">load an image or GIF to see stats</div>
@@ -595,6 +597,59 @@
     }
   }
 
+  // ---- "LCD Off": upload a single all-black frame (the dumb workaround — true display-off isn't host-settable) ----
+  // Reuses the SAME ACK-gated upload engine as upload(). 1 frame = odd count → no bottom-row glitch, no re-send,
+  // far under the 33-frame region cap. RGB565 0x0000 every pixel = the darkest the LCD can show (backlight stays on).
+  async function uploadBlack() {
+    if (uploading) { log('⚠ an upload is already running — let it finish first.', 'err'); return; }
+    if (!scrDev) { log('connect first', 'err'); return; }
+    if (!confirm('Blank the LCD?\n\nThis uploads a single all-black frame (writes the screen flash, like any LCD upload). The BACKLIGHT stays on, so the screen goes lit-black, not truly off — add a light-blocking sticker for full dark.')) return;
+    uploading = true;
+    const upBtn = $('#lcdUpload'), offBtn = $('#lcdOff'), fileInput = $('#lcdFile');
+    if (upBtn) upBtn.disabled = true; if (offBtn) offBtn.disabled = true; if (fileInput) fileInput.disabled = true;
+    stopPreview();
+    try { window.__lcdHost && window.__lcdHost.pauseLighting && window.__lcdHost.pauseLighting(); } catch (_) { }
+    showOverlay('Blanking the screen…', 0);
+    const black = new Uint8Array(160 * 96 * 2);          // all zero = black; raw (no calibration) so it's the darkest possible
+    const encFrames = [{ bytes: black, delayMs: 100 }];
+    const plan = TH108LcdUpload.planUpload(encFrames);
+    log(`LCD off: uploading 1 black frame — ${plan.totalSize} bytes (${plan.chunkCount} chunks)`, 'in');
+    const t0d = Date.now(), diag = []; const D = o => { if (diag.length < 3000) diag.push(Object.assign({ t: Date.now() - t0d }, o)); };
+    D({ ev: 'start', frames: plan.frameCount, bytes: plan.totalSize, chunks: plan.chunkCount, reportId: scrId, reportLen: scrLen, mode: 'black' });
+    let result = 'ok';
+    const eng = TH108LcdUpload.create({
+      sendChunk: p => scrDev.sendReport(scrId, p),
+      onInput: cb => { const h = e => cb(new Uint8Array(e.data.buffer)); scrDev.addEventListener('inputreport', h); return () => scrDev.removeEventListener('inputreport', h); },
+      log, pktLen: scrLen || 4104
+    });
+    try {
+      log('first packet = flash erase — a few seconds', 'dim');
+      const r = await eng.upload(plan, pct => { $('#lcdProg').value = pct; setOverlay(pct); }, D);
+      if (!r.ok) throw new Error(r.error);
+      setOverlay(100, 'Screen blanked ✓', 'the LCD now shows black (backlight still on)');
+      log('✓ LCD blanked — the screen shows black. The backlight stays on; add a sticker for true dark.', 'ok');
+      try {   // mirror to the daemon so now-playing's pause-revert target is also black (no-op without a daemon)
+        const b64 = u8 => { let s = ''; for (let i = 0; i < u8.length; i += 8192) s += String.fromCharCode.apply(null, u8.subarray(i, i + 8192)); return btoa(s); };
+        fetch('/lcdgif', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ frames: encFrames.map(f => ({ d: f.delayMs, b: b64(f.bytes) })) }) }).catch(() => {});
+      } catch (_) { }
+      await new Promise(r2 => setTimeout(r2, 900));
+    } catch (err) {
+      result = 'FAILED: ' + err.message; D({ ev: 'FAIL', err: err.message });
+      setOverlay(null, 'Blanking failed', 'if the screen is frozen, replug → wait → reconnect → retry');
+      log('✗ LCD off failed: ' + err.message + ' — if the screen is frozen, replug → wait → reconnect → retry.', 'err');
+      await new Promise(r2 => setTimeout(r2, 1400));
+    } finally {
+      lastReport = buildReport(diag, { result, device: scrDev && scrDev.productName, reportId: scrId, reportLen: scrLen });
+      hideOverlay();
+      uploading = false;
+      if ($('#lcdUpload')) $('#lcdUpload').disabled = !scrDev;
+      if ($('#lcdOff')) $('#lcdOff').disabled = !scrDev;
+      if ($('#lcdFile')) $('#lcdFile').disabled = false;
+      tickPreview();
+      try { window.__lcdHost && window.__lcdHost.resumeLighting && window.__lcdHost.resumeLighting(); } catch (_) { }
+    }
+  }
+
   // ---------------------------------------------------------------------------
   // clock-sync (cmd 0x34) via the control handle
   // ---------------------------------------------------------------------------
@@ -759,6 +814,7 @@
 
     // ---- upload / clock / report ----
     $('#lcdUpload').addEventListener('click', upload);
+    { const ob = $('#lcdOff'); if (ob) ob.addEventListener('click', uploadBlack); }
     $('#lcdSyncClock').addEventListener('click', syncClock);
     // (the old "Copy last upload report" button is gone — the report still lands in the log, copyable from there)
     if ($('#lcdCopyReport')) $('#lcdCopyReport').addEventListener('click', () => {
@@ -812,8 +868,9 @@
     d = d || {};
     scrDev = d.screen || null; scrId = d.screenReportId || 0; scrLen = d.screenLen || (scrDev ? 4104 : 0);
     ctlDev = d.control || null; ctlId = d.controlReportId || 0; ctlLen = d.controlLen || (ctlDev ? 64 : 0);
-    const up = $('#lcdUpload'), sc = $('#lcdSyncClock'), st = $('#lcdDevNote');
+    const up = $('#lcdUpload'), off = $('#lcdOff'), sc = $('#lcdSyncClock'), st = $('#lcdDevNote');
     if (up) up.disabled = !scrDev;
+    if (off) off.disabled = !scrDev;
     if (sc) sc.disabled = !ctlDev;
     if (st) st.textContent = scrDev ? (ctlDev ? 'screen + control bound' : 'screen bound (clock needs the control interface)')
       : 'not connected — connect on the main page first';
