@@ -859,3 +859,99 @@ test('renderAgent with subagents lights at least one key orange-ish', () => {
   let lit = 0; for (let o = 0; o + 2 < L.rgb.length; o += 3) if (L.rgb[o] > 0 || L.rgb[o + 1] > 0 || L.rgb[o + 2] > 0) lit++;
   assert.ok(lit > 0);
 });
+
+// ===== Finding 1: renderAgent emphasis uses _carve to dim layers below, not _alpha =====
+
+test('renderAgent dimBelow sets _carve to dimBelowAmt across all keys and leaves _alpha null', () => {
+  const L = { type: 'agent', settings: { dimBelow: true, dimBelowAmt: 0.9, silhouetteNumpad: false }, rgb: [] };
+  const state = { agent: { busy: true, subagentCount: 0, checkmarkAt: 0, notifyAt: 0, attention: false, bootAt: 0 } };
+  E.renderAgent(L, 1000, state);
+  assert.ok(L._carve instanceof Float32Array, '_carve is a Float32Array when dimBelow is on');
+  assert.equal(L._carve.length, E.NLED, '_carve covers every LED slot');
+  // every key should be carving by dimBelowAmt (0.9)
+  for (let k = 0; k < E.NLED; k++) assert.ok(Math.abs(L._carve[k] - 0.9) < 1e-6, 'key ' + k + ' carve = dimBelowAmt 0.9');
+  assert.equal(L._alpha, null, '_alpha must be null — agent layer does not scale its own opacity');
+});
+
+test('renderAgent silhouetteNumpad carves numpad slots to 1 and leaves others at 0', () => {
+  const L = { type: 'agent', settings: { silhouetteNumpad: true, dimBelow: false }, rgb: [] };
+  const state = { agent: { busy: true, subagentCount: 0, checkmarkAt: 0, notifyAt: 0, attention: false, bootAt: 0 } };
+  E.renderAgent(L, 1000, state);
+  assert.ok(L._carve instanceof Float32Array, '_carve is a Float32Array when silhouetteNumpad is on');
+  assert.equal(L._alpha, null, '_alpha must be null');
+  // at least one numpad slot should be carved to 1
+  const numpadK = [...E.AGENT_SPIN_K, ...E.AGENT_CHECK_K, ...E.AGENT_BANG_K];
+  const anyCarved = numpadK.some(k => k >= 0 && Math.abs(L._carve[k] - 1) < 1e-6);
+  assert.ok(anyCarved, 'at least one numpad slot is carved to 1 (black on layers below)');
+  // a non-numpad key (e.g. Escape = slot 0) should not be carved
+  const escK = E.INDICES.indexOf(E.KEYMAP.Escape);
+  const isNumpad = numpadK.includes(escK);
+  if (!isNumpad) assert.ok(Math.abs(L._carve[escK]) < 1e-6, 'non-numpad key is not carved');
+});
+
+test('renderAgent both dimBelow+silhouetteNumpad: numpad slots carve to 1, rest to dimBelowAmt', () => {
+  const L = { type: 'agent', settings: { dimBelow: true, dimBelowAmt: 0.7, silhouetteNumpad: true }, rgb: [] };
+  const state = { agent: { busy: true, subagentCount: 0, checkmarkAt: 0, notifyAt: 0, attention: false, bootAt: 0 } };
+  E.renderAgent(L, 1000, state);
+  assert.ok(L._carve instanceof Float32Array, '_carve allocated');
+  const numpadK = new Set([...E.AGENT_SPIN_K, ...E.AGENT_CHECK_K, ...E.AGENT_BANG_K]);
+  for (let k = 0; k < E.NLED; k++) {
+    if (numpadK.has(k)) assert.ok(Math.abs(L._carve[k] - 1) < 1e-6, 'numpad slot k=' + k + ' carved to 1');
+    else assert.ok(Math.abs(L._carve[k] - 0.7) < 1e-6, 'non-numpad k=' + k + ' carved to dimBelowAmt 0.7');
+  }
+});
+
+test('renderAgent with no active state leaves _carve null', () => {
+  const L = { type: 'agent', settings: { dimBelow: true, dimBelowAmt: 0.9 }, rgb: [] };
+  // agent feed present but nothing active
+  const state = { agent: { busy: false, subagentCount: 0, checkmarkAt: 0, notifyAt: 0, attention: false, bootAt: 0 } };
+  E.renderAgent(L, 1000, state);
+  assert.equal(L._carve, null, '_carve is null when nothing is active');
+});
+
+// ===== Finding 2: agentPhase reminder=true blinks to dark (level 0), not the breathe floor =====
+
+test('agentPhase reminder=true: blink off-phase resolves to level 0 (true dark, not breathe floor)', () => {
+  const s = { holdMs: 0, breatheMs: 1600, reminderEnabled: true, reminderAfterMs: 4000, reminderBlinks: 2 };
+  // The reminder blink window starts at t = after - blinkSpan = 4000 - 2*240 = 3520 ms after notifyAt.
+  // Inside the window, even-120ms-slots are blink=true (on), odd slots are blink=false (off).
+  // Pick a time in the off slot: first off-half starts at t=3520+120=3640ms
+  const notifyAt = 0;
+  const tOff = 3640;   // inside blink window, blink=false (off half)
+  const ph = E.agentPhase(notifyAt, tOff, s);
+  assert.equal(ph.reminder, true, 'should be in reminder blink span');
+  assert.equal(ph.blink, false, 'should be in off half of blink');
+  // renderAgent: f = ph.reminder ? (ph.blink ? 1 : 0) : ph.level → 0 (true dark)
+  const f = ph.reminder ? (ph.blink ? 1 : 0) : ph.level;
+  assert.equal(f, 0, 'reminder off-phase gives f=0 (true dark blink, not breathe floor ~0.35)');
+});
+
+test('agentPhase reminder=true: blink on-phase resolves to level 1 (full bright)', () => {
+  const s = { holdMs: 0, breatheMs: 1600, reminderEnabled: true, reminderAfterMs: 4000, reminderBlinks: 2 };
+  const notifyAt = 0;
+  const tOn = 3521;   // inside blink window, first 120ms slot (blink=true)
+  const ph = E.agentPhase(notifyAt, tOn, s);
+  assert.equal(ph.reminder, true, 'should be in reminder blink span');
+  assert.equal(ph.blink, true, 'should be in on half of blink');
+  const f = ph.reminder ? (ph.blink ? 1 : 0) : ph.level;
+  assert.equal(f, 1, 'reminder on-phase gives f=1 (full bright)');
+});
+
+test('agentPhase breathe phase (not reminder): level is between 0.35 and 1, reminder=false', () => {
+  const s = { holdMs: 0, breatheMs: 1600, reminderEnabled: true, reminderAfterMs: 4000, reminderBlinks: 2 };
+  const ph = E.agentPhase(0, 1000, s);   // t=1000, past hold=0, not yet in first reminder window (4000ms)
+  assert.equal(ph.reminder, false, 'not in reminder span during breathe phase');
+  assert.ok(ph.level >= 0.35 && ph.level <= 1, 'breathe level stays in [0.35, 1]');
+  // f = ph.reminder ? ... : ph.level — breathe level, not 0 or 1
+  const f = ph.reminder ? (ph.blink ? 1 : 0) : ph.level;
+  assert.ok(f >= 0.35 && f <= 1, 'breathe phase uses ph.level (not dark)');
+});
+
+test('agentPhase reminderEnabled=false: reminder always false, never blinks to dark', () => {
+  const s = { holdMs: 0, breatheMs: 1600, reminderEnabled: false, reminderAfterMs: 4000, reminderBlinks: 2 };
+  const ph = E.agentPhase(0, 9000, s);
+  assert.equal(ph.reminder, false, 'reminderEnabled=false → reminder stays false');
+  assert.equal(ph.blink, false, 'reminderEnabled=false → never blinks');
+  const f = ph.reminder ? (ph.blink ? 1 : 0) : ph.level;
+  assert.ok(f > 0, 'breathes normally (no dark blink) when reminder is disabled');
+});

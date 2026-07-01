@@ -7,7 +7,7 @@ function basename(p) { const s = String(p || '').replace(/[\\/]+$/, ''); const i
 
 function createAgentState(opts = {}) {
   const TTL = opts.ttlMs || 10 * 60 * 1000;        // drop a session with no events for this long
-  const BUSY_TTL = opts.busyTtlMs || 10 * 60 * 1000; // clear a busy that never got its Stop
+  const BUSY_TTL = opts.busyTtlMs || 3 * 60 * 1000;  // clears a stuck spinner ~3 min after the last event even if Stop was missed, well before the 10-min session drop
   const map = new Map();   // session_id -> entry
   let anon = 0;
 

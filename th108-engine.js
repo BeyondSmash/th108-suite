@@ -1013,22 +1013,24 @@
   function applyAgentFeed(state, feed) { state.agent = feed || null; }
 
   // "!" lifecycle: solid for holdMs, then breathe (sin), with a reminder double/triple-blink every
-  // reminderAfterMs. Returns {level:0..1, blink:bool}. Pure — driven by (now - notifyAt).
+  // reminderAfterMs. Returns {level:0..1, blink:bool, reminder:bool}. Pure — driven by (now - notifyAt).
+  // `reminder` is true only WITHIN a blink span so renderAgent can alternate full-bright/dark (a real blink),
+  // not fall back to the breathe level on the off-half (which was a pulse, not a blink).
   function agentPhase(notifyAt, now, s) {
     const t = now - (notifyAt || 0);
     const hold = s.holdMs == null ? 1000 : s.holdMs;
     const breatheMs = s.breatheMs || 1600;
-    if (t < hold) return { level: 1, blink: false };
+    if (t < hold) return { level: 1, blink: false, reminder: false };
     const level = 0.35 + 0.65 * (0.5 + 0.5 * Math.sin((t - hold) / breatheMs * Math.PI * 2));
-    let blink = false;
+    let blink = false, reminder = false;
     if (s.reminderEnabled) {
       const after = s.reminderAfterMs || 8000;
       const cyc = t % after;
       const blinks = s.reminderBlinks || 2;
       const blinkSpan = blinks * 240;            // 120ms on / 120ms off per blink, at the end of each cycle
-      if (cyc > after - blinkSpan) blink = (Math.floor((cyc - (after - blinkSpan)) / 120) % 2) === 0;
+      if (cyc > after - blinkSpan) { reminder = true; blink = (Math.floor((cyc - (after - blinkSpan)) / 120) % 2) === 0; }
     }
-    return { level, blink };
+    return { level, blink, reminder };
   }
 
   function renderAgent(L, now, state) {
@@ -1050,7 +1052,9 @@
     if (A.attention) {
       const [br, bg, bb] = hexToRgb(s.bangColor || '#ff3b30');
       const ph = agentPhase(A.notifyAt, now, s);
-      const f = ph.blink ? 1 : ph.level;
+      // reminder blink span: alternate full-bright (1) and dark (0) so the "!" truly blinks off (not a pulse).
+      // outside the reminder span it breathes normally via ph.level.
+      const f = ph.reminder ? (ph.blink ? 1 : 0) : ph.level;
       for (const k of AGENT_BANG_K) put(k, br * f, bg * f, bb * f);
     } else if (A.checkmarkAt && now - A.checkmarkAt < (s.checkMs || 1000)) {
       const [cr, cg, cb] = hexToRgb(s.checkColor || '#22cc44');
@@ -1067,13 +1071,23 @@
       const p = (now - A.bootAt) / (s.bootMs || 1000);
       for (let k = 0; k < INDICES.length; k++) { const kp = k / INDICES.length; const d = 1 - Math.min(1, Math.abs(kp - p) * 6); if (d > 0) { const o = k * 3; out[o] = Math.max(out[o], sr * d); out[o + 1] = Math.max(out[o + 1], sg * d); out[o + 2] = Math.max(out[o + 2], sb * d); } }
     }
-    // emphasis: silhouette numpad / dim below → per-key alpha mask for the compositor
+    // emphasis: silhouette numpad / dim below → carve the layers BELOW this agent layer.
+    // _carve[k] is applied by composite() as: acc[k] *= 1 - carve[k], so 1 = fully black, 0 = untouched.
+    // _alpha controls only THIS layer's own opacity under the 'add' blend — it cannot darken layers below.
+    L._alpha = null;   // agent layer does not use per-key opacity
     const anyActive = A.busy || A.attention || A.subagentCount > 0 || (A.checkmarkAt && now - A.checkmarkAt < 1200) || (A.bootAt && now - A.bootAt < 1200);
     if (anyActive && (s.silhouetteNumpad || s.dimBelow)) {
-      const ab = L._alpha = (L._alphaBuf || (L._alphaBuf = new Float32Array(NLED))); ab.fill(s.dimBelow ? (1 - (s.dimBelowAmt == null ? 0.9 : s.dimBelowAmt)) : 1);
-      // NOTE: _alpha controls THIS layer's per-key opacity in composite(); to dim layers BELOW use _carve.
-      // When dimBelow=true the intent is to dim the layers underneath — verify visually in Task 5 whether
-      // _alpha achieves the desired effect or whether _carve is needed instead.
+      const cb = L._carveBuf || (L._carveBuf = new Float32Array(NLED)); cb.fill(0);
+      const dimAmt = s.dimBelowAmt == null ? 0.9 : s.dimBelowAmt;
+      if (s.dimBelow) cb.fill(dimAmt);   // board-wide: acc *= 1 - dimAmt → dims all layers below to (1-dimAmt)
+      if (s.silhouetteNumpad) {
+        // numpad slots fully carved (=1) so spinner/✓/"!" read against black; takes MAX with dimBelow if also on
+        const numpadSlots = new Set([...AGENT_SPIN_K, ...AGENT_CHECK_K, ...AGENT_BANG_K]);
+        for (const k of numpadSlots) cb[k] = 1;
+      }
+      L._carve = cb;
+    } else {
+      L._carve = null;
     }
   }
 
@@ -1289,7 +1303,7 @@
     keyCell, layerCell,
     PAT_DEFAULTS, patParams, ensureSettings, defaultLayers, createState, applyConfig,
     renderBackground, renderReactive, renderGradient, renderPattern, renderMedia, adjustRgb, computeCrop, renderKeys, renderAudio,
-    applyAgentFeed, renderAgent, agentPhase,
+    applyAgentFeed, renderAgent, agentPhase, AGENT_SPIN_K, AGENT_CHECK_K, AGENT_BANG_K,
     reactEnvelope, applyAdjust, layerNow, renderLayer, composite, flatEq,
     composeFrame, stampKey, releaseKey, SEND_FPS_CAP,
   };
