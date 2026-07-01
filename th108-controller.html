@@ -693,9 +693,12 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
     <p class="hint" style="margin:4px 0 10px">Give one key a smarter behavior. Like everything on this tab it lives
        in the keyboard's keymap — works in every app, no software needed. Pick a key on the board, choose a behavior,
        Apply. Restore Default undoes it. (The official tool allows up to 40 advanced keys.)<br>
-       <b>⚠ Heads-up:</b> in hardware tests so far these entries write fine but don't take effect (Combination and
-       Toggle both verified inert via Chord check, 2026-06-11) — likely the firmware needs something the official
-       driver sets up that we haven't captured yet. Parked until a comparison session against the official driver.</p>
+       <b>⚠ Heads-up — not working on this board's firmware:</b> these entries write correctly (the official Epomaker
+       tool even reads them back and shows them identically), but the board's firmware doesn't <i>execute</i> the
+       advanced-key types — and the official tool's own advanced keys don't fire either (verified 2026-06-30 against a
+       full byte-for-byte capture of its connect + apply). So it's a firmware limitation, not a software gap; if a
+       firmware update ever adds support, these bindings will just start working. Normal remaps + light functions on
+       this tab are unaffected.</p>
     <div class="bdtabs" id="akTabs"></div>
     <p class="hint" id="akDesc" style="margin:8px 0"></p>
     <div id="akForm" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"></div>
