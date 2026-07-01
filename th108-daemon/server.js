@@ -208,6 +208,13 @@ function createServer({ control, root, port = 8123, watchdogMs = 12000 }) {
         console.log(ts() + ' [api] /npgo → ' + JSON.stringify(r));
         return sendJson(res, 200, r);
       }
+      if (req.method === 'POST' && u === '/agent/event') {   // Claude Code hook posts raw hook JSON here
+        const b = await readBody(req); let ev;
+        try { ev = JSON.parse(b || '{}'); } catch { return sendJson(res, 400, { error: 'bad json' }); }
+        if (control.agentEvent) control.agentEvent(ev);
+        return sendJson(res, 204, {});   // hooks are fire-and-forget; keep it cheap
+      }
+      if (req.method === 'GET' && u === '/agent/sessions') return sendJson(res, 200, { sessions: control.agentSessions ? control.agentSessions() : [] });
       if (req.method === 'POST' && u === '/config') {
         const b = await readBody(req); let cfg;
         try { cfg = JSON.parse(b); } catch { return sendJson(res, 400, { error: 'bad json' }); }
