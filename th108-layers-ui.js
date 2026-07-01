@@ -13,7 +13,7 @@
   else root.TH108LayersUI = factory();
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
-  const TYPES=['background','reactive','gradient','pattern','individual','audio','media'], BLENDS=['normal','add','screen','multiply','max','replace'];
+  const TYPES=['background','reactive','gradient','pattern','individual','audio','media','agent'], BLENDS=['normal','add','screen','multiply','max','replace'];
   const root_PaintBoard = () => (typeof window!=='undefined' && window.TH108PaintBoard) || { mount(){ return { draw(){}, recolorSelection(){}, clearSelection(){}, selectNone(){}, selCount(){return 0;}, destroy(){} }; } };
   // lucide chevrons-down-up (= "collapse") / chevrons-up-down (= "expand") for the card corner toggle
   const SVGA='<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">';
@@ -44,7 +44,8 @@
           isRunning = opts.isRunning || (() => false),                  // layer loop live? (reorder warm-renders so the change shows immediately)
           onPatternPick = opts.onPatternPick || noop,                   // page hook: picking a pattern while a firmware effect shows = "back to layers"
           onAudioSource = opts.onAudioSource || noop,                   // page hook: audio-layer source pick → start/stop in-tab Web Audio capture
-          liveAudioActive = opts.liveAudioActive || (()=>false);        // page hook: is real in-tab capture running? (Live preview blanks when not)
+          liveAudioActive = opts.liveAudioActive || (()=>false),        // page hook: is real in-tab capture running? (Live preview blanks when not)
+          listAgentSessions = opts.listAgentSessions || (()=>Promise.resolve([])); // page hook: fetch agentSessions from /status or /agent/sessions
 
     // ----- persist full layer state (settings survive page refresh) -----
     let _slsT=0;
@@ -117,6 +118,7 @@
           L.type=e.target.value; E.ensureSettings(L);
           if(L.type==='individual' && L.blend!=='replace'){ L.blend='replace'; const bl=card.querySelector('.lbl'); if(bl) bl.value='replace'; }   // per-key paint defaults to the replace blend (black keys transparent)
           if(L.type==='audio'){ L.blend='add'; const bl=card.querySelector('.lbl'); if(bl) bl.value='add'; L.opacity=0.85; lo.value=85; lon.value=85; }   // audio visualizer = ADD so its keys have their OWN light (multiply has none → dimming the base dims the audio too, and the visualizer is invisible without a bright base). 'add' lets the keys pop and the Dim-while-active contrast actually work.
+          if(L.type==='agent'){ L.blend='add'; const bl=card.querySelector('.lbl'); if(bl) bl.value='add'; L.opacity=0.9; lo.value=90; lon.value=90; }   // agent layer = ADD so twinkles/spinner pop over the base layer
           buildLayerBody(card,L); });
         const lo=card.querySelector('.lo'), lon=card.querySelector('.lon');
         const setOpa=(v,reNum)=>{ v=Math.max(0,Math.min(100,Math.round(v||0))); L.opacity=v/100; lo.value=v; if(reNum) lon.value=v; };
@@ -144,8 +146,8 @@
       if(state.layers.length>=TYPES.length) return;
       const used=new Set(state.layers.map(o=>o.type)), type=TYPES.find(t=>!used.has(t));
       if(!type) return;
-      const blend = type==='individual'?'replace' : type==='audio'?'add' : 'normal';
-      const L={ name:type.charAt(0).toUpperCase()+type.slice(1), enabled:true, type, opacity: type==='audio'?0.85:1, blend, fps:30, settings:{} };
+      const blend = type==='individual'?'replace' : type==='audio'?'add' : type==='agent'?'add' : 'normal';
+      const L={ name:type.charAt(0).toUpperCase()+type.slice(1), enabled:true, type, opacity: type==='audio'?0.85 : type==='agent'?0.9 : 1, blend, fps:30, settings:{} };
       E.ensureSettings(L); state.layers.push(L);
       buildLayerCards(); saveLayerOrder(); saveLayers(); pushConfig();
     }
@@ -156,7 +158,7 @@
       if(!confirm('Reset layer "'+L.name+'" to its default settings?')) return;
       const prev={ settings:JSON.parse(JSON.stringify(L.settings)), opacity:L.opacity, blend:L.blend, fps:L.fps };
       const apply=cfg=>{ L.settings=cfg.settings; L.opacity=cfg.opacity; L.blend=cfg.blend; L.fps=cfg.fps; E.ensureSettings(L); L.lastTick=0; buildLayerCards(); saveLayers(); pushConfig(); };
-      apply({ settings:{}, opacity:(L.type==='audio'?0.85:1), blend:(L.type==='individual'?'replace':L.type==='audio'?'add':'normal'), fps:30 });
+      apply({ settings:{}, opacity:(L.type==='audio'?0.85:L.type==='agent'?0.9:1), blend:(L.type==='individual'?'replace':L.type==='audio'||L.type==='agent'?'add':'normal'), fps:30 });
       showUndoToast('Reset “'+L.name+'”', ()=>apply(prev));
     }
     function removeLayer(n){
@@ -1034,6 +1036,124 @@
               if(liveOn) paint(ctxL, liveL.rgb);
               if(dupOn) paint(dupCtx, liveL.rgb);                                                 // same frame mirrored into the inline duplicate
             }
+            requestAnimationFrame(frame);
+          }
+          requestAnimationFrame(frame);
+        })();
+      } else if(L.type==='agent'){
+        // ---- AI/LLM agent-activity lighting layer card ----
+        // Colors
+        const colorRows=
+          row('Twinkle','<input type="color" class="s-twinkleColor" value="'+s.twinkleColor+'"><span></span>')+
+          row('Spinner','<input type="color" class="s-spinColor" value="'+s.spinColor+'"><span></span>')+
+          row('Checkmark','<input type="color" class="s-checkColor" value="'+s.checkColor+'"><span></span>')+
+          row('Exclamation','<input type="color" class="s-bangColor" value="'+s.bangColor+'"><span></span>');
+        // Session-filter dropdown — options filled async after mount
+        const sessionRow=row('Session','<select class="s-agSession"><option value="all">All sessions</option></select><span class="val s-agSessionNote" style="opacity:.6;font-size:11px"></span>');
+        // Twinkle-region paint-board row (mirrors individual layer)
+        const regionRow=full('<button type="button" class="s-agShowkb">⌨ Set Twinkle Region</button><button type="button" class="s-agRegReset" style="margin-left:6px">Default (letters)</button><span class="val s-agRegCount" style="opacity:.6;font-size:11px;margin-left:6px"></span>');
+        // Emphasis toggles
+        const emphRows=
+          row('Numpad silhouette','<label class="sl" style="margin:0"><input type="checkbox" class="s-silhouetteNumpad"'+(s.silhouetteNumpad?' checked':'')+'> Carve numpad from layers below while agent is active</label><span></span>')+
+          row('Dim below','<label class="sl" style="margin:0"><input type="checkbox" class="s-dimBelow"'+(s.dimBelow?' checked':'')+'> Dim layers below when agent is active</label><span></span>')+
+          (s.dimBelow ? row('Dim amount','<span class="srange" style="width:100%"><input type="range" class="s-dimBelowAmt" min="0" max="100" value="'+Math.round((s.dimBelowAmt!=null?s.dimBelowAmt:0.9)*100)+'"><i class="tick" style="left:calc(7px + (100% - 14px)*0.9)"></i></span><span class="val s-dimBelowAmtV"></span>') : '');
+        // Exclamation (!) animation controls
+        const bangRows=
+          row('Hold','<span class="srange" style="width:100%"><input type="range" class="s-holdMs" min="200" max="10000" step="100" value="'+(s.holdMs!=null?s.holdMs:1000)+'"><i class="tick" style="left:calc(7px + (100% - 14px)*0.08)"></i></span><span class="val s-holdMsV"></span>')+
+          row('Reminder','<label class="sl" style="margin:0"><input type="checkbox" class="s-reminderEnabled"'+(s.reminderEnabled?' checked':'')+'> Re-blink if still waiting after delay</label><span></span>')+
+          (s.reminderEnabled ?
+            row('Reminder delay','<span class="srange" style="width:100%"><input type="range" class="s-reminderAfterMs" min="1000" max="60000" step="1000" value="'+(s.reminderAfterMs!=null?s.reminderAfterMs:8000)+'"><i class="tick" style="left:calc(7px + (100% - 14px)*0.122)"></i></span><span class="val s-reminderAfterMsV"></span>') : '')+
+          (s.reminderEnabled ?
+            row('Blinks','<select class="s-reminderBlinks"><option value="2"'+(s.reminderBlinks===2?' selected':'')+'>2 blinks</option><option value="3"'+(s.reminderBlinks===3?' selected':'')+'>3 blinks</option></select><span></span>') : '');
+        // Preview toggle (page-side synthetic feed)
+        const previewRow=full('<label class="sl" style="margin:0"><input type="checkbox" class="s-agPreview"'+(s.preview?' checked':'')+'> Preview — inject a synthetic agent feed so the animation tunes live (no daemon needed)</label>');
+        body.innerHTML='<div class="ctl">'+
+          sec('Colors')+colorRows+
+          sec('Session')+sessionRow+
+          sec('Twinkle Region')+regionRow+
+          sec('Emphasis')+emphRows+
+          sub('Exclamation animation')+bangRows+
+          sec('Preview')+previewRow+
+        '</div>';
+        const c=q=>body.querySelector(q);
+        // Color pickers
+        ['twinkleColor','spinColor','checkColor','bangColor'].forEach(key=>{ const el=c('.s-'+key); if(el) el.addEventListener('input',e=>s[key]=e.target.value); });
+        // Session dropdown
+        const sessSel=c('.s-agSession'), sessNote=c('.s-agSessionNote');
+        function fillSessionDrop(sessions){ if(!sessSel) return;
+          const cur=s.session||'all'; const optsHtml=['<option value="all">All sessions</option>'];
+          let has=false;
+          (sessions||[]).forEach(ag=>{ if(ag&&ag.id){ if(ag.id===cur) has=true;
+            optsHtml.push('<option value="'+ag.id.replace(/"/g,'&quot;')+'"'+(ag.id===cur?' selected':'')+'>'+(ag.label||ag.id).replace(/&/g,'&amp;').replace(/</g,'&lt;')+'</option>'); } });
+          if(cur!=='all' && !has) optsHtml.push('<option value="'+cur.replace(/"/g,'&quot;')+'" selected>'+cur+' (ended)</option>');
+          sessSel.innerHTML=optsHtml.join('');
+          if(sessNote) sessNote.textContent=sessions&&sessions.length?'':sessions===null?'(daemon not available)':'(no sessions seen yet)'; }
+        fillSessionDrop([]);
+        sessSel.addEventListener('change',e=>{ s.session=e.target.value; });
+        // Async load of sessions on card open — reuses the listAgentSessions hook (fetches /status agentSessions or /agent/sessions)
+        listAgentSessions().then(fillSessionDrop).catch(()=>fillSessionDrop(null));
+        // Twinkle-region paint board (same API as individual layer)
+        let pb=null, pbWrap=null;
+        const updRegCount=()=>{ const el=c('.s-agRegCount'); if(el) el.textContent = pb ? (pb.selCount()+' keys selected') : (Array.isArray(s.twinkleKeys)&&s.twinkleKeys.length ? s.twinkleKeys.length+' keys (saved)' : 'Default (letters)'); };
+        updRegCount();
+        function mountAgentBoard(){
+          if(pb) return;
+          pbWrap=document.createElement('div'); pbWrap.className='pb-wrap pb-large';
+          pbWrap.innerHTML='<div class="pb-board"></div><div class="pb-hint">Click/drag to select twinkle keys · Shift = add · Ctrl = deselect · Right-click = clear key</div>';
+          const sibs=[...card.parentNode.querySelectorAll('.lcard')], myTop=card.getBoundingClientRect().top;
+          let anchor=card, anchorLeft=card.getBoundingClientRect().left;
+          for(const sc of sibs){ const r=sc.getBoundingClientRect(); if(Math.abs(r.top-myTop)<8 && r.left<anchorLeft){ anchor=sc; anchorLeft=r.left; } }
+          card.parentNode.insertBefore(pbWrap, anchor);
+          // The agent board shows SELECTED region (not painted colors) — we repurpose PaintBoard in selection mode.
+          // We give every key the twinkleColor as its stored "color" so the selection highlight reads correctly.
+          const regionKeys={};
+          if(Array.isArray(s.twinkleKeys)) s.twinkleKeys.forEach(i=>{ regionKeys[i]=s.twinkleColor||'#ff8c00'; });
+          pb=root_PaintBoard().mount(pbWrap.querySelector('.pb-board'), {
+            engine:E, getKeys:()=>regionKeys, getColor:()=>s.twinkleColor||'#ff8c00',
+            onPaint:(idx,hex)=>{ if(hex) regionKeys[idx]=hex; else delete regionKeys[idx];
+              s.twinkleKeys=Object.keys(regionKeys).map(Number); scheduleSaveLayers(); updRegCount(); },
+            onChange:()=>{ updRegCount(); scheduleSaveLayers(); },
+          });
+          c('.s-agShowkb').textContent='⌨ Hide Twinkle Region';
+          updRegCount();
+          requestAnimationFrame(()=>{ try{ pbWrap.scrollIntoView({behavior:'smooth', block:'start'}); }catch(_){ try{ pbWrap.scrollIntoView(); }catch(__){ } } });
+        }
+        function unmountAgentBoard(){ if(!pb) return;
+          const before=window.scrollY, r=pbWrap.getBoundingClientRect();
+          pb.destroy(); pb=null; const w=pbWrap; pbWrap=null; if(w&&w.parentNode) w.parentNode.removeChild(w);
+          const shift=Math.max(0, Math.min(r.height, -r.top)); if(shift>0) window.scrollTo(0, before-shift);
+          c('.s-agShowkb').textContent='⌨ Set Twinkle Region'; updRegCount();
+          requestAnimationFrame(()=>{ try{ card.scrollIntoView({behavior:'smooth', block:'center'}); }catch(_){ } }); }
+        c('.s-agShowkb').addEventListener('click',()=>{ pb?unmountAgentBoard():mountAgentBoard(); });
+        c('.s-agRegReset').addEventListener('click',()=>{ s.twinkleKeys=null; unmountAgentBoard(); updRegCount(); scheduleSaveLayers(); });
+        // Emphasis toggles
+        { const el=c('.s-silhouetteNumpad'); if(el) el.addEventListener('change',e=>s.silhouetteNumpad=e.target.checked); }
+        { const el=c('.s-dimBelow'); if(el) el.addEventListener('change',e=>{ s.dimBelow=e.target.checked; buildLayerBody(card,L); scheduleSaveLayers(); }); }
+        { const el=c('.s-dimBelowAmt'), v=c('.s-dimBelowAmtV'); if(el&&v){ const up=()=>v.textContent=Math.round(+el.value)+'%'; el.addEventListener('input',e=>{ s.dimBelowAmt=Math.round(+e.target.value)/100; up(); }); up(); } }
+        // Exclamation animation
+        { const el=c('.s-holdMs'), v=c('.s-holdMsV'); if(el&&v){ const up=()=>v.textContent=(+el.value/1000).toFixed(1)+'s'; el.addEventListener('input',e=>{ s.holdMs=+e.target.value; up(); }); up(); } }
+        { const el=c('.s-reminderEnabled'); if(el) el.addEventListener('change',e=>{ s.reminderEnabled=e.target.checked; buildLayerBody(card,L); scheduleSaveLayers(); }); }
+        { const el=c('.s-reminderAfterMs'), v=c('.s-reminderAfterMsV'); if(el&&v){ const up=()=>v.textContent=(+el.value/1000).toFixed(0)+'s'; el.addEventListener('input',e=>{ s.reminderAfterMs=+e.target.value; up(); }); up(); } }
+        { const el=c('.s-reminderBlinks'); if(el) el.addEventListener('change',e=>s.reminderBlinks=+e.target.value); }
+        // Preview: synthetic agent feed injected into state.agent while toggle is on + page is driving
+        { const el=c('.s-agPreview'); if(el) el.addEventListener('change',e=>{ s.preview=e.target.checked; }); }
+        // Synthetic feed loop — injects a rotating fake state.agent each frame while Preview is on.
+        // When Preview is off, leaves state.agent alone (daemon feed stays in control).
+        (function(){
+          let _phase=0; // cycle: 0=busy+2 subagents, 1=checkmark flash, 2=attention/!, 3=idle
+          const PHASE_MS=[4000, 2000, 6000, 2000];
+          let _phaseStart=performance.now();
+          function syntheticAgent(now){
+            const elapsed=now-_phaseStart;
+            if(elapsed>PHASE_MS[_phase]){ _phaseStart=now; _phase=(_phase+1)%4; }
+            if(_phase===0) return { busy:true, subagentCount:2, checkmarkAt:null, notifyAt:null, attention:false, bootAt:null };
+            if(_phase===1) return { busy:false, subagentCount:0, checkmarkAt:now, notifyAt:null, attention:false, bootAt:null };
+            if(_phase===2) return { busy:false, subagentCount:0, checkmarkAt:null, notifyAt:now-500, attention:true, bootAt:null };
+            return null;   // idle — nothing lighting
+          }
+          function frame(now){
+            if(!document.body.contains(body) || L.type!=='agent') return;   // card rebuilt/removed → stop loop
+            if(s.preview) state.agent = syntheticAgent(now);
             requestAnimationFrame(frame);
           }
           requestAnimationFrame(frame);

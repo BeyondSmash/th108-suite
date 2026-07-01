@@ -1702,7 +1702,8 @@ const LUI=TH108LayersUI.create({
   connectKeyboard: ()=>{ if(!HID.device) document.getElementById('connect').click(); },   // tab/mic auto-handover: take the keyboard from the daemon (runs the normal Connect flow → /yield handoff) so in-page capture reaches the keys
 
   listAudioApps: ()=>fetch('/audio/apps',{cache:'no-store'}).then(r=>r.json()).then(d=>d.apps||[]),   // "Specific app" picker → daemon's currently-playing apps (app-capture.exe --list)
-  listAudioInputs: ()=>fetch('/audio/inputs',{cache:'no-store'}).then(r=>r.json()).then(d=>d.inputs||[])   // Mic device picker → daemon's recording devices (audio-sidecar.ps1 -ListInputs)
+  listAudioInputs: ()=>fetch('/audio/inputs',{cache:'no-store'}).then(r=>r.json()).then(d=>d.inputs||[]),   // Mic device picker → daemon's recording devices (audio-sidecar.ps1 -ListInputs)
+  listAgentSessions: ()=>fetch('/status',{cache:'no-store'}).then(r=>r.json()).then(d=>d.agentSessions||[])   // Agent session filter → agentSessions from the daemon's /status payload
 });
 LUI.init();   // restore saved layers → ensureSettings backfill → build cards → persist-on-edit listeners on #layersPanel
 
