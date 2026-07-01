@@ -856,6 +856,6 @@ test('renderAgent with subagents lights at least one key orange-ish', () => {
   const L = { type: 'agent', settings: { twinkleColor: '#ff8c00' }, rgb: [] };
   const state = { agent: { busy: true, subagentCount: 2, checkmarkAt: 0, notifyAt: 0, attention: false, bootAt: 0 } };
   E.renderAgent(L, 1000, state);
-  let lit = 0; for (let i = 1; i < L.rgb.length; i += 4) if (L.rgb[i] > 0 || L.rgb[i + 1] > 0 || L.rgb[i + 2] > 0) lit++;
+  let lit = 0; for (let o = 0; o + 2 < L.rgb.length; o += 3) if (L.rgb[o] > 0 || L.rgb[o + 1] > 0 || L.rgb[o + 2] > 0) lit++;
   assert.ok(lit > 0);
 });
