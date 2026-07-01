@@ -11,7 +11,7 @@ A new host-composited lighting layer (`type:'agent'`) that visualizes **Claude C
 - **Subagent twinkles** — each running subagent lights an orange, shimmering key (more agents → more lit keys).
 - **Loading spinner** — while Claude is working on a turn, a dot marches around the numpad perimeter with a fading tail.
 - **Completion checkmark** — when Claude finishes a turn, a green ✓ flashes on the numpad.
-- **Attention exclamation** — when Claude needs you (permission / waiting for input / idle), a "!" flashes on the numpad.
+- **Attention exclamation** — when Claude needs you (permission / waiting for input / idle), a "!" appears on the numpad and breathes (with an optional reminder blink) until you act.
 - **Boot sweep** — when a Claude Code session opens/resumes, a brief "AI online" sweep.
 
 The rendering is cheap (the engine already emits per-key RGB buffers). **The hard part, and the reason this needed design, is the data source** — how the daemon learns agent state. That is solved here with Claude Code hooks.
@@ -74,9 +74,12 @@ Seven hooks total. All run the identical one-liner below.
 ## 5. Components
 
 ### 5.1 `th108-daemon/agent-state.js` (new, pure, unit-tested)
-- Owns the in-memory session map: `sessionId → { busy:bool, subagents:Set|count, checkmarkAt:ms, notifyAt:ms, bootAt:ms, lastSeen:ms }`.
-- `ingest(hookJson, now)` — routes on `hook_event_name`, mutates the map, returns nothing. (`Notification` → `notifyAt=now`; `SessionStart` → `bootAt=now`.)
-- `aggregate(filter, now)` — given `filter` (`"all"` or a `session_id`) returns `{ busy, subagentCount, checkmarkAt, notifyAt, bootAt }` merged across the selected sessions (`busy` = any selected session busy; `subagentCount` = sum; the `*At` timestamps = most recent).
+- Owns the in-memory session map: `sessionId → { busy:bool, subagents:Set|count, checkmarkAt:ms, notifyAt:ms, attention:bool, bootAt:ms, lastSeen:ms }`.
+- `ingest(hookJson, now)` — routes on `hook_event_name`, mutates the map, returns nothing.
+  - `Notification` → `notifyAt=now`, `attention=true` (the "!" latch; `notifyAt` is the phase clock for hold→breathe→reminder).
+  - `SessionStart` → `bootAt=now`.
+  - `UserPromptSubmit` / `Stop` / `SubagentStart` / `SubagentStop` → **clear `attention=false`** (activity resumed → the "!" resolves), in addition to their own effects.
+- `aggregate(filter, now)` — given `filter` (`"all"` or a `session_id`) returns `{ busy, subagentCount, checkmarkAt, notifyAt, attention, bootAt }` merged across the selected sessions (`busy`/`attention` = any selected session true; `subagentCount` = sum; the `*At` timestamps = most recent; `notifyAt` reported only while some selected session's `attention` is still true).
 - `sessions()` — list of `{ id, label, busy, subagentCount, lastSeen }` for the UI picker (`label` = `basename(cwd)` + short id).
 - **TTL sweep:** a session with no events for N minutes (e.g. 10) is dropped; `busy` older than N minutes (missed `Stop`) is force-cleared. Guards against leaks from a killed session.
 - Pure and DOM-free → `node --test`.
@@ -99,17 +102,23 @@ Settings:
 - **Emphasis (while agent anims are active), independent toggles:**
   - **Silhouette full numpad** — carve the whole numpad region out of the layers below (the audio layer's "carve below" Silhouette treatment) so the spinner/checkmark read against black.
   - **Dim layers below** — duck the underlying composite to a configurable ~10% while activity is live (the audio layer's translucency/duck), so the animation stands out.
-- **Preview toggle** — inject a synthetic activity feed (fake busy + a couple of fake subagents + periodic checkmark) so colors/region can be tuned with no live agents. Mirrors the audio layer's synthetic feed. Page-side only.
+- **Exclamation (!) animation:** `holdMs` (solid hold before breathing); `reminderEnabled` (on/off); `reminderAfterMs` (breathe duration before a reminder blink); `reminderBlinks` (2 or 3). Breathe rate can be fixed initially. (These drive the persistent "!" lifecycle in §6.)
+- **Preview toggle** — inject a synthetic activity feed (fake busy + a couple of fake subagents + periodic checkmark + a held "!" so its hold→breathe→reminder phases are tunable) so colors/region/animation can be tuned with no live agents. Mirrors the audio layer's synthetic feed. Page-side only.
 
 ## 6. Visual specifications
 
 - **Subagent twinkles:** N keys of the selected region lit orange, each with a phase-shifted brightness shimmer (twinkle), where N = live subagent count (clamped to the region size). Coexists with the spinner.
 - **Spinner:** a lead dot marching the numpad perimeter through the corners **3 → 1 → 7 → 9 → 3**, looping while busy, with a **fading tail** (trailing keys at decreasing opacity behind the lead). Implementation may interpolate along the edge keys between corners for a smooth march; corner-only is the fallback. Clears immediately on turn end.
 - **Checkmark:** numpad keys **7, 5, 9, −** flash **green** for ~1s on turn end (7→5 short arm to center, 5→9→− long arm up to the top-right = a ✓), after the spinner clears. Optional quick draw-on sweep.
-- **Exclamation:** numpad keys **\*, 9, 6, .** flash (attention color, e.g. amber/red) for ~1–1.5s on `Notification` — the `*→9→6` vertical stem down column 3 plus the `.` dot below the gap = a "!". Signals "Claude needs you."
+- **Exclamation:** numpad keys **\*, 9, 6, .** on `Notification` — the `*→9→6` vertical stem down column 3 plus the `.` dot below the gap = a "!" (attention color, e.g. amber/red). Signals "Claude needs you." **Unlike the ✓ flash, this is a PERSISTENT attention state** with a multi-phase lifecycle:
+  1. **Appear** — snaps on immediately.
+  2. **Hold** — solid for `holdMs` (user-set).
+  3. **Breathe** — pulses/breathes continuously while waiting.
+  4. **Reminder blink** — after `reminderAfterMs` of breathing, a **double or triple blink** (`reminderBlinks`) to re-grab attention, repeating on that interval. **Opt-out** via `reminderEnabled`.
+  5. **Clear** — resolves when the session resumes activity: the next `UserPromptSubmit`, `Stop`, or `SubagentStart/Stop` for that session clears the attention latch (so the "!" isn't a fixed-duration flash — it stays until you act, then goes).
 - **Boot sweep:** a one-shot sweep across the board (~1s) on `SessionStart` — an "AI online" cue. A simple left-to-right wave in the twinkle color; kept low-key so session churn isn't distracting.
 
-**Numpad priority** (spinner, ✓, and ! all live on the numpad): the **spinner** runs while `busy`; the transient flashes (**✓**, **!**) supersede the spinner on the numpad while showing, then the spinner resumes if the turn is still in progress. ✓ and ! don't overlap in practice (different triggers); if both are within their window, **most-recent-wins**. Subagent twinkles and the boot sweep render on their own regions and are unaffected.
+**Numpad priority** (spinner, ✓, and ! all live on the numpad), highest first: **! (persistent attention)** > **✓ (transient flash)** > **spinner**. The spinner runs while `busy`; a live **!** supersedes it (Claude is waiting on you, not working) and holds until the attention latch clears; the **✓** is a ~1s flash on turn end. Because `Stop` both clears `attention` and fires the ✓, a `!`→`Stop` sequence transitions cleanly (! disappears, ✓ flashes, spinner already gone). Subagent twinkles and the boot sweep render on their own regions and are unaffected.
 
 ## 7. Page vs daemon
 
