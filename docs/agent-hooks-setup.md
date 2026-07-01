@@ -4,15 +4,15 @@ These hooks drive the TH108 keyboard's agent-activity lighting layer by posting 
 
 ## What These Hooks Do
 
-When you submit a prompt in Claude Code, the hooks fire automatically:
-- **UserPromptSubmit**: Lights flash when you hit enter
-- **SubagentStart**: Spinner animates while a subagent is running
-- **SubagentStop**: Checkmark lights up when the subagent finishes
-- **Stop**: Lights react when you manually stop a session
-- **Notification**: Lights respond to notifications
-- **SessionStart/SessionEnd**: Lights acknowledge session boundaries
+When you submit a prompt in Claude Code, the hooks fire automatically and drive these visuals on the numpad/letter cluster:
+- **UserPromptSubmit**: marks the session busy — the numpad spinner starts marching
+- **SubagentStart**: adds a twinkle on the letter cluster (one per live subagent)
+- **SubagentStop**: removes a twinkle as each subagent finishes
+- **Stop** (turn end — the agent finished responding): clears busy, flashes the green checkmark on the numpad
+- **Notification**: latches the persistent "!" attention state until the next activity
+- **SessionStart**: runs a boot sweep across the board; **SessionEnd** drops the session back to idle
 
-The daemon merges these signals into a single reactive state on the keyboard—no manual setup needed once installed.
+The daemon merges these signals into a single `state.agent` and the engine's `renderAgent` layer draws them—no manual setup needed once installed.
 
 ## Installation
 
