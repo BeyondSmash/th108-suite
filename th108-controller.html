@@ -688,7 +688,10 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
     <div id="spaceBtns" style="display:flex;flex-wrap:wrap;gap:6px"></div>
   </div>
 
-  <div class="card s4" id="advKeysCard" data-pages="hotkeys">
+  <!-- HIDDEN 2026-06-30 (data-pages="" → never shown, JS bindings stay intact): advanced-key TYPES (CB/MT/TGL/SOCD)
+       aren't executed by this board's firmware — see the "Where are Advanced Keys?" FAQ. Flip back to data-pages="hotkeys"
+       if a firmware update ever adds support (the encoding is already correct + verified against the official tool). -->
+  <div class="card s4" id="advKeysCard" data-pages="">
     <div class="cardbar"><span class="grip">⠿</span><h2>Advanced Keys</h2></div>
     <p class="hint" style="margin:4px 0 10px">Give one key a smarter behavior. Like everything on this tab it lives
        in the keyboard's keymap — works in every app, no software needed. Pick a key on the board, choose a behavior,
@@ -762,6 +765,20 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
        does nothing in Windows and has no indicator light. Then bind the host action by pressing that key (it'll show
        up as <code>Pause</code>, which is correct — that's what the key now sends). Avoid <b>Scroll Lock</b> and the
        other lock keys: the firmware forces their indicator LED on (white), which you can't paint over.</p>
+  </div>
+  <div class="card s2 faqcard" id="faqAdv" data-pages="faq">
+    <div class="cardbar"><span class="grip">⠿</span></div>
+    <h3>Where are Advanced Keys (SOCD / Mod-Tap / Toggle / Combination)?</h3>
+    <p>They're <b>hidden</b> because this keyboard's <b>firmware doesn't run them</b> — not a software issue on our end.
+       Advanced keys are stored in the keyboard's keymap, and we write them correctly: the official Epomaker tool even
+       reads our bindings back and displays them identically, which confirms the encoding is exactly right. But the
+       firmware never <i>executes</i> those entry types, so the key just goes dead.</p>
+    <p>We verified this against the official driver byte-for-byte (2026-06-30): its setup sends no special "enable"
+       command, its writes are identical to ours, and its <b>own</b> advanced keys don't work on this board either — a
+       Combination set in the official tool doesn't fire in its "Test Your Bindings." So it's a firmware limitation
+       shared by both tools. Normal key remaps and the light-function binds on the Hotkeys tab work fine — only these
+       four advanced <i>types</i> are affected. If a firmware update ever adds support, the feature can be switched back
+       on and the existing encoding will just work.</p>
   </div>
   <div class="card s2 faqcard" id="faq3" data-pages="faq">
     <div class="cardbar"><span class="grip">⠿</span></div>
