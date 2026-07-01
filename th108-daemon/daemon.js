@@ -15,6 +15,8 @@ const OBP = require('../th108-onboard.js');   // packAllled() — build the cmd-
 const T = require('./hid-transport.js');
 const U = require('./usb-reset.js');
 const { KEYMAP, INDICES, UIOHOOK_TO_CODE } = require('./th108-map.js');
+const { createAgentState } = require('./agent-state.js');
+const agentState = createAgentState();
 
 const CONFIG_PATH = path.join(__dirname, 'config.json');
 const FPS = 30;
@@ -435,6 +437,8 @@ async function runTick() {
       // and ran the fast decay for the first 250ms; feeding {live:0} lets pause-decay settle them to 0 evenly.
       if (aL) E.applyAudioFeatures(state, raw || { level: 0, live: 0 }, aL.settings, now);
     }
+    const agL = state.layers.find(L => L.enabled && L.type === 'agent');
+    E.applyAgentFeed(state, agL ? agentState.aggregate(agL.settings && agL.settings.session || 'all', Date.now()) : null);
     const flat = E.composeFrame(state, now);
     // throttled-skip feedback: blink the SPACEBAR red TWICE when a media command lands inside the
     // safety window (it's queued until the buffer clears). Overlaid on the live frame — flatEq below
@@ -819,7 +823,8 @@ const control = {
                       npBar: settings.npBar, npBarColor: settings.npBarColor, npBarBright: settings.npBarBright,
                       npFlash: settings.npFlash, npFlashColor: settings.npFlashColor, npBarIdleSec: settings.npBarIdleSec,
                       npBarGrad: settings.npBarGrad, npBarGradFit: settings.npBarGradFit, npBarKeys: settings.npBarKeys,
-                      npOnboardMask: settings.npOnboardMask }; },
+                      npOnboardMask: settings.npOnboardMask,
+                      agentSessions: agentState.sessions(Date.now()) }; },
   setNowPlaying(on) {
     const was = settings.nowPlaying;
     settings.nowPlaying = !!on; saveSettings();
@@ -912,6 +917,8 @@ const control = {
     U.fire(log);
     return { fired: true };
   },
+  agentEvent: (ev) => agentState.ingest(ev, Date.now()),
+  agentSessions: () => agentState.sessions(Date.now()),
   getAutostart, setAutostart,
   // HID/now-playing diagnostics for /metrics — pairs with the server's per-endpoint rates
   metrics() {
