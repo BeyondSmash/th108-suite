@@ -23,5 +23,9 @@ If action = "restart" Then
   If ok Then WScript.Quit
 End If
 
-' start (default): bring up the tray, which starts + supervises the daemon (idempotent if already up).
+' start (default): drop a _startreq.txt signal that an already-running tray watches (it will run its own
+' Start-Daemon, which self-heals a hung/down daemon), AND launch the tray in case none is running. The
+' signal is what makes Start work when a tray is already alive — a second tray exits on the singleton
+' mutex before it could start anything, so spawning start-tray.vbs alone is a silent no-op in that case.
+fso.CreateTextFile(here & "\_startreq.txt", True).Close()
 sh.Run "wscript.exe """ & here & "\start-tray.vbs""", 0, False

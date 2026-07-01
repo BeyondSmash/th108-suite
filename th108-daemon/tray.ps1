@@ -157,9 +157,17 @@ $timer.Start()
 # _pickreq.txt; we show the OpenFileDialog here and write the chosen path (empty = cancel) to _pickresult.txt.
 $script:pickReq = Join-Path $here '_pickreq.txt'
 $script:pickRes = Join-Path $here '_pickresult.txt'
+# The controller page's Start (th108://start) drops _startreq.txt. A second tray can't start the daemon
+# (it exits on the singleton mutex), so THIS live tray watches for the signal and runs Start-Daemon itself -
+# that's what makes Start-from-the-site work when a tray is already running (self-heals a hung/down daemon).
+$script:startReq = Join-Path $here '_startreq.txt'
 $pickTimer = New-Object System.Windows.Forms.Timer
 $pickTimer.Interval = 250
 $pickTimer.Add_Tick({
+  if (Test-Path $script:startReq) {
+    Remove-Item $script:startReq -Force -ErrorAction SilentlyContinue
+    Start-Daemon
+  }
   if (-not (Test-Path $script:pickReq)) { return }
   Remove-Item $script:pickReq -Force -ErrorAction SilentlyContinue
   $path = ''
