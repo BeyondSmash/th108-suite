@@ -999,6 +999,84 @@
     }
   }
 
+  // ---- agent-activity layer (Claude Code hooks → state.agent) ----
+  const AGENT_SPIN = ['Numpad3','Numpad1','Numpad7','Numpad9'];
+  const AGENT_CHECK = ['Numpad7','Numpad5','Numpad9','NumpadSubtract'];
+  const AGENT_BANG = ['NumpadMultiply','Numpad9','Numpad6','NumpadDecimal'];
+  const AGENT_LETTERS = ['KeyA','KeyB','KeyC','KeyD','KeyE','KeyF','KeyG','KeyH','KeyI','KeyJ','KeyK','KeyL','KeyM','KeyN','KeyO','KeyP','KeyQ','KeyR','KeyS','KeyT','KeyU','KeyV','KeyW','KeyX','KeyY','KeyZ'];
+  const codeIdx = (code) => { const led = KEYMAP[code]; return led === undefined ? -1 : INDICES.indexOf(led); };   // → slot in the flat rgb buffer (3 bytes per key)
+  const AGENT_SPIN_K = AGENT_SPIN.map(codeIdx).filter(k => k >= 0);
+  const AGENT_CHECK_K = AGENT_CHECK.map(codeIdx).filter(k => k >= 0);
+  const AGENT_BANG_K = AGENT_BANG.map(codeIdx).filter(k => k >= 0);
+  const AGENT_LETTER_K = AGENT_LETTERS.map(codeIdx).filter(k => k >= 0);
+
+  function applyAgentFeed(state, feed) { state.agent = feed || null; }
+
+  // "!" lifecycle: solid for holdMs, then breathe (sin), with a reminder double/triple-blink every
+  // reminderAfterMs. Returns {level:0..1, blink:bool}. Pure — driven by (now - notifyAt).
+  function agentPhase(notifyAt, now, s) {
+    const t = now - (notifyAt || 0);
+    const hold = s.holdMs == null ? 1000 : s.holdMs;
+    const breatheMs = s.breatheMs || 1600;
+    if (t < hold) return { level: 1, blink: false };
+    const level = 0.35 + 0.65 * (0.5 + 0.5 * Math.sin((t - hold) / breatheMs * Math.PI * 2));
+    let blink = false;
+    if (s.reminderEnabled) {
+      const after = s.reminderAfterMs || 8000;
+      const cyc = t % after;
+      const blinks = s.reminderBlinks || 2;
+      const blinkSpan = blinks * 240;            // 120ms on / 120ms off per blink, at the end of each cycle
+      if (cyc > after - blinkSpan) blink = (Math.floor((cyc - (after - blinkSpan)) / 120) % 2) === 0;
+    }
+    return { level, blink };
+  }
+
+  function renderAgent(L, now, state) {
+    if (!L.rgb || !L.rgb.length) L.rgb = new Uint8Array(NLED * 3);   // init buffer when test passes rgb:[]
+    const out = L.rgb, s = L.settings || {}, A = state.agent;
+    for (let i = 0; i < out.length; i++) out[i] = 0;   // start transparent
+    L._alpha = null; L._carve = null;
+    if (!A) return;
+    // put(k, r, g, b): write to the NLED*3 flat buffer (k = slot index, 3 bytes per key)
+    const put = (k, r, g, b) => { if (k < 0) return; const o = k * 3; out[o] = r | 0; out[o + 1] = g | 0; out[o + 2] = b | 0; };
+    // subagent twinkles
+    if (A.subagentCount > 0) {
+      const [tr, tg, tb] = hexToRgb(s.twinkleColor || '#ff8c00');
+      const region = (Array.isArray(s.twinkleKeys) && s.twinkleKeys.length) ? s.twinkleKeys.map(led => INDICES.indexOf(led)).filter(k => k >= 0) : AGENT_LETTER_K;
+      const n = Math.min(A.subagentCount, region.length);
+      for (let i = 0; i < n; i++) { const tw = 0.55 + 0.45 * (0.5 + 0.5 * Math.sin(now / 300 + i * 1.7)); put(region[i], tr * tw, tg * tw, tb * tw); }
+    }
+    // numpad: ! (attention) > ✓ (flash) > spinner
+    if (A.attention) {
+      const [br, bg, bb] = hexToRgb(s.bangColor || '#ff3b30');
+      const ph = agentPhase(A.notifyAt, now, s);
+      const f = ph.blink ? 1 : ph.level;
+      for (const k of AGENT_BANG_K) put(k, br * f, bg * f, bb * f);
+    } else if (A.checkmarkAt && now - A.checkmarkAt < (s.checkMs || 1000)) {
+      const [cr, cg, cb] = hexToRgb(s.checkColor || '#22cc44');
+      for (const k of AGENT_CHECK_K) put(k, cr, cg, cb);
+    } else if (A.busy && AGENT_SPIN_K.length) {
+      const [pr, pg, pb] = hexToRgb(s.spinColor || '#ffffff');
+      const speed = s.spinMs || 600, tail = s.spinTail || 2;
+      const lead = Math.floor(now / speed) % AGENT_SPIN_K.length;
+      for (let t = 0; t <= tail; t++) { const k = AGENT_SPIN_K[(lead - t + AGENT_SPIN_K.length) % AGENT_SPIN_K.length]; const f = 1 - t / (tail + 1); put(k, pr * f, pg * f, pb * f); }
+    }
+    // boot sweep (own region, coexists)
+    if (A.bootAt && now - A.bootAt < (s.bootMs || 1000)) {
+      const [sr, sg, sb] = hexToRgb(s.twinkleColor || '#ff8c00');
+      const p = (now - A.bootAt) / (s.bootMs || 1000);
+      for (let k = 0; k < INDICES.length; k++) { const kp = k / INDICES.length; const d = 1 - Math.min(1, Math.abs(kp - p) * 6); if (d > 0) { const o = k * 3; out[o] = Math.max(out[o], sr * d); out[o + 1] = Math.max(out[o + 1], sg * d); out[o + 2] = Math.max(out[o + 2], sb * d); } }
+    }
+    // emphasis: silhouette numpad / dim below → per-key alpha mask for the compositor
+    const anyActive = A.busy || A.attention || A.subagentCount > 0 || (A.checkmarkAt && now - A.checkmarkAt < 1200) || (A.bootAt && now - A.bootAt < 1200);
+    if (anyActive && (s.silhouetteNumpad || s.dimBelow)) {
+      const ab = L._alpha = (L._alphaBuf || (L._alphaBuf = new Float32Array(NLED))); ab.fill(s.dimBelow ? (1 - (s.dimBelowAmt == null ? 0.9 : s.dimBelowAmt)) : 1);
+      // NOTE: _alpha controls THIS layer's per-key opacity in composite(); to dim layers BELOW use _carve.
+      // When dimBelow=true the intent is to dim the layers underneath — verify visually in Task 5 whether
+      // _alpha achieves the desired effect or whether _carve is needed instead.
+    }
+  }
+
   function renderLayer(L,now,state){
     const tnow=layerNow(L,now);   // speed-scaled, static-freezable clock for time-based renderers
     if(L.type==='background') renderBackground(L,tnow);
@@ -1007,6 +1085,7 @@
     else if(L.type==='pattern') renderPattern(L,tnow);
     else if(L.type==='individual') renderKeys(L);
     else if(L.type==='audio') renderAudio(L,now,state);
+    else if(L.type==='agent') renderAgent(L,now,state);
     else renderMedia(L,tnow);   // media plays on the speed/freeze-aware per-layer clock
     applyAdjust(L);   // common color post-process (saturation→contrast→gamma→brightness)
   }
@@ -1098,6 +1177,10 @@
       if(s.zoom==null) s.zoom=100; if(s.panX==null) s.panX=0; if(s.panY==null) s.panY=0; if(s.rot==null) s.rot=0;   // framing: how the source maps onto the keys (re-sampled by the page from the IDB-stored source)
       if(s.map===undefined) s.map='physical'; if(s.sampleMode===undefined) s.sampleMode='average'; if(s.bars===undefined) s.bars='black'; if(s.barColor===undefined) s.barColor='#000000';   // sampling: per-key mapping/strategy + out-of-bounds fill
       if(s.sat==null) s.sat=170; if(s.gam==null) s.gam=180; }   // color via the shared sat/con/gam/bri Adjust; default to the GIF-tool's Vivid look (raw sRGB reads dull on LEDs) — adjustable in the Adjust block. hideStatic = make unchanging keys transparent
+    else if(L.type==='agent'){ const ag={ twinkleColor:'#ff8c00', spinColor:'#ffffff', checkColor:'#22cc44', bangColor:'#ff3b30',
+        session:'all', twinkleKeys:null, holdMs:1000, breatheMs:1600, reminderEnabled:true, reminderAfterMs:8000,
+        reminderBlinks:2, silhouetteNumpad:false, dimBelow:false, dimBelowAmt:0.9 };
+      Object.keys(ag).forEach(k=>{ if(s[k]===undefined)s[k]=ag[k]; }); }
     else if(L.type==='audio'){
       const ad={ style:'bars', source:'system', appId:'', deviceId:'', pauseStyle:'linear',
         gain:1, floor:5, attackMs:40, decayMs:220, beatSens:50, micGain:100, micGate:0,
@@ -1206,6 +1289,7 @@
     keyCell, layerCell,
     PAT_DEFAULTS, patParams, ensureSettings, defaultLayers, createState, applyConfig,
     renderBackground, renderReactive, renderGradient, renderPattern, renderMedia, adjustRgb, computeCrop, renderKeys, renderAudio,
+    applyAgentFeed, renderAgent, agentPhase,
     reactEnvelope, applyAdjust, layerNow, renderLayer, composite, flatEq,
     composeFrame, stampKey, releaseKey, SEND_FPS_CAP,
   };

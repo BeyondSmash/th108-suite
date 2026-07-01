@@ -828,3 +828,34 @@ test('media layer: hide-static drives the per-key alpha mask (animated=1, unchan
   assert.equal(base._alpha[0], 1);    // animated → visible
   assert.equal(base._alpha[1], 0);    // static → transparent (passes layers below through)
 });
+
+// ===== Task 2: agent layer — agentPhase + renderAgent =====
+
+test('agentPhase: hold is solid, then breathes, then blinks on reminder', () => {
+  const s = { holdMs: 1000, breatheMs: 2000, reminderEnabled: true, reminderAfterMs: 4000, reminderBlinks: 2 };
+  assert.equal(E.agentPhase(0, 500, s).level, 1);              // inside hold → solid
+  const mid = E.agentPhase(0, 2000, s);                        // breathing
+  assert.ok(mid.level >= 0 && mid.level <= 1);
+  const rem = E.agentPhase(0, 5000, s);                        // past reminderAfterMs → blink window
+  assert.equal(typeof rem.blink, 'boolean');
+});
+
+test('agentPhase: reminder disabled never blinks', () => {
+  const s = { holdMs: 1000, breatheMs: 2000, reminderEnabled: false, reminderAfterMs: 4000, reminderBlinks: 2 };
+  assert.equal(E.agentPhase(0, 9000, s).blink, false);
+});
+
+test('renderAgent idle → all keys dark', () => {
+  const L = { type: 'agent', settings: {}, rgb: [] };
+  const state = { agent: null };
+  E.renderAgent(L, 1000, state);
+  assert.ok(L.rgb.every(v => v === 0));
+});
+
+test('renderAgent with subagents lights at least one key orange-ish', () => {
+  const L = { type: 'agent', settings: { twinkleColor: '#ff8c00' }, rgb: [] };
+  const state = { agent: { busy: true, subagentCount: 2, checkmarkAt: 0, notifyAt: 0, attention: false, bootAt: 0 } };
+  E.renderAgent(L, 1000, state);
+  let lit = 0; for (let i = 1; i < L.rgb.length; i += 4) if (L.rgb[i] > 0 || L.rgb[i + 1] > 0 || L.rgb[i + 2] > 0) lit++;
+  assert.ok(lit > 0);
+});
