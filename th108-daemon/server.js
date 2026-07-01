@@ -231,7 +231,9 @@ function createServer({ control, root, port = 8123, watchdogMs = 12000 }) {
   });
 
   srv.on('error', (e) => {
-    if (e.code === 'EADDRINUSE') { console.error(`✗ port ${port} in use (stale _serve.js or another daemon?). Stop it and retry.`); process.exit(1); }
+    // console.LOG (not error) so daemon.js tees it into daemon.log — otherwise this failure is invisible in the
+    // hidden window and the log falsely reads "daemon running" (the ▶ line prints before this async bind result).
+    if (e.code === 'EADDRINUSE') { console.log(`✗ port ${port} already in use — the daemon can't bind and is exiting (a stale _serve.js, a foreign app on ${port}, or a hung daemon the tray's Restart clears).`); process.exit(1); }
   });
 
   const server = { port, close: () => { clearInterval(wd); try { srv.closeAllConnections && srv.closeAllConnections(); } catch {} srv.close(); } };   // closeAllConnections drops the page's keep-alive poll so the listener frees the port immediately (a lingering connection could otherwise hold it)

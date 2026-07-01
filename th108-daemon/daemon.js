@@ -933,7 +933,9 @@ module.exports = { control };
 // ----- server (static page + control API) -----
 const { createServer } = require('./server.js');
 const server = createServer({ control, root: path.join(__dirname, '..'), port: 8123 });
-server.listening.then(() => console.log(`✓ serving controller + control API on http://localhost:${server.port}`));
+// Announce "running" ONLY after the port actually binds — the old unconditional line below printed even when
+// listen() failed with EADDRINUSE (the error is async), so daemon.log lied "running" on every doomed spawn.
+server.listening.then(() => console.log(`▶ TH108 daemon running — serving controller + control API on http://localhost:${server.port} (config: ${loadConfig() ? 'loaded' : 'none yet'})`));
 
 // ----- clean shutdown: black-out the board, release hook -----
 let stopping = false;
@@ -973,5 +975,5 @@ process.on('SIGINT', shutdown);
 process.on('SIGTERM', shutdown);
 
 registerUrlScheme();   // make th108://start | th108://restart links work from the controller page
-console.log('▶ TH108 daemon running (config:', loadConfig() ? 'loaded' : 'none yet', ')');
+// (the honest "▶ running" line now fires from server.listening.then above — only on a successful bind)
 setTimeout(() => { try { if (Array.isArray(hostActions) && hostActions.some(b => b && b.action && ['focusApp', 'winMin', 'winMax', 'winRestore'].includes(b.action.type))) ensureFocusHost(); } catch {} }, 1500);   // pre-warm the focus host so the FIRST window/switch action is fast too

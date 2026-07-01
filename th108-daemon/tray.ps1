@@ -47,9 +47,27 @@ function Clear-HungDaemon {
     Start-Sleep -Milliseconds 800
   }
 }
+# A FOREIGN process (not our daemon.js) holding 8123 makes every Start silently fail with EADDRINUSE - the user
+# clicks Start and nothing happens, with no clue why. We do NOT auto-kill it (killing a random port owner on the
+# user's machine is the wrong default) - we NAME it so they can close it themselves. Returns the offending process
+# or $null. Clear-HungDaemon has already reaped a hung daemon by the time this runs, so anything left is foreign.
+function Get-PortSquatter {
+  $owner = (Get-NetTCPConnection -LocalPort 8123 -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1).OwningProcess
+  if (-not $owner) { return $null }
+  $p = Get-CimInstance Win32_Process -Filter ('ProcessId=' + $owner) -ErrorAction SilentlyContinue
+  if (-not $p) { return $null }
+  if ($p.Name -eq 'node.exe' -and $p.CommandLine -match 'daemon\.js') { return $null }   # that's our daemon, not a squatter
+  return $p
+}
 function Start-Daemon {
   if (Get-DaemonStatus) { return }   # already healthy - leave it alone
   Clear-HungDaemon                    # status silent: kill a hung daemon that is squatting the port
+  $sq = Get-PortSquatter              # foreign holder left? Start would EADDRINUSE-die silently - tell the user instead
+  if ($sq) {
+    $icon.Icon = $iconDown
+    $icon.ShowBalloonTip(7000, 'TH108 Lighting', ('Port 8123 is held by ' + $sq.Name + ' (PID ' + $sq.ProcessId + '), not the daemon. Close that program, then right-click > Start Daemon again.'), [System.Windows.Forms.ToolTipIcon]::Warning)
+    return
+  }
   Start-Process wscript.exe -ArgumentList ('"' + (Join-Path $here 'start-hidden.vbs') + '"')
 }
 
