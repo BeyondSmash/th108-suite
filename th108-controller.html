@@ -1442,13 +1442,16 @@ function releaseHeldKeys(){ const d=state.react.down; for(let i=0;i<d.length;i++
 function onAwayChange(){
   clearTimeout(_awayTimer);
   if(pageActive()){
-    if(_awayHandoff) reclaimBoardFromDaemon();                       // we handed off on blur → reclaim now
-    else if(localStorage.getItem('th108.autoConnectFocus')==='1' && !running && !_handoffBusy){
-      // opt-in: focus takes the keyboard back. Still hold a handle → just drive it; handle was closed on a
-      // prior lease-loss → re-grab SILENTLY via getDevices (permission persists, no user gesture needed) and
-      // claim the lease (newest-wins). autoReconnect() does exactly that and doesn't defer to the daemon.
-      if(HID.device){ const dt=document.getElementById('driveToggle'); if(dt && !dt.disabled) try{ dt.click(); }catch(_){} }
-      else { try{ HID.autoReconnect(); }catch(_){} }
+    var wantAuto = localStorage.getItem('th108.autoConnectFocus')==='1';
+    if(HID.device){
+      if(_awayHandoff) reclaimBoardFromDaemon();                     // still hold the handle → normal reclaim of the open handle
+      else if(wantAuto && !running && !_handoffBusy){ const dt=document.getElementById('driveToggle'); if(dt && !dt.disabled) try{ dt.click(); }catch(_){} }   // idle handle → drive
+    } else if(wantAuto && !running && !_handoffBusy){
+      // handle was closed on a prior lease-loss → reclaimBoardFromDaemon() can't help (no handle) and would just
+      // eat the _awayHandoff flag, forcing a SECOND focus. Re-grab on THIS focus: getDevices (permission persists,
+      // no user gesture) + claim (newest-wins). autoReconnect() does exactly that and doesn't defer to the daemon.
+      _awayHandoff=false;
+      try{ HID.autoReconnect(); }catch(_){}
     }
   }
   else { releaseHeldKeys(); _awayTimer=setTimeout(handBoardToDaemon, AWAY_DELAY); }   // blur/hide → release held keys NOW (no missed-keyup stick), then hand off (debounced)
