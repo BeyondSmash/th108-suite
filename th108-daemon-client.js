@@ -42,7 +42,7 @@ window.TH108DaemonClient = (function () {
     };
     if (hbW) hbW.onmessage = beat;
 
-    let _leaseCb = null;   // fires once this page held the lease and then lost it — see noteLease()
+    const _leaseCbs = [];   // subscribers fired once this page held the lease and then lost it (banner + handle-close) — see noteLease()
     // Track leaseOwner off any /status read (the ping() one-off and the 2.5s mountPanel poll both call
     // this) and fire the registered onLeaseLost callback the instant ownership moves away from us —
     // this is what lets the page close its WebHID handle before the new owner opens (no two-writer mute).
@@ -50,7 +50,7 @@ window.TH108DaemonClient = (function () {
       if (s && s.leaseOwner !== undefined) {
         const wasMine = D._owned;
         D._owned = (s.leaseOwner === clientId);
-        if (wasMine && !D._owned && _leaseCb) _leaseCb();
+        if (wasMine && !D._owned) _leaseCbs.forEach(cb => { try { cb(); } catch (_) {} });
       }
     }
     async function ping() {
@@ -410,7 +410,7 @@ window.TH108DaemonClient = (function () {
     const api = {
       ping, claim, yieldDevice: claim, heartbeatStart, heartbeatStop, pushConfig, release, resume: release, mountPanel, usbFix,
       clientId,
-      onLeaseLost(cb) { _leaseCb = cb; },   // cb fires once when this page held the lease and then lost it — Task 5's banner + th108-hid.js's close-on-loss both hang off this
+      onLeaseLost(cb) { if (typeof cb === 'function') _leaseCbs.push(cb); },   // MULTIPLE subscribers: Task 5's banner + th108-hid.js's close-on-loss both fire on lease loss
       reclaim: claim,                       // "Take control back" is just another claim()
       get present() { return D.present; },
       get deviceConnected() { return D.deviceConnected; },
