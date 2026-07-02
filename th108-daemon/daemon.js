@@ -59,6 +59,13 @@ function loadConfig() {
 }
 
 let state = null, device = null, send = null, paused = false, timer = null;
+const { createLease } = require('./device-lease.js');
+const lease = createLease();
+// paused is now DERIVED from the lease so every existing `if (paused)` gate keeps working.
+function syncPaused() {
+  const held = lease.owner() !== 'daemon';
+  if (held !== paused) { paused = held; syncAudioCapture(); }   // capture follows ownership, exactly as yield/resume did
+}
 let lcdBusy = false;     // a now-playing flash upload is running — the 0x32 stream must stay quiet
 let npBlinkAt = 0;       // timestamp of a throttled-skip → blink the spacebar red twice
 let npFlashAt = 0;       // timestamp of a track change → flash the number row (keys 1-0) for 150ms
@@ -89,8 +96,6 @@ function paintBar(flat, keys, lit, op, base, f, grad, fit) {
   }
 }
 let unpausedAt = 0;      // when the daemon last took ownership — flash uploads need STABLE ownership
-let resumeTimer = null;  // pending debounced take-over (see control.resume)
-const HANDOFF_SETTLE_MS = 800;   // wait for a handoff burst (restart+refresh, alt-tab) to settle before the daemon re-opens the device — rapid owner-swaps stream 0x32 from alternating owners into the board's chunk parser and wedge it ("never ACKed since open"). 800ms > a refresh's internal burst, short enough to be invisible (board holds its last frame meanwhile, not black).
 let framesSent = 0, framesDeduped = 0;   // HID 0x32 stream stats for /metrics (sent vs deduped — shows how much the dedupe is saving)
 
 // ----- daemon settings (separate from config.json, which is the page's layer array verbatim) -----
@@ -412,6 +417,32 @@ async function tick() {
   try { await runTick(); } finally { tickBusy = false; }
 }
 async function runTick() {
+  // Drive the lease's clock + derive `paused` FIRST — this must run even while paused (owner != 'daemon')
+  // so the fallback ladder (probe → USB re-enumerate) and the settle-debounced reclaim keep progressing;
+  // the `if (paused...) return` below only gates the daemon's OWN rendering/open path.
+  syncPaused();
+  const act = lease.tick(Date.now());
+  if (act && act.action === 'reclaim') {
+    rebuildState(); unpausedAt = Date.now();   // mirrors the old resume(): reload the page's saved config + reset the flash-upload stability window
+  } else if (act && act.action === 'probe') {
+    // revoked page never released — probe on a throwaway handle; quiet ⇒ grant, else escalate to re-enumerate.
+    // NOTE: 'reenumerate' is decided HERE, inside probeResult()'s return — lease.tick() itself never emits
+    // it (only 'reclaim'/'probe'/null), so the escalation must be handled off this call, not a later tick().
+    const p = T.findPath();
+    if (p) {
+      let d = null;
+      try {
+        d = T.openDevice(p);
+        const traffic = await T.probeTraffic(d, 1500);
+        try { d.close(); } catch {}
+        const pr = lease.probeResult(traffic === 0, Date.now());
+        if (pr && pr.action === 'reenumerate') {
+          U.fire(log);   // same PnP-restart task the page's /usbfix triggers (control.usbFix) — drops all handles OS-side
+          setTimeout(() => { lease.forceGrant(Date.now()); syncPaused(); }, 2500);   // grant after re-enumeration settles
+        }
+      } catch { try { if (d) d.close(); } catch {} }
+    }
+  }
   if (paused || lcdBusy) return;   // lcdBusy: a flash upload owns the board — no lighting writes
   // Sleep-gap re-baseline: after a suspend, the pre-sleep muteAt is hours stale — without this the USB
   // restart would insta-fire on the first failed send at wake, even though wake mutes recover on their own.
@@ -695,13 +726,34 @@ syncDisplayWatch();
 
 // ----- control hooks for the server -----
 const control = {
+  // A controller (page clientId) asks for the device. Blocks until it may open — through the full handoff:
+  // revoke a live page → await its /release → or run the fallback ladder (probe → USB re-enumerate). Newest-wins.
+  async claim(ev) {
+    const id = ev && ev.clientId; if (!id) return { granted: false, epoch: lease.epoch() };
+    const r = lease.claim(id, Date.now());
+    if (r.granted) { closeDevice(); syncPaused(); return { granted: true, epoch: lease.epoch() }; }  // we held it (or idle) → drop our handle, page opens
+    // a live page holds it: the revoked page sees leaseOwner change on its poll and POSTs /release; the
+    // lease grants on that release, or tick() escalates (probe → re-enumerate). Wait up to 6s for a grant.
+    const t0 = Date.now();
+    while (lease.owner() !== id && Date.now() - t0 < 6000) await new Promise(r => setTimeout(r, 40));
+    syncPaused();
+    return { granted: lease.owner() === id, epoch: lease.epoch() };
+  },
+  // A page confirms it closed its WebHID handle (or is handing back on unload). Grants a pending claimer,
+  // or schedules the debounced daemon reclaim (tick() fires it).
+  release(ev) { lease.release(ev && ev.clientId, Date.now()); syncPaused(); },
+  // Records the calling page's liveness in the lease (missed heartbeats → tick() reclaims for the daemon).
+  // MUST stay synchronous — the server's /heartbeat route calls it without awaiting.
+  heartbeat(ev) { if (ev && ev.clientId) lease.heartbeat(ev.clientId, Date.now()); return { npWants: this.npWants() }; },
+  // LEGACY: pages predating the lease call /yield//resume with no clientId. Map them to a fixed legacy owner
+  // so an un-upgraded page still takes/releases the device through the same single-owner lease.
+  //
   // Release the device for the WebHID page. MUST NOT complete while a flash upload is mid-flight:
   // the page opens the device the moment /yield responds, and streaming 0x32 into a board that is
   // mid-flash-write wedged it hard and cost typing (2026-06-12 incident, "chunk N: no ACK" right
   // after a /yield line). Block the response until the upload finishes (≤ erase window) or 25s.
   async yield() {
-    if (resumeTimer) { clearTimeout(resumeTimer); resumeTimer = null; }   // a pending take-over is cancelled by a yield — the page wants the device again. This is half of the handoff-burst coalesce: resume→yield nets to nothing here, so a restart/refresh storm never opens-then-closes.
-    paused = true; syncAudioCapture();   // stop capturing while the page drives (audioWanted()==false when paused)
+    lease.claim('legacy-page', Date.now()); syncPaused();
     // stops NEW frames; the in-flight one must COMPLETE before we close —
     // closing mid-frame leaves the board's chunk parser waiting for bytes that never come, and
     // the page's first writes then land desynced → no ACKs → onboard fallback (the recurring
@@ -714,17 +766,9 @@ const control = {
     while (lcdBusy && Date.now() - t0 < 25000) await new Promise(r => setTimeout(r, 100));
     if (lcdBusy) console.log(ts() + ' ⚠ yield proceeded with a flash upload still busy after 25s — investigate');
   },
-  // Reload config (the page may have saved edits) and resume rendering — but DEBOUNCED: don't grab the
-  // device until the handoff has been quiet for HANDOFF_SETTLE_MS. A burst of /resume/yield (restart+
-  // refresh, alt-tabbing) thus resolves to ONE clean open instead of a thrash that wedges the board. A
-  // /yield arriving first cancels the pending take-over (see yield()). Idempotent: repeated resumes in a
-  // burst just reset the timer.
-  resume() {
-    if (resumeTimer) clearTimeout(resumeTimer);
-    resumeTimer = setTimeout(() => {
-      resumeTimer = null; rebuildState(); paused = false; unpausedAt = Date.now(); syncAudioCapture();
-    }, HANDOFF_SETTLE_MS);
-  },
+  // Reload config (the page may have saved edits) and resume rendering. Reclaim timing is now owned by the
+  // lease's SETTLE debounce + tick() (see syncPaused/runTick) instead of the old resumeTimer.
+  resume() { lease.release('legacy-page', Date.now()); syncPaused(); },
   // Persist the page's config; refresh live state immediately unless yielded to the page.
   saveConfig(cfg) { fs.writeFileSync(CONFIG_PATH, JSON.stringify(cfg));
     if (!paused) { state = E.applyConfig(state, cfg);   // in-place on a settings edit → no animation reset; rebuilds only on a structural change
@@ -812,7 +856,7 @@ const control = {
   audioFrame() { return acHandle ? AC.freshOr(acHandle.latest(), Date.now(), 300) : null; },
   // Current media position so the open page can draw the song-progress bar itself while it drives the device.
   npPos() { return npHandle ? npHandle.mediaState() : null; },
-  status() { return { running: true, paused, deviceConnected: !!device, fps: FPS, setupPath: path.resolve(__dirname, '..', 'setup.cmd'), usbReset: settings.usbReset, dimOnDisplayOff: settings.dimOnDisplayOff, nowPlaying: settings.nowPlaying,
+  status() { return { running: true, paused, leaseOwner: lease.owner(), leaseEpoch: lease.epoch(), deviceConnected: !!device, fps: FPS, setupPath: path.resolve(__dirname, '..', 'setup.cmd'), usbReset: settings.usbReset, dimOnDisplayOff: settings.dimOnDisplayOff, nowPlaying: settings.nowPlaying,
                       npTrack: npHandle ? npHandle.current() : null, npQueued: npHandle ? npHandle.queued() : false,
                       npHealth: npHandle ? npHandle.health() : null,
                       npLog: npHandle ? npHandle.recent() : [],
