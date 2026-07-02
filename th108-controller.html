@@ -591,8 +591,10 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
     <div class="row">
       <button id="connect" class="primary" title="hands the keyboard from the daemon to this page and starts your layers automatically">Connect Keyboard</button>
       <button id="driveToggle" class="go" disabled title="switch who drives the keyboard LEDs — this tab (WebHID) or the background daemon">Drive from this Tab ▶</button>
-      <label style="display:inline-flex;align-items:center;gap:6px;margin-left:10px;font-size:12px;color:#9aa0aa;cursor:pointer;white-space:nowrap" title="When this tab gains focus, automatically take the keyboard from the daemon (reuses the lease for a clean handoff). Takes over once you've connected at least once — a cold first connect still needs one click (browser WebHID rule)."><input type="checkbox" id="autoConnectFocus"> Auto-connect on focus</label>
-      <label style="display:inline-flex;align-items:center;gap:6px;margin-left:4px;font-size:12px;color:#9aa0aa;cursor:pointer;white-space:nowrap" title="Don't show the “Another controller took over the keyboard” banner when this tab loses the lease"><input type="checkbox" id="hideYieldBanner"> Hide yield banner</label>
+      <div style="display:flex;flex-direction:column;gap:5px;margin-left:10px">
+        <label style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:#9aa0aa;cursor:pointer;white-space:nowrap" title="When this tab gains focus, automatically take the keyboard from the daemon (reuses the lease for a clean handoff). Takes over once you've connected at least once — a cold first connect still needs one click (browser WebHID rule)."><input type="checkbox" id="autoConnectFocus"> Auto-connect on focus</label>
+        <label style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:#9aa0aa;cursor:pointer;white-space:nowrap" title="Don't show the “Another controller took over the keyboard” banner when this tab loses the lease"><input type="checkbox" id="hideYieldBanner"> Hide yield banner</label>
+      </div>
     </div>
     <p class="hint" style="margin:0">While connected, click this page once so it has keyboard focus, then type — pressed keys flash orange.</p>
     <p class="hint" style="margin:12px 0 0">⚠ <b>Browser keydown only fires while this tab is focused.</b> Reactive-in-any-app comes from the background daemon instead.</p>
