@@ -504,7 +504,7 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
 
 <!-- device-lease deprecated-controller banner (Task 5): hidden by default, shown when this tab loses
      the lease (DC.onLeaseLost) or a claim comes back denied; Take control back re-claims + reopens WebHID. -->
-<div id="leaseBanner" style="display:none;position:fixed;top:0;left:0;right:0;z-index:9999;padding:10px 16px;background:#3a2a2a;color:#ffd9d0;text-align:center;font:14px system-ui">
+<div id="leaseBanner" style="display:none;position:fixed;top:0;left:0;right:0;z-index:9999;padding:10px 16px;background:rgba(58,42,42,.25);color:#ffd9d0;text-align:center;font:14px system-ui">
   Another controller took over the keyboard.
   <button id="leaseReclaim" style="margin-left:12px">Take control back</button>
 </div>
