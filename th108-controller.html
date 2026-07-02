@@ -504,9 +504,14 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
 
 <!-- device-lease deprecated-controller banner (Task 5): hidden by default, shown when this tab loses
      the lease (DC.onLeaseLost) or a claim comes back denied; Take control back re-claims + reopens WebHID. -->
-<div id="leaseBanner" style="display:none;position:fixed;top:0;left:0;right:0;z-index:9999;padding:10px 16px;background:rgba(58,42,42,.25);color:#ffd9d0;text-align:center;font:14px system-ui">
-  Another controller took over the keyboard.
-  <button id="leaseReclaim" style="margin-left:12px">Take control back</button>
+<!-- lease banner: an in-flow collapsible row (NOT fixed) so it shoves the header + page down instead of
+     overlaying them. Outer animates height 0↔full (the vertical stretch); because it's in normal flow, the
+     content below lerps down with the same transition. Inner holds the padding so the outer's height animates cleanly. -->
+<div id="leaseBanner" style="overflow:hidden;height:0;background:rgba(58,42,42,.25);transition:height .28s cubic-bezier(.4,0,.2,1)">
+  <div style="padding:10px 16px;color:#ffd9d0;text-align:center;font:14px system-ui">
+    Another controller took over the keyboard.
+    <button id="leaseReclaim" style="margin-left:12px">Take control back</button>
+  </div>
 </div>
 
 <header>
@@ -1228,8 +1233,10 @@ function setStatus(s,c='',tip=''){ const e=document.getElementById('status'); e.
 // deprecated-controller banner (Task 5) — plain hoisted function declarations so callbacks defined
 // earlier in this script (beforeConnect/beforeAutoReconnect below) can reference them safely even
 // though the actual DC.onLeaseLost wiring is registered later, right after DC is created.
-function showLeaseBanner(){ const el=document.getElementById('leaseBanner'); if(el) el.style.display='block'; }
-function hideLeaseBanner(){ const el=document.getElementById('leaseBanner'); if(el) el.style.display='none'; }
+// animate the collapsible open/closed by driving its height (scrollHeight = the inner content's full height,
+// readable even while collapsed). In-flow, so the header + page below lerp down with the same transition.
+function showLeaseBanner(){ const el=document.getElementById('leaseBanner'); if(el) el.style.height=el.scrollHeight+'px'; }
+function hideLeaseBanner(){ const el=document.getElementById('leaseBanner'); if(el) el.style.height='0px'; }
 
 let _wasRunning=false;   // layers were running when the keyboard went away (sleep/unplug/wedge) → resume on re-bind; cleared only by a deliberate Stop
 let _deferLogAt=0;       // debounce the "left to the background daemon" line: a replug fires one connect event PER interface, so onDeferred runs 2-3× in a burst
