@@ -191,8 +191,8 @@ function createServer({ control, root, port = 8123, watchdogMs = 12000 }) {
       if (req.method === 'POST' && u === '/heartbeat') {
         const b = await readBody(req); let ev = {}; try { ev = JSON.parse(b || '{}'); } catch {}
         lastBeat = Date.now();
-        if (!yielded) {   // a beating page believes it holds the device (e.g. WE restarted under it and it won't re-/yield) — honor that instead of opening against it (live repro 2026-06-11 12:52)
-          console.log(ts() + ' [api] heartbeat while not yielded — a page holds the device; yielding to it');
+        if (!yielded && !(ev && ev.clientId)) {   // LEGACY pages only: a clientId beat owns via the lease, so no legacy re-grab (a modern owner would else claim against its own ownership → ladder → USB restart)
+          console.log(ts() + ' [api] heartbeat while not yielded — a legacy page holds the device; yielding to it');
           await control.yield(); yielded = true; armWatchdog();
         }
         const out = control.heartbeat ? control.heartbeat(ev) : {};   // control.heartbeat(ev) reads ev.clientId (Task 3)

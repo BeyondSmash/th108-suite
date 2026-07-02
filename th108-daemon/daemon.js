@@ -60,7 +60,7 @@ function loadConfig() {
 
 let state = null, device = null, send = null, paused = false, timer = null;
 const { createLease } = require('./device-lease.js');
-const lease = createLease();
+const lease = createLease({ settleMs: 800 });   // 800ms = the historically-tuned handoff settle debounce (was HANDOFF_SETTLE_MS), survives restart+refresh storms
 // paused is now DERIVED from the lease so every existing `if (paused)` gate keeps working.
 function syncPaused() {
   const held = lease.owner() !== 'daemon';
@@ -424,6 +424,7 @@ async function runTick() {
   const act = lease.tick(Date.now());
   if (act && act.action === 'reclaim') {
     rebuildState(); unpausedAt = Date.now();   // mirrors the old resume(): reload the page's saved config + reset the flash-upload stability window
+    syncPaused();   // owner is 'daemon' again → clear derived paused NOW so openIfPossible() reopens this same tick
   } else if (act && act.action === 'probe') {
     // revoked page never released — probe on a throwaway handle; quiet ⇒ grant, else escalate to re-enumerate.
     // NOTE: 'reenumerate' is decided HERE, inside probeResult()'s return — lease.tick() itself never emits
