@@ -502,6 +502,13 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
 </head>
 <body>
 
+<!-- device-lease deprecated-controller banner (Task 5): hidden by default, shown when this tab loses
+     the lease (DC.onLeaseLost) or a claim comes back denied; Take control back re-claims + reopens WebHID. -->
+<div id="leaseBanner" style="display:none;position:fixed;top:0;left:0;right:0;z-index:9999;padding:10px 16px;background:#3a2a2a;color:#ffd9d0;text-align:center;font:14px system-ui">
+  Another controller took over the keyboard.
+  <button id="leaseReclaim" style="margin-left:12px">Take control back</button>
+</div>
+
 <header>
   <div class="logo">th108</div>
   <div id="lightCtl">
@@ -1218,6 +1225,11 @@ function log(m,c=''){ const d=document.createElement('div'); if(c)d.className=c;
   d.textContent='['+new Date().toISOString().substr(11,12)+'] '+m; out.appendChild(d);
   while(out.childNodes.length>200) out.removeChild(out.firstChild); out.scrollTop=out.scrollHeight; }
 function setStatus(s,c='',tip=''){ const e=document.getElementById('status'); e.textContent=s; e.className='aux '+(c||'dim'); e.title=tip; }   // tip = hover tooltip for the jargon behind a friendly status
+// deprecated-controller banner (Task 5) — plain hoisted function declarations so callbacks defined
+// earlier in this script (beforeConnect/beforeAutoReconnect below) can reference them safely even
+// though the actual DC.onLeaseLost wiring is registered later, right after DC is created.
+function showLeaseBanner(){ const el=document.getElementById('leaseBanner'); if(el) el.style.display='block'; }
+function hideLeaseBanner(){ const el=document.getElementById('leaseBanner'); if(el) el.style.display='none'; }
 
 let _wasRunning=false;   // layers were running when the keyboard went away (sleep/unplug/wedge) → resume on re-bind; cleared only by a deliberate Stop
 let _deferLogAt=0;       // debounce the "left to the background daemon" line: a replug fires one connect event PER interface, so onDeferred runs 2-3× in a burst
@@ -1260,8 +1272,8 @@ const HID=TH108Hid.create({
   // bind: the user can sit in the device picker >watchdog, and the old code didn't beat until bound —
   // the daemon re-grabbed mid-pick and fought the page. (If the connect ends with no device, the click
   // handler / boot path stops the beats and POSTs /resume so the daemon isn't left orphaned.)
-  beforeConnect:async()=>{ await DC.ping(); if(DC.present){ await DC.yieldDevice(); DC.heartbeatStart(); } },
-  beforeAutoReconnect:async()=>{ await DC.ping(); if(DC.present){ await DC.yieldDevice(); DC.heartbeatStart(); } },   // also the WAKE rebind path now — presence may have changed since boot, so ping first
+  beforeConnect:async()=>{ await DC.ping(); if(DC.present){ const r=await DC.yieldDevice(); if(r&&r.granted) DC.heartbeatStart(); else showLeaseBanner(); } },   // only heartbeat when the claim was actually granted — a denied page must not beat as if it drives (Task 5 review #4)
+  beforeAutoReconnect:async()=>{ await DC.ping(); if(DC.present){ const r=await DC.yieldDevice(); if(r&&r.granted) DC.heartbeatStart(); else showLeaseBanner(); } },   // also the WAKE rebind path now — presence may have changed since boot, so ping first; same granted-gate
   onGrantLost:()=>{   // true replug: Chrome revoked the grant, only a click recovers — hand lighting back so the daemon drives instead of nobody
     if(DC.beating){ DC.heartbeatStop(); DC.resume(); log('keyboard was replugged — lighting handed back to the daemon; click Connect Keyboard to take over again','dim'); }
   },
@@ -1279,6 +1291,7 @@ const HID=TH108Hid.create({
   },
   onConnected:()=>{   // tell the daemon's watchdog we're alive & holding the device
     DC.heartbeatStart();
+    hideLeaseBanner();   // a successful bind means claimGate() actually granted the lease — regained control, so the banner (if shown) is stale
     // a replug revokes the WebHID grant (no serial number on the TH108), so recovery is a manual Connect click —
     // honor the pending resume intent here too, making replug recovery ONE click instead of Connect+Start
     if(_wasRunning){ _wasRunning=false; start(); log('layers resumed','ok'); }
@@ -1295,6 +1308,7 @@ const HID=TH108Hid.create({
   },
   onReconnected:()=>{
     DC.heartbeatStart();
+    hideLeaseBanner();   // regained the lease (auto-rebind poll re-claimed successfully) — clear a stale banner
     // CIRCUIT BREAKER (2026-06-11 night): a deeply wedged board turns auto-resume into a 17s
     // thrash loop (resume → no ACKs → stop → rebind → resume …) with futile USB restarts — the
     // board runs on BATTERY, so neither replug nor PnP restart reboots the wedged MCU. After 3
@@ -1336,6 +1350,28 @@ const DC = TH108DaemonClient.create({ log, getConfig: ()=>localStorage.getItem('
     finally { window.__lcdHost.resumeLighting(); window.__npPermit = false; }
   }
 });
+
+// ===== deprecated-controller banner + Take control back (Task 5) — wired HERE, right after DC is
+// created (window.DC now exists), so there is no load-time reference to DC before its declaration.
+// th108-hid.js already closes this page's WebHID handle the instant onLeaseLost fires (safety-critical,
+// done in Task 4) — this block is purely the user-facing banner + the reclaim button. =====
+(function () {
+  var banner = document.getElementById('leaseBanner');
+  var btn = document.getElementById('leaseReclaim');
+  if (!banner || !btn || !window.DC) return;
+  DC.onLeaseLost(function () { showLeaseBanner(); });   // th108-hid.js already closed our handle by the time this fires
+  btn.addEventListener('click', async function () {
+    const r = await DC.reclaim();
+    if (r && r.granted) {
+      hideLeaseBanner();
+      // reclaiming the LEASE alone doesn't reopen WebHID — reuse the same entry point the Connect
+      // Keyboard button uses so a reclaim fully restores control (reopens the handle + resumes layers).
+      await HID.connect();
+      if (!HID.device && DC.beating) { DC.heartbeatStop(); DC.resume(); }   // cancelled/failed pick after reclaiming — hand the device back cleanly
+    }
+  });
+})();
+
 window.addEventListener('beforeunload', ()=>{ DC.heartbeatStop(); DC.resume(); try{ TH108LCD.setDevices({}); }catch(_){ } });
 
 // AUTO-RELEASE ON BLUR/HIDE: when this tab loses focus OR is hidden, hand the board to the daemon so
