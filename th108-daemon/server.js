@@ -189,14 +189,16 @@ function createServer({ control, root, port = 8123, watchdogMs = 12000 }) {
         return;
       }
       if (req.method === 'POST' && u === '/heartbeat') {
+        const b = await readBody(req); let ev = {}; try { ev = JSON.parse(b || '{}'); } catch {}
         lastBeat = Date.now();
         if (!yielded) {   // a beating page believes it holds the device (e.g. WE restarted under it and it won't re-/yield) — honor that instead of opening against it (live repro 2026-06-11 12:52)
           console.log(ts() + ' [api] heartbeat while not yielded — a page holds the device; yielding to it');
           await control.yield(); yielded = true; armWatchdog();
         }
+        const out = control.heartbeat ? control.heartbeat(ev) : {};   // control.heartbeat(ev) reads ev.clientId (Task 3)
         // npWants rides the beat: the page learns within one heartbeat (≤3s) that a song is
         // waiting, pauses its stream, and grants the upload window via /npgo
-        return sendJson(res, 200, { ok: true, npWants: control.npWants ? control.npWants() : false });
+        return sendJson(res, 200, { ok: true, npWants: control.npWants ? control.npWants() : false, ...(out || {}) });
       }
       if (req.method === 'POST' && u === '/lcdgif') {   // the page mirrors its GIF Screen upload (pause-revert target)
         const b = await readBody(req, 3_000_000); let body;
@@ -207,6 +209,18 @@ function createServer({ control, root, port = 8123, watchdogMs = 12000 }) {
         const r = await control.npGo();
         console.log(ts() + ' [api] /npgo → ' + JSON.stringify(r));
         return sendJson(res, 200, r);
+      }
+      if (req.method === 'POST' && u === '/claim') {          // a controller asks for the device (newest-wins)
+        const b = await readBody(req); let ev;
+        try { ev = JSON.parse(b || '{}'); } catch { return sendJson(res, 400, { error: 'bad json' }); }
+        const out = control.claim ? await control.claim(ev) : { granted: true, epoch: 0 };
+        return sendJson(res, 200, out);   // BLOCKS in control.claim until the caller may open (or the fallback resolves)
+      }
+      if (req.method === 'POST' && u === '/release') {        // the revoked owner confirms it closed its handle
+        const b = await readBody(req); let ev;
+        try { ev = JSON.parse(b || '{}'); } catch { ev = {}; }   // sendBeacon may send text/plain; tolerate
+        if (control.release) control.release(ev);
+        return sendJson(res, 204, {});
       }
       if (req.method === 'POST' && u === '/agent/event') {   // Claude Code hook posts raw hook JSON here
         const b = await readBody(req); let ev;
