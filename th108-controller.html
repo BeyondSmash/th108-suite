@@ -2526,5 +2526,29 @@ document.getElementById('resetSiteBtn').addEventListener('click', ()=>{
   location.reload();
 });
 </script>
+
+<!-- TEMP: banner text/button vertical-nudge tuner. Dial each, click "Log values", then bake translateY into
+     the <span> and #leaseReclaim and delete this block. -->
+<div id="bannerVT" style="position:fixed;right:12px;bottom:12px;z-index:100000;background:#1b1e24;color:#e6e6e6;border:1px solid #333;border-radius:10px;padding:12px 14px;font:12px system-ui;box-shadow:0 10px 30px rgba(0,0,0,.5);width:240px">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><b>Banner V-align (temp)</b><button id="vtClose" style="background:none;border:none;color:#9aa;cursor:pointer;font-size:15px">×</button></div>
+  <label style="display:flex;align-items:center;gap:6px;margin:6px 0"><input type="checkbox" id="vtPreview"> Preview banner (force-show)</label>
+  <label style="display:block;margin:8px 0 2px">Text Y: <span id="vtTxtV">0</span>px (− up / + down)</label>
+  <input type="range" id="vtTxt" min="-8" max="8" step="0.5" value="0" style="width:100%">
+  <label style="display:block;margin:8px 0 2px">Button Y: <span id="vtBtnV">0</span>px</label>
+  <input type="range" id="vtBtn" min="-8" max="8" step="0.5" value="0" style="width:100%">
+  <button id="vtLog" style="width:100%;margin-top:10px;padding:6px;cursor:pointer">Log values</button>
+</div>
+<script>
+(function(){
+  var b=document.getElementById('leaseBanner'); if(!b) return;
+  var txt=b.querySelector('span'), btn=document.getElementById('leaseReclaim'), $=function(id){return document.getElementById(id);};
+  function apply(){ var tv=+$('vtTxt').value, bv=+$('vtBtn').value; $('vtTxtV').textContent=tv; $('vtBtnV').textContent=bv; if(txt) txt.style.transform='translateY('+tv+'px)'; if(btn) btn.style.transform='translateY('+bv+'px)'; }
+  ['vtTxt','vtBtn'].forEach(function(id){ $(id).addEventListener('input',apply); });
+  $('vtPreview').addEventListener('change',function(){ b.style.height=$('vtPreview').checked?'auto':'0px'; });
+  $('vtClose').addEventListener('click',function(){ $('bannerVT').style.display='none'; });
+  $('vtLog').addEventListener('click',function(){ console.log('[banner v-align] textY='+$('vtTxt').value+'px  buttonY='+$('vtBtn').value+'px'); });
+  apply();
+})();
+</script>
 </body>
 </html>
