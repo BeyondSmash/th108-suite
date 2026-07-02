@@ -88,3 +88,15 @@ test('a contended probe escalates to a USB re-enumeration, then forceGrant compl
   assert.deepEqual(g, { action: 'grant', id: 'pageB' });
   assert.equal(L.owner(), 'pageB');
 });
+
+test('release ignores a non-owner caller while a claim is pending (only the revoked owner advances it)', () => {
+  const L = createLease();
+  L.claim('pageA', 1000);
+  L.claim('pageB', 1100);                 // pageB pending; pageA still owns
+  assert.deepEqual(L.release('mallory', 1150), { granted: null });   // stranger: no-op
+  assert.equal(L.owner(), 'pageA');
+  assert.deepEqual(L.release('pageB', 1160), { granted: null });     // even the pending page can't self-grant
+  assert.equal(L.owner(), 'pageA');
+  assert.deepEqual(L.release('pageA', 1200), { granted: 'pageB' });  // only the revoked owner advances it
+  assert.equal(L.owner(), 'pageB');
+});

@@ -39,8 +39,12 @@ function createLease(opts = {}) {
     // The revoked owner confirms it closed its handle → grant the pending claimer. With no pending, a page
     // is handing back to the daemon → schedule a debounced reclaim (nobody drives until it fires).
     release(id, now) {
-      if (pending) { const p = pending; grant(p, now); return { granted: p }; }
-      if (id === owner) { owner = null; reclaimAt = now + SETTLE; return { granted: null }; }
+      // Only the current owner confirming its handle is closed advances the lease. A stale/forged/duplicate
+      // release from a non-owner (including the pending claimer itself) is a no-op — otherwise a handoff could
+      // complete before the revoked owner actually closed its WebHID handle (two writers → mute).
+      if (id !== owner) return { granted: null };
+      if (pending) { const p = pending; grant(p, now); return { granted: p }; }   // revoked owner released → grant the waiter
+      owner = null; reclaimAt = now + SETTLE;   // owner handing back to the daemon (no pending)
       return { granted: null };
     },
 
