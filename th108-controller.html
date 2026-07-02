@@ -591,6 +591,8 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
     <div class="row">
       <button id="connect" class="primary" title="hands the keyboard from the daemon to this page and starts your layers automatically">Connect Keyboard</button>
       <button id="driveToggle" class="go" disabled title="switch who drives the keyboard LEDs — this tab (WebHID) or the background daemon">Drive from this Tab ▶</button>
+      <label style="display:inline-flex;align-items:center;gap:6px;margin-left:10px;font-size:12px;color:#9aa0aa;cursor:pointer;white-space:nowrap" title="When this tab gains focus, automatically take the keyboard from the daemon (reuses the lease for a clean handoff). Takes over once you've connected at least once — a cold first connect still needs one click (browser WebHID rule)."><input type="checkbox" id="autoConnectFocus"> Auto-connect on focus</label>
+      <label style="display:inline-flex;align-items:center;gap:6px;margin-left:4px;font-size:12px;color:#9aa0aa;cursor:pointer;white-space:nowrap" title="Don't show the “Another controller took over the keyboard” banner when this tab loses the lease"><input type="checkbox" id="hideYieldBanner"> Hide yield banner</label>
     </div>
     <p class="hint" style="margin:0">While connected, click this page once so it has keyboard focus, then type — pressed keys flash orange.</p>
     <p class="hint" style="margin:12px 0 0">⚠ <b>Browser keydown only fires while this tab is focused.</b> Reactive-in-any-app comes from the background daemon instead.</p>
@@ -1235,7 +1237,7 @@ function setStatus(s,c='',tip=''){ const e=document.getElementById('status'); e.
 // though the actual DC.onLeaseLost wiring is registered later, right after DC is created.
 // animate the collapsible open/closed by driving its height (scrollHeight = the inner content's full height,
 // readable even while collapsed). In-flow, so the header + page below lerp down with the same transition.
-function showLeaseBanner(){ const el=document.getElementById('leaseBanner'); if(el) el.style.height=el.scrollHeight+'px'; }
+function showLeaseBanner(){ if(localStorage.getItem('th108.hideYieldBanner')==='1') return; const el=document.getElementById('leaseBanner'); if(el) el.style.height=el.scrollHeight+'px'; }
 function hideLeaseBanner(){ const el=document.getElementById('leaseBanner'); if(el) el.style.height='0px'; }
 
 let _wasRunning=false;   // layers were running when the keyboard went away (sleep/unplug/wedge) → resume on re-bind; cleared only by a deliberate Stop
@@ -1379,6 +1381,14 @@ const DC = TH108DaemonClient.create({ log, getConfig: ()=>localStorage.getItem('
   });
 })();
 
+// Lease toggles (beside "Drive from this Tab"): persisted to localStorage. "Hide yield banner" is read by
+// showLeaseBanner(); "Auto-connect on focus" is read by onAwayChange(). Wired here (after DC exists) — TDZ-safe.
+(function(){
+  var ac=document.getElementById('autoConnectFocus'), hy=document.getElementById('hideYieldBanner');
+  if(ac){ ac.checked = localStorage.getItem('th108.autoConnectFocus')==='1'; ac.addEventListener('change',function(){ localStorage.setItem('th108.autoConnectFocus', ac.checked?'1':'0'); }); }
+  if(hy){ hy.checked = localStorage.getItem('th108.hideYieldBanner')==='1'; hy.addEventListener('change',function(){ localStorage.setItem('th108.hideYieldBanner', hy.checked?'1':'0'); if(hy.checked) hideLeaseBanner(); }); }
+})();
+
 window.addEventListener('beforeunload', ()=>{ DC.heartbeatStop(); DC.resume(); try{ TH108LCD.setDevices({}); }catch(_){ } });
 
 // AUTO-RELEASE ON BLUR/HIDE: when this tab loses focus OR is hidden, hand the board to the daemon so
@@ -1429,7 +1439,12 @@ async function reclaimBoardFromDaemon(){
 function releaseHeldKeys(){ const d=state.react.down; for(let i=0;i<d.length;i++) if(d[i]) TH108Engine.releaseKey(state, i); }
 function onAwayChange(){
   clearTimeout(_awayTimer);
-  if(pageActive()) reclaimBoardFromDaemon();                          // back in focus + visible → reclaim now
+  if(pageActive()){
+    if(_awayHandoff) reclaimBoardFromDaemon();                       // we handed off on blur → reclaim now
+    else if(localStorage.getItem('th108.autoConnectFocus')==='1' && HID.device && !running && !_handoffBusy){
+      const dt=document.getElementById('driveToggle'); if(dt && !dt.disabled) try{ dt.click(); }catch(_){}   // opt-in: focus auto-takes the keyboard (only when we already hold a WebHID handle — a cold first connect needs a manual click per WebHID's user-gesture rule)
+    }
+  }
   else { releaseHeldKeys(); _awayTimer=setTimeout(handBoardToDaemon, AWAY_DELAY); }   // blur/hide → release held keys NOW (no missed-keyup stick), then hand off (debounced)
 }
 window.addEventListener('blur', onAwayChange);
