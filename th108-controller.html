@@ -504,16 +504,6 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
 
 <!-- device-lease deprecated-controller banner (Task 5): hidden by default, shown when this tab loses
      the lease (DC.onLeaseLost) or a claim comes back denied; Take control back re-claims + reopens WebHID. -->
-<!-- lease banner: an in-flow collapsible row (NOT fixed) so it shoves the header + page down instead of
-     overlaying them. Outer animates height 0↔full (the vertical stretch); because it's in normal flow, the
-     content below lerps down with the same transition. Inner holds the padding so the outer's height animates cleanly. -->
-<div id="leaseBanner" style="overflow:hidden;height:0;background:rgba(58,42,42,.25);transition:height .28s cubic-bezier(.4,0,.2,1)">
-  <div style="padding:10px 16px;color:#ffd9d0;text-align:center;font:14px system-ui">
-    Another controller took over the keyboard.
-    <button id="leaseReclaim" style="margin-left:12px">Take control back</button>
-  </div>
-</div>
-
 <header>
   <div class="logo">th108</div>
   <div id="lightCtl">
@@ -556,6 +546,16 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
   </button>
 </header>
 
+<!-- lease banner: an in-flow collapsible row placed DIRECTLY UNDER the sticky header — it drops in beneath
+     the header and pushes the page content down (animated height 0↔full), without overlaying the header.
+     Inner is a centered flexbox so the text + button are optically centered regardless of button height. -->
+<div id="leaseBanner" style="overflow:hidden;height:0;background:rgba(58,42,42,.25);transition:height .28s cubic-bezier(.4,0,.2,1)">
+  <div style="display:flex;align-items:center;justify-content:center;gap:12px;padding:10px 16px;color:#ffd9d0;font:14px system-ui">
+    <span>Another controller took over the keyboard.</span>
+    <button id="leaseReclaim">Take control back</button>
+  </div>
+</div>
+
 <div id="grid">
 
   <!-- ========== HOME ========== -->
@@ -588,10 +588,10 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
 
   <div class="card s3" id="connectCard" data-pages="home">
     <div class="cardbar"><span class="grip">⠿</span><h2>Keyboard</h2><span class="aux dim" id="status">not connected</span><span id="driverPill" class="driverpill" data-driver="" title="which entity is currently driving the keyboard LEDs — WebHID = this browser tab, Daemon = the always-on background app" hidden></span></div>
-    <div class="row">
+    <div class="row" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
       <button id="connect" class="primary" title="hands the keyboard from the daemon to this page and starts your layers automatically">Connect Keyboard</button>
       <button id="driveToggle" class="go" disabled title="switch who drives the keyboard LEDs — this tab (WebHID) or the background daemon">Drive from this Tab ▶</button>
-      <div style="display:flex;flex-direction:column;gap:5px;margin-left:10px">
+      <div style="display:flex;flex-direction:column;gap:5px;margin-left:auto">
         <label style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:#9aa0aa;cursor:pointer;white-space:nowrap" title="When this tab gains focus, automatically take the keyboard from the daemon (reuses the lease for a clean handoff). Takes over once you've connected at least once — a cold first connect still needs one click (browser WebHID rule)."><input type="checkbox" id="autoConnectFocus"> Auto-connect on focus</label>
         <label style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:#9aa0aa;cursor:pointer;white-space:nowrap" title="Don't show the “Another controller took over the keyboard” banner when this tab loses the lease"><input type="checkbox" id="hideYieldBanner"> Hide yield banner</label>
       </div>
