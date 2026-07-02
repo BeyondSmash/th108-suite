@@ -1,59 +1,85 @@
 /* th108-daemon-client.js — the controller page's client for the background daemon's control API
-   (same-origin localhost:8123: /status /yield /resume /heartbeat /config /autostart /quit).
-   Owns the page side of the auto-yield handshake — the `present` flag, the Web-Worker heartbeat
-   (main-thread timers throttle to 1/min in hidden tabs, which used to starve the daemon's watchdog
-   into re-grabbing a device the page still owned), and the Background-daemon panel wiring.
+   (same-origin localhost:8123: /status /claim /release /yield /resume /heartbeat /config /autostart /quit).
+   Owns the page side of the device LEASE handshake — a per-page `clientId`, the `present` flag, the
+   Web-Worker heartbeat (main-thread timers throttle to 1/min in hidden tabs, which used to starve the
+   daemon's watchdog into re-grabbing a device the page still owned), lease-loss detection off the
+   /status poll, and the Background-daemon panel wiring.
    Extracted unchanged from th108-controller.html. Browser-only IIFE (window.TH108DaemonClient);
    with no daemon present every call is a no-op and the page behaves as a plain WebHID controller.
 
    Usage: const DC = TH108DaemonClient.create({log, getConfig});
-     DC.ping() → refresh `present` · DC.yieldDevice()/DC.resume() → device handoff ·
+     DC.ping() → refresh `present` · DC.claim()/DC.release() → device lease (newest-wins; resolves
+     {granted}, falls back to the legacy /yield for a daemon predating /claim) — yieldDevice()/resume()
+     remain as aliases for existing callers · DC.clientId → this page's lease id ·
+     DC.onLeaseLost(cb) → cb fires once this page held the lease and then lost it (another controller
+     won it) · DC.reclaim() → alias for claim(), i.e. "take control back" ·
      DC.heartbeatStart()/DC.heartbeatStop() → proof-of-life while the page holds the device ·
      DC.pushConfig() → mirror layer edits to the daemon's config.json · DC.mountPanel() → wire
-     the #daemonPanel controls · DC.present / DC.beating → state getters. */
+     the #daemonPanel controls · DC.present / DC.beating → state getters.
+     window.DC is also set to the created client (once) so other same-page scripts — e.g. th108-hid.js's
+     claim-before-open gate, or a Task-5 banner — can reach it without an explicit wire-up. */
 window.TH108DaemonClient = (function () {
   'use strict';
   function create(opts) {
     opts = opts || {};
     const log = opts.log || function () {};
     const getConfig = opts.getConfig || function () { return '[]'; };
-    const D = { present: false, hb: null, yielded: false, deviceConnected: false, paused: false };
+    const D = { present: false, hb: null, yielded: false, deviceConnected: false, paused: false, _owned: false };
+    // Stable per-page-load id so the daemon can tell "this page" apart from another tab or a fresh
+    // reload — the lease is granted/tracked per clientId, newest claim wins.
+    const clientId = 'pg-' + Math.random().toString(36).slice(2) + '-' + (performance.now() | 0);
 
     const hbW = (() => { try { return new Worker(URL.createObjectURL(new Blob(['let t=null;onmessage=e=>{clearInterval(t);t=null;if(e.data&&e.data.ms)t=setInterval(()=>postMessage(1),e.data.ms);};'], { type: 'text/javascript' }))); } catch (_) { return null; } })();
     // beats use fetch (not sendBeacon) so the RESPONSE is readable: it carries npWants — the
     // daemon's "a song is waiting for the LCD" flag, answered by the page granting an upload
-    // window (pause stream → /npgo → resume) without any device handoff.
+    // window (pause stream → /npgo → resume) without any device handoff. clientId rides along so
+    // the daemon can tie this heartbeat to a lease (the heartbeat IS the lease liveness signal).
     const beat = () => {
-      fetch('/heartbeat', { method: 'POST', keepalive: true })
+      fetch('/heartbeat', { method: 'POST', keepalive: true, headers: { 'content-type': 'application/json' }, body: JSON.stringify({ clientId }) })
         .then(r => r.json())
         .then(j => { if (j && j.npWants && opts.onNpWants) opts.onNpWants(); })
         .catch(() => {});
     };
     if (hbW) hbW.onmessage = beat;
 
+    let _leaseCb = null;   // fires once this page held the lease and then lost it — see noteLease()
+    // Track leaseOwner off any /status read (the ping() one-off and the 2.5s mountPanel poll both call
+    // this) and fire the registered onLeaseLost callback the instant ownership moves away from us —
+    // this is what lets the page close its WebHID handle before the new owner opens (no two-writer mute).
+    function noteLease(s) {
+      if (s && s.leaseOwner !== undefined) {
+        const wasMine = D._owned;
+        D._owned = (s.leaseOwner === clientId);
+        if (wasMine && !D._owned && _leaseCb) _leaseCb();
+      }
+    }
     async function ping() {
       if (!/^https?:$/.test(location.protocol)) { D.present = false; return; }   // file:// page → no daemon server to talk to; skip (avoids a console CORS error)
       try { const r = await fetch('/status', { cache: 'no-store' }); D.present = r.ok;
-        if (r.ok) { try { const s = await r.json(); D.deviceConnected = !!s.deviceConnected; D.paused = !!s.paused; } catch (_) {} }
+        if (r.ok) { try { const s = await r.json(); D.deviceConnected = !!s.deviceConnected; D.paused = !!s.paused; noteLease(s); } catch (_) {} }
         else { D.deviceConnected = false; }
       } catch (_) { D.present = false; D.deviceConnected = false; }
     }
     // BUFFERED HANDOFF (2026-06-13): a wedged/flapping board makes the HID layer fire reconnect
-    // events in a tight loop, each calling yieldDevice — bursts of 5+/sec stormed the daemon (2149
-    // /yield in one session) → two-writer churn → board MUTE → onboard rainbow. Coalesce concurrent
-    // calls onto ONE in-flight request and skip if we already handed off within the cooldown, so the
-    // handoff fires at most ~once/3s no matter how hard the caller loops.
-    let _yieldAt = 0, _yieldInflight = null;
-    async function yieldDevice() {
-      if (!D.present) return;
-      if (_yieldInflight) return _yieldInflight;                       // a /yield is already in flight — don't pile on
-      if (D.yielded && Date.now() - _yieldAt < 3000) return;           // already handed off recently — don't re-storm
-      _yieldAt = Date.now();
-      _yieldInflight = fetch('/yield', { method: 'POST' })
-        .then(() => { D.yielded = true; })
-        .catch(() => {})
-        .finally(() => { _yieldInflight = null; });
-      return _yieldInflight;
+    // events in a tight loop, each calling claim — bursts of 5+/sec stormed the daemon (2149 /yield in
+    // one session) → two-writer churn → board MUTE → onboard rainbow. Coalesce concurrent calls onto
+    // ONE in-flight request so the handoff can't storm no matter how hard the caller loops.
+    // Claim the device from the daemon/other tab (newest-wins). Resolves { granted } — the caller opens
+    // WebHID only when granted. Replaces the old fire-and-forget /yield (kept as a fallback for a
+    // daemon predating /claim, so an old daemon still hands off even though it can't do a real lease).
+    let _claimInflight = null;
+    async function claim() {
+      if (!D.present) return { granted: true };   // no daemon to contend the lease with — plain WebHID controller, same as always
+      if (_claimInflight) return _claimInflight;
+      _claimInflight = (async () => {
+        try {
+          const r = await fetch('/claim', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ clientId }) });
+          if (r.ok) { const j = await r.json(); D.yielded = !!j.granted; return { granted: !!j.granted }; }
+        } catch (_) {}
+        // daemon too old for /claim (404/network) → fall back to the legacy yield so an old daemon still hands off
+        try { await fetch('/yield', { method: 'POST' }); D.yielded = true; return { granted: true }; } catch (_) { return { granted: false }; }
+      })().finally(() => { _claimInflight = null; });
+      return _claimInflight;
     }
     function heartbeatStart() {
       if (!D.present || D.hb) return;
@@ -69,14 +95,18 @@ window.TH108DaemonClient = (function () {
       try { const r = await fetch('/usbfix', { method: 'POST' }); return await r.json(); }
       catch (_) { return { fired: false, reason: 'daemon unreachable' }; }
     }
-    // resume is a no-op unless THIS page yielded: /resume is unattributed on the wire, so a page
-    // that never took the device (a second tab, an automated test browser) telling the daemon
-    // "the page released the device" made it reclaim WHILE the real owner tab was still streaming —
+    // release is a no-op unless THIS page held the lease: an unattributed release would let a page
+    // that never took the device (a second tab, an automated test browser) tell the daemon "the page
+    // released the device" and make it reclaim WHILE the real owner tab was still streaming —
     // two writers → board mute → USB-restart escalation → onboard-rainbow fallback (2026-06-11 logs).
-    function resume() {
+    // clientId now identifies the releasing page explicitly (belt-and-suspenders with the D.yielded gate).
+    function release() {
       if (!D.yielded) return;
       D.yielded = false;
-      if (D.present) { if (navigator.sendBeacon) navigator.sendBeacon('/resume'); else fetch('/resume', { method: 'POST', keepalive: true }); }
+      if (!D.present) return;
+      const body = JSON.stringify({ clientId });
+      if (navigator.sendBeacon) navigator.sendBeacon('/release', new Blob([body], { type: 'application/json' }));
+      else fetch('/release', { method: 'POST', keepalive: true, headers: { 'content-type': 'application/json' }, body });
     }
 
     // Background-daemon panel: status readout, auto-start toggle (HKCU Run key via the daemon),
@@ -123,7 +153,7 @@ window.TH108DaemonClient = (function () {
       async function refresh() {
         try {
           const r = await fetch('/status', { cache: 'no-store' }); if (!r.ok) throw 0;
-          const s = await r.json(); alive = true;
+          const s = await r.json(); alive = true; noteLease(s);
           // bio-card grab-bar: show the real setup.cmd path (from the daemon) + the copy button
           const spTxt = document.getElementById('setupPathTxt'), spWrap = document.getElementById('setupPathWrap'), trTxt = document.getElementById('trayPathTxt');
           if (spTxt && spWrap && s.setupPath) { if (spTxt.textContent !== s.setupPath) spTxt.textContent = s.setupPath; spWrap.style.display = 'inline-flex'; }
@@ -375,13 +405,23 @@ window.TH108DaemonClient = (function () {
       else { st.textContent = 'daemon: unavailable on file:// — open via http://localhost:8123'; auto.disabled = true; quit.disabled = true; }
     }
 
-    return {
-      ping, yieldDevice, heartbeatStart, heartbeatStop, pushConfig, resume, mountPanel, usbFix,
+    // yieldDevice/resume are kept as thin aliases to claim/release: existing callers (th108-hid.js,
+    // th108-controller.html) still resolve unchanged; new callers should prefer claim()/release().
+    const api = {
+      ping, claim, yieldDevice: claim, heartbeatStart, heartbeatStop, pushConfig, release, resume: release, mountPanel, usbFix,
+      clientId,
+      onLeaseLost(cb) { _leaseCb = cb; },   // cb fires once when this page held the lease and then lost it — Task 5's banner + th108-hid.js's close-on-loss both hang off this
+      reclaim: claim,                       // "Take control back" is just another claim()
       get present() { return D.present; },
       get deviceConnected() { return D.deviceConnected; },
       get paused() { return D.paused; },
       get beating() { return !!D.hb; }
     };
+    // Reachable as window.DC for other same-page scripts (th108-hid.js's claim-before-open gate, and
+    // Task 5's banner) without them needing an explicit reference passed in. `api` is a fully-built
+    // const above this line, so this can never be a load-time TDZ read.
+    if (typeof window !== 'undefined') window.DC = api;
+    return api;
   }
   return { create };
 })();

@@ -8,7 +8,14 @@
 
    Usage: const HID = TH108Hid.create({log, setStatus, ledCount, stopHost,
             beforeConnect, beforeAutoReconnect, onBound, onConnected, onDisconnected, onReconnected});
-   The module knows nothing about the DOM or the daemon — all of that arrives via these callbacks. */
+   The module knows nothing about the DOM — all of that arrives via these callbacks. The one exception is
+   the device LEASE: every auto/manual bind path gates on claimGate() (window.DC.claim(), if a
+   th108-daemon-client.js is present on the page) before opening, and registers DC.onLeaseLost() to close
+   this page's handle the instant another controller wins the lease — this direct coupling is deliberate
+   (see claimGate/_wireLeaseLoss below) because that close-before-the-winner-opens race is safety-critical
+   and can't be mediated through a plain callback the way the rest of the DOM/daemon glue is. With no DC
+   present (or an old daemon lacking the route) every gate call resolves granted — same as before, direct
+   WebHID, no behavior change. */
 (function (root, factory) {
   if (typeof module === 'object' && module.exports) module.exports = factory();
   else root.TH108Hid = factory();
@@ -48,6 +55,39 @@
           shouldAutoBind = opts.shouldAutoBind || (() => true); // DAEMON-DEFERENCE GATE (async): true only when no daemon is driving OR this page was genuinely driving (running/_wasRunning) and is reclaiming its own session. Stops the wake/replug 'connect' event + rebind poll from silently yanking the board from a daemon the user never asked to displace. Manual connect() bypasses this.
     let device = null, reportId = 0, packLen = 64;
     let _binding = false;   // SINGLE-FLIGHT bind guard: a replug fires one 'connect' event PER interface and the rebind poll runs too — without this they bind concurrently (observed: "operation in progress" + null _inHooked + a board that ACKs but stays dark until a manual Connect). Set synchronously (no await) right after the entry checks so the claim is atomic.
+    // DEVICE LEASE (daemon-authoritative, replaces the old cooperative /yield): if the host page wired
+    // up th108-daemon-client.js, it's reachable here as window.DC (set by DC's own create(), which the
+    // host page runs right after this create() — so DC doesn't exist yet AT this line, only later when
+    // an actual bind path runs). A page with no DC at all (older host, or DC never loaded) is ungated —
+    // behaves exactly as before, direct WebHID.
+    let _leaseWired = false;
+    function _dc() { return (typeof window !== 'undefined') ? window.DC : null; }
+    // Safety-critical: the instant another controller wins the lease, close THIS page's handle BEFORE
+    // the winner opens — this is what prevents the two-writers-both-open mute. Wired lazily (once, from
+    // claimGate() below) so it's registered by the time it's needed regardless of which bind path runs first.
+    function _wireLeaseLoss() {
+      if (_leaseWired) return;
+      const dc = _dc();
+      if (!dc || typeof dc.onLeaseLost !== 'function') return;
+      _leaseWired = true;
+      dc.onLeaseLost(async () => {
+        if (!device) return;
+        try { await device.close(); } catch (_) { }
+        device = null; reportId = 0;
+        stopRebindPoll();
+        log('lease lost — another controller took the keyboard; closed this tab\'s handle', 'dim');
+        try { onDisconnected(); } catch (_) { }   // Task 5 shows the richer banner; this is the same "we no longer hold it" cleanup as a physical disconnect
+      });
+    }
+    // Ask the lease owner for permission to open. True = safe to bindDevice() — either no daemon-client
+    // is present (ungated, legacy standalone behavior) or /claim granted THIS page the lease. False =
+    // another controller holds it; the caller must stay hands-off (the banner offers "Take control").
+    async function claimGate() {
+      _wireLeaseLoss();
+      const dc = _dc();
+      if (!dc || typeof dc.claim !== 'function') return true;
+      try { const r = await dc.claim(); return !!(r && r.granted); } catch (_) { return true; }
+    }
     let _sendStalls = 0, _ackWaiter = null, _inRpts = 0, _lastWriteAt = 0, _ackOff = -1;
     // minimum gap between writes — the board's real per-chunk drain rate. The board sends UNSOLICITED
     // 0x55 broadcasts (chatty, esp. while an animated onboard effect runs after a factory reset) that
@@ -161,6 +201,7 @@
       _binding = true;
       try {
         await beforeConnect();   // daemon holds the device — make it release BEFORE we open, or the open fails
+        if (!(await claimGate())) { setStatus('another controller holds the keyboard — Take control to claim it', 'dim'); return; }   // lease denied: stay hands-off, don't open over the current owner
         // a surviving grant binds silently — the picker is ONLY for re-granting after Chrome forgot
         // the device (true replug). Pair with install-webhid-grant.ps1 (policy pre-grant) and the
         // picker never appears at all.
@@ -191,7 +232,15 @@
     async function autoReconnect() {   // on page load: if the keyboard was granted in a past session, reconnect silently (keeps the convenience, without Cancel-means-connect)
       if (!canDrive()) { setStatus('another th108 tab is driving the keyboard — close it, or use that tab', 'dim'); return; }   // never auto-grab from another tab
       if (_binding) return; _binding = true;   // single-flight: don't race a connect-event / poll bind
-      try { if (!('hid' in navigator)) return; const known = await navigator.hid.getDevices(); if (known && known.length) { await beforeAutoReconnect(); const ok = await bindDevice(known, true); if (ok) onConnected(); } } catch (_) { }
+      try {
+        if (!('hid' in navigator)) return;
+        const known = await navigator.hid.getDevices();
+        if (known && known.length) {
+          await beforeAutoReconnect();
+          if (!(await claimGate())) { onDeferred(); return; }   // another controller (daemon or newer tab) already holds the lease — leave it, don't reopen over it
+          const ok = await bindDevice(known, true); if (ok) onConnected();
+        }
+      } catch (_) { }
       finally { _binding = false; }
     }
 
@@ -216,6 +265,7 @@
           try {
             if (!(await shouldAutoBind())) { onDeferred(); return; }   // a daemon is driving and this page wasn't — leave the board to it (Connect to take over from here)
             await beforeAutoReconnect();   // re-yield the daemon FIRST — at wake its watchdog may have resumed it, and silently rebinding over it = two writers (the 2026-06-11 wake fight)
+            if (!(await claimGate())) { onDeferred(); return; }   // wake can't reopen over another owner — the lease says no, stay hands-off
             const ok = await bindDevice(known, true); if (ok) onReconnected();
           } catch (_) { device = null; reportId = 0; startRebindPoll(); }   // not ready yet — keep polling
           finally { _binding = false; }
@@ -246,6 +296,7 @@
         try {
           if (!(await shouldAutoBind())) { onDeferred(); return; }   // a daemon is driving and this page wasn't — the first wake/replug event must NOT silently take the board from it (this was the #1 recurring villain). Connect to drive from here.
           try { await beforeConnect(); } catch (_) { }
+          if (!(await claimGate())) { onDeferred(); return; }   // the replug lease-claim was denied — another controller already re-bound; stay hands-off
           const known = await navigator.hid.getDevices();
           // a replug fires one connect event per HID interface as each re-enumerates — don't bind until the
           // 0xFF68/0x61 control iface is actually back, or findWritable's fallback could grab the screen iface
