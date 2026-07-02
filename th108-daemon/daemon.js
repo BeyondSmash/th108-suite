@@ -381,6 +381,7 @@ let lastKeyAt = Date.now();           // last physical keypress (from the global
 let offCleared = false;               // lights-off / display-off: the one black frame was sent
 let displayOff = false;               // monitor is off on the idle timeout (from display-watch.ps1) → blank the board
 let sendingFrame = false;             // a 0x32 frame is mid-flight — closing the device NOW leaves the board's chunk parser desynced
+let fastReopen = false;               // set on a clean lease reclaim → the next reopen uses a SHORT probe + immediate repaint (kills the ~1.5s post-handoff dark: the lease already guarantees single ownership, so the full 1.5s foreign-writer probe is overkill here)
 async function openIfPossible() {
   if (device || paused || probing) return;
   if (Date.now() < nextOpenAt) return;   // backoff after a mute/failed device — no 2s open/close churn against a wedged board
@@ -390,7 +391,8 @@ async function openIfPossible() {
   let d = null;
   try {
     d = T.openDevice(p);
-    const traffic = await T.probeTraffic(d, 1500);
+    const fast = fastReopen; fastReopen = false;   // consume the one-shot flag once a probe actually runs
+    const traffic = await T.probeTraffic(d, fast ? 400 : 1500);   // clean lease reclaim → short probe (still catches an actively-streaming foreign writer like Sudachi/Steam), else the full backstop
     if (paused) { try { d.close(); } catch {} return; }   // yielded mid-probe — hand it straight back
     if (traffic > 0) {
       try { d.close(); } catch {}
@@ -400,6 +402,7 @@ async function openIfPossible() {
     }
     device = d;
     send = T.makeSender(device, { ackTimeoutMs: 800 });
+    if (fast && state) state.lastFlat = null;   // fresh handle after a fast reclaim → force an immediate repaint so the board doesn't sit dark
     releaseHeldKeys();   // fresh handle = a recovery point: drop any key a missed keyup left stuck
     if (!muteLogged) log('✓ device open');   // stay quiet during a mute-retry loop — the MUTE/recovered transition lines tell the story
   } catch { try { if (d) d.close(); } catch {} nextOpenAt = Date.now() + 5000; }
@@ -425,6 +428,7 @@ async function runTick() {
   if (act && act.action === 'reclaim') {
     rebuildState(); unpausedAt = Date.now();   // mirrors the old resume(): reload the page's saved config + reset the flash-upload stability window
     syncPaused();   // owner is 'daemon' again → clear derived paused NOW so openIfPossible() reopens this same tick
+    fastReopen = true;   // the page released cleanly (lease says daemon owns) → short-probe + repaint at once, so the board doesn't sit dark ~1.5s after the handoff
   } else if (act && act.action === 'probe') {
     // revoked page never released — probe on a throwaway handle; quiet ⇒ grant, else escalate to re-enumerate.
     // NOTE: 'reenumerate' is decided HERE, inside probeResult()'s return — lease.tick() itself never emits
