@@ -69,15 +69,15 @@ window.TH108DaemonClient = (function () {
     // daemon predating /claim, so an old daemon still hands off even though it can't do a real lease).
     let _claimInflight = null;
     async function claim() {
-      if (!D.present) return { granted: true };   // no daemon to contend the lease with — plain WebHID controller, same as always
+      if (!D.present) { D._owned = true; return { granted: true }; }   // no daemon to contend the lease with — plain WebHID controller, same as always
       if (_claimInflight) return _claimInflight;
       _claimInflight = (async () => {
         try {
           const r = await fetch('/claim', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ clientId }) });
-          if (r.ok) { const j = await r.json(); D.yielded = !!j.granted; return { granted: !!j.granted }; }
+          if (r.ok) { const j = await r.json(); D.yielded = !!j.granted; D._owned = !!j.granted; return { granted: !!j.granted }; }
         } catch (_) {}
         // daemon too old for /claim (404/network) → fall back to the legacy yield so an old daemon still hands off
-        try { await fetch('/yield', { method: 'POST' }); D.yielded = true; return { granted: true }; } catch (_) { return { granted: false }; }
+        try { await fetch('/yield', { method: 'POST' }); D.yielded = true; D._owned = true; return { granted: true }; } catch (_) { D._owned = false; return { granted: false }; }
       })().finally(() => { _claimInflight = null; });
       return _claimInflight;
     }
