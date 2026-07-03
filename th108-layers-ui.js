@@ -1049,30 +1049,30 @@
           row('Checkmark','<input type="color" class="s-checkColor" value="'+s.checkColor+'"><span></span>')+
           row('Exclamation','<input type="color" class="s-bangColor" value="'+s.bangColor+'"><span></span>');
         // Session-filter dropdown — options filled async after mount
-        const sessionRow=row('Session','<select class="s-agSession"><option value="all">All sessions</option></select><span class="val s-agSessionNote" style="opacity:.6;font-size:11px"></span>');
+        const sessionRow=row('Session','<select class="s-agSession"><option value="all">All Sessions</option></select><span class="val s-agSessionNote" style="opacity:.6;font-size:11px"></span>');
         // Twinkle-region paint-board row (mirrors individual layer)
         const regionRow=full('<button type="button" class="s-agShowkb">⌨ Set Twinkle Region</button><button type="button" class="s-agRegReset" style="margin-left:6px">Default (letters)</button><span class="val s-agRegCount" style="opacity:.6;font-size:11px;margin-left:6px"></span>');
         // Emphasis toggles
         const emphRows=
-          row('Numpad silhouette','<label class="sl" style="margin:0"><input type="checkbox" class="s-silhouetteNumpad"'+(s.silhouetteNumpad?' checked':'')+'> Carve numpad from layers below while agent is active</label><span></span>')+
-          row('Dim below','<label class="sl" style="margin:0"><input type="checkbox" class="s-dimBelow"'+(s.dimBelow?' checked':'')+'> Dim layers below when agent is active</label><span></span>')+
-          (s.dimBelow ? row('Dim amount','<span class="srange" style="width:100%"><input type="range" class="s-dimBelowAmt" min="0" max="100" value="'+Math.round((s.dimBelowAmt!=null?s.dimBelowAmt:0.9)*100)+'"><i class="tick" style="left:calc(7px + (100% - 14px)*0.9)"></i></span><span class="val s-dimBelowAmtV"></span>') : '');
+          row('Numpad<br>Silhouette','<label class="sl" style="margin:0"><input type="checkbox" class="s-silhouetteNumpad"'+(s.silhouetteNumpad?' checked':'')+'> Carve numpad from layers below while agent is active</label><span></span>')+
+          row('Dim Below','<label class="sl" style="margin:0"><input type="checkbox" class="s-dimBelow"'+(s.dimBelow?' checked':'')+'> Dim layers below when agent is active</label><span></span>')+
+          (s.dimBelow ? row('Dim Amount','<span class="srange" style="width:100%"><input type="range" class="s-dimBelowAmt" min="0" max="100" value="'+Math.round((s.dimBelowAmt!=null?s.dimBelowAmt:0.9)*100)+'"><i class="tick" style="left:calc(7px + (100% - 14px)*0.9)"></i></span><span class="val s-dimBelowAmtV"></span>') : '');
         // Exclamation (!) animation controls
         const bangRows=
           row('Hold','<span class="srange" style="width:100%"><input type="range" class="s-holdMs" min="200" max="10000" step="100" value="'+(s.holdMs!=null?s.holdMs:1000)+'"><i class="tick" style="left:calc(7px + (100% - 14px)*0.08)"></i></span><span class="val s-holdMsV"></span>')+
           row('Reminder','<label class="sl" style="margin:0"><input type="checkbox" class="s-reminderEnabled"'+(s.reminderEnabled?' checked':'')+'> Re-blink if still waiting after delay</label><span></span>')+
           (s.reminderEnabled ?
-            row('Reminder delay','<span class="srange" style="width:100%"><input type="range" class="s-reminderAfterMs" min="1000" max="60000" step="1000" value="'+(s.reminderAfterMs!=null?s.reminderAfterMs:8000)+'"><i class="tick" style="left:calc(7px + (100% - 14px)*0.122)"></i></span><span class="val s-reminderAfterMsV"></span>') : '')+
+            row('Reminder Delay','<span class="srange" style="width:100%"><input type="range" class="s-reminderAfterMs" min="1000" max="60000" step="1000" value="'+(s.reminderAfterMs!=null?s.reminderAfterMs:8000)+'"><i class="tick" style="left:calc(7px + (100% - 14px)*0.122)"></i></span><span class="val s-reminderAfterMsV"></span>') : '')+
           (s.reminderEnabled ?
             row('Blinks','<select class="s-reminderBlinks"><option value="2"'+(s.reminderBlinks===2?' selected':'')+'>2 blinks</option><option value="3"'+(s.reminderBlinks===3?' selected':'')+'>3 blinks</option></select><span></span>') : '');
         // Preview toggle (page-side synthetic feed)
-        const previewRow=full('<label class="sl" style="margin:0"><input type="checkbox" class="s-agPreview"'+(s.preview?' checked':'')+'> Preview — inject a synthetic agent feed so the animation tunes live (no daemon needed)</label>');
+        const previewRow=full('<div style="text-align:center"><label class="sl" style="margin:0;text-align:center"><input type="checkbox" class="s-agPreview"'+(s.preview?' checked':'')+'> <span>Preview — inject a synthetic agent feed<br>so the animation tunes live (no daemon needed)</span></label></div>');
         body.innerHTML='<div class="ctl">'+
           sec('Colors')+colorRows+
           sec('Session')+sessionRow+
           sec('Twinkle Region')+regionRow+
           sec('Emphasis')+emphRows+
-          sub('Exclamation animation')+bangRows+
+          sub('Exclamation Animation')+bangRows+
           sec('Preview')+previewRow+
         '</div>';
         const c=q=>body.querySelector(q);
@@ -1081,7 +1081,7 @@
         // Session dropdown
         const sessSel=c('.s-agSession'), sessNote=c('.s-agSessionNote');
         function fillSessionDrop(sessions){ if(!sessSel) return;
-          const cur=s.session||'all'; const optsHtml=['<option value="all">All sessions</option>'];
+          const cur=s.session||'all'; const optsHtml=['<option value="all">All Sessions</option>'];
           let has=false;
           (sessions||[]).forEach(ag=>{ if(ag&&ag.id){ if(ag.id===cur) has=true;
             optsHtml.push('<option value="'+ag.id.replace(/"/g,'&quot;')+'"'+(ag.id===cur?' selected':'')+'>'+(ag.label||ag.id).replace(/&/g,'&amp;').replace(/</g,'&lt;')+'</option>'); } });
@@ -1092,6 +1092,9 @@
         sessSel.addEventListener('change',e=>{ s.session=e.target.value; });
         // Async load of sessions on card open — reuses the listAgentSessions hook (fetches /status agentSessions or /agent/sessions)
         listAgentSessions().then(fillSessionDrop).catch(()=>fillSessionDrop(null));
+        // Re-fetch on dropdown open so sessions that started/ended since the card was built show up
+        // (fetch is async — a just-started session lands on the NEXT open if the response loses the race)
+        sessSel.addEventListener('pointerdown',()=>{ listAgentSessions().then(fillSessionDrop).catch(()=>{}); });
         // Twinkle-region paint board (same API as individual layer)
         let pb=null, pbWrap=null;
         const updRegCount=()=>{ const el=c('.s-agRegCount'); if(el) el.textContent = pb ? (pb.selCount()+' keys selected') : (Array.isArray(s.twinkleKeys)&&s.twinkleKeys.length ? s.twinkleKeys.length+' keys (saved)' : 'Default (letters)'); };
