@@ -1,45 +1,41 @@
-# HANDOFF — 2026-06-29
+# HANDOFF — 2026-07-03
 
-> Durable rules / protocol / roadmap + rolling history: **`_HANDOFF.md`** (gitignored, local) + project memory. This file = the focused, scannable state of THIS session. The 2026-06-28 NumLock-RE brief that lived here is **done** (see below) and has been replaced.
+> Durable rules / protocol / detailed dev reference: **`_HANDOFF.md`** (gitignored, local) + project memory + `.superpowers/sdd/progress.md` (this session's full ledger + endgame roadmap). This file = the focused, scannable state of THIS session.
 
 ## Where things stand
-The NumLock white-LED RE is **conclusively dead** — full recon of the official web tool found no indicator/lock/LCD/display setting anywhere, so there's nothing to sniff. The host-side fallback shipped and was **hardware-tested by the user**: a one-click "Numpad → Digits" workaround in the Hotkeys binder. The rest of the session was UI polish (iso-view perf + visuals, numpad-control grouping, button centering/padding, status copy). HEAD = `d727d98` on **master**; working tree clean (before this doc).
+Two features shipped this session, both on `master` (no branch, nothing pushed): the **agent-activity lighting layer** (Tasks 1–6 done + reviewed; only its on-board VISUAL glance is left) and the **arbitrated device-lease** handoff system (Tasks 1–5 done, per-task + final whole-branch reviewed, hardware-checkpointed at each stage), then a long night of banner/toggle UI polish. Final review verdict: **merge-ready with one hardware glance outstanding**.
 
 ## Ledger
-
 ### ✅ Solved (verified)
-- **NumLock white-LED workaround — USER HARDWARE-TESTED.** One-click "Numpad → Digits (kill NumLock LED)" remaps 0–9 + decimal → top-row scancodes (operators already work NumLock-off, left alone), neutralizes the NumLock key (HID 0, freeing it to rebind), + **Revert Numpad** + a collapsible Explanation. `th108-binder.js` (`numpadWorkaround` / `numpadRevert` / `NUMPAD_REMAP`), commit `294822c`.
-- **NumLock RE = dead end (confirmed by recon).** Official web tool (epomaker.driveall.cn) exposes no indicator/lock/LCD/display setting in any tab → nothing to capture. Memory `th108-numlock-re-handoff` marked RESOLVED.
+- **Device lease Tasks 1–5** — single-owner arbitration (daemon vs WebHID tab) killing the two-writer FIFO-mute. Per-task reviewed; hardware checkpoints PASSED: daemon-only claim/release (`621c81a`+`9b061eb`), tab-vs-daemon (`7556682`+`e43de2e`), tab-vs-tab banner (`80b72bf`+`1225cc1`). Pure lease + tests `th108-daemon/device-lease.js` (10/10).
+- **Lease safety fixes** — `release()` rejects forged/non-owner callers (`0430531`); page marked owner at claim-grant so close-on-loss can't be missed (`e43de2e`); modern-clientId heartbeat skips the legacy self-yield collision (`9b061eb`); `onLeaseLost` multi-subscriber so banner + handle-close both fire (`1225cc1`).
+- **Site "Start Daemon" no-op** — fixed via a `_startreq.txt` signal the live tray watches (`aa6db5c`); proven: quit daemon → drop signal → revived <5s.
+- **Agent-layer daemon routes** — live-verified: `POST /agent/event`→204, `GET /agent/sessions` tracks busy/subagentCount/label; `Stop` resets.
+- **numpad4 not typing** — scrambled firmware keymap entry (Numpad→Digits remap), NOT the lease/lighting work; fixed by user rebind. "Reset X" no-ops unless the page is Connected (needs the device for the keymap RMW) — expected.
 
 ### 🟡 Open / in-progress
-- **iso-view changes committed but NOT visually confirmed** (`c35515e`): inactive System plane dims + reads "(inactive)"; off layers drop aura + particles; perf pass (cache `proj()` yaw/pitch/zoom trig — was recomputed ~1300×/frame; cache the body-font lookup; budget-cap supersampling on big pop-outs). **X-rotate: I flipped the HORIZONTAL (yaw) drag** in `th108-iso-view.js` pointermove (~line 282, `yaw=rot.y0 - dx*…`). If "inverted" meant the vertical/tilt axis instead, flip `pitch`. **Needs a user eyeball.**
-- **UI-polish batch committed (`d727d98`), pending visual confirm:** numpad controls wrapped in one encompassing rectangle, description in its own flush box below (group box no longer grows on expand); Explanation / Revert / Explanation-toggle / row-shading-reset buttons re-centered (inline-flex) + padded; status copy reworded. All syntax-checked, not yet eyeballed.
-- **Online-orb glow** (`294822c`): soft glow + hover-breathe replacing the ping ring — user-directed, final look not explicitly confirmed.
+- **[NEXT] Agent-layer on-board VISUAL glance** — the item interrupted at session start. Add an Agent layer → Preview in Chrome; confirm twinkles / numpad spinner / green ✓ / "!" real-blink animate, Dim-below + Silhouette-numpad darken a layer below, "!" blinks to dark. Optional: install 7 hooks (`docs/agent-hooks-setup.md`) → real Claude Code session → board.
+- **Lease Minor #2 (HARDWARE)** — the fast reclaim probe was shortened 1500→400ms (`1c46e50`, `daemon.js` `openIfPossible`/`fastReopen`). Verify a page-close reclaim with a **real Sudachi/Steam session running** still detects contention. If it slips: bump 400→700ms or drop `fastReopen`.
+- **Banner stuck-open fix (`c80e462`) — interaction-verify** — guarded the `transitionend` re-expand; confirm by rapid focus ping-pong between two Auto-connect-on-focus tabs (banner must not linger after regaining control).
+- **Dark-on-handoff** — reduced ~1.5s→~0.4s via `fastReopen` (`1c46e50`); user did a sanity pass. Re-confirm feel if #2 changes the probe timing.
+- **Optional polish (not done)** — double `/claim` per connect (harmless); auto-connect `dt.click()` lacks own single-flight guard (`onAwayChange`, downstream guards cover it).
+- **Endgame roadmap** (`.superpowers/sdd/progress.md`): agent glance → defaults test-env (memory `th108-defaults-test-env`, HARD: never touch personal config) → final project review → GitHub-site hosting + user-friendly packaging → demo video + design writeup → social (X) → portfolio (build with Fable 5).
 
 ### 🔴 Regressed / suspect
-- None known this session.
-
-## Queued next (full detail in `_HANDOFF.md` §10 + roadmap memory)
-- **NEXT: Audio-layer cleanup** — brainstorm→spec first (trim params, tighter audio sync, per-param undo/reset, "site domain" capture source). See memory `th108-music-layer`.
-- Then **Advanced Keys sniff** (official tool HAS the tab; SOCD/MT/TGL/CB encodings partly RE'd — fruitful).
-- Then **LCD "off" = dumb workaround** (true off is DEAD — no vendor display setting): one-click "LCD Off (black)" single all-black frame via the existing 0x50 engine, with a note that the backlight stays on (lit-black) + suggest a light-blocking sticker. Honor flash-upload safety (never-resend / 33-frame cap / pause lighting); deliberate button, not automatic.
-- **PRE-SHIP, DO LAST** (before the GitHub Pages deploy): seed a curated default state for new visitors from the finalized state (strip personal/machine bits) + first-run seeding + a `?fresh=1` preview to tune it.
-- **DROPPED:** UI redesign tooling (debug-wireframe / Arrange mode) — user call.
+- None live. (freeze→dark handoff was a mild regression from Task 4 closing the WebHID handle; addressed by `fastReopen` `1c46e50`, pending the #2 glance.)
 
 ## Build / run
-- Static page (page owns the device): `node _serve.js` → http://localhost:8123/
-- Full daemon (always-on, owns the device): `node th108-daemon/daemon.js`
-- **One device owner at a time** — page and daemon fight over the keyboard; stop one before starting the other.
-- Static HTML → **reload** after edits (no hot reload). Engine changes → **restart the daemon** (modules are require'd at startup).
-- Syntax checks: `node --check th108-binder.js` · `node --check th108-iso-view.js` · HTML inline script via `node -e "…new Function(b)…"` (full command in `_HANDOFF.md` §1).
-- Unit tests: `node --test th108-binder.test.js` (20) · `node --test th108-engine.test.js`.
+- **Daemon** (restart to pick up `daemon.js`/`device-lease.js`/`th108-engine.js` changes): `wscript th108-daemon/start-hidden.vbs` or the tray (`start-tray.vbs`) → serves controller + API on `http://localhost:8123`. Health: `curl -s http://127.0.0.1:8123/status`.
+- **Controller**: `http://localhost:8123/` in Chrome/Brave; hard-reload (Ctrl+Shift+R) for page-JS changes.
+- **Tests**: `cd th108-daemon && node --test *.test.js`; `node --test th108-engine.test.js`; `node --check <file>`. Inline HTML: extract `<script>` + `new vm.Script()` each (catches syntax, NOT TDZ).
+- **Diagnose down/hung daemon**: `powershell -File th108-daemon/_state-check.ps1`.
 
 ## Gotchas
-- Commits authored as **Beyon <you@example.com>**, **NO** Claude / Co-Authored-By trailer.
-- Never commit vendor bundles (`app.*.js`, `chunk-*.js`, `*.js.txt`, OpenRGB zip) — gitignored.
-- Keymap writes need a FULL 512-byte read+rewrite — single-key writes ACK but don't commit.
-- A half-applied edit to an inline `<script>` can TDZ-break the WHOLE page silently (`node --check` can't catch it) — reload and confirm the page is interactive after editing.
-- LCD uploads write flash — never re-send a chunk, cap 33 frames / ~1 MB; don't hardware-test LCD uploads without the user present.
+- **ONE controller at a time** — daemon↔page now arbitrated by the lease; a foreign app (Sudachi/Steam) grabbing the keyboard HID still desyncs the FIFO → mute (external, lease can't mediate).
+- **Un-wedge a muted board** fastest: toggle **BT↔wired** (full USB re-enumerate); the daemon's USB-restart ladder self-heals in ~30–40s.
+- **Commits**: author `Beyon <you@example.com>`, **NO Co-Authored-By/Claude trailer** (`git -c user.name="Beyon" -c user.email="you@example.com" commit --author="Beyon <you@example.com>" -m "..."`).
+- **Inline-script TDZ** (`th108-controller.html`): a load-time ref to a `const`/`let` before its declaration silently halts the WHOLE page; `node --check` can't catch it — verify the page loads in Chrome.
+- Untracked scratch (deletable): `_keytest.html`, `th108-daemon/_agentverify.out`.
 
 ## Next action
-Eyeball the just-committed UI batch + the iso-view changes — **especially confirm the iso X-rotate direction is the one you meant** (else flip yaw↔pitch ~`th108-iso-view.js:282`). Then start **Audio-layer cleanup** with a brainstorm→spec pass.
+Restart the daemon, then do the **agent-layer visual glance** (add an Agent layer → Preview, watch the board) AND — while at the keyboard — the lease **#2 foreign-writer check** (page-close reclaim with Sudachi/Steam running). Those two board checks clear the last 🟡 items; then move to the defaults test-env (memory `th108-defaults-test-env`).
