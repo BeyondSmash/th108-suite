@@ -37,6 +37,7 @@
     // ---- view params ----
     const DEF_YAW = 35*D2R, DEF_PITCH = 20*D2R, DEF_ZOOM = 100, DEF_GAP = 47, DEF_DRAWER = 20;   // default view (DEF_GAP 47 = Gap slider 80); reused by Reset Orientation
     let yaw = DEF_YAW, pitch = DEF_PITCH, zoom = DEF_ZOOM, gap = DEF_GAP, drawer = DEF_DRAWER, enhanced = false, focusIdx = null, auraI = 0.0075, faceOn = false, showKeys = true, hideOff = true, partSize = 0.55, glass = false, waveStyle = 'ripple';   // auraI baked (slider removed); 0.0075 = old slider value 0.75
+    let reorder = false, ldrag = null, _labels = [], _lblX0 = 0, _lblX1 = 0;   // Reorder mode: drag a layer LABEL to re-slot that layer in the stack. Transient editing tool — deliberately NOT persisted (you enter it to do a thing, then leave)
     let fxAnim = true, fxParticles = true, fxAura = true;   // Enhanced sub-toggles; all off ⇒ Enhanced off
     const glassAmt = 50, chromaAmt = 6;   // baked (sliders removed): blur/translucency/edge-bend + chromatic-aberration strength
     let ctrlDown = false, ctrlGuide = 0;   // ctrlDown = Ctrl held; ctrlGuide = eased alpha of the Ctrl-drag corner overlay
@@ -76,6 +77,7 @@
         '<button type="button" class="iso-back" hidden>‹ Back</button>' +
         '<button type="button" class="iso-keys on" title="Show the inactive/unused keys so the full keyboard layout reads (esp. face-on / top-down)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 8h.01"/><path d="M12 12h.01"/><path d="M14 8h.01"/><path d="M16 12h.01"/><path d="M18 8h.01"/><path d="M6 8h.01"/><path d="M7 16h10"/><path d="M8 12h.01"/><rect width="20" height="16" x="2" y="4" rx="2"/></svg>Keys</button>' +
         '<button type="button" class="iso-hideoff on" title="Hide off/inactive layers from the stack (they still appear as legend chips so you can toggle them back on)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.733 5.076a10.744 10.744 0 0 1 11.205 6.575 1 1 0 0 1 0 .696 10.747 10.747 0 0 1-1.444 2.49"/><path d="M14.084 14.158a3 3 0 0 1-4.242-4.242"/><path d="M17.479 17.499a10.75 10.75 0 0 1-15.417-5.151 1 1 0 0 1 0-.696 10.75 10.75 0 0 1 4.446-5.143"/><path d="m2 2 20 20"/></svg>Hide off</button>' +
+        '<button type="button" class="iso-reorder" title="Drag a layer’s left-side label up/down to change its position in the stack (bottom label = bottom layer). The compositor cards re-order to match. Click again to finish."><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21 16-4 4-4-4"/><path d="M17 20V4"/><path d="m3 8 4-4 4 4"/><path d="M7 4v16"/></svg>Reorder</button>' +
         '<button type="button" class="iso-glass" title="Swap the window background between solid and frosted glass (the page shows through, refracted)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 6 8 9"/><path d="m16 7-8 8"/><rect x="4" y="2" width="16" height="20" rx="2"/></svg>Glass</button>' +
         '<button type="button" class="iso-enh" title="Wave + rising stardust + aura wisps"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11.017 2.814a1 1 0 0 1 1.966 0l1.051 5.558a2 2 0 0 0 1.594 1.594l5.558 1.051a1 1 0 0 1 0 1.966l-5.558 1.051a2 2 0 0 0-1.594 1.594l-1.051 5.558a1 1 0 0 1-1.966 0l-1.051-5.558a2 2 0 0 0-1.594-1.594l-5.558-1.051a1 1 0 0 1 0-1.966l5.558-1.051a2 2 0 0 0 1.594-1.594z"/><path d="M20 2v4"/><path d="M22 4h-4"/><circle cx="4" cy="20" r="2"/></svg>Enhanced</button>' +
         '<span class="iso-fxgroup iso-efx" style="display:none" title="Enhanced sub-effects — toggle each independently; turning all three off turns Enhanced off">' +
@@ -166,8 +168,8 @@
     const $ = s => panel.querySelector(s);
     const zoomEl=$('.iso-zoom'), zvalEl=$('.iso-zval'), gapEl=$('.iso-gapr'), gvalEl=$('.iso-gval'), drawEl=$('.iso-draw'), dvalEl=$('.iso-dval'), enhEl=$('.iso-enh'),
           fxanimEl=$('.iso-fxanim'), fxpEl=$('.iso-fxp'), fxaEl=$('.iso-fxa'), keysEl=$('.iso-keys'), hideOffEl=$('.iso-hideoff'),
-          glassEl=$('.iso-glass'), waveEl=$('.iso-wave'),
-          backEl=$('.iso-back'), faceEl=$('.iso-face'), lockEl=$('.iso-lock'), legendEl=$('.iso-legend'), readEl=$('.iso-read');
+          glassEl=$('.iso-glass'), waveEl=$('.iso-wave'), reorderEl=$('.iso-reorder'),
+          backEl=$('.iso-back'), faceEl=$('.iso-face'), lockEl=$('.iso-lock'), legendEl=$('.iso-legend'), readEl=$('.iso-read'), hintEl=$('.iso-hint');
     // ---- persistence: remember the view settings between sessions ----
     const SKEY='th108_iso_view';
     function saveSettings(){ try{ localStorage.setItem(SKEY, JSON.stringify({yaw,pitch,zoom,gap,drawer,enhanced,fxAnim,fxParticles,fxAura,glass,showKeys,hideOff,faceOn,waveStyle,
@@ -241,6 +243,10 @@
         const lite=doc.querySelector('#iso-glass-ref-lite feDisplacementMap'); if(lite) lite.setAttribute('scale',base.toFixed(1)); } }
     keysEl.addEventListener('click', ()=>{ showKeys=!showKeys; keysEl.classList.toggle('on',showKeys); saveSoon(); });
     hideOffEl.addEventListener('click', ()=>{ hideOff=!hideOff; hideOffEl.classList.toggle('on',hideOff); buildLegend(); saveSoon(); });   // hide off/inactive planes from the stack (legend chips still list them so they can be toggled back on)
+    // Reorder mode — the controls hint swaps to reorder instructions while active
+    const _hint0=hintEl.innerHTML;
+    reorderEl.addEventListener('click', ()=>{ reorder=!reorder; ldrag=null; reorderEl.classList.toggle('on',reorder);
+      hintEl.innerHTML = reorder ? '<span class="iso-hk">Reorder</span> drag a layer label up/down to re-slot it (bottom label = bottom layer) · click Reorder again to finish' : _hint0; });
     glassEl.addEventListener('click', ()=>{ glass=!glass; glassEl.classList.toggle('on',glass); applyGlass(); saveSoon(); });   // frosted-glass window (glassiness baked)
     waveEl.addEventListener('change', e=>{ waveStyle=e.target.value; saveSoon(); });
     // keys must NOT interact with the iso UI (Enter was re-toggling the focused Face-on button) — blur any control
@@ -282,9 +288,15 @@
 
     // ---- rotate by dragging the canvas (small move = a click → focus the plane under it) ----
     let rot=null;
-    cv.addEventListener('pointerdown', e=>{ rot={x:e.clientX,y:e.clientY,y0:yaw,p0:pitch,moved:0,px:hitX(e),py:hitY(e)};
+    cv.addEventListener('pointerdown', e=>{
+      if(reorder){   // Reorder mode: a press on a draggable layer label starts a label drag instead of a rotate
+        const px=hitX(e), py=hitY(e);
+        const hit=_labels.find(l=>l.tog && px>=_lblX0-8 && px<=_lblX1+8 && Math.abs(py-l.y)<=8);
+        if(hit){ ldrag={from:hit.i, y:py}; cv.setPointerCapture(e.pointerId); e.preventDefault(); return; }
+      }
+      rot={x:e.clientX,y:e.clientY,y0:yaw,p0:pitch,moved:0,px:hitX(e),py:hitY(e)};
       cv.setPointerCapture(e.pointerId); e.preventDefault(); });
-    cv.addEventListener('pointermove', e=>{ if(!rot) return; ctrlDown=e.ctrlKey; const dx=e.clientX-rot.x, dy=e.clientY-rot.y;
+    cv.addEventListener('pointermove', e=>{ if(ldrag){ ldrag.y=hitY(e); return; } if(!rot) return; ctrlDown=e.ctrlKey; const dx=e.clientX-rot.x, dy=e.clientY-rot.y;
       rot.moved=Math.max(rot.moved,Math.abs(dx)+Math.abs(dy));
       yaw=rot.y0 - dx*0.7*D2R; if(!faceOn) pitch=Math.max(8*D2R, Math.min(90*D2R, rot.p0 + dy*0.5*D2R));   // horizontal drag → yaw (negated so the grabbed point follows the cursor); Face-on locks tilt
       if(e.ctrlKey){   // hold Ctrl → snap yaw/tilt to the nearest 90° interval when within ~12°
@@ -292,7 +304,18 @@
         yaw=snap(yaw); if(!faceOn){ const ps=snap(pitch); pitch=Math.max(8*D2R,Math.min(90*D2R,ps)); }
       }
       cv.classList.toggle('drag', rot.moved>4); });
-    cv.addEventListener('pointerup', e=>{ if(!rot) return; const click=rot.moved<=4; const mv=rot; rot=null; cv.classList.remove('drag');
+    cv.addEventListener('pointerup', e=>{
+      if(ldrag){   // drop: the nearest draggable label row is the target slot — splice the layer there and mirror to the compositor
+        const rows=_labels.filter(l=>l.tog);
+        const tgt=rows.length?rows.reduce((b,l)=>Math.abs(l.y-ldrag.y)<Math.abs(b.y-ldrag.y)?l:b):null;
+        if(tgt && tgt.i!==ldrag.from){
+          const [Lm]=state.layers.splice(ldrag.from,1); state.layers.splice(tgt.i,0,Lm);
+          focusIdx=null; backEl.hidden=true;   // plane ids are layer indices — a move invalidates a numeric focus
+          onLayersChanged(); buildLegend();
+        }
+        ldrag=null; return;
+      }
+      if(!rot) return; const click=rot.moved<=4; const mv=rot; rot=null; cv.classList.remove('drag');
       if(click) clickAt(mv.px, mv.py); saveSoon(); });   // persist the new orientation/focus
     const hitX=e=>{ const b=cv.getBoundingClientRect(); return (e.clientX-b.left)*CW/b.width; };
     const hitY=e=>{ const b=cv.getBoundingClientRect(); return (e.clientY-b.top)*CH/b.height; };
@@ -534,9 +557,22 @@
       if(LB.length){ const ov=LB[LB.length-1].y-(CH-8); if(ov>0) for(const L of LB) L.y-=ov;
         const tc=8-LB[0].y; if(tc>0) for(const L of LB) L.y+=tc; }
       ctx.font='600 12.65px '+FAM; ctx.textAlign='right'; ctx.textBaseline='middle';
+      _labels=LB.map(L=>({i:L.pl.i, tog:L.pl.toggle, y:L.y})); _lblX0=unitLeft; _lblX1=labelRight;   // label hit rows for Reorder-mode drags
       for(const L of LB){ const pl=L.pl;
+        if(ldrag && pl.toggle && pl.i===ldrag.from) continue;   // the dragged label follows the cursor instead (drawn below)
         ctx.fillStyle=pl.sys?(pl.off?'rgba(190,170,230,.5)':'rgba(190,170,230,.95)'):(pl.off?'rgba(139,148,158,.55)':'rgba(230,237,243,.92)');
         ctx.fillText(labelStr(pl), labelRight, L.y); }
+      if(reorder && !ldrag){   // idle Reorder mode: underline the draggable labels so the handles are discoverable
+        ctx.strokeStyle='rgba(88,166,255,.45)'; ctx.lineWidth=1;
+        for(const l of _labels) if(l.tog){ ctx.beginPath(); ctx.moveTo(_lblX0,l.y+8); ctx.lineTo(_lblX1,l.y+8); ctx.stroke(); }
+      }
+      if(ldrag){   // drag feedback: accent tick at the target slot + the dragged label riding the cursor
+        const rows=_labels.filter(l=>l.tog);
+        const tgt=rows.length?rows.reduce((b,l)=>Math.abs(l.y-ldrag.y)<Math.abs(b.y-ldrag.y)?l:b):null;
+        if(tgt){ ctx.strokeStyle='#58a6ff'; ctx.lineWidth=2; ctx.beginPath(); ctx.moveTo(_lblX0,tgt.y+8); ctx.lineTo(_lblX1,tgt.y+8); ctx.stroke(); }
+        const dpl=LB.find(L=>L.pl.toggle && L.pl.i===ldrag.from);
+        if(dpl){ ctx.fillStyle='#58a6ff'; ctx.fillText(labelStr(dpl.pl), labelRight, ldrag.y); }
+      }
       readEl.textContent = 'zoom '+zoom+'% · yaw '+Math.round(((yaw/D2R)%360+360)%360)+'° · tilt '+Math.round(pitch/D2R)+'° · gap '+gapToSlider(gap)+(drawer?' · drawer '+drawer:'');
 
       // Ctrl-drag guide: 4 framing corner brackets that fade in while Ctrl is held during a viewport drag (90° snap mode)
