@@ -1076,8 +1076,10 @@
     // _carve[k] is applied by composite() as: acc[k] *= 1 - carve[k], so 1 = fully black, 0 = untouched.
     // _alpha controls only THIS layer's own opacity under the 'add' blend — it cannot darken layers below.
     L._alpha = null;   // agent layer does not use per-key opacity
-    const anyActive = A.busy || A.attention || A.subagentCount > 0 || (A.checkmarkAt && now - A.checkmarkAt < 1200) || (A.bootAt && now - A.bootAt < 1200);
-    if (anyActive && (s.silhouetteNumpad || s.dimBelow)) {
+    // emphasis fires only while a NUMPAD glyph is showing (spinner / checkmark / "!") — twinkles live on the
+    // letter cluster and the boot sweep is board-wide, so neither should darken/carve the numpad.
+    const numpadActive = A.busy || A.attention || (A.checkmarkAt && now - A.checkmarkAt < 1200);
+    if (numpadActive && (s.silhouetteNumpad || s.dimBelow)) {
       const cb = L._carveBuf || (L._carveBuf = new Float32Array(NLED)); cb.fill(0);
       const dimAmt = s.dimBelowAmt == null ? 0.9 : s.dimBelowAmt;
       if (s.dimBelow) for (const k of AGENT_NUMPAD_K) cb[k] = dimAmt;   // numpad region only: acc *= 1 - dimAmt under the agent glyphs; the rest of the board stays untouched

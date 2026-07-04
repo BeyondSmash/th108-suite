@@ -908,6 +908,13 @@ test('renderAgent both dimBelow+silhouetteNumpad: glyph slots carve to 1, rest o
   }
 });
 
+test('renderAgent twinkles-only (subagents, no numpad glyph) does not carve/dim the numpad', () => {
+  const L = { type: 'agent', settings: { dimBelow: true, dimBelowAmt: 0.9, silhouetteNumpad: true }, rgb: [] };
+  const state = { agent: { busy: false, subagentCount: 3, checkmarkAt: 0, notifyAt: 0, attention: false, bootAt: 0 } };
+  E.renderAgent(L, 1000, state);
+  assert.equal(L._carve, null, 'twinkles draw on the letter cluster — no numpad glyph, no emphasis');
+});
+
 test('renderAgent with no active state leaves _carve null', () => {
   const L = { type: 'agent', settings: { dimBelow: true, dimBelowAmt: 0.9 }, rgb: [] };
   // agent feed present but nothing active
