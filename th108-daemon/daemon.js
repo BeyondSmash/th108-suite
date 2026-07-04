@@ -490,6 +490,12 @@ async function runTick() {
     // color to show how far through the song we are. SAFE — lighting only, no LCD flash writes. The
     // yellow track-change flash (150ms, all 10) rides the same toggle, gated by its own on/off.
     if (settings.npBar && npHandle && DIGIT_KS.length) {
+      // agent glyphs (spinner / ✓ / "!") read ABOVE the song-progress bar: snapshot the composed value of
+      // any bar key the agent layer is lighting and restore it after the bar + flash paints — the glyph
+      // punches through instead of being buried under the bar (they share the numpad when npBarKeys='numpad').
+      const agKs = settings.npBarKeys === 'numpad' ? NUMPAD_KS : DIGIT_KS;
+      const agRestore = [];
+      if (agL) for (const k of agKs) { const t = k * 3; if (agL.rgb[t] + agL.rgb[t + 1] + agL.rgb[t + 2] > 6) { const o = k * 4; agRestore.push([o, flat[o + 1], flat[o + 2], flat[o + 3]]); } }
       const ms = npHandle.mediaState();
       // idle crossfade: nothing playing for npBarIdleSec → fade the bar out (reveal the lighting beneath)
       let op = 1;
@@ -518,6 +524,7 @@ async function runTick() {
         if (ft >= 0 && ft < 150) { const [fr, fg, fb] = hexRGB(settings.npFlashColor); const fks = settings.npBarKeys === 'numpad' ? NUMPAD_KS : DIGIT_KS; for (const k of fks) { const o = k * 4; flat[o + 1] = fr; flat[o + 2] = fg; flat[o + 3] = fb; } }   // flatEq sends the flash on its on/off edges
         else if (ft >= 150) npFlashAt = 0;
       } else if (npFlashAt && !settings.npFlash) npFlashAt = 0;
+      for (const [o, r, g, b] of agRestore) { flat[o + 1] = r; flat[o + 2] = g; flat[o + 3] = b; }   // agent glyph back on top of bar + flash
       if (profileFlashAt && profileFlashLed >= 0) {   // ~1s profile-switch number flash, in the profile's color, blinking ~3×
         const pt = Date.now() - profileFlashAt;
         if (pt >= PROFILE_FLASH_MS) profileFlashAt = 0;

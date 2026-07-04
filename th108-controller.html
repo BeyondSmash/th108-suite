@@ -1132,7 +1132,7 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
       </div>
       <div>
         <section class="npsec">
-        <label class="sl" style="margin:0;cursor:pointer"><input type="checkbox" id="npBar"> Song progress on keys 1-0 (light-bar)</label>
+        <label class="sl" style="margin:0;cursor:pointer"><input type="checkbox" id="npBar"> Song Progress on keys 1-0 (light-bar)</label>
         <p class="hint" style="margin:4px 0 0">Keys&nbsp;1-0 light up to show how far through the song you are — <b>lighting only, no LCD writes, so it can't softbrick</b>.
            Needs the background daemon running (it reads Spotify's playback position). Works whether or not the LCD now-playing on the left is on.</p>
         </section>
@@ -1797,7 +1797,7 @@ function isoExtraPlanes(){   // Song-progress bar (keys 1-0 / numpad) as its own
   const fl=document.getElementById('npFlash');
   if(fl&&fl.checked && performance.now()<_npFlashUntil){ const [fr,fg,fb]=TH108Engine.hexToRgb(((document.getElementById('npFlashColor')||{}).value)||'#ffd000');
     for(let i=0;i<keys.length;i++){ const o=keys[i]*3; _npPlaneRgb[o]=Math.max(_npPlaneRgb[o],fr); _npPlaneRgb[o+1]=Math.max(_npPlaneRgb[o+1],fg); _npPlaneRgb[o+2]=Math.max(_npPlaneRgb[o+2],fb); } }
-  return [{name:'Song progress', rgb:_npPlaneRgb}];
+  return [{name:'Song Progress', rgb:_npPlaneRgb}];
 }
 const ISO=TH108IsoView.create({ state, engine:TH108Engine, getRunning:()=>running,
   extraPlanes: isoExtraPlanes,
