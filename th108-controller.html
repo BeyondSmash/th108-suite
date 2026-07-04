@@ -1387,7 +1387,7 @@ const DC = TH108DaemonClient.create({ log, getConfig: ()=>localStorage.getItem('
 // showLeaseBanner(); "Auto-connect on focus" is read by onAwayChange(). Wired here (after DC exists) — TDZ-safe.
 (function(){
   var ac=document.getElementById('autoConnectFocus'), hy=document.getElementById('hideYieldBanner');
-  if(ac){ ac.checked = localStorage.getItem('th108.autoConnectFocus')==='1'; ac.addEventListener('change',function(){ localStorage.setItem('th108.autoConnectFocus', ac.checked?'1':'0'); }); }
+  if(ac){ ac.checked = localStorage.getItem('th108.autoConnectFocus')==='1'; ac.addEventListener('change',function(){ localStorage.setItem('th108.autoConnectFocus', ac.checked?'1':'0'); if(ac.checked) onAwayChange(); }); }   // turning it ON acts immediately (no blur→focus round-trip needed)
   if(hy){ hy.checked = localStorage.getItem('th108.hideYieldBanner')==='1'; hy.addEventListener('change',function(){ localStorage.setItem('th108.hideYieldBanner', hy.checked?'1':'0'); if(hy.checked) hideLeaseBanner(); }); }
 })();
 
@@ -1459,6 +1459,10 @@ function onAwayChange(){
 window.addEventListener('blur', onAwayChange);
 window.addEventListener('focus', onAwayChange);
 document.addEventListener('visibilitychange', onAwayChange);
+// A refresh/load with the tab ALREADY focused fires no focus event, so Auto-connect-on-focus only ever
+// kicked in after a blur→focus round-trip. Run the same check once at startup — after this tab wins the
+// single-driver lock, so autoReconnect isn't gated off mid-load. wantAuto=false → no-op (daemon-deference default).
+__driverGained.then(function(){ if(pageActive()) onAwayChange(); });
 DC.mountPanel();   // Background-daemon panel: status readout, auto-start toggle (HKCU Run key via the daemon), quit
 // Row shading: bipolar zebra. <0 darkens even rows (black tint), >0 brightens (white tint), 0 = off.
 // Snaps to the center (0) on approach so you can land exactly on neutral.
