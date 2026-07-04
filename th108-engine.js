@@ -1008,6 +1008,7 @@
   const AGENT_SPIN_K = AGENT_SPIN.map(codeIdx).filter(k => k >= 0);
   const AGENT_CHECK_K = AGENT_CHECK.map(codeIdx).filter(k => k >= 0);
   const AGENT_BANG_K = AGENT_BANG.map(codeIdx).filter(k => k >= 0);
+  const AGENT_NUMPAD_K = Object.keys(KEYMAP).filter(c => c.startsWith('Num')).map(codeIdx).filter(k => k >= 0);   // whole numpad region (NumLock + Numpad*) — the canvas the agent glyphs draw on
   const AGENT_LETTER_K = AGENT_LETTERS.map(codeIdx).filter(k => k >= 0);
 
   function applyAgentFeed(state, feed) { state.agent = feed || null; }
@@ -1079,7 +1080,7 @@
     if (anyActive && (s.silhouetteNumpad || s.dimBelow)) {
       const cb = L._carveBuf || (L._carveBuf = new Float32Array(NLED)); cb.fill(0);
       const dimAmt = s.dimBelowAmt == null ? 0.9 : s.dimBelowAmt;
-      if (s.dimBelow) cb.fill(dimAmt);   // board-wide: acc *= 1 - dimAmt → dims all layers below to (1-dimAmt)
+      if (s.dimBelow) for (const k of AGENT_NUMPAD_K) cb[k] = dimAmt;   // numpad region only: acc *= 1 - dimAmt under the agent glyphs; the rest of the board stays untouched
       if (s.silhouetteNumpad) {
         // numpad slots fully carved (=1) so spinner/✓/"!" read against black; takes MAX with dimBelow if also on
         const numpadSlots = new Set([...AGENT_SPIN_K, ...AGENT_CHECK_K, ...AGENT_BANG_K]);
@@ -1303,7 +1304,7 @@
     keyCell, layerCell,
     PAT_DEFAULTS, patParams, ensureSettings, defaultLayers, createState, applyConfig,
     renderBackground, renderReactive, renderGradient, renderPattern, renderMedia, adjustRgb, computeCrop, renderKeys, renderAudio,
-    applyAgentFeed, renderAgent, agentPhase, AGENT_SPIN_K, AGENT_CHECK_K, AGENT_BANG_K,
+    applyAgentFeed, renderAgent, agentPhase, AGENT_SPIN_K, AGENT_CHECK_K, AGENT_BANG_K, AGENT_NUMPAD_K,
     reactEnvelope, applyAdjust, layerNow, renderLayer, composite, flatEq,
     composeFrame, stampKey, releaseKey, SEND_FPS_CAP,
   };

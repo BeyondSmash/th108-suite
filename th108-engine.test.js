@@ -862,14 +862,19 @@ test('renderAgent with subagents lights at least one key orange-ish', () => {
 
 // ===== Finding 1: renderAgent emphasis uses _carve to dim layers below, not _alpha =====
 
-test('renderAgent dimBelow sets _carve to dimBelowAmt across all keys and leaves _alpha null', () => {
+test('renderAgent dimBelow sets _carve to dimBelowAmt on the numpad region only and leaves _alpha null', () => {
   const L = { type: 'agent', settings: { dimBelow: true, dimBelowAmt: 0.9, silhouetteNumpad: false }, rgb: [] };
   const state = { agent: { busy: true, subagentCount: 0, checkmarkAt: 0, notifyAt: 0, attention: false, bootAt: 0 } };
   E.renderAgent(L, 1000, state);
   assert.ok(L._carve instanceof Float32Array, '_carve is a Float32Array when dimBelow is on');
   assert.equal(L._carve.length, E.NLED, '_carve covers every LED slot');
-  // every key should be carving by dimBelowAmt (0.9)
-  for (let k = 0; k < E.NLED; k++) assert.ok(Math.abs(L._carve[k] - 0.9) < 1e-6, 'key ' + k + ' carve = dimBelowAmt 0.9');
+  // numpad-region keys carve by dimBelowAmt (0.9); everything else stays untouched (0)
+  const numpad = new Set(E.AGENT_NUMPAD_K);
+  assert.ok(numpad.size > 0, 'numpad region resolved to LED slots');
+  for (let k = 0; k < E.NLED; k++) {
+    if (numpad.has(k)) assert.ok(Math.abs(L._carve[k] - 0.9) < 1e-6, 'numpad key ' + k + ' carve = dimBelowAmt 0.9');
+    else assert.ok(Math.abs(L._carve[k]) < 1e-6, 'non-numpad key ' + k + ' untouched');
+  }
   assert.equal(L._alpha, null, '_alpha must be null — agent layer does not scale its own opacity');
 });
 
@@ -889,15 +894,17 @@ test('renderAgent silhouetteNumpad carves numpad slots to 1 and leaves others at
   if (!isNumpad) assert.ok(Math.abs(L._carve[escK]) < 1e-6, 'non-numpad key is not carved');
 });
 
-test('renderAgent both dimBelow+silhouetteNumpad: numpad slots carve to 1, rest to dimBelowAmt', () => {
+test('renderAgent both dimBelow+silhouetteNumpad: glyph slots carve to 1, rest of numpad to dimBelowAmt, elsewhere 0', () => {
   const L = { type: 'agent', settings: { dimBelow: true, dimBelowAmt: 0.7, silhouetteNumpad: true }, rgb: [] };
   const state = { agent: { busy: true, subagentCount: 0, checkmarkAt: 0, notifyAt: 0, attention: false, bootAt: 0 } };
   E.renderAgent(L, 1000, state);
   assert.ok(L._carve instanceof Float32Array, '_carve allocated');
-  const numpadK = new Set([...E.AGENT_SPIN_K, ...E.AGENT_CHECK_K, ...E.AGENT_BANG_K]);
+  const glyphK = new Set([...E.AGENT_SPIN_K, ...E.AGENT_CHECK_K, ...E.AGENT_BANG_K]);
+  const numpad = new Set(E.AGENT_NUMPAD_K);
   for (let k = 0; k < E.NLED; k++) {
-    if (numpadK.has(k)) assert.ok(Math.abs(L._carve[k] - 1) < 1e-6, 'numpad slot k=' + k + ' carved to 1');
-    else assert.ok(Math.abs(L._carve[k] - 0.7) < 1e-6, 'non-numpad k=' + k + ' carved to dimBelowAmt 0.7');
+    if (glyphK.has(k)) assert.ok(Math.abs(L._carve[k] - 1) < 1e-6, 'glyph slot k=' + k + ' carved to 1');
+    else if (numpad.has(k)) assert.ok(Math.abs(L._carve[k] - 0.7) < 1e-6, 'numpad k=' + k + ' carved to dimBelowAmt 0.7');
+    else assert.ok(Math.abs(L._carve[k]) < 1e-6, 'non-numpad k=' + k + ' untouched');
   }
 });
 

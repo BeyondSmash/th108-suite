@@ -1055,7 +1055,7 @@
         // Emphasis toggles
         const emphRows=
           row('Numpad<br>Silhouette','<label class="sl" style="margin:0"><input type="checkbox" class="s-silhouetteNumpad"'+(s.silhouetteNumpad?' checked':'')+'> Carve numpad from layers below while agent is active</label><span></span>')+
-          row('Dim Below','<label class="sl" style="margin:0"><input type="checkbox" class="s-dimBelow"'+(s.dimBelow?' checked':'')+'> Dim layers below when agent is active</label><span></span>')+
+          row('Dim Below','<label class="sl" style="margin:0"><input type="checkbox" class="s-dimBelow"'+(s.dimBelow?' checked':'')+'> Dim the numpad on layers below while agent is active</label><span></span>')+
           (s.dimBelow ? row('Dim Amount','<span class="srange" style="width:100%"><input type="range" class="s-dimBelowAmt" min="0" max="100" value="'+Math.round((s.dimBelowAmt!=null?s.dimBelowAmt:0.9)*100)+'"><i class="tick" style="left:calc(7px + (100% - 14px)*0.9)"></i></span><span class="val s-dimBelowAmtV"></span>') : '');
         // Exclamation (!) animation controls
         const bangRows=
@@ -1090,11 +1090,16 @@
           let has=false;
           (sessions||[]).forEach(ag=>{ if(ag&&ag.id){ if(ag.id===cur) has=true;
             optsHtml.push('<option value="'+ag.id.replace(/"/g,'&quot;')+'"'+(ag.id===cur?' selected':'')+'>'+(ag.label||ag.id).replace(/&/g,'&amp;').replace(/</g,'&lt;')+'</option>'); } });
-          if(cur!=='all' && !has) optsHtml.push('<option value="'+cur.replace(/"/g,'&quot;')+'" selected>'+cur+' (ended)</option>');
+          // saved filter points at a session that's no longer live → show its remembered friendly label
+          // (or a short id for pre-label saves), never the raw UUID
+          if(cur!=='all' && !has){ const lbl=(s.sessionLabel||('session '+cur.slice(0,6))).replace(/&/g,'&amp;').replace(/</g,'&lt;');
+            optsHtml.push('<option value="'+cur.replace(/"/g,'&quot;')+'" selected>'+lbl+' (ended)</option>'); }
           sessSel.innerHTML=optsHtml.join('');
           if(sessNote) sessNote.textContent=sessions&&sessions.length?'':sessions===null?'(daemon not available)':'(no sessions seen yet)'; }
         fillSessionDrop([]);
-        sessSel.addEventListener('change',e=>{ s.session=e.target.value; });
+        sessSel.addEventListener('change',e=>{ s.session=e.target.value;
+          const opt=e.target.selectedOptions&&e.target.selectedOptions[0];   // remember the friendly label so the option stays readable after the session ends
+          s.sessionLabel = e.target.value==='all' ? '' : (opt?opt.textContent.replace(/ \(ended\)$/,''):''); });
         // Async load of sessions on card open — reuses the listAgentSessions hook (fetches /status agentSessions or /agent/sessions)
         listAgentSessions().then(fillSessionDrop).catch(()=>fillSessionDrop(null));
         // Re-fetch on dropdown open so sessions that started/ended since the card was built show up
@@ -1288,6 +1293,7 @@
       if(L.type==='audio') delete CFG.rot;   // audio styles map to discrete columns/rows — Rotate has no effect, so don't show a dead control
       if(L.type==='individual') delete CFG.rot;   // per-key paint = explicit positions; rotating would scramble the painted layout — dead control
       if(L.type==='media') delete CFG.rot;   // media frames are pre-sampled per-key; applyAdjust has no rotate → dead control
+      if(L.type==='agent') delete CFG.rot;   // agent glyphs use explicit color pickers; hue-rotating them fights the pickers — dead control
       const showStatic = L.type!=='individual';   // individual paints a fixed color set — there's no animation to freeze, so Static is meaningless here
       const disp=(key,raw)=>{ const d=CFG[key][3]; return d?(raw/100).toFixed(d):String(raw); };
       const ctl=key=>{ const c=CFG[key], dec=c[3], frac=(c[5]-c[1])/(c[2]-c[1]);   // tick at the default value
