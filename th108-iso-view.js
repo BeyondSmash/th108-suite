@@ -138,9 +138,16 @@
         'background:rgba(255,255,255,.05);box-shadow:inset 0 0 0 1px var(--line,#30363d);cursor:pointer;user-select:none}' +
         '.iso-chip.foc{box-shadow:inset 0 0 0 1px var(--blue,#58a6ff)}.iso-chip.off{opacity:.5}' +
         '.iso-seq{color:var(--muted,#8b949e);font-size:12px;user-select:none;align-self:center}' +   // › between chips: reads as the stacking order, bottom → top (same idiom as the binder's macro-step chips)
-        '.iso-chip.reo{cursor:grab}.iso-chip.dragging{opacity:.45}' +
+        // Reorder mode: the draggable chips pulse a soft blue stroke so it's obvious THEY are the handles
+        '.iso-chip.reo{cursor:grab;animation:isoReoPulse 1.6s ease-in-out infinite}' +
+        '@keyframes isoReoPulse{0%,100%{box-shadow:inset 0 0 0 1px rgba(88,166,255,.45)}50%{box-shadow:inset 0 0 0 1.5px var(--blue,#58a6ff),0 0 9px rgba(88,166,255,.5)}}' +
+        '.iso-chip.dragging{opacity:.45}' +
+        // drop marks override the pulse (animation off so the edge line shows); blue = will re-slot, red = drop here changes nothing
+        '.iso-chip.dropbefore,.iso-chip.dropafter{animation:none}' +
         '.iso-chip.dropbefore{box-shadow:inset 0 0 0 1px var(--line,#30363d),-3px 0 0 var(--blue,#58a6ff)}' +
         '.iso-chip.dropafter{box-shadow:inset 0 0 0 1px var(--line,#30363d),3px 0 0 var(--blue,#58a6ff)}' +
+        '.iso-chip.dropnoop.dropbefore{box-shadow:inset 0 0 0 1px var(--line,#30363d),-3px 0 0 #f85149}' +
+        '.iso-chip.dropnoop.dropafter{box-shadow:inset 0 0 0 1px var(--line,#30363d),3px 0 0 #f85149}' +
         '.iso-chip .pw{width:13px;height:13px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:9px;' +
         'box-shadow:inset 0 0 0 1px var(--muted,#8b949e)}.iso-chip.on .pw{background:#3fb950;box-shadow:none;color:#0d1117}' +
         '.iso-foot{padding:7px 12px 11px;font-size:11px;color:var(--muted,#8b949e);line-height:1.5}' +
@@ -367,17 +374,20 @@
     }
     // container-level drag handling for Reorder mode (attached once): gap-insert semantics — the accent edge
     // shows which side of the hovered chip the layer will land on. Only real-layer chips carry data-i.
-    function clearChipMarks(){ legendEl.querySelectorAll('.iso-chip').forEach(c=>c.classList.remove('dropbefore','dropafter')); }
+    function clearChipMarks(){ legendEl.querySelectorAll('.iso-chip').forEach(c=>c.classList.remove('dropbefore','dropafter','dropnoop')); }
     function chipDropAt(clientX){ const chips=[...legendEl.querySelectorAll('.iso-chip[data-i]')]; if(!chips.length) return null;
-      for(const c of chips){ const r=c.getBoundingClientRect(); if(clientX < r.left + r.width/2) return { i:+c.dataset.i, before:true, el:c }; }
-      const last=chips[chips.length-1]; return { i:+last.dataset.i, before:false, el:last }; }
+      let d=null;
+      for(const c of chips){ const r=c.getBoundingClientRect(); if(clientX < r.left + r.width/2){ d={ i:+c.dataset.i, before:true, el:c }; break; } }
+      if(!d){ const last=chips[chips.length-1]; d={ i:+last.dataset.i, before:false, el:last }; }
+      let to=d.i+(d.before?0:1); if(to>from()) to--;   // removing the layer first shifts the insertion point left
+      d.to=to; d.noop=(to===from());   // landing in the slot it already occupies = nothing would change
+      return d; }
+    const from=()=>_chipDragI;
     legendEl.addEventListener('dragover', e=>{ if(_chipDragI==null) return; e.preventDefault(); clearChipMarks();
-      const d=chipDropAt(e.clientX); if(d) d.el.classList.add(d.before?'dropbefore':'dropafter'); });
+      const d=chipDropAt(e.clientX); if(d){ d.el.classList.add(d.before?'dropbefore':'dropafter'); if(d.noop) d.el.classList.add('dropnoop'); } });
     legendEl.addEventListener('drop', e=>{ if(_chipDragI==null) return; e.preventDefault();
-      const d=chipDropAt(e.clientX); clearChipMarks(); const from=_chipDragI; _chipDragI=null; if(!d) return;
-      let to=d.i+(d.before?0:1); if(to>from) to--;   // removing the layer first shifts the insertion point left
-      if(to===from) return;
-      const [Lm]=state.layers.splice(from,1); state.layers.splice(to,0,Lm);
+      const d=chipDropAt(e.clientX); clearChipMarks(); const fromI=_chipDragI; _chipDragI=null; if(!d || d.noop) return;
+      const [Lm]=state.layers.splice(fromI,1); state.layers.splice(d.to,0,Lm);
       focusIdx=null; backEl.hidden=true;   // plane ids are layer indices — a move invalidates a numeric focus
       onLayersChanged(); buildLegend(); });
     function clickAt(px,py){ for(let i=_planes.length-1;i>=0;i--){ if(inQuad(px,py,_planes[i].quad)){ focusTo(_planes[i].id); return; } } }
