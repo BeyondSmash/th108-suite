@@ -580,7 +580,7 @@
         // framing controls
         { const zo=c('.s-mzoom'), zv=c('.s-mzoomV'); const upd=()=>{ if(zv) zv.textContent=(s.zoom||100)+'%'; }; if(zo) zo.addEventListener('input',e=>{ snap(e.target,100,10); s.zoom=+e.target.value||100; upd(); resampleAll(); scheduleSaveLayers(); }); upd(); }   // detent at 100%
         { const ro=c('.s-mrot'), rv=c('.s-mrotV'); const upd=()=>{ if(rv) rv.textContent=(s.rot||0)+'°'; }; if(ro) ro.addEventListener('input',e=>{ snapMul(e.target,90,8); s.rot=+e.target.value||0; upd(); resampleAll(); scheduleSaveLayers(); }); upd(); }   // detents at 0/90/180/270
-        { const fb=c('.s-mframeReset'); if(fb) fb.addEventListener('click',()=>{ s.zoom=100; s.panX=0; s.panY=0; s.rot=0; const z=c('.s-mzoom'); if(z)z.value=100; const r=c('.s-mrot'); if(r)r.value=0; const zv=c('.s-mzoomV'); if(zv)zv.textContent='100%'; const rv=c('.s-mrotV'); if(rv)rv.textContent='0°'; resampleAll(); drawSrc(currentIdx()); scheduleSaveLayers(); }); }
+        { const fb=c('.s-mframeReset'); if(fb) fb.addEventListener('click',()=>{ if(!confirm('Reset framing (zoom / pan / rotate) to default?')) return; s.zoom=100; s.panX=0; s.panY=0; s.rot=0; const z=c('.s-mzoom'); if(z)z.value=100; const r=c('.s-mrot'); if(r)r.value=0; const zv=c('.s-mzoomV'); if(zv)zv.textContent='100%'; const rv=c('.s-mrotV'); if(rv)rv.textContent='0°'; resampleAll(); drawSrc(currentIdx()); scheduleSaveLayers(); }); }
         // sampling: Map (physical/grid) + Sample strategy + Out-of-frame fill — re-sample on change (no decode needed)
         { const mp=c('.s-mmap'); if(mp) mp.addEventListener('change',e=>{ s.map=e.target.value; resampleAll(); drawSrc(currentIdx()); scheduleSaveLayers(); }); }
         { const sm=c('.s-msample'); if(sm) sm.addEventListener('change',e=>{ s.sampleMode=e.target.value; resampleAll(); drawSrc(currentIdx()); scheduleSaveLayers(); }); }
@@ -782,7 +782,14 @@
           bloom:{ bloomColor:'#ff5a00', bloomColor2:'#ffd000', bloomGrad:false, bloomGradRev:false, bloomDynamics:false, bloomDynamicsAlpha:false, bloomDynamicsDepth:60 },
           wave:{ waveColor:'#00e0ff', waveColor2:'#ff00aa', waveGrad:false, waveGradRev:false, waveReverse:false, waveAmp:100, waveThick:50, waveDensity:50, waveAdaptive:0 },
           aurora:{ auroraWidth:50, auroraDrive:'volume', auroraAlpha:false } };
-        { const sr=c('.s-styleReset'); if(sr) sr.addEventListener('click',()=>{ const d=STYLE_DEFAULTS[style]; if(d) Object.assign(s,d); if(s.ap) delete s.ap[E.audioVariantKey(s)]; buildLayerBody(card,L); scheduleSaveLayers(); }); }
+        { const sr=c('.s-styleReset'); if(sr) sr.addEventListener('click',()=>{ const d=STYLE_DEFAULTS[style]; if(!d) return;
+          const sel=c('.s-style'); const styleName=(sel && sel.options[sel.selectedIndex]) ? sel.options[sel.selectedIndex].text : style;
+          if(!confirm('Reset the '+styleName+' style to defaults?\nOther styles, source, crop, ducks and pause are untouched.')) return;
+          const vkey=E.audioVariantKey(s);
+          const snapKeys={}; for(const k in d) snapKeys[k]=s[k];   // prior values of just the keys the reset overwrites
+          const snapAp=(s.ap && s.ap[vkey]!==undefined) ? JSON.parse(JSON.stringify(s.ap[vkey])) : undefined;
+          Object.assign(s,d); if(s.ap) delete s.ap[vkey]; buildLayerBody(card,L); scheduleSaveLayers();
+          showUndoToast('Reset '+styleName+' style', ()=>{ Object.assign(s,snapKeys); if(snapAp!==undefined){ if(!s.ap) s.ap={}; s.ap[vkey]=snapAp; } buildLayerBody(card,L); scheduleSaveLayers(); }); }); }
         ['barColorBass','barColorTreble','barTipColor','barGradA','barGradB','pulseColor','pulseColor2','bloomColor','bloomColor2','waveColor','waveColor2'].forEach(key=>{ const el=c('.s-'+key); if(el) el.addEventListener('input',e=>s[key]=e.target.value); });
         // per-style appearance VALUE sliders that write to s directly (not the per-style tuner `ap`): pulse min/max, aurora width
         [['pulseMin','%'],['pulseMax','%'],['auroraWidth',''],['waveAmp','%'],['waveThick','%'],['waveDensity','%'],['waveAdaptive','%'],['micGate','%']].forEach(pair=>{ const key=pair[0], unit=pair[1], el=c('.s-'+key), v=c('.s-'+key+'V'); if(el&&v){ const up=()=>v.textContent=el.value+unit; el.addEventListener('input',()=>{ s[key]=+el.value; up(); }); up(); } });
@@ -839,7 +846,7 @@
         slider('beatSens','beatSens',x=>x+'%',v=>v,50);
         { const co=c('.s-cropOn'); if(co) co.addEventListener('change',e=>{ s.cropOn=e.target.checked; buildLayerBody(card,L); }); }   // rebuild so Fit/Reset + the note show/hide
         { const cf=c('.s-cropFit'); if(cf) cf.addEventListener('change',e=>{ s.cropFit=e.target.checked; scheduleSaveLayers(); }); }
-        { const cr=c('.s-cropReset'); if(cr) cr.addEventListener('click',()=>{ s.cropX=0.1; s.cropY=0.1; s.cropW=0.8; s.cropH=0.8; scheduleSaveLayers(); }); }
+        { const cr=c('.s-cropReset'); if(cr) cr.addEventListener('click',()=>{ if(!confirm('Reset the crop box to the default window?')) return; s.cropX=0.1; s.cropY=0.1; s.cropW=0.8; s.cropH=0.8; scheduleSaveLayers(); }); }
         body.querySelectorAll('.s-duckOn').forEach(cb=>cb.addEventListener('change',e=>{
           const i=+e.target.dataset.i, sl=body.querySelector('.s-duckDim[data-i="'+i+'"]');
           if(!Array.isArray(s.ducks)) s.ducks=[];
