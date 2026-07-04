@@ -1066,7 +1066,12 @@
           (s.reminderEnabled ?
             row('Blinks','<select class="s-reminderBlinks"><option value="2"'+(s.reminderBlinks===2?' selected':'')+'>2 blinks</option><option value="3"'+(s.reminderBlinks===3?' selected':'')+'>3 blinks</option></select><span></span>') : '');
         // Preview toggle (page-side synthetic feed)
-        const previewRow=full('<div style="text-align:center"><label class="sl" style="margin:0;text-align:center"><input type="checkbox" class="s-agPreview"'+(s.preview?' checked':'')+'> <span>Preview — inject a synthetic agent feed<br>so the animation tunes live (no daemon needed)</span></label></div>');
+        const previewRow=full('<div style="text-align:center"><label class="sl" style="margin:0;text-align:center"><input type="checkbox" class="s-agPreview"'+(s.preview?' checked':'')+'> <span>Preview — inject a synthetic agent feed<br>so the animation tunes live (no daemon needed)</span></label></div>'
+          +'<div style="text-align:center;margin-top:6px"><span style="opacity:.6;font-size:11px;margin-right:6px">Trigger once:</span>'
+          +'<button type="button" class="s-agTrig" data-trig="twinkle">Twinkle</button> '
+          +'<button type="button" class="s-agTrig" data-trig="spinner">Spinner</button> '
+          +'<button type="button" class="s-agTrig" data-trig="check">Checkmark</button> '
+          +'<button type="button" class="s-agTrig" data-trig="bang">Exclamation</button></div>');
         body.innerHTML='<div class="ctl">'+
           sec('Colors')+colorRows+
           sec('Session')+sessionRow+
@@ -1154,9 +1159,25 @@
             if(_phase===2) return { busy:false, subagentCount:0, checkmarkAt:null, notifyAt:now-500, attention:true, bootAt:null };
             return null;   // idle — nothing lighting
           }
+          // One-shot triggers: each button injects JUST that animation for its natural duration,
+          // overriding the Preview cycle while active (no daemon needed, works with Preview off).
+          let _trig=null;   // {kind, at, until}
+          const TRIG_MS={ twinkle:4000, spinner:4000, check:1500, bang:5000 };
+          body.querySelectorAll('.s-agTrig').forEach(b=>b.addEventListener('click',()=>{
+            const now=performance.now();
+            _trig={ kind:b.dataset.trig, at:now, until:now+TRIG_MS[b.dataset.trig] };
+          }));
+          function triggerAgent(){
+            const at=_trig.at;
+            if(_trig.kind==='twinkle') return { busy:false, subagentCount:3, checkmarkAt:null, notifyAt:null, attention:false, bootAt:null };
+            if(_trig.kind==='spinner') return { busy:true, subagentCount:0, checkmarkAt:null, notifyAt:null, attention:false, bootAt:null };
+            if(_trig.kind==='check')   return { busy:false, subagentCount:0, checkmarkAt:at, notifyAt:null, attention:false, bootAt:null };
+            return { busy:false, subagentCount:0, checkmarkAt:null, notifyAt:at, attention:true, bootAt:null };
+          }
           function frame(now){
             if(!document.body.contains(body) || L.type!=='agent') return;   // card rebuilt/removed → stop loop
-            if(s.preview) state.agent = syntheticAgent(now);
+            if(_trig){ if(now<_trig.until) state.agent=triggerAgent(); else { _trig=null; if(!s.preview) state.agent=null; } }
+            else if(s.preview) state.agent = syntheticAgent(now);
             requestAnimationFrame(frame);
           }
           requestAnimationFrame(frame);
