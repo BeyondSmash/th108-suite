@@ -1236,13 +1236,21 @@
         '.lbody .lsecbox.locked > .lsecbody, .lbody .lsecbox.locked > .ctl{ pointer-events:none; }'+
         '.lbody .lsecbox.locked > .lsecbody input[type=range], .lbody .lsecbox.locked > .ctl input[type=range]{ opacity:.4; filter:grayscale(1); }'+
         '.lsec-actions{ position:absolute; right:7px; top:50%; transform:translateY(-50%); display:flex; gap:2px; align-items:center; }'+
-        '.lsec-actions button{ background:rgba(13,17,23,.82); border:1px solid rgba(145,150,160,.45); cursor:pointer; color:var(--text); padding:3px; display:flex; align-items:center; border-radius:7px; }'+   // dark chip so the icon contrasts/reads
+        '.lsec-actions button{ position:relative; background:rgba(13,17,23,.82); border:1px solid rgba(145,150,160,.45); cursor:pointer; color:var(--text); padding:3px; display:flex; align-items:center; border-radius:7px; }'+   // dark chip so the icon contrasts/reads; position:relative anchors the click ray-burst
         '.lsec-actions button:hover{ background:rgba(40,46,56,.95); border-color:rgba(145,150,160,.7); }'+
         '.lsec-actions button.on{ color:var(--warn,#e0a200); }'+
         '.lsec-actions svg{ width:14px; height:14px; display:block; }'+
         '.lsec-chevwrap svg{ transition:transform .15s ease; }'+
-        '.lsecbox.collapsed .lsec-chevwrap svg{ transform:rotate(-90deg); }';
+        '.lsecbox.collapsed .lsec-chevwrap svg{ transform:rotate(-90deg); }'+
+        // radial ray-burst on lock/collapse click: 12 short lines shoot outward from the button center + fade over 250ms (inherits the button color — amber on a locked toggle)
+        '.rayburst{ position:absolute; left:50%; top:50%; width:0; height:0; pointer-events:none; z-index:3; }'+
+        '.rayburst i{ position:absolute; left:0; top:0; width:2px; height:7px; margin:-3.5px 0 0 -1px; border-radius:1px; background:currentColor; transform-origin:50% 50%; animation:lsecRay .25s ease-out forwards; }'+
+        '@keyframes lsecRay{ from{ transform:rotate(var(--a)) translateY(-3px) scaleY(.4); opacity:.9 } to{ transform:rotate(var(--a)) translateY(-15px) scaleY(1); opacity:0 } }';
       document.head.appendChild(st); }
+    // radial ray-burst on a lock/collapse button click: 12 short lines shoot outward + fade over 250ms
+    function burstRays(btn){ const b=document.createElement('span'); b.className='rayburst';
+      for(let i=0;i<12;i++){ const r=document.createElement('i'); r.style.setProperty('--a',(i*30)+'deg'); b.appendChild(r); }
+      btn.appendChild(b); setTimeout(()=>{ if(b.parentNode) b.remove(); }, 300); }
     function applySectionChrome(body, L){ ensureSecStyles();
       const s=L.settings; if(!s._secUI) s._secUI={};
       // add the lock + collapse buttons to a box's header, wired to s._secUI[slug] (remembered per layer)
@@ -1252,9 +1260,9 @@
         const actions=document.createElement('span'); actions.className='lsec-actions';
         const lockBtn=document.createElement('button'); lockBtn.type='button'; lockBtn.className='lsec-lock'+(st.locked?' on':'');
         const setLock=()=>{ lockBtn.innerHTML=st.locked?SEC_LOCK:SEC_UNLOCK; lockBtn.title=st.locked?'Locked — click to allow changes to this section':'Unlocked — click to protect this section from changes'; lockBtn.classList.toggle('on',st.locked); }; setLock();
-        lockBtn.addEventListener('click',e=>{ e.stopPropagation(); st.locked=!st.locked; box.classList.toggle('locked',st.locked); setLock(); scheduleSaveLayers(); });
+        lockBtn.addEventListener('click',e=>{ e.stopPropagation(); st.locked=!st.locked; box.classList.toggle('locked',st.locked); setLock(); burstRays(lockBtn); scheduleSaveLayers(); });
         const colBtn=document.createElement('button'); colBtn.type='button'; colBtn.className='lsec-chevwrap'; colBtn.title='Collapse / expand this section'; colBtn.innerHTML=SEC_CHEV;
-        colBtn.addEventListener('click',e=>{ e.stopPropagation(); st.collapsed=!st.collapsed; box.classList.toggle('collapsed',st.collapsed); scheduleSaveLayers(); });
+        colBtn.addEventListener('click',e=>{ e.stopPropagation(); st.collapsed=!st.collapsed; box.classList.toggle('collapsed',st.collapsed); burstRays(colBtn); scheduleSaveLayers(); });
         actions.appendChild(lockBtn); actions.appendChild(colBtn); header.appendChild(actions);
       };
       // shared "Adjust" block = a nested .lbody (header .ph + its own .ctl) → box it FIRST so the .ctl loop below

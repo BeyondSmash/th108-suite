@@ -232,6 +232,8 @@ window.TH108DaemonClient = (function () {
               if (grad) { grad.disabled = !on; if ('npBarGrad' in s && document.activeElement !== grad) grad.value = s.npBarGrad; }
               if (gfit) { gfit.disabled = !on; if ('npBarGradFit' in s && document.activeElement !== gfit) gfit.checked = !!s.npBarGradFit; }
               if (nkeys) { nkeys.disabled = !on; if ('npBarKeys' in s && document.activeElement !== nkeys) nkeys.value = s.npBarKeys; }
+              const atop = document.getElementById('npBarAgentTop');
+              if (atop) { atop.disabled = !on; if ('npBarAgentTop' in s && document.activeElement !== atop) atop.checked = !!s.npBarAgentTop; }
             }
             // Refresh-LCD debug button — only meaningful when LCD now-playing is on
             const rfb = document.getElementById('npRefreshLcd');
@@ -357,6 +359,8 @@ window.TH108DaemonClient = (function () {
       if (npGradEl) npGradEl.addEventListener('change', () => postBar({ grad: npGradEl.value }, '♪ progress-bar style → ' + npGradEl.options[npGradEl.selectedIndex].text));
       if (npGradFitEl) npGradFitEl.addEventListener('change', () => postBar({ gradFit: npGradFitEl.checked }, '♪ progress-bar gradient ' + (npGradFitEl.checked ? 'stretches to the filled part' : 'fixed across all keys')));
       if (npKeysEl) npKeysEl.addEventListener('change', () => postBar({ keys: npKeysEl.value }, '♪ progress-bar on the ' + npKeysEl.options[npKeysEl.selectedIndex].text));
+      const npAgentTopEl = document.getElementById('npBarAgentTop');
+      if (npAgentTopEl) npAgentTopEl.addEventListener('change', () => postBar({ agentTop: npAgentTopEl.checked }, '♪ agent glyphs ' + (npAgentTopEl.checked ? 'above' : 'under') + ' the progress bar'));
       const npIdleEl = document.getElementById('npBarIdle'), npIdleLblEl = document.getElementById('npBarIdleLbl');
       if (npIdleEl) {
         npIdleEl.addEventListener('input', () => { if (npIdleLblEl) npIdleLblEl.textContent = (+npIdleEl.value) + 's'; });

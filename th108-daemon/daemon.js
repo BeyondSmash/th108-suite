@@ -102,7 +102,7 @@ let framesSent = 0, framesDeduped = 0;   // HID 0x32 stream stats for /metrics (
 const SETTINGS_PATH = path.join(__dirname, 'settings.json');
 function loadSettings() {
   const DEF = { usbReset: true, nowPlaying: false, npTitle: '#ffffff', npArtist: '#ffd98c', lightsOn: true, brightness: 100, npRevertSec: 0, npAllow: {}, npArtFit: false,
-                npBar: false, npBarColor: '#11ff00', npBarBright: 60, npFlash: true, npFlashColor: '#ffd000', npBarIdleSec: 3, npBarGrad: 'solid', npBarGradFit: false, npBarKeys: 'row', npOnboardMask: false, dimOnDisplayOff: false };   // dimOnDisplayOff = blank the board while the monitor is off on the idle timeout   // npOnboardMask = set the keyboard's onboard effect to BLACK so the per-update flash is a dark blink, not rainbow   // npBarIdleSec = fade the bar out after this long with nothing playing   // npRevertSec 0 = never revert; npAllow = per-source override (absent → Spotify-only default); npBar = the 1-0 song-progress light-bar (lighting-only, no flash writes), npFlash = yellow track-change blip
+                npBar: false, npBarColor: '#11ff00', npBarBright: 60, npFlash: true, npFlashColor: '#ffd000', npBarIdleSec: 3, npBarGrad: 'solid', npBarGradFit: false, npBarKeys: 'row', npBarAgentTop: false, npOnboardMask: false, dimOnDisplayOff: false };   // npBarAgentTop = let the agent layer's numpad glyphs render ABOVE the progress bar (z-swap on the shared keys)   // dimOnDisplayOff = blank the board while the monitor is off on the idle timeout   // npOnboardMask = set the keyboard's onboard effect to BLACK so the per-update flash is a dark blink, not rainbow   // npBarIdleSec = fade the bar out after this long with nothing playing   // npRevertSec 0 = never revert; npAllow = per-source override (absent → Spotify-only default); npBar = the 1-0 song-progress light-bar (lighting-only, no flash writes), npFlash = yellow track-change blip
   try { return Object.assign({}, DEF, JSON.parse(fs.readFileSync(SETTINGS_PATH, 'utf8'))); }
   catch { return Object.assign({}, DEF); }   // usbReset default ON — the escalation fails gracefully (one log line) if the task isn't registered
 }
@@ -490,12 +490,13 @@ async function runTick() {
     // color to show how far through the song we are. SAFE — lighting only, no LCD flash writes. The
     // yellow track-change flash (150ms, all 10) rides the same toggle, gated by its own on/off.
     if (settings.npBar && npHandle && DIGIT_KS.length) {
-      // agent glyphs (spinner / ✓ / "!") read ABOVE the song-progress bar: snapshot the composed value of
-      // any bar key the agent layer is lighting and restore it after the bar + flash paints — the glyph
-      // punches through instead of being buried under the bar (they share the numpad when npBarKeys='numpad').
+      // OPTIONAL z-swap (settings.npBarAgentTop): let the agent glyphs (spinner / ✓ / "!") read ABOVE the
+      // bar instead of under it. Off by default → the bar paints over the agent layer as before. When on,
+      // snapshot the composed value of any bar key the agent layer is lighting and restore it after the bar +
+      // flash paint, so the glyph punches through (matters when both share the numpad, npBarKeys='numpad').
       const agKs = settings.npBarKeys === 'numpad' ? NUMPAD_KS : DIGIT_KS;
       const agRestore = [];
-      if (agL) for (const k of agKs) { const t = k * 3; if (agL.rgb[t] + agL.rgb[t + 1] + agL.rgb[t + 2] > 6) { const o = k * 4; agRestore.push([o, flat[o + 1], flat[o + 2], flat[o + 3]]); } }
+      if (settings.npBarAgentTop && agL) for (const k of agKs) { const t = k * 3; if (agL.rgb[t] + agL.rgb[t + 1] + agL.rgb[t + 2] > 6) { const o = k * 4; agRestore.push([o, flat[o + 1], flat[o + 2], flat[o + 3]]); } }
       const ms = npHandle.mediaState();
       // idle crossfade: nothing playing for npBarIdleSec → fade the bar out (reveal the lighting beneath)
       let op = 1;
@@ -878,7 +879,7 @@ const control = {
                       npSources: sourceList(),
                       npBar: settings.npBar, npBarColor: settings.npBarColor, npBarBright: settings.npBarBright,
                       npFlash: settings.npFlash, npFlashColor: settings.npFlashColor, npBarIdleSec: settings.npBarIdleSec,
-                      npBarGrad: settings.npBarGrad, npBarGradFit: settings.npBarGradFit, npBarKeys: settings.npBarKeys,
+                      npBarGrad: settings.npBarGrad, npBarGradFit: settings.npBarGradFit, npBarKeys: settings.npBarKeys, npBarAgentTop: settings.npBarAgentTop,
                       npOnboardMask: settings.npOnboardMask,
                       agentSessions: agentState.sessions(Date.now()) }; },
   setNowPlaying(on) {
@@ -931,6 +932,7 @@ const control = {
     if (o && o.grad != null && ['solid', 'toWhite', 'fromWhite'].includes(o.grad)) settings.npBarGrad = o.grad;
     if (o && 'gradFit' in o) settings.npBarGradFit = !!o.gradFit;
     if (o && o.keys != null && ['row', 'numpad'].includes(o.keys)) settings.npBarKeys = o.keys;
+    if (o && 'agentTop' in o) settings.npBarAgentTop = !!o.agentTop;   // z-swap: agent glyphs above the bar
     saveSettings();
     syncNowPlaying();   // toggling the bar may need to start/stop the media sidecar
     if (state) state.lastFlat = null;   // repaint now
