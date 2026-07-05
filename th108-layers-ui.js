@@ -1058,9 +1058,13 @@
           colorRow('Spinner','spinColor')+
           colorRow('Checkmark','checkColor')+
           colorRow('Exclamation','bangColor');
-        // Session-filter dropdown — options filled async after mount
-        // full-width select so the native option popup is wide enough not to clip long "Project · time" labels
-        const sessionRow=full('<div style="display:flex;flex-direction:column;gap:4px;width:100%"><select class="s-agSession" style="width:100%"><option value="all">All Sessions</option></select><span class="val s-agSessionNote" style="opacity:.6;font-size:11px;text-align:center"></span></div>');
+        // Session filter — TWO labeled dropdowns side by side (Active | Idle) instead of one wide grouped select.
+        // Both carry "All Sessions" as their neutral top option; picking a session in one shows it there and the
+        // other rests on "All Sessions". Options filled async after mount.
+        const sessionRow=full('<div style="display:flex;gap:12px;width:100%">'
+          +'<label style="flex:1;min-width:0;display:flex;flex-direction:column;gap:3px;font-size:11px;color:var(--muted);text-align:center">Active<select class="s-agSessionActive" style="width:100%"><option value="all">All Sessions</option></select></label>'
+          +'<label style="flex:1;min-width:0;display:flex;flex-direction:column;gap:3px;font-size:11px;color:var(--muted);text-align:center">Idle<select class="s-agSessionIdle" style="width:100%"><option value="all">All Sessions</option></select></label>'
+          +'</div><div class="val s-agSessionNote" style="opacity:.6;font-size:11px;text-align:center;margin-top:4px"></div>');
         // Twinkle-region paint-board row (mirrors individual layer). Twinkles = one dot per running subagent;
         // this picks WHICH keys they can appear on (default = the A–Z letter cluster).
         const regionRow=full('<div style="text-align:center;font-size:11px;color:var(--muted);width:100%;margin-bottom:4px">Twinkles (one per running subagent) light up on these keys</div>'
@@ -1099,31 +1103,32 @@
         // Color pickers + per-color ↺ reset to default
         ['twinkleColor','spinColor','checkColor','bangColor'].forEach(key=>{ const el=c('.s-'+key); if(el) el.addEventListener('input',e=>{ s[key]=e.target.value; scheduleSaveLayers(); }); });
         body.querySelectorAll('.s-agColReset').forEach(b=>b.addEventListener('click',()=>{ const key=b.dataset.key, def=AG_COLOR_DEF[key]; if(!def) return; s[key]=def; const el=c('.s-'+key); if(el) el.value=def; scheduleSaveLayers(); }));
-        // Session dropdown
-        const sessSel=c('.s-agSession'), sessNote=c('.s-agSessionNote');
-        function fillSessionDrop(sessions){ if(!sessSel) return;
+        // Session filter — two selects (Active | Idle)
+        const selActive=c('.s-agSessionActive'), selIdle=c('.s-agSessionIdle'), sessNote=c('.s-agSessionNote');
+        let _lastSessions=[];   // remembered so a pick can re-render both columns without re-fetching
+        // sessions: array = fresh fetch, null = daemon unavailable, undefined = re-render from _lastSessions (note untouched)
+        function fillSessionDrop(sessions){ if(!selActive||!selIdle) return;
+          if(Array.isArray(sessions)) _lastSessions=sessions;
           const cur=s.session||'all', esc=t=>String(t).replace(/&/g,'&amp;').replace(/</g,'&lt;'), escA=t=>String(t).replace(/"/g,'&quot;');
           const opt=ag=>'<option value="'+escA(ag.id)+'"'+(ag.id===cur?' selected':'')+'>'+esc(ag.label||ag.id)+'</option>';
-          const list=(sessions||[]).filter(ag=>ag&&ag.id); let has=list.some(ag=>ag.id===cur);
-          // group Active (working / needs attention) vs Idle (open but quiet) so the list reads at a glance
+          const list=_lastSessions.filter(ag=>ag&&ag.id), has=list.some(ag=>ag.id===cur);
           const active=list.filter(ag=>ag.active), idle=list.filter(ag=>!ag.active);
-          const optsHtml=['<option value="all">All Sessions</option>'];
-          if(active.length) optsHtml.push('<optgroup label="Active">'+active.map(opt).join('')+'</optgroup>');
-          if(idle.length)   optsHtml.push('<optgroup label="Idle">'+idle.map(opt).join('')+'</optgroup>');
-          // saved filter points at a session that's no longer live → show its remembered friendly label (never the raw UUID)
+          const allSel=(cur==='all')?' selected':'';   // both rest on "All Sessions" until a specific session is picked
+          selActive.innerHTML='<option value="all"'+allSel+'>All Sessions</option>'+active.map(opt).join('');
+          selIdle.innerHTML='<option value="all"'+allSel+'>All Sessions</option>'+idle.map(opt).join('');
+          // a saved pick that's no longer live (ended) → keep it visible + selected, parked in the Active column
           if(cur!=='all' && !has){ const lbl=esc(s.sessionLabel||('session '+cur.slice(0,6)));
-            optsHtml.push('<option value="'+escA(cur)+'" selected>'+lbl+' (ended)</option>'); }
-          sessSel.innerHTML=optsHtml.join('');
-          if(sessNote) sessNote.textContent=sessions&&sessions.length?'':sessions===null?'(daemon not available)':'(no sessions seen yet)'; }
+            selActive.insertAdjacentHTML('beforeend','<option value="'+escA(cur)+'" selected>'+lbl+' (ended)</option>'); }
+          if(sessions!==undefined && sessNote) sessNote.textContent=(sessions&&sessions.length)?'':(sessions===null?'(daemon not available)':'(no sessions seen yet)'); }
         fillSessionDrop([]);
-        sessSel.addEventListener('change',e=>{ s.session=e.target.value;
-          const opt=e.target.selectedOptions&&e.target.selectedOptions[0];   // remember the friendly label so the option stays readable after the session ends
-          s.sessionLabel = e.target.value==='all' ? '' : (opt?opt.textContent.replace(/ \(ended\)$/,''):''); });
-        // Async load of sessions on card open — reuses the listAgentSessions hook (fetches /status agentSessions or /agent/sessions)
+        const onPick=e=>{ s.session=e.target.value;
+          const o=e.target.selectedOptions&&e.target.selectedOptions[0];   // remember the friendly label so it stays readable after the session ends
+          s.sessionLabel = e.target.value==='all' ? '' : (o?o.textContent.replace(/ \(ended\)$/,''):'');
+          scheduleSaveLayers(); fillSessionDrop(); };   // re-render both → the non-chosen column resets to All Sessions
+        selActive.addEventListener('change',onPick); selIdle.addEventListener('change',onPick);
+        // Async load on card open + re-fetch when either dropdown opens (a just-started session lands on the next open)
         listAgentSessions().then(fillSessionDrop).catch(()=>fillSessionDrop(null));
-        // Re-fetch on dropdown open so sessions that started/ended since the card was built show up
-        // (fetch is async — a just-started session lands on the NEXT open if the response loses the race)
-        sessSel.addEventListener('pointerdown',()=>{ listAgentSessions().then(fillSessionDrop).catch(()=>{}); });
+        [selActive,selIdle].forEach(sel=>sel.addEventListener('pointerdown',()=>{ listAgentSessions().then(fillSessionDrop).catch(()=>{}); }));
         // Twinkle-region paint board (same API as individual layer)
         let pb=null, pbWrap=null;
         const updRegCount=()=>{ const el=c('.s-agRegCount'); if(el) el.textContent = pb ? (pb.selCount()+' keys selected') : (Array.isArray(s.twinkleKeys)&&s.twinkleKeys.length ? s.twinkleKeys.length+' keys (saved)' : 'Default (letters)'); };
