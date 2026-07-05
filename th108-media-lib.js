@@ -5,10 +5,13 @@
 //
 // window.TH108Media: { available, add(blob,name), list(), get(id), remove(id), mountPicker(el,onPick) }
 (function(){
-  const DB='th108media', STORE='items', SRC='layersrc'; let dbp=null;   // SRC = hidden per-layer source blobs (Media layer re-framing), NOT shown in the user's library
+  const STORE='items', SRC='layersrc'; let dbp=null;   // SRC = hidden per-layer source blobs (Media layer re-framing), NOT shown in the user's library
   const available = typeof indexedDB!=='undefined';
+  // Author-Defaults sandbox: open a SEPARATE IndexedDB so media add/delete/clear can never touch the user's
+  // real media blobs. Computed lazily (first db() call is well after page load) so it's script-order-safe.
+  function dbName(){ return (typeof window!=='undefined' && window.TH108Defaults && window.TH108Defaults.isDefaultsMode()) ? 'th108media_DEFAULTS' : 'th108media'; }
   function db(){ return dbp || (dbp=new Promise((res,rej)=>{
-    const r=indexedDB.open(DB,2);
+    const r=indexedDB.open(dbName(),2);
     r.onupgradeneeded=()=>{ const d=r.result; if(!d.objectStoreNames.contains(STORE)) d.createObjectStore(STORE,{keyPath:'id',autoIncrement:true}); if(!d.objectStoreNames.contains(SRC)) d.createObjectStore(SRC); };   // SRC keyed by an explicit string id (the layer's mediaId)
     r.onsuccess=()=>res(r.result); r.onerror=()=>rej(r.error);
   })); }
