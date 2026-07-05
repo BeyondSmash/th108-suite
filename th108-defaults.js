@@ -26,5 +26,22 @@
     for (const k of SEED_KEYS) { const v = read(k); if (v != null) out[k] = v; }
     return out;
   }
-  return { DEFAULTS_PREFIX, SEED_KEYS, prefixKey, isDefaultsMode, seedSnapshot };
+  // Copy raw SEED_KEYS -> their prefixed counterparts if the scratch slot is empty. Run ONCE, on the RAW
+  // storage, BEFORE installStorageShim — so it reads the real keys and writes the scratch keys.
+  function seedSandbox(storage) {
+    for (const k of SEED_KEYS) {
+      const pk = prefixKey(k);
+      if (storage.getItem(pk) == null) { const v = storage.getItem(k); if (v != null) storage.setItem(pk, v); }
+    }
+  }
+  // Patch getItem/setItem/removeItem so every th108* key is transparently rewritten to its prefixed form.
+  // The rest of the app keeps calling localStorage.getItem('th108_layers') and never knows.
+  function installStorageShim(storage) {
+    const get = storage.getItem.bind(storage), set = storage.setItem.bind(storage), rem = storage.removeItem.bind(storage);
+    storage.getItem = k => get(prefixKey(k));
+    storage.setItem = (k, v) => set(prefixKey(k), v);
+    storage.removeItem = k => rem(prefixKey(k));
+  }
+
+  return { DEFAULTS_PREFIX, SEED_KEYS, prefixKey, isDefaultsMode, seedSnapshot, seedSandbox, installStorageShim };
 });

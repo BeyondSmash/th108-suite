@@ -32,3 +32,38 @@ test('seedSnapshot skips missing keys (no null-fill)', () => {
   const snap = D.seedSnapshot(k => (k === 'th108_layers' ? '[1]' : null));
   assert.deepEqual(snap, { th108_layers:'[1]' });
 });
+
+function mockStorage() {
+  const store = {};
+  return { store,
+    getItem: k => (k in store ? store[k] : null),
+    setItem: (k, v) => { store[k] = String(v); },
+    removeItem: k => { delete store[k]; } };
+}
+
+test('seedSandbox copies only SEED_KEYS from raw to prefixed, once', () => {
+  const m = mockStorage();
+  m.setItem('th108_layers', '[1]'); m.setItem('th108_theme', 'dark');
+  m.setItem('th108_host_actions', 'PERSONAL');
+  D.seedSandbox(m);
+  assert.equal(m.getItem('th108_DEFAULTS_th108_layers'), '[1]');
+  assert.equal(m.getItem('th108_DEFAULTS_th108_theme'), 'dark');
+  assert.equal(m.getItem('th108_DEFAULTS_th108_host_actions'), null); // personal never seeded
+  // seeding again must not overwrite an edited scratch value
+  m.setItem('th108_DEFAULTS_th108_layers', '[9]');
+  D.seedSandbox(m);
+  assert.equal(m.getItem('th108_DEFAULTS_th108_layers'), '[9]');
+});
+
+test('installStorageShim redirects th108* access to the prefixed key; leaves others alone', () => {
+  const m = mockStorage();
+  D.installStorageShim(m);
+  m.setItem('th108_layers', '[2]');
+  assert.equal(m.store['th108_DEFAULTS_th108_layers'], '[2]'); // physically stored prefixed
+  assert.equal(m.getItem('th108_layers'), '[2]');              // reads back through the prefix
+  assert.equal(m.store['th108_layers'], undefined);            // real key untouched
+  m.setItem('unrelated', 'x');
+  assert.equal(m.store['unrelated'], 'x');                     // non-th108 keys pass through
+  m.removeItem('th108_layers');
+  assert.equal(m.getItem('th108_layers'), null);
+});

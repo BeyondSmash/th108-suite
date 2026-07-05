@@ -1223,8 +1223,15 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
 <script src="th108-iso-view.js"></script>
 <script src="th108-onboard.js"></script>
 <script src="th108-binder.js"></script>
+<script src="th108-defaults.js"></script>
 <script src="th108-profiles.js"></script>
 <script>
+// ── Author-Defaults sandbox: if ?defaults=1, seed only the shippable keys into th108_DEFAULTS_* and
+// redirect ALL th108* localStorage access there, so the whole UI operates on a scratch copy and the
+// user's real config is never read or written. MUST run before any other storage access. ──
+if (window.TH108Defaults && TH108Defaults.isDefaultsMode()) {
+  try { TH108Defaults.seedSandbox(window.localStorage); TH108Defaults.installStorageShim(window.localStorage); } catch (e) { console.warn('defaults sandbox init failed', e); }
+}
 // shared engine (board map, renderers, compositor, state) — pull the bits we reference by short name
 const {KEYMAP, INDICES, NLED, BOARDW, BOARDH, hexToRgb} = TH108Engine;
 // (GRID + the grid-aware keyCell moved into th108-gif-panel.js — they are GIF-tool-only)
