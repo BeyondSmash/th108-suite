@@ -1273,7 +1273,7 @@
       document.head.appendChild(st); }
     // radial ray-burst on a lock/collapse button click: 12 short lines shoot outward + fade over 250ms
     function burstRays(btn){ const b=document.createElement('span'); b.className='rayburst';
-      for(let i=0;i<12;i++){ const r=document.createElement('i'); r.style.setProperty('--a',(i*30)+'deg'); b.appendChild(r); }
+      for(let i=0;i<6;i++){ const r=document.createElement('i'); r.style.setProperty('--a',(i*60)+'deg'); b.appendChild(r); }
       btn.appendChild(b); setTimeout(()=>{ if(b.parentNode) b.remove(); }, 300); }
     function applySectionChrome(body, L){ ensureSecStyles();
       const s=L.settings; if(!s._secUI) s._secUI={};
