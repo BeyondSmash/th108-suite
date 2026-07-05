@@ -504,6 +504,12 @@ try{ var _tk = /[?&]defaults=1(?:&|$)/.test(location.search) ? 'th108_DEFAULTS_t
 </head>
 <body>
 
+<div id="defaultsBanner" hidden style="background:#8a5a00;color:#fff;text-align:center;padding:7px 12px;font-size:13px;font-weight:600">
+  ⚑ Authoring Defaults — your personal config is untouched (scratch sandbox).
+  <a id="defaultsExit" href="#" style="color:#fff;text-decoration:underline;margin-left:10px">Exit</a>
+  <button id="defaultsExport" type="button" style="margin-left:12px;padding:3px 12px">Export defaults.json</button>
+</div>
+
 <!-- device-lease deprecated-controller banner (Task 5): hidden by default, shown when this tab loses
      the lease (DC.onLeaseLost) or a claim comes back denied; Take control back re-claims + reopens WebHID. -->
 <header>
@@ -1002,6 +1008,7 @@ try{ var _tk = /[?&]defaults=1(?:&|$)/.test(location.search) ? 'th108_DEFAULTS_t
       <li><span class="ver">LCD &amp; GIF tools</span><span class="date">2026</span><br>Image / GIF upload to the screen,
           GIF→keys player, Now Playing readout.</li>
     </ul>
+    <p class="hint"><a href="?defaults=1">Author shipped defaults →</a> — tune the look new visitors get on first run, in an isolated sandbox.</p>
   </div>
 
   <div class="card s3 doccard" id="docLegal" data-pages="docs">
@@ -1233,6 +1240,13 @@ try{ var _tk = /[?&]defaults=1(?:&|$)/.test(location.search) ? 'th108_DEFAULTS_t
 // user's real config is never read or written. MUST run before any other storage access. ──
 if (window.TH108Defaults && TH108Defaults.isDefaultsMode()) {
   try { TH108Defaults.seedSandbox(window.localStorage); TH108Defaults.installStorageShim(window.localStorage); } catch (e) { console.warn('defaults sandbox init failed', e); }
+}
+// ── Author-Defaults banner + Exit: show the amber banner while authoring and let Exit drop the
+// ?defaults=1 flag to return to the real config. Export-button wiring (Task 5) appends to this block. ──
+if (window.TH108Defaults && TH108Defaults.isDefaultsMode()) {
+  const bn = document.getElementById('defaultsBanner'); if (bn) bn.hidden = false;
+  const ex = document.getElementById('defaultsExit');
+  if (ex) ex.addEventListener('click', e => { e.preventDefault(); const u = new URL(location.href); u.searchParams.delete('defaults'); location.href = u.href; });
 }
 // shared engine (board map, renderers, compositor, state) — pull the bits we reference by short name
 const {KEYMAP, INDICES, NLED, BOARDW, BOARDH, hexToRgb} = TH108Engine;
