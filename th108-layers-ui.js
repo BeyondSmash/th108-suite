@@ -1102,14 +1102,17 @@
         // Session dropdown
         const sessSel=c('.s-agSession'), sessNote=c('.s-agSessionNote');
         function fillSessionDrop(sessions){ if(!sessSel) return;
-          const cur=s.session||'all'; const optsHtml=['<option value="all">All Sessions</option>'];
-          let has=false;
-          (sessions||[]).forEach(ag=>{ if(ag&&ag.id){ if(ag.id===cur) has=true;
-            optsHtml.push('<option value="'+ag.id.replace(/"/g,'&quot;')+'"'+(ag.id===cur?' selected':'')+'>'+(ag.label||ag.id).replace(/&/g,'&amp;').replace(/</g,'&lt;')+'</option>'); } });
-          // saved filter points at a session that's no longer live → show its remembered friendly label
-          // (or a short id for pre-label saves), never the raw UUID
-          if(cur!=='all' && !has){ const lbl=(s.sessionLabel||('session '+cur.slice(0,6))).replace(/&/g,'&amp;').replace(/</g,'&lt;');
-            optsHtml.push('<option value="'+cur.replace(/"/g,'&quot;')+'" selected>'+lbl+' (ended)</option>'); }
+          const cur=s.session||'all', esc=t=>String(t).replace(/&/g,'&amp;').replace(/</g,'&lt;'), escA=t=>String(t).replace(/"/g,'&quot;');
+          const opt=ag=>'<option value="'+escA(ag.id)+'"'+(ag.id===cur?' selected':'')+'>'+esc(ag.label||ag.id)+'</option>';
+          const list=(sessions||[]).filter(ag=>ag&&ag.id); let has=list.some(ag=>ag.id===cur);
+          // group Active (working / needs attention) vs Idle (open but quiet) so the list reads at a glance
+          const active=list.filter(ag=>ag.active), idle=list.filter(ag=>!ag.active);
+          const optsHtml=['<option value="all">All Sessions</option>'];
+          if(active.length) optsHtml.push('<optgroup label="Active">'+active.map(opt).join('')+'</optgroup>');
+          if(idle.length)   optsHtml.push('<optgroup label="Idle">'+idle.map(opt).join('')+'</optgroup>');
+          // saved filter points at a session that's no longer live → show its remembered friendly label (never the raw UUID)
+          if(cur!=='all' && !has){ const lbl=esc(s.sessionLabel||('session '+cur.slice(0,6)));
+            optsHtml.push('<option value="'+escA(cur)+'" selected>'+lbl+' (ended)</option>'); }
           sessSel.innerHTML=optsHtml.join('');
           if(sessNote) sessNote.textContent=sessions&&sessions.length?'':sessions===null?'(daemon not available)':'(no sessions seen yet)'; }
         fillSessionDrop([]);

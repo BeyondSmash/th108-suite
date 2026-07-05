@@ -6,8 +6,13 @@
 function basename(p) { const s = String(p || '').replace(/[\\/]+$/, ''); const i = Math.max(s.lastIndexOf('/'), s.lastIndexOf('\\')); return i >= 0 ? s.slice(i + 1) : s; }
 
 function createAgentState(opts = {}) {
-  const TTL = opts.ttlMs || 10 * 60 * 1000;        // drop a session with no events for this long
-  const BUSY_TTL = opts.busyTtlMs || 3 * 60 * 1000;  // clears a stuck spinner ~3 min after the last event even if Stop was missed, well before the 10-min session drop
+  // Sessions are removed on SessionEnd (fires when the Claude Code session closes), so the TTL is only a
+  // SAFETY NET for a session that died without firing SessionEnd (crash/kill). Keep it long (8h) so an OPEN
+  // but IDLE session — one sitting in a VSCode window not currently working — stays listed as "idle" instead
+  // of vanishing after a few quiet minutes. Idle sessions are inert in aggregate() (busy=false, no subs), so
+  // a long TTL never affects the lighting; it only keeps the dropdown showing what's actually open.
+  const TTL = opts.ttlMs || 8 * 60 * 60 * 1000;
+  const BUSY_TTL = opts.busyTtlMs || 3 * 60 * 1000;  // clears a stuck spinner ~3 min after the last event even if Stop was missed
   const map = new Map();   // session_id -> entry
   let anon = 0;
 
@@ -70,7 +75,8 @@ function createAgentState(opts = {}) {
     sweep(now);
     return [...map.entries()].map(([id, e]) => {
       const proj = basename(e.cwd) || 'session', clock = e.firstSeen ? fmtClock(e.firstSeen) : '';
-      return { id, project: proj, startedAt: e.firstSeen || 0, label: clock ? proj + ' · ' + clock : proj + ' ' + id.slice(0, 6), busy: e.busy, subagentCount: e.subs.size, lastSeen: e.lastSeen };
+      const active = e.busy || e.subs.size > 0 || e.attention;   // working (mid-turn / subagents) or waiting on the user = "active"; otherwise idle-but-open
+      return { id, project: proj, startedAt: e.firstSeen || 0, label: clock ? proj + ' · ' + clock : proj + ' ' + id.slice(0, 6), active, busy: e.busy, subagentCount: e.subs.size, lastSeen: e.lastSeen };
     });
   }
 
