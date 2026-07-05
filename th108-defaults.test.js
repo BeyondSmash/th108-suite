@@ -36,10 +36,43 @@ test('seedSnapshot skips missing keys (no null-fill)', () => {
 function mockStorage() {
   const store = {};
   return { store,
+    get length() { return Object.keys(store).length; },
+    key(i) { const ks = Object.keys(store); return i < ks.length ? ks[i] : null; },
     getItem: k => (k in store ? store[k] : null),
     setItem: (k, v) => { store[k] = String(v); },
     removeItem: k => { delete store[k]; } };
 }
+
+test('isBlockedDaemonWrite blocks same-origin config writes, allows lease + GETs + cross-origin', () => {
+  // blocked: any same-origin write that isn't a lease/control endpoint
+  assert.equal(D.isBlockedDaemonWrite('/config', 'POST'), true);
+  assert.equal(D.isBlockedDaemonWrite('/profiles', 'POST'), true);
+  assert.equal(D.isBlockedDaemonWrite('/host-actions', 'POST'), true);
+  assert.equal(D.isBlockedDaemonWrite('/nowplaying', 'POST'), true);
+  assert.equal(D.isBlockedDaemonWrite('/apply-profile', 'POST'), true);
+  // allowed: lease/control the preview needs
+  assert.equal(D.isBlockedDaemonWrite('/yield', 'POST'), false);
+  assert.equal(D.isBlockedDaemonWrite('/claim', 'POST'), false);
+  assert.equal(D.isBlockedDaemonWrite('/heartbeat', 'POST'), false);
+  // allowed: reads and cross-origin
+  assert.equal(D.isBlockedDaemonWrite('/config', 'GET'), false);
+  assert.equal(D.isBlockedDaemonWrite('/status', 'GET'), false);
+  assert.equal(D.isBlockedDaemonWrite('https://other.example.com/x', 'POST'), false);
+});
+
+test('shimmed clear() wipes ONLY scratch (th108_DEFAULTS_*) keys, never real keys', () => {
+  const m = mockStorage();
+  m.setItem('th108_layers', 'REAL');
+  m.setItem('th108_host_actions', 'REAL_PERSONAL');
+  m.setItem('unrelated', 'REAL_OTHER');
+  D.installStorageShim(m);
+  m.setItem('th108_layers', 'SCRATCH');   // -> th108_DEFAULTS_th108_layers
+  m.clear();
+  assert.equal(m.store['th108_DEFAULTS_th108_layers'], undefined, 'scratch key cleared');
+  assert.equal(m.store['th108_layers'], 'REAL', 'real key survives clear()');
+  assert.equal(m.store['th108_host_actions'], 'REAL_PERSONAL', 'real personal key survives clear()');
+  assert.equal(m.store['unrelated'], 'REAL_OTHER', 'unrelated key survives clear()');
+});
 
 test('seedSandbox copies only SEED_KEYS from raw to prefixed, once', () => {
   const m = mockStorage();

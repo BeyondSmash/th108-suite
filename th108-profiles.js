@@ -107,6 +107,7 @@
     // Mirror the profile list to the daemon so the Host Actions "Profile → Next/Prev" key can cycle them with
     // this page closed (the daemon applies a profile's layers + config.json straight to the board).
     function pushToDaemon(list) {
+      if (typeof window !== 'undefined' && window.TH108Defaults && window.TH108Defaults.isDefaultsMode()) return;   // Author-Defaults sandbox: never sync the (scratch/empty) profiles to the daemon — it would overwrite the user's real profiles.json
       try { fetch('/profiles', { method: 'POST', headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
           profiles: (list || load()).map(p => ({ name: p.name, layers: p.layers || [], order: p.order || null, type: p.type || 'lighting', color: p.color || '', hostActions: p.hostActions || [] })),

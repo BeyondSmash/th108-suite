@@ -36,12 +36,58 @@
   }
   // Patch getItem/setItem/removeItem so every th108* key is transparently rewritten to its prefixed form.
   // The rest of the app keeps calling localStorage.getItem('th108_layers') and never knows.
+  // clear() is ALSO overridden: a raw clear() would wipe the real config too (it ignores the per-method
+  // prefixing), so in the sandbox it must delete ONLY the scratch (th108_DEFAULTS_*) keys — this keeps the
+  // "Reset all settings" button (and any other clear()) from destroying the user's real localStorage.
   function installStorageShim(storage) {
     const get = storage.getItem.bind(storage), set = storage.setItem.bind(storage), rem = storage.removeItem.bind(storage);
     storage.getItem = k => get(prefixKey(k));
     storage.setItem = (k, v) => set(prefixKey(k), v);
     storage.removeItem = k => rem(prefixKey(k));
+    storage.clear = () => {
+      const doomed = [];
+      for (let i = 0; i < storage.length; i++) { const k = storage.key(i); if (k && k.indexOf(DEFAULTS_PREFIX) === 0) doomed.push(k); }
+      doomed.forEach(k => rem(k));   // rem is the native removeItem; keys are already prefixed
+    };
   }
 
-  return { DEFAULTS_PREFIX, SEED_KEYS, prefixKey, isDefaultsMode, seedSnapshot, seedSandbox, installStorageShim };
+  // Device-lease / control endpoints the sandbox MUST still reach so Drive-from-Tab board preview works.
+  // Everything else that WRITES (POST/PUT/PATCH/DELETE to the same-origin daemon) is blocked in sandbox —
+  // a single choke point so no boot-sync or feature control (config, profiles, host-actions, now-playing,
+  // apply-profile, …) can ever mutate the user's real daemon state while authoring. GETs always pass.
+  const WRITE_ALLOW = ['/claim', '/release', '/yield', '/heartbeat'];
+  // returns true if this request should be BLOCKED (sandbox + a same-origin write to a non-allowlisted path)
+  function isBlockedDaemonWrite(url, method) {
+    const m = String(method || 'GET').toUpperCase();
+    if (m === 'GET' || m === 'HEAD') return false;
+    const u = String(url || '');
+    let path;
+    if (u.charAt(0) === '/' && u.charAt(1) !== '/') {        // relative same-origin path (e.g. /config)
+      path = u;
+    } else {                                                 // absolute URL: only our-origin counts as the daemon
+      if (typeof location === 'undefined') return false;     // node / no DOM → can't be our daemon
+      try { const p = new URL(u, location.href); if (p.origin !== location.origin) return false; path = p.pathname; }
+      catch (_) { return false; }
+    }
+    path = path.split('?')[0].split('#')[0];
+    if (WRITE_ALLOW.indexOf(path) >= 0) return false;        // lease/control the preview needs
+    return true;                                             // any other same-origin write → block in sandbox
+  }
+  // Wrap fetch so blocked writes resolve to a harmless 204 no-op (callers are fire-and-forget). Idempotent.
+  function installDaemonWriteGuard(win) {
+    if (!win || typeof win.fetch !== 'function' || win.fetch.__th108Guarded) return;
+    const nativeFetch = win.fetch.bind(win);
+    const guarded = function (input, init) {
+      try {
+        const url = (typeof input === 'string') ? input : (input && input.url) || '';
+        const method = (init && init.method) || (input && input.method) || 'GET';
+        if (isBlockedDaemonWrite(url, method)) return Promise.resolve(new Response(null, { status: 204, statusText: 'sandbox-blocked' }));
+      } catch (_) { /* fall through to real fetch on any inspection error */ }
+      return nativeFetch(input, init);
+    };
+    guarded.__th108Guarded = true;
+    win.fetch = guarded;
+  }
+
+  return { DEFAULTS_PREFIX, SEED_KEYS, prefixKey, isDefaultsMode, seedSnapshot, seedSandbox, installStorageShim, isBlockedDaemonWrite, installDaemonWriteGuard };
 });

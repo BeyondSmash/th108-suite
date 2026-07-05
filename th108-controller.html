@@ -1239,7 +1239,7 @@ try{ var _tk = /[?&]defaults=1(?:&|$)/.test(location.search) ? 'th108_DEFAULTS_t
 // redirect ALL th108* localStorage access there, so the whole UI operates on a scratch copy and the
 // user's real config is never read or written. MUST run before any other storage access. ──
 if (window.TH108Defaults && TH108Defaults.isDefaultsMode()) {
-  try { TH108Defaults.seedSandbox(window.localStorage); TH108Defaults.installStorageShim(window.localStorage); } catch (e) { console.warn('defaults sandbox init failed', e); }
+  try { TH108Defaults.seedSandbox(window.localStorage); TH108Defaults.installStorageShim(window.localStorage); TH108Defaults.installDaemonWriteGuard(window); } catch (e) { console.warn('defaults sandbox init failed', e); }
 }
 // ── Author-Defaults banner + Exit: show the amber banner while authoring and let Exit drop the
 // ?defaults=1 flag to return to the real config. Export-button wiring (Task 5) appends to this block. ──
