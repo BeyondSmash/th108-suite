@@ -13,7 +13,7 @@ function createAgentState(opts = {}) {
 
   function ensure(id, cwd, now) {
     let e = map.get(id);
-    if (!e) { e = { subs: new Set(), busy: false, busyAt: 0, checkmarkAt: 0, notifyAt: 0, attention: false, bootAt: 0, cwd: cwd || '', lastSeen: now }; map.set(id, e); }
+    if (!e) { e = { subs: new Set(), busy: false, busyAt: 0, checkmarkAt: 0, notifyAt: 0, attention: false, bootAt: 0, firstSeen: now, cwd: cwd || '', lastSeen: now }; map.set(id, e); }
     if (cwd) e.cwd = cwd;
     e.lastSeen = now;
     return e;
@@ -62,9 +62,16 @@ function createAgentState(opts = {}) {
     return { busy, subagentCount: count, checkmarkAt, notifyAt, attention, bootAt };
   }
 
+  // human clock for the session label — "started at 2:47 PM" reads far better than a hex id chunk.
+  // Claude Code hooks don't expose the chat title, so start-time is the best available distinguisher when
+  // two sessions share a project folder. Deterministic given firstSeen; page can still fall back to the id.
+  function fmtClock(ms) { try { const d = new Date(ms); let h = d.getHours(); const m = d.getMinutes(); const ap = h < 12 ? 'AM' : 'PM'; h = h % 12 || 12; return h + ':' + (m < 10 ? '0' + m : m) + ' ' + ap; } catch (_) { return ''; } }
   function sessions(now) {
     sweep(now);
-    return [...map.entries()].map(([id, e]) => ({ id, label: (basename(e.cwd) || 'session') + ' ' + id.slice(0, 6), busy: e.busy, subagentCount: e.subs.size, lastSeen: e.lastSeen }));
+    return [...map.entries()].map(([id, e]) => {
+      const proj = basename(e.cwd) || 'session', clock = e.firstSeen ? fmtClock(e.firstSeen) : '';
+      return { id, project: proj, startedAt: e.firstSeen || 0, label: clock ? proj + ' · ' + clock : proj + ' ' + id.slice(0, 6), busy: e.busy, subagentCount: e.subs.size, lastSeen: e.lastSeen };
+    });
   }
 
   return { ingest, aggregate, sessions };

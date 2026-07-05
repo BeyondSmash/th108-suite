@@ -1059,7 +1059,8 @@
           colorRow('Checkmark','checkColor')+
           colorRow('Exclamation','bangColor');
         // Session-filter dropdown — options filled async after mount
-        const sessionRow=row('Session','<select class="s-agSession"><option value="all">All Sessions</option></select><span class="val s-agSessionNote" style="opacity:.6;font-size:11px"></span>');
+        // full-width select so the native option popup is wide enough not to clip long "Project · time" labels
+        const sessionRow=full('<div style="display:flex;flex-direction:column;gap:4px;width:100%"><select class="s-agSession" style="width:100%"><option value="all">All Sessions</option></select><span class="val s-agSessionNote" style="opacity:.6;font-size:11px;text-align:center"></span></div>');
         // Twinkle-region paint-board row (mirrors individual layer). Twinkles = one dot per running subagent;
         // this picks WHICH keys they can appear on (default = the A–Z letter cluster).
         const regionRow=full('<div style="text-align:center;font-size:11px;color:var(--muted);width:100%;margin-bottom:4px">Twinkles (one per running subagent) light up on these keys</div>'
