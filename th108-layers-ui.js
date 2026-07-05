@@ -1269,7 +1269,7 @@
         // radial ray-burst on lock/collapse click: 12 short lines shoot outward from the button center + fade over 250ms (inherits the button color — amber on a locked toggle)
         '.rayburst{ position:absolute; left:50%; top:50%; width:0; height:0; pointer-events:none; z-index:3; }'+
         '.rayburst i{ position:absolute; left:0; top:0; width:2px; height:7px; margin:-3.5px 0 0 -1px; border-radius:1px; background:currentColor; transform-origin:50% 50%; animation:lsecRay .25s ease-out forwards; }'+
-        '@keyframes lsecRay{ from{ transform:rotate(var(--a)) translateY(-3px) scaleY(.4); opacity:.9 } to{ transform:rotate(var(--a)) translateY(-15px) scaleY(1); opacity:0 } }';
+        '@keyframes lsecRay{ from{ transform:rotate(var(--a)) translateY(-11px) scaleY(.5); opacity:.9 } to{ transform:rotate(var(--a)) translateY(-26px) scaleY(1); opacity:0 } }';   // start ~11px out so the rays clear the 14px glyph instead of hugging it
       document.head.appendChild(st); }
     // radial ray-burst on a lock/collapse button click: 12 short lines shoot outward + fade over 250ms
     function burstRays(btn){ const b=document.createElement('span'); b.className='rayburst';
