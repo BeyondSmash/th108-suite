@@ -1773,7 +1773,7 @@ const LUI=TH108LayersUI.create({
   cards: document.getElementById('layerCards'),
   panel: document.getElementById('layersPanel'),
   attachHex, snap, snapMul,                                  // page UI helpers (hex box per color picker, slider detent single/multiple)
-  pushConfig: ()=>DC.pushConfig(),                           // mirror debounced saves to the daemon's config.json
+  pushConfig: ()=>{ if(window.TH108Defaults && TH108Defaults.isDefaultsMode()) return; DC.pushConfig(); },   // sandbox: never write the daemon's config.json (preview via Drive-from-Tab only)
   isRunning: ()=>running,                                    // reorder warm-renders the new stack only while the loop is live
   onPatternPick: ()=>{ if(obActive && HID.device && !running && !GIF.playing) start(); },   // picking a pattern while a firmware effect is showing = "back to layers", no extra click
   onAudioSource: startAudioSource,                           // audio-layer source pick → start/stop in-tab Web Audio capture
@@ -2240,7 +2240,7 @@ document.getElementById('importFile').addEventListener('change',async e=>{
     const arr=JSON.parse(await f.text());
     if(!Array.isArray(arr)) throw new Error('file is not a layer array');
     localStorage.setItem('th108_layers', JSON.stringify(arr));
-    DC.pushConfig();                                         // hand it straight to the daemon if one is serving this page
+    if(!(window.TH108Defaults && TH108Defaults.isDefaultsMode())) DC.pushConfig();   // sandbox: don't push scratch to the daemon
     log('imported '+arr.length+' layers — reloading…','ok');
     location.reload();
   }catch(err){ alert('Import failed: '+(err&&err.message||err)); }
