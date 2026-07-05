@@ -12,26 +12,20 @@ Two pieces:
 1. **Authoring test-env** — an in-app sandbox, seeded from Beyon's current setup, where he tunes the look and exports it.
 2. **First-run seeding** — a brand-new visitor (empty storage) auto-loads the exported defaults as their starting state.
 
-## What ships vs. what's stripped
+## What the sandbox seeds (= exactly what ships)
 
 The shipped product is the **GitHub Pages site (page-only)** plus an *optional* daemon. A first-run web visitor has no daemon, so the authored default is the **page-side localStorage state**. Daemon settings (now-playing, LCD) are a separate concern and are NOT part of `defaults.json` (a new visitor has no daemon; defaulting now-playing on would look broken).
 
-**SHIP** (a new visitor inherits these):
+**Key insight (Beyon, 2026-07-05):** don't seed everything then strip at export. Instead **seed only the shippable keys** into the sandbox. The sandbox is then already a clean new-user state — Beyon cultivates it directly, and Export is a plain snapshot with **no strip step**. Personal/machine keys are simply never copied in, so they can't leak; the sandbox also honestly mirrors what a new visitor experiences (no personal calibration/host-actions coloring the preview).
+
+**SEED_KEYS** — the only keys copied into the sandbox and the only keys Export writes (a new visitor inherits exactly these):
 - `th108_layers` + `th108_layerOrder` — the tuned lighting layer stack (the core look)
 - `th108_bri` + `th108_lightsOn` — brightness / lights-on
 - `th108_theme` — color theme
 
-**STRIP** (personal/machine — removed at export):
-- `th108_profiles` — Beyon's personal profile collection (a new visitor gets only the single default state, no profile list)
-- `th108_host_actions` — personal key→action bindings
-- `th108_keymap_backup` + `th108_key_mods` — personal keymap remaps
-- `th108_rgb_calibration` — machine/board-specific color calibration
-- `th108.autoConnectFocus` + `th108.hideYieldBanner` — personal connect prefs
-- `th108_layout2` + `th108_cardfill` + `th108Zebra` + `th108_page` + `th108_space_restore_pending` — card arrangement / UI state / transient
-- `th108_iso_view` / `th108iso` — iso-view settings (new visitors get the baked-in code defaults)
-- IndexedDB `th108media` — personal media library (GIFs/images)
+**Never seeded** (so nothing to strip): `th108_profiles`, `th108_host_actions`, `th108_keymap_backup`, `th108_key_mods`, `th108_rgb_calibration`, `th108.autoConnectFocus`, `th108.hideYieldBanner`, `th108_layout2`, `th108_cardfill`, `th108Zebra`, `th108_page`, `th108_space_restore_pending`, `th108_iso_view`/`th108iso`, and the IndexedDB `th108media` library. These start empty/default in the sandbox — identical to a fresh visitor.
 
-The ship/strip split is a **hardcoded manifest** in the export logic — Beyon does not curate it by hand each time. (Adjustable in code if the key set changes.)
+`SEED_KEYS` is a **hardcoded allowlist** (allowlist, not denylist — a new key is excluded by default, so personal data can never leak by omission). A media layer authored into the default look would reference the shared `th108media` IDB, which is NOT shipped — so the default look should avoid personal media (or bundle a sample); flagged as an authoring note, not a code path.
 
 ## Architecture
 
@@ -42,26 +36,25 @@ Three cohesive units, each independently testable:
 Pure, DOM-free logic. No side effects; operates on plain objects.
 
 - `DEFAULTS_PREFIX = 'th108_DEFAULTS_'`
-- `SHIP_KEYS` / `STRIP_KEYS` manifest (the lists above).
-- `snapshotFrom(readFn)` → collect the current `th108_*` values into a plain object (deep copy). `readFn(key)` abstracts the storage read so it's testable.
-- `stripForExport(snapshot)` → return a new object with only the SHIP keys (drop STRIP keys). This is what becomes `defaults.json`.
+- `SEED_KEYS` — the allowlist (the SEED list above); the only keys the sandbox seeds and Export writes.
+- `seedSnapshot(readFn)` → collect **only `SEED_KEYS`** from real storage into a plain object (deep copy). `readFn(key)` abstracts the read so it's testable. Used both to seed the sandbox and to build the export.
 - `isDefaultsMode()` → reads the URL flag (`?defaults=1`) — the single source of truth for "are we authoring."
 
-Unit tests: `snapshotFrom` copies all keys; `stripForExport` keeps exactly the ship set and drops every strip key (guard against a new key silently shipping); round-trip stability.
+Unit tests: `seedSnapshot` copies exactly `SEED_KEYS` and no others (a personal key present in the source must NOT appear in the snapshot — the tripwire against leaking personal data); missing source keys are skipped, not null-filled; `isDefaultsMode` parses the flag. No strip function exists — exclusion is by omission from the allowlist.
 
 ### 2. Storage shim (in `th108-controller.html`, at the very top of page init)
 
 Runs **before any other script reads storage**. When `isDefaultsMode()`:
 - Monkey-patch `localStorage.getItem/setItem/removeItem`: for any key starting with `th108`, transparently rewrite to the `th108_DEFAULTS_` prefix. All other keys pass through untouched.
-- On first entry (no `th108_DEFAULTS_th108_layers` yet), **seed**: copy each live `th108_*` value into its prefixed counterpart (deep copy via the raw, un-patched accessors). This is the "start from your current setup."
-- IndexedDB media (`th108media`) is left shared read-only in the sandbox (authoring rarely re-tunes media; not prefixed to avoid a second IDB). Export strips it regardless.
+- On first entry (no `th108_DEFAULTS_th108_layers` yet), **seed only `SEED_KEYS`**: copy just those live values into their prefixed counterparts (deep copy via the raw, un-patched accessors). Personal/machine keys are never copied, so the sandbox starts as a clean new-user state carrying only your shippable look.
+- IndexedDB media (`th108media`) is left shared (not prefixed — avoids a second IDB). It is never part of `SEED_KEYS`/export, so it can't leak; a default look should simply avoid personal media layers.
 
 Because every existing call site already goes through `localStorage.getItem('th108_...')`, the shim redirects the **entire UI** with zero call-site changes. This is the crux that makes the sandbox cheap.
 
 ### 3. Sandbox UI (banner + Export, in the controller)
 
 - A persistent **banner** while in defaults mode: "⚑ Authoring Defaults — your personal config is untouched" + an **Exit** link (drops `?defaults=1`).
-- An **Export Defaults** button: `stripForExport(snapshotFrom(...))` → download `defaults.json` (and/or write to the repo path the build bundles). 
+- An **Export Defaults** button: `seedSnapshot(read)` over the *scratch* keys → download `defaults.json` (and/or write to the repo path the build bundles). Same allowlist as seeding, so export is a plain snapshot.
 - Board preview: the normal **Drive from this Tab** path already renders the active (scratch) config over WebHID; nothing special needed beyond the banner making clear the board now shows the sandbox.
 
 ### 4. First-run seeding (consumer side, in the controller boot)
@@ -72,10 +65,10 @@ Because every existing call site already goes through `localStorage.getItem('th1
 ## Data flow
 
 ```
-Author:  ?defaults=1  ->  shim seeds th108_DEFAULTS_* from live config
+Author:  ?defaults=1  ->  shim seeds th108_DEFAULTS_* with ONLY SEED_KEYS from live config
          tune in normal UI (writes go to th108_DEFAULTS_*)
          Drive-from-Tab -> scratch look on the board
-         Export -> stripForExport() -> defaults.json  (personal keys dropped)
+         Export -> seedSnapshot(scratch) -> defaults.json  (only SEED_KEYS, nothing to drop)
 
 Ship:    defaults.json bundled with the GitHub Pages site
 
@@ -98,8 +91,8 @@ New visitor:  empty th108_layers -> fetch defaults.json -> seed real localStorag
 
 ## Testing
 
-- **Unit** (`th108-defaults.test.js`): `stripForExport` keeps exactly SHIP, drops every STRIP key (fails if a new unlisted key appears — a tripwire against accidentally shipping personal data); `snapshotFrom` deep-copies; `isDefaultsMode` parses the flag.
-- **Manual** (documented steps): enter `?defaults=1` → confirm banner + that real `th108_layers` is unchanged in devtools; tune + Drive-from-Tab → board shows scratch look; Export → inspect `defaults.json` has no stripped keys; simulate first-run (clear localStorage, remove flag, reload) → curated look loads.
+- **Unit** (`th108-defaults.test.js`): `seedSnapshot` returns exactly `SEED_KEYS` even when the source also holds personal keys (tripwire against leaking personal data); missing keys skipped, not null-filled; `isDefaultsMode` parses the flag.
+- **Manual** (documented steps): enter `?defaults=1` → confirm banner + that real `th108_layers` is unchanged in devtools; tune + Drive-from-Tab → board shows scratch look; Export → inspect `defaults.json` contains only `SEED_KEYS`; simulate first-run (clear localStorage, remove flag, reload) → curated look loads.
 
 ## Out of scope
 
