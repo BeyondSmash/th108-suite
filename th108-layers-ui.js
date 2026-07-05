@@ -1002,14 +1002,14 @@
             left = Math.max(4, Math.min(left, window.innerWidth-4-pw));
             peek.style.left=Math.round(left)+'px'; };
           // insert the duplicate INLINE right after the section header nearest the top of the view (what you're tuning)
-          const showDup=()=>{ const aim=window.innerHeight*0.16; let best=null, bd=1e9;
+          const showDup=(skipScroll)=>{ L._livePeekOpen=true; const aim=window.innerHeight*0.16; let best=null, bd=1e9;
             card.querySelectorAll('.lsec,.lsub').forEach(sc=>{ const t=sc.getBoundingClientRect().top; if(Math.abs(t-aim)<bd){ bd=Math.abs(t-aim); best=sc; } });
             const sbody = best && best.closest('.lsecbox') && best.closest('.lsecbox').querySelector('.lsecbody');
             if(sbody) sbody.insertBefore(dup, sbody.firstChild);   // INSIDE the section's boxed body so the dup respects the box padding/border (was landing between header and body → broke out of the box)
             else if(best && best.parentNode) best.insertAdjacentElement('afterend', dup); else body.appendChild(dup);
-            requestAnimationFrame(()=>{ try{ dup.scrollIntoView({behavior:'smooth', block:'center'}); }catch(_){ } });   // lerp-scroll to the new second/lower live preview
+            if(!skipScroll) requestAnimationFrame(()=>{ try{ dup.scrollIntoView({behavior:'smooth', block:'center'}); }catch(_){ } });   // lerp-scroll to the new second/lower live preview (skipped on a rebuild-restore so a toggle doesn't yank the scroll)
             peekBtn.textContent='Hide'; };
-          const hideDup=()=>{ if(dup.parentNode) dup.parentNode.removeChild(dup); peekBtn.textContent='Show'; };
+          const hideDup=()=>{ L._livePeekOpen=false; if(dup.parentNode) dup.parentNode.removeChild(dup); peekBtn.textContent='Show'; };
           const fadePill=(on)=>{ peek.style.opacity=on?'1':'0'; peek.style.pointerEvents=on?'auto':'none'; pillVisible=on; };   // 250ms via the CSS transition
           peekBtn.addEventListener('click',()=>{ if(dup.parentNode) hideDup(); else showDup(); });   // Show inserts the second/lower live preview (and lerp-scrolls to it); Hide removes it
           const nowEl=c('.s-srcNow'); let _lastNow=null;
@@ -1045,20 +1045,27 @@
             }
             requestAnimationFrame(frame);
           }
+          if(L._livePeekOpen) showDup(true);   // a card rebuild (any toggle) tore down the old docked duplicate — restore it so the live pill preview doesn't vanish on every toggle (frame loop self-corrects if you're actually scrolled back to the inline preview)
           requestAnimationFrame(frame);
         })();
       } else if(L.type==='agent'){
         // ---- AI/LLM agent-activity lighting layer card ----
-        // Colors
+        // Colors — each picker gets a ↺ that restores just that glyph's default color
+        const AG_COLOR_DEF={ twinkleColor:'#ff8c00', spinColor:'#ffffff', checkColor:'#22cc44', bangColor:'#ff3b30' };
+        const colorRow=(label,key)=>row(label,'<span style="display:inline-flex;align-items:center;gap:6px"><input type="color" class="s-'+key+'" value="'+s[key]+'"><button type="button" class="sreset s-agColReset" data-key="'+key+'" title="Reset to the default '+label.toLowerCase()+' color">↺</button></span><span></span>');
         const colorRows=
-          row('Twinkle','<input type="color" class="s-twinkleColor" value="'+s.twinkleColor+'"><span></span>')+
-          row('Spinner','<input type="color" class="s-spinColor" value="'+s.spinColor+'"><span></span>')+
-          row('Checkmark','<input type="color" class="s-checkColor" value="'+s.checkColor+'"><span></span>')+
-          row('Exclamation','<input type="color" class="s-bangColor" value="'+s.bangColor+'"><span></span>');
+          colorRow('Twinkle','twinkleColor')+
+          colorRow('Spinner','spinColor')+
+          colorRow('Checkmark','checkColor')+
+          colorRow('Exclamation','bangColor');
         // Session-filter dropdown — options filled async after mount
         const sessionRow=row('Session','<select class="s-agSession"><option value="all">All Sessions</option></select><span class="val s-agSessionNote" style="opacity:.6;font-size:11px"></span>');
-        // Twinkle-region paint-board row (mirrors individual layer)
-        const regionRow=full('<button type="button" class="s-agShowkb">⌨ Set Twinkle Region</button><button type="button" class="s-agRegReset" style="margin-left:6px">Default (letters)</button><span class="val s-agRegCount" style="opacity:.6;font-size:11px;margin-left:6px"></span>');
+        // Twinkle-region paint-board row (mirrors individual layer). Twinkles = one dot per running subagent;
+        // this picks WHICH keys they can appear on (default = the A–Z letter cluster).
+        const regionRow=full('<div style="text-align:center;font-size:11px;color:var(--muted);width:100%;margin-bottom:4px">Twinkles (one per running subagent) light up on these keys</div>'
+          +'<button type="button" class="s-agShowkb" title="Paint the keys where subagent twinkles may appear">⌨ Set Twinkle Keys</button>'
+          +'<button type="button" class="s-agRegReset" style="margin-left:6px" title="Reset the twinkle region back to the default A–Z letter cluster">↺ Reset to letters</button>'
+          +'<span class="val s-agRegCount" style="opacity:.6;font-size:11px;margin-left:6px"></span>');
         // Emphasis toggles
         const emphRows=
           row('Numpad<br>Silhouette','<label class="sl" style="margin:0"><input type="checkbox" class="s-silhouetteNumpad"'+(s.silhouetteNumpad?' checked':'')+'> Carve numpad from layers below while agent is active</label><span></span>')+
@@ -1073,7 +1080,7 @@
           (s.reminderEnabled ?
             row('Blinks','<select class="s-reminderBlinks"><option value="2"'+(s.reminderBlinks===2?' selected':'')+'>2 blinks</option><option value="3"'+(s.reminderBlinks===3?' selected':'')+'>3 blinks</option></select><span></span>') : '');
         // Preview toggle (page-side synthetic feed)
-        const previewRow=full('<div style="text-align:center"><label class="sl" style="margin:0;text-align:center"><input type="checkbox" class="s-agPreview"'+(s.preview?' checked':'')+'> <span>Preview — inject a synthetic agent feed<br>so the animation tunes live (no daemon needed)</span></label></div>'
+        const previewRow=full('<div style="text-align:center"><label class="sl" style="margin:0;text-align:center" title="Loops a fake agent session (busy spinner → subagent twinkles → green ✓ → red ! attention) so you can dial in the colors and animation without a real Claude Code session running. Turn off for live use."><input type="checkbox" class="s-agPreview"'+(s.preview?' checked':'')+'> <span>Demo the animations (loop a fake session)<br>so you can tune colors without a live agent</span></label></div>'
           +'<div style="text-align:center;margin-top:6px"><span style="opacity:.6;font-size:11px;margin-right:6px">Trigger once:</span>'
           +'<button type="button" class="s-agTrig" data-trig="twinkle">Twinkle</button> '
           +'<button type="button" class="s-agTrig" data-trig="spinner">Spinner</button> '
@@ -1088,8 +1095,9 @@
           sec('Preview')+previewRow+
         '</div>';
         const c=q=>body.querySelector(q);
-        // Color pickers
-        ['twinkleColor','spinColor','checkColor','bangColor'].forEach(key=>{ const el=c('.s-'+key); if(el) el.addEventListener('input',e=>s[key]=e.target.value); });
+        // Color pickers + per-color ↺ reset to default
+        ['twinkleColor','spinColor','checkColor','bangColor'].forEach(key=>{ const el=c('.s-'+key); if(el) el.addEventListener('input',e=>{ s[key]=e.target.value; scheduleSaveLayers(); }); });
+        body.querySelectorAll('.s-agColReset').forEach(b=>b.addEventListener('click',()=>{ const key=b.dataset.key, def=AG_COLOR_DEF[key]; if(!def) return; s[key]=def; const el=c('.s-'+key); if(el) el.value=def; scheduleSaveLayers(); }));
         // Session dropdown
         const sessSel=c('.s-agSession'), sessNote=c('.s-agSessionNote');
         function fillSessionDrop(sessions){ if(!sessSel) return;

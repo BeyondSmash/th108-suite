@@ -1000,7 +1000,9 @@
   }
 
   // ---- agent-activity layer (Claude Code hooks → state.agent) ----
-  const AGENT_SPIN = ['Numpad3','Numpad1','Numpad7','Numpad9'];
+  // spinner sweeps the numpad's 3×3 digit-block PERIMETER clockwise (8 keys) so the moving head has a smooth
+  // ring to travel — the descending-brightness trail then reads as a rotating comet, not a corner-to-corner jump.
+  const AGENT_SPIN = ['Numpad7','Numpad8','Numpad9','Numpad6','Numpad3','Numpad2','Numpad1','Numpad4'];
   const AGENT_CHECK = ['Numpad7','Numpad5','Numpad9','NumpadSubtract'];
   const AGENT_BANG = ['NumpadMultiply','Numpad9','Numpad6','NumpadDecimal'];
   const AGENT_LETTERS = ['KeyA','KeyB','KeyC','KeyD','KeyE','KeyF','KeyG','KeyH','KeyI','KeyJ','KeyK','KeyL','KeyM','KeyN','KeyO','KeyP','KeyQ','KeyR','KeyS','KeyT','KeyU','KeyV','KeyW','KeyX','KeyY','KeyZ'];
@@ -1062,9 +1064,11 @@
       for (const k of AGENT_CHECK_K) put(k, cr, cg, cb);
     } else if (A.busy && AGENT_SPIN_K.length) {
       const [pr, pg, pb] = hexToRgb(s.spinColor || '#ffffff');
-      const speed = s.spinMs || 600, tail = s.spinTail || 2;
-      const lead = Math.floor(now / speed) % AGENT_SPIN_K.length;
-      for (let t = 0; t <= tail; t++) { const k = AGENT_SPIN_K[(lead - t + AGENT_SPIN_K.length) % AGENT_SPIN_K.length]; const f = 1 - t / (tail + 1); put(k, pr * f, pg * f, pb * f); }
+      // comet: a bright head + a descending-brightness trail behind it. tail 4 over the 8-key ring lights ~half
+      // the ring, so the head always has a visible gradient wake. faster step (340ms) since the ring is longer now.
+      const speed = s.spinMs || 340, tail = s.spinTail == null ? 4 : s.spinTail;
+      const N = AGENT_SPIN_K.length, lead = Math.floor(now / speed) % N, cap = Math.min(tail, N - 1);
+      for (let t = 0; t <= cap; t++) { const k = AGENT_SPIN_K[(lead - t + N) % N]; const f = 1 - t / (cap + 1); put(k, pr * f, pg * f, pb * f); }
     }
     // boot sweep (own region, coexists)
     if (A.bootAt && now - A.bootAt < (s.bootMs || 1000)) {
