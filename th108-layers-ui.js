@@ -1062,12 +1062,12 @@
         // Both carry "All Sessions" as their neutral top option; picking a session in one shows it there and the
         // other rests on "All Sessions". Options filled async after mount.
         const sessionRow=full('<div style="display:flex;gap:12px;width:100%">'
-          +'<label style="flex:1;min-width:0;display:flex;flex-direction:column;gap:3px;font-size:11px;color:var(--muted);text-align:center">Active<select class="s-agSessionActive" style="width:100%"><option value="all">All Sessions</option></select></label>'
-          +'<label style="flex:1;min-width:0;display:flex;flex-direction:column;gap:3px;font-size:11px;color:var(--muted);text-align:center">Idle<select class="s-agSessionIdle" style="width:100%"><option value="all">All Sessions</option></select></label>'
-          +'</div><div class="val s-agSessionNote" style="opacity:.6;font-size:11px;text-align:center;margin-top:4px"></div>');
+          +'<label style="flex:1;min-width:0;display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--muted);text-align:center">Active<select class="s-agSessionActive" style="width:100%;font-size:13px"><option value="all">All Sessions</option></select></label>'
+          +'<label style="flex:1;min-width:0;display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--muted);text-align:center">Idle<select class="s-agSessionIdle" style="width:100%;font-size:13px"><option value="all">All Sessions</option></select></label>'
+          +'</div><div class="val s-agSessionNote" style="opacity:.6;font-size:12px;text-align:center;margin-top:4px"></div>');
         // Twinkle-region paint-board row (mirrors individual layer). Twinkles = one dot per running subagent;
         // this picks WHICH keys they can appear on (default = the A–Z letter cluster).
-        const regionRow=full('<div style="text-align:center;font-size:11px;color:var(--muted);width:100%;margin-bottom:4px">Twinkles (one per running subagent) light up on these keys</div>'
+        const regionRow=full('<div style="text-align:center;font-size:12.5px;color:var(--muted);width:100%;margin-bottom:5px">Twinkles (one per running subagent) light up on these keys</div>'
           +'<button type="button" class="s-agShowkb" title="Paint the keys where subagent twinkles may appear">⌨ Set Twinkle Keys</button>'
           +'<button type="button" class="s-agRegReset" style="margin-left:6px" title="Reset the twinkle region back to the default A–Z letter cluster">↺ Reset to letters</button>'
           +'<span class="val s-agRegCount" style="opacity:.6;font-size:11px;margin-left:6px"></span>');
