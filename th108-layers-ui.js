@@ -1070,7 +1070,7 @@
         const regionRow=full('<div style="text-align:center;font-size:12.5px;color:var(--muted);width:100%;margin-bottom:5px">Twinkles (one per running subagent) light up on these keys</div>'
           +'<button type="button" class="s-agShowkb" title="Paint the keys where subagent twinkles may appear">⌨ Set Twinkle Keys</button>'
           +'<button type="button" class="s-agRegReset" style="margin-left:6px" title="Reset the twinkle region back to the default A–Z letter cluster">↺ Reset to letters</button>'
-          +'<span class="val s-agRegCount" style="opacity:.6;font-size:11px;margin-left:6px"></span>');
+          +'<span class="val s-agRegCount" style="opacity:.6;font-size:12px;margin-left:6px"></span>');
         // Emphasis toggles
         const emphRows=
           row('Numpad<br>Silhouette','<label class="sl" style="margin:0"><input type="checkbox" class="s-silhouetteNumpad"'+(s.silhouetteNumpad?' checked':'')+'> Carve numpad from layers below while agent is active</label><span></span>')+
@@ -1131,7 +1131,7 @@
         [selActive,selIdle].forEach(sel=>sel.addEventListener('pointerdown',()=>{ listAgentSessions().then(fillSessionDrop).catch(()=>{}); }));
         // Twinkle-region paint board (same API as individual layer)
         let pb=null, pbWrap=null;
-        const updRegCount=()=>{ const el=c('.s-agRegCount'); if(el) el.textContent = pb ? (pb.selCount()+' keys selected') : (Array.isArray(s.twinkleKeys)&&s.twinkleKeys.length ? s.twinkleKeys.length+' keys (saved)' : 'Default (letters)'); };
+        const updRegCount=()=>{ const el=c('.s-agRegCount'); if(el) el.textContent = pb ? (pb.selCount()+' keys selected') : (Array.isArray(s.twinkleKeys)&&s.twinkleKeys.length ? s.twinkleKeys.length+' custom keys' : 'A–Z (26 keys)'); };
         updRegCount();
         function mountAgentBoard(){
           if(pb) return;
@@ -1159,7 +1159,7 @@
           const before=window.scrollY, r=pbWrap.getBoundingClientRect();
           pb.destroy(); pb=null; const w=pbWrap; pbWrap=null; if(w&&w.parentNode) w.parentNode.removeChild(w);
           const shift=Math.max(0, Math.min(r.height, -r.top)); if(shift>0) window.scrollTo(0, before-shift);
-          c('.s-agShowkb').textContent='⌨ Set Twinkle Region'; updRegCount();
+          c('.s-agShowkb').textContent='⌨ Set Twinkle Keys'; updRegCount();
           requestAnimationFrame(()=>{ try{ card.scrollIntoView({behavior:'smooth', block:'center'}); }catch(_){ } }); }
         c('.s-agShowkb').addEventListener('click',()=>{ pb?unmountAgentBoard():mountAgentBoard(); });
         c('.s-agRegReset').addEventListener('click',()=>{ s.twinkleKeys=null; unmountAgentBoard(); updRegCount(); scheduleSaveLayers(); });
