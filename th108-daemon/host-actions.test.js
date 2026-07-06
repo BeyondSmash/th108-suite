@@ -62,3 +62,11 @@ test('tapFires counts presses within the window and resets on fire', () => {
   r = HA.tapFires(taps, 2600, 2, 400); assert.equal(r.fire, false);                       // too slow (600ms) → no fire, just a fresh 1st
   assert.equal(r.taps.length, 1);
 });
+
+test('nextBrightness cycles +10%, wraps 100->0, blinks only at 100', () => {
+  assert.deepEqual(HA.nextBrightness(0),  { value: 10,  blink: false });
+  assert.deepEqual(HA.nextBrightness(80), { value: 90,  blink: false });
+  assert.deepEqual(HA.nextBrightness(90), { value: 100, blink: true });   // hit max -> blink
+  assert.deepEqual(HA.nextBrightness(100),{ value: 0,   blink: false });  // wrap past max
+  assert.deepEqual(HA.nextBrightness(55), { value: 60,  blink: false });  // odd start snaps to grid
+});

@@ -12,9 +12,20 @@
 //                 'profileSelect' { index }                 — jump straight to profile N
 //                 'macro'         { steps:[{key, mods}] }    — play a keystroke sequence (uiohook codes)
 //                 'launch'        { target }                 — open a program / file / URL
+//                 'brightnessCycle' {}                       — step global brightness +10%, wrap 100→0, white-blink at 100
 
-const ACTIONS = new Set(['micToggle', 'profileNext', 'profilePrev', 'profileSelect', 'macro', 'launch', 'focusApp', 'winMin', 'winMax', 'winRestore']);
+const ACTIONS = new Set(['micToggle', 'profileNext', 'profilePrev', 'profileSelect', 'macro', 'launch', 'focusApp', 'winMin', 'winMax', 'winRestore', 'brightnessCycle']);
 const TRIGGERS = new Set(['key', 'chord', 'multitap', 'hold']);
+
+// Global-brightness cycle step: +`step`%, wrapping past 100 back to 0. Returns the new value and whether it
+// landed exactly on 100 (→ the daemon flashes the board white once as a "you're at max" cue). Pure/testable.
+function nextBrightness(cur, step) {
+  step = step || 10;
+  const c = Math.max(0, Math.min(100, Number(cur) || 0));
+  let n = (Math.floor(c / step) + 1) * step;   // next grid point up (odd starting values round UP to the next step)
+  if (n > 100) n = 0;                           // wrap past max
+  return { value: n, blink: n === 100 };
+}
 
 function clampInt(v, def, lo, hi) { v = Math.round(+v); if (!isFinite(v)) return def; return Math.max(lo, Math.min(hi, v)); }
 function pickMods(m) { m = m || {}; return { ctrl: !!m.ctrl, alt: !!m.alt, shift: !!m.shift, meta: !!m.meta }; }
@@ -64,4 +75,4 @@ function tapFires(taps, now, count, windowMs) {
   return { fire: false, taps: kept };
 }
 
-module.exports = { normalize, chordMatches, tapFires, ACTIONS, TRIGGERS };
+module.exports = { normalize, chordMatches, tapFires, nextBrightness, ACTIONS, TRIGGERS };

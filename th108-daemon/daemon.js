@@ -70,6 +70,7 @@ let lcdBusy = false;     // a now-playing flash upload is running — the 0x32 s
 let npBlinkAt = 0;       // timestamp of a throttled-skip → blink the spacebar red twice
 let npFlashAt = 0;       // timestamp of a track change → flash the number row (keys 1-0) for 150ms
 let profileFlashAt = 0, profileFlashColor = '#ffffff', profileFlashLed = -1;   // profile-switch number flash
+let brightnessBlinkAt = 0;   // brightnessCycle host-action: whole-board white flash the moment brightness hits 100%
 const PROFILE_FLASH_MS = 990, PROFILE_BLINK_MS = 330, PROFILE_BLINK_ON = 180;   // ~1s number flash, blinking ~3× (180ms on / 150ms off)
 let barCount = 0, barStepAt = 0;   // ANIMATED lit-key count for the progress-bar (lerps toward target one key per BAR_STEP_MS — a seek visibly counts up/down)
 const BAR_STEP_MS = 50, BAR_FADE_MS = 600;   // 50ms per key (the sequential walk) / 600ms idle crossfade-out
@@ -294,6 +295,15 @@ function fireHostAction(b) {
   if (a.type === 'winMin') return winCmd(':MIN');
   if (a.type === 'winMax') return winCmd(':MAX');
   if (a.type === 'winRestore') return winCmd(':RESTORE');
+  if (a.type === 'brightnessCycle') return cycleBrightness();
+}
+// brightnessCycle: step global brightness +10% (wrap 100→0), apply live, and white-flash the board at 100%.
+function cycleBrightness() {
+  const { value, blink } = HA.nextBrightness(settings.brightness);
+  settings.brightness = value;
+  if (state) { state.bri = value / 100; state.lastFlat = null; }   // live + bust the send dedupe so it applies now
+  if (blink) brightnessBlinkAt = Date.now();
+  saveSettings();
 }
 // per-binding state for the stateful triggers (multitap taps, hold timers) + a fire debounce for key/chord.
 const _haState = new Map();   // binding ref → { taps:[], holdTimer }
@@ -531,6 +541,11 @@ async function runTick() {
         if (pt >= PROFILE_FLASH_MS) profileFlashAt = 0;
         else if (pt >= 0 && (pt % PROFILE_BLINK_MS) < PROFILE_BLINK_ON) { const [pr, pg, pb] = hexRGB(profileFlashColor); const o = profileFlashLed * 4; flat[o + 1] = pr; flat[o + 2] = pg; flat[o + 3] = pb; }
       }
+    }
+    if (brightnessBlinkAt) {   // brightnessCycle "hit 100%" cue: whole board white for ~150ms (flatEq sends the on/off edges)
+      const bt = Date.now() - brightnessBlinkAt;
+      if (bt >= 0 && bt < 150) { for (let o = 0; o < flat.length; o += 4) { flat[o + 1] = 255; flat[o + 2] = 255; flat[o + 3] = 255; } }
+      else if (bt >= 150) brightnessBlinkAt = 0;
     }
     if (!E.flatEq(flat, state.lastFlat) || now - state.lastSent >= 1000) {
       sendingFrame = true;
