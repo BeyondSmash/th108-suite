@@ -1256,6 +1256,18 @@ if (window.TH108Defaults && TH108Defaults.isDefaultsMode()) {
     document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
   });
 }
+// First-run seeding: a brand-new visitor (no saved layers, not authoring) gets the shipped defaults once.
+// Synchronous XHR keeps it before the state/LUI bootstrap without a large refactor; the file is tiny + same-origin.
+if (window.TH108Defaults && !TH108Defaults.isDefaultsMode() && !localStorage.getItem('th108_layers') && !localStorage.getItem('th108_seeded')) {
+  try {
+    const xhr = new XMLHttpRequest(); xhr.open('GET', 'defaults.json', false); xhr.send();
+    if (xhr.status >= 200 && xhr.status < 300) {
+      const snap = JSON.parse(xhr.responseText);
+      for (const k of TH108Defaults.SEED_KEYS) { if (k in snap && snap[k] != null) localStorage.setItem(k, snap[k]); }
+      localStorage.setItem('th108_seeded', '1');   // seed exactly once; never clobber a returning user
+    }
+  } catch (e) { console.warn('first-run defaults seed skipped', e); }   // missing/bad file -> fall back to engine defaultLayers()
+}
 // shared engine (board map, renderers, compositor, state) — pull the bits we reference by short name
 const {KEYMAP, INDICES, NLED, BOARDW, BOARDH, hexToRgb} = TH108Engine;
 // (GRID + the grid-aware keyCell moved into th108-gif-panel.js — they are GIF-tool-only)
