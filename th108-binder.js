@@ -104,6 +104,7 @@
   // consumer usages (16-bit LE encoding wire-confirmed via the Calculator capture) + the one
   // mouse entry whose bytes are unambiguous; remaining mouse buttons/scroll need one more capture
   const special = [
+    { label: 'No Event (disable key)', hid: 0, face: '—' },   // KC_NO — the key sends nothing (same encoding that neutralizes NumLock). '—' key-face, like the numpad-neutralized NumLock. Reversible via Restore Default.
     { label: 'Play / Pause', usage: 0xCD }, { label: 'Stop Playback', usage: 0xB7 },
     { label: 'Previous Track', usage: 0xB6 }, { label: 'Next Track', usage: 0xB5 },
     { label: 'Volume +', usage: 0xE9 }, { label: 'Volume -', usage: 0xEA }, { label: 'Mute', usage: 0xE2 },
@@ -843,7 +844,7 @@
       const ok = await keymapRMW(km => setEntry(km, sel.idx, four), 'Assigning ' + (sel.label || 'Space') + ' → ' + item.label + '…');   // key → action, like every other arrow in the suite
       if (!ok) return;
       const isDefault = four[0] === 0x02 && four[2] === DEFAULT_HID[sel.idx];   // re-assigning the key's own character = back to stock, no mark
-      setMod(sel.idx, isDefault ? null : item.label, four);
+      setMod(sel.idx, isDefault ? null : (item.face || item.label), four);   // item.face = short key-face glyph (e.g. '—' for No Event) so a long palette label doesn't clutter the key
       log('✓ ' + (sel.label || 'Space') + ' now does "' + item.label + '" — Restore Default to undo', 'ok');
     }
     // restore one key (and its SOCD partner — half a pair is undefined firmware behavior) to the
