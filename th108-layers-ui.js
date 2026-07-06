@@ -1069,6 +1069,7 @@
         // this picks WHICH keys they can appear on (default = the A–Z letter cluster).
         const regionRow=full('<div style="text-align:center;font-size:12.5px;color:var(--muted);width:100%;margin-bottom:5px">Twinkles (one per running subagent) light up on these keys</div>'
           +'<button type="button" class="s-agShowkb" title="Paint the keys where subagent twinkles may appear">⌨ Set Twinkle Keys</button>'
+          +'<button type="button" class="s-agRegRandom" style="margin-left:6px" title="Scatter the twinkle keys randomly across the whole board — same number of keys as now, shown live on the preview. Click again for a fresh scatter.">🎲 Random</button>'
           +'<button type="button" class="s-agRegReset" style="margin-left:6px" title="Reset the twinkle region back to the default A–Z letter cluster">↺ Reset to letters</button>'
           +'<span class="val s-agRegCount" style="opacity:.6;font-size:12px;margin-left:6px"></span>'
           +'<div style="text-align:center;width:100%;margin-top:7px"><label class="sl" style="margin:0" title="Color each twinkle by its position (red→violet) instead of one flat color, so the number of running subagents reads as a progressing ROYGBIV spectrum across the region"><input type="checkbox" class="s-twinkleSpectrum"'+(s.twinkleSpectrum?' checked':'')+'> Spectrum twinkles (ROYGBIV by count)</label></div>');
@@ -1132,6 +1133,7 @@
         [selActive,selIdle].forEach(sel=>sel.addEventListener('pointerdown',()=>{ listAgentSessions().then(fillSessionDrop).catch(()=>{}); }));
         // Twinkle-region paint board (same API as individual layer)
         let pb=null, pbWrap=null;
+        const regionKeys={};   // idx→color source the board draws from; hoisted so Random can rewrite it live (pb.draw reads it fresh)
         const updRegCount=()=>{ const el=c('.s-agRegCount'); if(el) el.textContent = pb ? (pb.selCount()+' keys selected') : (Array.isArray(s.twinkleKeys)&&s.twinkleKeys.length ? s.twinkleKeys.length+' custom keys' : 'A–Z (26 keys)'); };
         updRegCount();
         function mountAgentBoard(){
@@ -1144,7 +1146,7 @@
           card.parentNode.insertBefore(pbWrap, anchor);
           // The agent board shows SELECTED region (not painted colors) — we repurpose PaintBoard in selection mode.
           // We give every key the twinkleColor as its stored "color" so the selection highlight reads correctly.
-          const regionKeys={};
+          for(const k in regionKeys) delete regionKeys[k];
           if(Array.isArray(s.twinkleKeys)) s.twinkleKeys.forEach(i=>{ regionKeys[i]=s.twinkleColor||'#ff8c00'; });
           pb=root_PaintBoard().mount(pbWrap.querySelector('.pb-board'), {
             engine:E, getKeys:()=>regionKeys, getColor:()=>s.twinkleColor||'#ff8c00',
@@ -1163,6 +1165,17 @@
           c('.s-agShowkb').textContent='⌨ Set Twinkle Keys'; updRegCount();
           requestAnimationFrame(()=>{ try{ card.scrollIntoView({behavior:'smooth', block:'center'}); }catch(_){ } }); }
         c('.s-agShowkb').addEventListener('click',()=>{ pb?unmountAgentBoard():mountAgentBoard(); });
+        // 🎲 Random: scatter N twinkle keys randomly across the board, N = current count (default 26, the A–Z size),
+        // so density is preserved and only the placement is random (nothing arbitrary about the count). Shows live.
+        c('.s-agRegRandom').addEventListener('click',()=>{
+          const n=(Array.isArray(s.twinkleKeys)&&s.twinkleKeys.length)?s.twinkleKeys.length:26;
+          const pool=E.INDICES.slice();
+          for(let i=pool.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); const t=pool[i]; pool[i]=pool[j]; pool[j]=t; }   // Fisher–Yates
+          s.twinkleKeys=pool.slice(0,Math.max(1,Math.min(pool.length,n))).sort((a,b)=>a-b);
+          if(!pb) mountAgentBoard();                                             // not open → open it so the scatter is visible
+          else { for(const k in regionKeys) delete regionKeys[k]; s.twinkleKeys.forEach(i=>{ regionKeys[i]=s.twinkleColor||'#ff8c00'; }); pb.selectNone&&pb.selectNone(); pb.draw(); }
+          updRegCount(); scheduleSaveLayers();
+        });
         c('.s-agRegReset').addEventListener('click',()=>{ s.twinkleKeys=null; unmountAgentBoard(); updRegCount(); scheduleSaveLayers(); });
         { const el=c('.s-twinkleSpectrum'); if(el) el.addEventListener('change',e=>{ s.twinkleSpectrum=e.target.checked; scheduleSaveLayers(); }); }
         // Emphasis toggles
