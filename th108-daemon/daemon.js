@@ -128,7 +128,7 @@ for (const [name, code] of Object.entries(UIOHOOK_TO_CODE)) {
 // uiohook-napi's UiohookKey OMITS some keys (no property at all), so they never enter UIO2IDX by name — add them
 // by their raw libuiohook codes so reactive lighting AND host actions can resolve them. Without this the daemon
 // can't map the keypress to an LED, so nothing fires (and it lands in the 🔍 unmapped log below).
-const RAW_UIO = { 3677: 'ContextMenu', 3653: 'Pause' };   // Apps/Menu (VC_CONTEXT_MENU 0x0E5D), Pause/Break (VC_PAUSE 0x0E45)
+const RAW_UIO = { 3677: 'ContextMenu', 3653: 'Pause', 57378: 'NumLock' };   // Apps/Menu (VC_CONTEXT_MENU 0x0E5D), Pause/Break (VC_PAUSE 0x0E45), NumLock (this board emits 57378, which UiohookKey.NumLock doesn't match → host-action binding couldn't see it)
 for (const [kc, code] of Object.entries(RAW_UIO)) { const idx = KEYMAP[code]; if (idx !== undefined) UIO2IDX[+kc] = idx; }
 // DISCOVER: log (once each) any pressed key the daemon couldn't map → tells us the real code to add if a board
 // sends something unexpected (e.g. Menu on a different code than 3677). Cheap; only fires on a genuinely unmapped key.
