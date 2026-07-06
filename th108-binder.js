@@ -133,7 +133,7 @@
     { label: 'Turn Off Lights', code: 17 },
     { label: 'Side Light Effect Switch', code: 23 }, { label: 'Side Light Color Switch', code: 24 },
     { label: 'Side Light Brightness', code: 25 }, { label: 'Side Light Speed', code: 26 },
-    { label: 'Turn Off Side Lights', code: 83 },
+    // 'Turn Off Side Lights' (code 83) removed — the Side Light Effect Switch already cycles through an 'off' mode, so a dedicated off is redundant
     { label: 'Front Strip Effect Switch', code: 27 }, { label: 'Front Strip Color Switch', code: 29 },
     { label: 'Front Strip Speed', code: 28 },
     { label: 'Ambient Effect Switch', code: 165 }, { label: 'Ambient Color Switch', code: 164 },
