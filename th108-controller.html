@@ -1247,6 +1247,14 @@ if (window.TH108Defaults && TH108Defaults.isDefaultsMode()) {
   const bn = document.getElementById('defaultsBanner'); if (bn) bn.hidden = false;
   const ex = document.getElementById('defaultsExit');
   if (ex) ex.addEventListener('click', e => { e.preventDefault(); const u = new URL(location.href); u.searchParams.delete('defaults'); location.href = u.href; });
+  const exp = document.getElementById('defaultsExport');
+  if (exp) exp.addEventListener('click', () => {
+    // localStorage is shimmed -> getItem reads the scratch (prefixed) values
+    const snap = TH108Defaults.seedSnapshot(k => localStorage.getItem(k));
+    const blob = new Blob([JSON.stringify(snap, null, 2)], { type: 'application/json' });
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'defaults.json';
+    document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  });
 }
 // shared engine (board map, renderers, compositor, state) — pull the bits we reference by short name
 const {KEYMAP, INDICES, NLED, BOARDW, BOARDH, hexToRgb} = TH108Engine;
