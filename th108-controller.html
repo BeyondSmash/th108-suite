@@ -602,6 +602,7 @@ try{ var _tk = /[?&]defaults=1(?:&|$)/.test(location.search) ? 'th108_DEFAULTS_t
       <div style="display:flex;flex-direction:column;gap:5px;margin-left:auto">
         <label style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:#9aa0aa;cursor:pointer;white-space:nowrap" title="When this tab gains focus, automatically take the keyboard from the daemon (reuses the lease for a clean handoff). Takes over once you've connected at least once — a cold first connect still needs one click (browser WebHID rule)."><input type="checkbox" id="autoConnectFocus"> Auto-connect on focus</label>
         <label style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:#9aa0aa;cursor:pointer;white-space:nowrap" title="Don't show the “Another controller took over the keyboard” banner when this tab loses the lease"><input type="checkbox" id="hideYieldBanner"> Hide yield banner</label>
+        <label style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:#9aa0aa;cursor:pointer;white-space:nowrap" title="Never hand the keyboard to the daemon when this tab loses focus — this page keeps driving. Trade-off: reactive lighting won't respond to keys typed in OTHER apps (the browser only delivers keys to a focused tab), but the board never swaps owners on focus changes, so it can't churn/wedge. Turn this on if switching between the site and another app has ever dropped your lighting."><input type="checkbox" id="keepDrivingNoYield"> Keep driving from this tab (no auto-yield)</label>
       </div>
     </div>
     <p class="hint" style="margin:0">While connected, click this page once so it has keyboard focus, then type — pressed keys flash orange.</p>
@@ -1433,6 +1434,8 @@ const DC = TH108DaemonClient.create({ log, getConfig: ()=>localStorage.getItem('
   var ac=document.getElementById('autoConnectFocus'), hy=document.getElementById('hideYieldBanner');
   if(ac){ ac.checked = localStorage.getItem('th108.autoConnectFocus')==='1'; ac.addEventListener('change',function(){ localStorage.setItem('th108.autoConnectFocus', ac.checked?'1':'0'); if(ac.checked) onAwayChange(); }); }   // turning it ON acts immediately (no blur→focus round-trip needed)
   if(hy){ hy.checked = localStorage.getItem('th108.hideYieldBanner')==='1'; hy.addEventListener('change',function(){ localStorage.setItem('th108.hideYieldBanner', hy.checked?'1':'0'); if(hy.checked) hideLeaseBanner(); }); }
+  var kd=document.getElementById('keepDrivingNoYield');
+  if(kd){ kd.checked = localStorage.getItem('th108.keepDrivingNoYield')==='1'; kd.addEventListener('change',function(){ localStorage.setItem('th108.keepDrivingNoYield', kd.checked?'1':'0'); if(kd.checked && _awayHandoff && pageActive()) reclaimBoardFromDaemon(); }); }   // turning it ON while currently yielded → take the board back now so the page is the sole owner going forward
 })();
 
 window.addEventListener('beforeunload', ()=>{ DC.heartbeatStop(); DC.resume(); try{ TH108LCD.setDevices({}); }catch(_){ } });
@@ -1447,11 +1450,17 @@ window.addEventListener('beforeunload', ()=>{ DC.heartbeatStop(); DC.resume(); t
 // so a handoff can NEVER interrupt a 0x50 flash write (the brick risk). Debounced ~1.2s so a momentary
 // alt-tab / notification doesn't churn the board (rapid owner-swaps are what wedge it). Shared
 // _awayHandoff/_handoffBusy state + a single timer guard against overlapping handoffs.
-let _awayHandoff=false, _handoffBusy=false, _awayTimer=0;
+let _awayHandoff=false, _handoffBusy=false, _awayTimer=0, _lastSwapAt=0;
 const AWAY_DELAY=1200;   // sustained-away debounce: don't hand off on a momentary blur
+// After ANY owner swap, block the next one this long. Rapid focus ping-pong between the site and another
+// app (VSCode) was firing handoff→reclaim→handoff back-to-back — a storm of daemon device open/close that
+// desyncs the ACK FIFO and wedges the board. The cooldown coalesces rapid switching to wherever focus
+// finally settles, so the board changes owner at most once per window instead of on every click.
+const SWAP_COOLDOWN=2500;
 function pageActive(){ return document.hasFocus() && !document.hidden; }
 async function handBoardToDaemon(){
   if(_handoffBusy || _awayHandoff) return;
+  if(localStorage.getItem('th108.keepDrivingNoYield')==='1') return;   // user opted out of auto-yield — this tab keeps driving on blur (no owner swap = no churn/wedge); reactive just won't see keys typed in other apps
   if(!(DC.present && DC.beating && running && HID.device)) return;   // only while WE actively drive layers (excludes LCD upload / GIF / idle — running=false there)
   if(webCap.active()) return;                                         // IN-TAB audio capture: the daemon can't do tab/mic audio, and tab-switching to control the music would churn the HID handoff (open/close → wedge). Keep driving from this tab.
   if(window.__npPermit) return;                                       // belt-and-suspenders: never mid now-playing flash upload
@@ -1460,6 +1469,7 @@ async function handBoardToDaemon(){
     _awayHandoff=true;
     running=false; if(layerW) layerW.postMessage({stop:true});       // stop OUR writes — no blackout frame, the daemon paints over within a tick
     DC.heartbeatStop(); await DC.resume();
+    _lastSwapAt=Date.now();
     log('tab left focus — handed lighting to the background daemon (reactive keeps working in every app)','dim');
     refreshDriverUI();
   } finally { _handoffBusy=false; }
@@ -1472,6 +1482,7 @@ async function reclaimBoardFromDaemon(){
     if(HID.device){   // our WebHID handle was never closed → take back: make the daemon release, then resume our loop
       if(DC.present){ await DC.yieldDevice(); DC.heartbeatStart(); }
       start();
+      _lastSwapAt=Date.now();
       log('tab focused — page took the keyboard back','dim');
       refreshDriverUI();
     }
@@ -1485,6 +1496,11 @@ async function reclaimBoardFromDaemon(){
 function releaseHeldKeys(){ const d=state.react.down; for(let i=0;i<d.length;i++) if(d[i]) TH108Engine.releaseKey(state, i); }
 function onAwayChange(){
   clearTimeout(_awayTimer);
+  const sinceSwap = Date.now() - _lastSwapAt;
+  if(_lastSwapAt && sinceSwap < SWAP_COOLDOWN){                       // just swapped owner — don't churn the device. Re-evaluate once the cooldown clears, acting on wherever focus has SETTLED by then (coalesces a rapid VSCode↔site ping-pong into at most one swap per window).
+    _awayTimer = setTimeout(onAwayChange, SWAP_COOLDOWN - sinceSwap + 30);
+    return;
+  }
   if(pageActive()){
     var wantAuto = localStorage.getItem('th108.autoConnectFocus')==='1';
     if(HID.device){
