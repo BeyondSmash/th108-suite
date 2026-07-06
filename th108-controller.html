@@ -2238,6 +2238,17 @@ setFillMode(fillMode);   // apply persisted state + label on load
     sync();
   });
   sync();
+  // Live-adopt the daemon's brightness from the /status poll (daemon-client calls this) so a daemon-side
+  // change — e.g. the 'Brightness cycle' host action pressed while THIS tab is the driver — reflects here
+  // too, not only at boot. Guarded so it never yanks an in-progress drag or echoes our own just-pushed value.
+  window.__adoptDaemonBrightness = function(v){
+    if(typeof v!=='number' || v<0 || v>100) return;
+    if(document.activeElement===sl) return;          // don't fight a slider drag in progress
+    if(Date.now()-lastPushAt < 1500) return;         // we just pushed our own value — the /status echo isn't a daemon-origin change
+    if(+sl.value === v) return;                        // already there
+    localStorage.setItem(BRI_KEY,String(v)); sl.value=v; state.bri=briToFactor(v); state.lastFlat=null;   // busting lastFlat repaints at the new brightness on the next frame (while we drive)
+    document.querySelectorAll('#briWrap .tick').forEach(t=>t.classList.toggle('lit', +t.dataset.v===v));
+  };
 })();
 
 // ===== Reset Layout(s): per-tab card-arrangement reset (Toolbox) =====

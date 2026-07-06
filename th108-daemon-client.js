@@ -154,6 +154,7 @@ window.TH108DaemonClient = (function () {
         try {
           const r = await fetch('/status', { cache: 'no-store' }); if (!r.ok) throw 0;
           const s = await r.json(); alive = true; noteLease(s);
+          if (typeof s.brightness === 'number' && window.__adoptDaemonBrightness) window.__adoptDaemonBrightness(s.brightness);   // reflect a daemon-side brightness change (e.g. Brightness-cycle host action) on this tab even while WE drive
           // bio-card grab-bar: show the real setup.cmd path (from the daemon) + the copy button
           const spTxt = document.getElementById('setupPathTxt'), spWrap = document.getElementById('setupPathWrap'), trTxt = document.getElementById('trayPathTxt');
           if (spTxt && spWrap && s.setupPath) { if (spTxt.textContent !== s.setupPath) spTxt.textContent = s.setupPath; spWrap.style.display = 'inline-flex'; }

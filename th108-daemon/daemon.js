@@ -304,6 +304,7 @@ function cycleBrightness() {
   if (state) { state.bri = value / 100; state.lastFlat = null; }   // live + bust the send dedupe so it applies now
   if (blink) brightnessBlinkAt = Date.now();
   saveSettings();
+  log('🔆 brightness cycle → ' + value + '%' + (blink ? ' (max — white blink)' : '') + (state ? '' : ' (idle — no board to paint)'));   // when the PAGE is driving, the page adopts this via its /status poll (settings.brightness rides /status)
 }
 // per-binding state for the stateful triggers (multitap taps, hold timers) + a fire debounce for key/chord.
 const _haState = new Map();   // binding ref → { taps:[], holdTimer }
