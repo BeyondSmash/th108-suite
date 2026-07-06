@@ -74,7 +74,8 @@ test('palette holds only hardware-confirmed encodings and the knob-mute option',
   // full code table from the official Fn-layer list (fnlistarray.txt), cross-validated by captures
   [1, 3, 4, 5, 7, 11, 12, 13, 14, 15, 16, 17].forEach(c =>
     assert.ok(f.some(i => i.code === c), 'function code ' + c + ' present'));
-  assert.equal(f.length, 27);
+  assert.ok(!f.some(i => i.code === 83), 'Turn Off Side Lights (83) dropped — Side Light Effect Switch already cycles through an off mode (c5c5b88)');
+  assert.equal(f.length, 26);
   const sp = B.PALETTE.find(t => t.key === 'special').items;
   assert.deepEqual(B.entryBytes(sp.find(i => i.label === 'Calculator')), [0x03, 0x92, 0x01, 0x00]);   // exact captured bytes
   assert.deepEqual(B.entryBytes(sp.find(i => i.label === 'Left Mouse Button')), [0x01, 0x01, 0x01, 0x00]);
