@@ -507,7 +507,7 @@ try{ var _tk = /[?&]defaults=1(?:&|$)/.test(location.search) ? 'th108_DEFAULTS_t
 <div id="defaultsBanner" hidden style="background:#8a5a00;color:#fff;text-align:center;padding:7px 12px;font-size:13px;font-weight:600">
   ⚑ Authoring Defaults — your personal config is untouched (scratch sandbox).
   <a id="defaultsExit" href="#" style="color:#fff;text-decoration:underline;margin-left:10px">Exit</a>
-  <button id="defaultsExport" type="button" style="margin-left:12px;padding:3px 12px">Export defaults.json</button>
+  <button id="defaultsExport" type="button" style="margin-left:12px;padding:3px 12px" title="Exports the layer look (colors / patterns / brightness / theme). NOTE: a Media layer's image is NOT shipped — new visitors would see it empty — so avoid personal media in the default look.">Export defaults.json</button>
 </div>
 
 <!-- device-lease deprecated-controller banner (Task 5): hidden by default, shown when this tab loses
@@ -1264,9 +1264,9 @@ if (window.TH108Defaults && !TH108Defaults.isDefaultsMode() && !localStorage.get
     if (xhr.status >= 200 && xhr.status < 300) {
       const snap = JSON.parse(xhr.responseText);
       for (const k of TH108Defaults.SEED_KEYS) { if (k in snap && snap[k] != null) localStorage.setItem(k, snap[k]); }
-      localStorage.setItem('th108_seeded', '1');   // seed exactly once; never clobber a returning user
     }
   } catch (e) { console.warn('first-run defaults seed skipped', e); }   // missing/bad file -> fall back to engine defaultLayers()
+  localStorage.setItem('th108_seeded', '1');   // mark ATTEMPTED (success OR fail) so a missing/404 defaults.json can't re-fire the blocking XHR every load
 }
 // shared engine (board map, renderers, compositor, state) — pull the bits we reference by short name
 const {KEYMAP, INDICES, NLED, BOARDW, BOARDH, hexToRgb} = TH108Engine;
