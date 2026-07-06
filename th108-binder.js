@@ -594,6 +594,12 @@
       if (conflict) { btn.textContent = orig; showBindConflict(btn, conflict); return; }   // don't bind a second action onto an already-assigned key
       list.push(b); saveHostActions(list);
       log('✓ ' + describeTrigger(b.trigger) + ' → ' + describeAction(b.action) + ' (works page-closed)', 'ok');
+      // Firmware-remapped/neutralized keys emit a DIFFERENT code — or nothing (Numpad→Digits neutralizes NumLock
+      // to a no-event key) — so the daemon never sees this key's own LED when it's pressed, and the action won't
+      // fire. Bindings by physical PRESS can't hit this (you'd be pressing the emitted code), but a Pick-a-Key
+      // CLICK binds the key's position regardless of what it emits — flag it so it isn't a silent dud.
+      const rm = loadMods()[b.trigger.led];
+      if (rm && !rm.off) log('⚠ “' + keyLabel(b.trigger.led) + '” is firmware-remapped (e.g. Numpad→Digits neutralizes NumLock), so pressing it sends a different code — or nothing — and this action may not fire. Revert Numpad / Restore Default that key to make it trigger.', 'err');
       _hb = newBuilder(); renderGrid();
     }
     function flashHint(msg) { const el = $('bdHint'); if (!el) return; el.textContent = msg; el.classList.remove('haFlash'); void el.offsetWidth; el.classList.add('haFlash'); setTimeout(() => { if (el.isConnected) el.classList.remove('haFlash'); }, 1000); }
@@ -934,7 +940,7 @@
       NUMPAD_REMAP.forEach(([kv, hid, lbl]) => { entries[kv] = { label: lbl, bytes: encodeNormal(hid) }; });
       entries[NUMLOCK_VAL] = { label: '—', bytes: encodeNormal(0) };
       setMods(entries);
-      log('✓ Numpad now types digits with NumLock OFF — turn NumLock off and the white indicator LED is gone. The NumLock key is now free: pick it on the board and bind it to a macro/hotkey/light. Undo with Revert Numpad.', 'ok');
+      log('✓ Numpad now types digits with NumLock OFF — turn NumLock off and the white indicator LED is gone. Note: the NumLock key is now inert (sends nothing), so it can’t trigger a Host Action while neutralized — Revert Numpad first if you want to bind it. You can still reassign it via the firmware palette. Undo with Revert Numpad.', 'ok');
     }
     // one-click inverse: restore the 11 digit/decimal keys + the NumLock key to their factory entries
     // (saves the user from Restore-Default-ing each numpad key by hand).
