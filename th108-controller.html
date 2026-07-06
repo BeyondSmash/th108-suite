@@ -4,8 +4,10 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>th108 — Epomaker TH108 V2 PRO lighting suite</title>
-<script>/* before first paint: apply the saved theme so a dark-mode reload never flashes light */
-try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme')||'light'; }catch(_){ }</script>
+<script>/* before first paint: apply the saved theme so a dark-mode reload never flashes light.
+   runs before the defaults-sandbox shim installs, so read the scratch theme key directly when ?defaults=1
+   (keeps the sandbox first-paint faithful to the scratch theme it's authoring). */
+try{ var _tk = /[?&]defaults=1(?:&|$)/.test(location.search) ? 'th108_DEFAULTS_th108_theme' : 'th108_theme'; document.documentElement.dataset.theme = localStorage.getItem(_tk)||'light'; }catch(_){ }</script>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect x='4' y='12' width='56' height='40' rx='10' fill='%23fa8072'/%3E%3Crect x='14' y='22' width='10' height='8' rx='2' fill='%23fff'/%3E%3Crect x='28' y='22' width='10' height='8' rx='2' fill='%23ffd98c'/%3E%3Crect x='42' y='22' width='10' height='8' rx='2' fill='%2398d0ff'/%3E%3Crect x='14' y='36' width='38' height='8' rx='2' fill='%236ed2b7'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -501,6 +503,12 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
 </style>
 </head>
 <body>
+
+<div id="defaultsBanner" hidden style="background:#8a5a00;color:#fff;text-align:center;padding:7px 12px;font-size:13px;font-weight:600">
+  ⚑ Authoring Defaults — your personal config is untouched (scratch sandbox).
+  <a id="defaultsExit" href="#" style="color:#fff;text-decoration:underline;margin-left:10px">Exit</a>
+  <button id="defaultsExport" type="button" style="margin-left:12px;padding:3px 12px" title="Exports the layer look (colors / patterns / brightness / theme). NOTE: a Media layer's image is NOT shipped — new visitors would see it empty — so avoid personal media in the default look.">Export defaults.json</button>
+</div>
 
 <!-- device-lease deprecated-controller banner (Task 5): hidden by default, shown when this tab loses
      the lease (DC.onLeaseLost) or a claim comes back denied; Take control back re-claims + reopens WebHID. -->
@@ -1000,6 +1008,7 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
       <li><span class="ver">LCD &amp; GIF tools</span><span class="date">2026</span><br>Image / GIF upload to the screen,
           GIF→keys player, Now Playing readout.</li>
     </ul>
+    <p class="hint"><a href="?defaults=1">Author shipped defaults →</a> — tune the look new visitors get on first run, in an isolated sandbox.</p>
   </div>
 
   <div class="card s3 doccard" id="docLegal" data-pages="docs">
@@ -1031,7 +1040,7 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
   <!-- ========== LIGHTING ========== -->
   <div class="card s6" id="layersPanel" data-pages="lighting">
     <div class="cardbar" style="position:relative"><span class="grip">⠿</span><h2>Layer Compositor</h2>
-      <button type="button" id="isoBtn" style="position:absolute;left:50%;transform:translateX(-50%);padding:6px 15.6px;font-size:14.4px" title="Float the layer stack as separate isometric key-planes, each glowing live">◳ Isometric View</button>
+      <button type="button" id="isoBtn" style="position:absolute;left:50%;transform:translateX(-50%);padding:6px 15.6px;font-size:14.4px" title="Float the layer stack as separate isometric key-planes, each glowing live"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px;vertical-align:-3px;margin-right:5px"><path d="M12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83z"/><path d="M2 12a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 12"/><path d="M2 17a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 17"/></svg>Isometric View</button>
       <label class="aux" style="display:inline-flex;align-items:center;gap:7px;cursor:pointer" title="Contrast of the alternating row shading on every layer card — left darkens the row, right brightens it, center is off"><button type="button" id="zebraReset" title="Reset row shading to the default (-60%)" onclick="setZebra(-60)" style="background:none;border:0;color:var(--muted);cursor:pointer;font:inherit;font-size:14px;padding:4px 8px;line-height:1">↺</button>Row shading
         <span class="srange" style="width:96px"><input type="range" id="zebraAmt" min="-100" max="100" value="-60" oninput="setZebra(this.value)"><i class="tick" style="left:50%"></i></span>
         <span id="zebraAmtV" class="val" style="min-width:40px">0%</span></label></div>
@@ -1223,8 +1232,42 @@ try{ document.documentElement.dataset.theme = localStorage.getItem('th108_theme'
 <script src="th108-iso-view.js"></script>
 <script src="th108-onboard.js"></script>
 <script src="th108-binder.js"></script>
+<script src="th108-defaults.js"></script>
 <script src="th108-profiles.js"></script>
 <script>
+// ── Author-Defaults sandbox: if ?defaults=1, seed only the shippable keys into th108_DEFAULTS_* and
+// redirect ALL th108* localStorage access there, so the whole UI operates on a scratch copy and the
+// user's real config is never read or written. MUST run before any other storage access. ──
+if (window.TH108Defaults && TH108Defaults.isDefaultsMode()) {
+  try { TH108Defaults.seedSandbox(window.localStorage); TH108Defaults.installStorageShim(window.localStorage); TH108Defaults.installDaemonWriteGuard(window); } catch (e) { console.warn('defaults sandbox init failed', e); }
+}
+// ── Author-Defaults banner + Exit: show the amber banner while authoring and let Exit drop the
+// ?defaults=1 flag to return to the real config. Export-button wiring (Task 5) appends to this block. ──
+if (window.TH108Defaults && TH108Defaults.isDefaultsMode()) {
+  const bn = document.getElementById('defaultsBanner'); if (bn) bn.hidden = false;
+  const ex = document.getElementById('defaultsExit');
+  if (ex) ex.addEventListener('click', e => { e.preventDefault(); const u = new URL(location.href); u.searchParams.delete('defaults'); location.href = u.href; });
+  const exp = document.getElementById('defaultsExport');
+  if (exp) exp.addEventListener('click', () => {
+    // localStorage is shimmed -> getItem reads the scratch (prefixed) values
+    const snap = TH108Defaults.seedSnapshot(k => localStorage.getItem(k));
+    const blob = new Blob([JSON.stringify(snap, null, 2)], { type: 'application/json' });
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'defaults.json';
+    document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  });
+}
+// First-run seeding: a brand-new visitor (no saved layers, not authoring) gets the shipped defaults once.
+// Synchronous XHR keeps it before the state/LUI bootstrap without a large refactor; the file is tiny + same-origin.
+if (window.TH108Defaults && !TH108Defaults.isDefaultsMode() && !localStorage.getItem('th108_layers') && !localStorage.getItem('th108_seeded')) {
+  try {
+    const xhr = new XMLHttpRequest(); xhr.open('GET', 'defaults.json', false); xhr.send();
+    if (xhr.status >= 200 && xhr.status < 300) {
+      const snap = JSON.parse(xhr.responseText);
+      for (const k of TH108Defaults.SEED_KEYS) { if (k in snap && snap[k] != null) localStorage.setItem(k, snap[k]); }
+    }
+  } catch (e) { console.warn('first-run defaults seed skipped', e); }   // missing/bad file -> fall back to engine defaultLayers()
+  localStorage.setItem('th108_seeded', '1');   // mark ATTEMPTED (success OR fail) so a missing/404 defaults.json can't re-fire the blocking XHR every load
+}
 // shared engine (board map, renderers, compositor, state) — pull the bits we reference by short name
 const {KEYMAP, INDICES, NLED, BOARDW, BOARDH, hexToRgb} = TH108Engine;
 // (GRID + the grid-aware keyCell moved into th108-gif-panel.js — they are GIF-tool-only)
@@ -1764,7 +1807,7 @@ const LUI=TH108LayersUI.create({
   cards: document.getElementById('layerCards'),
   panel: document.getElementById('layersPanel'),
   attachHex, snap, snapMul,                                  // page UI helpers (hex box per color picker, slider detent single/multiple)
-  pushConfig: ()=>DC.pushConfig(),                           // mirror debounced saves to the daemon's config.json
+  pushConfig: ()=>{ if(window.TH108Defaults && TH108Defaults.isDefaultsMode()) return; DC.pushConfig(); },   // sandbox: never write the daemon's config.json (preview via Drive-from-Tab only)
   isRunning: ()=>running,                                    // reorder warm-renders the new stack only while the loop is live
   onPatternPick: ()=>{ if(obActive && HID.device && !running && !GIF.playing) start(); },   // picking a pattern while a firmware effect is showing = "back to layers", no extra click
   onAudioSource: startAudioSource,                           // audio-layer source pick → start/stop in-tab Web Audio capture
@@ -2231,7 +2274,7 @@ document.getElementById('importFile').addEventListener('change',async e=>{
     const arr=JSON.parse(await f.text());
     if(!Array.isArray(arr)) throw new Error('file is not a layer array');
     localStorage.setItem('th108_layers', JSON.stringify(arr));
-    DC.pushConfig();                                         // hand it straight to the daemon if one is serving this page
+    if(!(window.TH108Defaults && TH108Defaults.isDefaultsMode())) DC.pushConfig();   // sandbox: don't push scratch to the daemon
     log('imported '+arr.length+' layers — reloading…','ok');
     location.reload();
   }catch(err){ alert('Import failed: '+(err&&err.message||err)); }

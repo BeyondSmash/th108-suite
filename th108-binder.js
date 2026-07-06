@@ -399,12 +399,14 @@
         }).filter(Boolean);
       } catch (_) { return []; }
     }
-    function pushHostActions(list) { try { fetch('/host-actions', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ actions: list }) }).catch(() => {}); } catch (_) {} }
+    function pushHostActions(list) { if (typeof window !== 'undefined' && window.TH108Defaults && window.TH108Defaults.isDefaultsMode()) return;   /* sandbox: never overwrite the user's real daemon host-actions registry */
+      try { fetch('/host-actions', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ actions: list }) }).catch(() => {}); } catch (_) {} }
     // While capturing a key (bind / chord / macro record), tell the daemon to pause action firing so the pressed
     // key doesn't ALSO run whatever it's currently bound to (yanking a window mid-bind). 20s arm; cleared on end.
     function suppressHostActions(on) { try { fetch('/ha-suppress', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ms: on ? 20000 : 0 }) }).catch(() => {}); } catch (_) {} }
     function saveHostActions(list, push) { try { localStorage.setItem(HOST_KEY, JSON.stringify(list)); } catch (_) {} if (push !== false) pushHostActions(list); }
     function seedHostActionsFromDaemon() {
+      if (typeof window !== 'undefined' && window.TH108Defaults && window.TH108Defaults.isDefaultsMode()) return;   // Author-Defaults sandbox: don't pull the user's real host-action bindings into the scratch store (they'd leak into exported defaults)
       fetch('/host-actions').then(r => r.json()).then(d => {
         if (!d || !Array.isArray(d.actions) || !d.actions.length || loadHostActions().length) return;   // don't clobber existing
         saveHostActions(d.actions, false);   // the daemon returns the normalized {trigger,action} schema — adopt it for display
