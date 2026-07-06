@@ -2411,6 +2411,9 @@ const KBOARD=(function(){
   const PAL=['#98d0ff','#6ed2b7','#f9c5d8','#ffd98c','#fa8072','#c9b8ff'];   // per-key hover/select color, cycled
   let selEl=null, sel=null; const subs=[], byIdx={}, markBy={};               // sel={idx,code,label} — the binder subscribes via onChange
   const notify=()=>subs.forEach(cb=>{ try{ cb(sel); }catch(_){ } });
+  // deselecting rebuilds the binder palette/Advanced-Keys form; that reflow was snapping the page to the top.
+  // Pin the scroll position across the re-render (now + next frame, to catch any async reflow).
+  const keepScroll=(fn)=>{ const x=window.scrollX, y=window.scrollY; fn(); window.scrollTo(x,y); requestAnimationFrame(()=>window.scrollTo(x,y)); };
   const friendly=(full,idx)=>full+' Key · LED '+idx;                          // tooltip/readout wording — full names, no glyphs
   // selection sub-status: when the selected key is remapped, say what it does now (under the Selected line)
   function subSync(){
@@ -2430,7 +2433,7 @@ const KBOARD=(function(){
     byIdx[idx]={el:d, base, full};
     d.addEventListener('click',()=>{
       if(selEl) selEl.classList.remove('sel');
-      if(selEl===d){ selEl=null; sel=null; document.getElementById('kbSelInfo').textContent='No key is selected.'; subSync(); notify(); return; }   // click again = deselect
+      if(selEl===d){ selEl=null; sel=null; document.getElementById('kbSelInfo').textContent='No key is selected.'; keepScroll(()=>{ subSync(); notify(); }); return; }   // click again = deselect (pin scroll — the palette rebuild was snapping to top)
       selEl=d; sel={idx, code, label:full}; d.classList.add('sel');
       d.classList.remove('pop'); void d.offsetWidth; d.classList.add('pop');   // restart the pop animation
       document.getElementById('kbSelInfo').textContent='Selected: '+friendly(full,idx);
@@ -2458,7 +2461,7 @@ const KBOARD=(function(){
   // the card's padding, the card's grabbable title bar, and the page background between cards.
   // Clicks on other cards/controls deliberately KEEP the selection — the palette acts on it.
   function clearSel(){ if(selEl){ selEl.classList.remove('sel'); selEl=null; } sel=null;
-    document.getElementById('kbSelInfo').textContent='No key is selected.'; subSync(); notify(); }
+    document.getElementById('kbSelInfo').textContent='No key is selected.'; keepScroll(()=>{ subSync(); notify(); }); }
   const kbCard=document.getElementById('kbBoardCard');
   const kbBar=kbCard&&kbCard.querySelector('.cardbar');
   document.addEventListener('click',e=>{
