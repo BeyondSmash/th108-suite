@@ -1220,6 +1220,18 @@
       attachHex(body);            // typeable hex box on every color picker (incl. reactive palette)
       wrapCheckboxRows(body);     // checkbox in the gap + descriptor in its own column (option-1 layout)
       applySectionChrome(body, L);   // box + lock + collapse each labeled section on EVERY layer type (run LAST so all controls are wired/finalized before re-parenting); flat bodies get one synthesized "Settings" box
+      if(L.type==='agent') groupAgentAlerts(body);   // wrap the alert-related sections in one titled "Agent Alerts" box
+    }
+    // Agent card: gather the four alert-related sections into a single titled "Agent Alerts" group box so they
+    // read as one cluster (they all govern how the agent signals you). Runs AFTER applySectionChrome boxed them.
+    function groupAgentAlerts(body){
+      const slugs=['twinkle-region','emphasis','exclamation-animation','preview'];
+      const boxes=slugs.map(sg=>body.querySelector('.lsecbox[data-sec="'+sg+'"]')).filter(Boolean);
+      if(boxes.length<2 || body.querySelector('.aa-group')) return;
+      const group=document.createElement('div'); group.className='aa-group';
+      const title=document.createElement('div'); title.className='aa-group-title'; title.textContent='Agent Alerts';
+      boxes[0].parentNode.insertBefore(group, boxes[0]);
+      group.appendChild(title); boxes.forEach(b=>group.appendChild(b));
     }
     // For a simple checkbox row [label | (checkbox + descriptor) | empty cell], split the descriptor into its
     // own span and tag the row 'cbrow' so CSS can center the checkbox in the gap and give the text its own
@@ -1257,6 +1269,11 @@
         // zebra: tint the WHOLE box (header + body) and alternate it with clear contrast so sections are easy to follow
         '.lbody .lsecbox > .lsec, .lbody .lsecbox > .lsub, .lbody .lsecbox > .ph, .lbody .lsecbox > .lsecbody, .lbody .lsecbox > .ctl{ background:rgba(145,150,160,.05); }'+
         '.lbody .lsecbox.zeb > .lsec, .lbody .lsecbox.zeb > .lsub, .lbody .lsecbox.zeb > .ph, .lbody .lsecbox.zeb > .lsecbody, .lbody .lsecbox.zeb > .ctl{ background:rgba(145,150,160,.16); }'+
+        // Agent-card "Agent Alerts" group: a titled outer box wrapping the four alert sections so they read as one cluster
+        '.lbody .aa-group{ grid-column:1/-1; margin:6px 0 10px; padding:0 9px 9px; border:1.5px solid rgba(120,150,220,.45); border-radius:13px; background:rgba(120,150,220,.05); }'+
+        '.lbody .aa-group-title{ text-align:center; font-weight:700; font-size:13px; color:var(--text); letter-spacing:.3px; padding:8px 0 6px; }'+
+        '.lbody .aa-group > .lsecbox{ margin:0 0 8px; }'+   // tighten the inner boxes inside the group
+        '.lbody .aa-group > .lsecbox:last-child{ margin-bottom:0; }'+
         '.lbody .lsecbox.collapsed > .lsec, .lbody .lsecbox.collapsed > .lsub, .lbody .lsecbox.collapsed > .ph{ border-bottom:1.5px solid rgba(145,150,160,.42); border-radius:11px; }'+   // collapsed → header is the whole box: full rounding + a bottom border
         '.lbody .lsecbox.collapsed > .lsecbody, .lbody .lsecbox.collapsed > .ctl{ display:none; }'+
         '.lbody .lsecbox.locked > .lsecbody, .lbody .lsecbox.locked > .ctl{ pointer-events:none; }'+
