@@ -53,12 +53,20 @@ window.TH108DaemonClient = (function () {
         if (wasMine && !D._owned) _leaseCbs.forEach(cb => { try { cb(); } catch (_) {} });
       }
     }
+    // Coalesce concurrent callers onto ONE in-flight /status fetch: on page load several modules ping() at
+    // once (this + brightness boot + agent-session list), and a flapping board can loop reconnect→ping fast —
+    // both stormed /status (the ⚠ FLOOD line). One shared request collapses the burst no matter the caller count.
+    let _pingInflight = null;
     async function ping() {
       if (!/^https?:$/.test(location.protocol)) { D.present = false; return; }   // file:// page → no daemon server to talk to; skip (avoids a console CORS error)
-      try { const r = await fetch('/status', { cache: 'no-store' }); D.present = r.ok;
-        if (r.ok) { try { const s = await r.json(); D.deviceConnected = !!s.deviceConnected; D.paused = !!s.paused; noteLease(s); } catch (_) {} }
-        else { D.deviceConnected = false; }
-      } catch (_) { D.present = false; D.deviceConnected = false; }
+      if (_pingInflight) return _pingInflight;
+      _pingInflight = (async () => {
+        try { const r = await fetch('/status', { cache: 'no-store' }); D.present = r.ok;
+          if (r.ok) { try { const s = await r.json(); D.deviceConnected = !!s.deviceConnected; D.paused = !!s.paused; noteLease(s); } catch (_) {} }
+          else { D.deviceConnected = false; }
+        } catch (_) { D.present = false; D.deviceConnected = false; }
+      })().finally(() => { _pingInflight = null; });
+      return _pingInflight;
     }
     // BUFFERED HANDOFF (2026-06-13): a wedged/flapping board makes the HID layer fire reconnect
     // events in a tight loop, each calling claim — bursts of 5+/sec stormed the daemon (2149 /yield in
