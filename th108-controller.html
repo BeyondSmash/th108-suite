@@ -397,6 +397,11 @@ try{ var _tk = /[?&]defaults=1(?:&|$)/.test(location.search) ? 'th108_DEFAULTS_t
   .kbkey.mod:hover,.kbkey.mod.sel{ color:#0d1117; }
   .kbkey .knew{ max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; padding:0 3px; font-size:.85em; }
   .kbkey .kold{ position:absolute; right:4px; bottom:1px; font-size:14px; color:#ff8f33; text-decoration:line-through; text-decoration-color:#000; text-decoration-thickness:2px; opacity:.85; }   /* ORANGE glyph, BLACK 2px strike line; 14px after "8px was unreadably small" */
+  /* host-action indicator: a small teal ⚡ in the TOP-LEFT corner (the firmware kold sits bottom-right, so they don't collide) + a teal ring, flags "this key runs a Host Action" */
+  .kbkey.hasact{ box-shadow:inset 0 0 0 2px #2dd4bf; }
+  .kbkey.hasact.sel{ box-shadow:0 0 0 2px var(--text), inset 0 0 0 2px #2dd4bf; }
+  .kbkey .hadot{ position:absolute; left:3px; top:1px; font-size:10px; line-height:1; color:#2dd4bf; pointer-events:none; }
+  .kbkey .hadot::before{ content:'⚡'; }
   /* right-click on a key: a one-button "Reset" tooltip instead of the browser context menu.
      Centered via computed left, NOT transform — the global button:hover sets transform:translateY(-1px),
      which would REPLACE a translateX(-50%) here and lurch the button half its width on every hover. */
@@ -2436,8 +2441,17 @@ const KBOARD=(function(){
     if(code.startsWith('Numpad')&&/^\d$/.test(code.slice(6))) return 'Numpad '+code.slice(6);
     return label(code)||'Space'; };
   const PAL=['#98d0ff','#6ed2b7','#f9c5d8','#ffd98c','#fa8072','#c9b8ff'];   // per-key hover/select color, cycled
-  let selEl=null, sel=null; const subs=[], byIdx={}, markBy={};               // sel={idx,code,label} — the binder subscribes via onChange
+  let selEl=null, sel=null; const subs=[], byIdx={}, markBy={}, haBy={};       // sel={idx,code,label} — the binder subscribes via onChange; markBy = firmware remaps, haBy = Host-Action labels per LED
   const notify=()=>subs.forEach(cb=>{ try{ cb(sel); }catch(_){ } });
+  // compose a key's tooltip from its base + firmware remap (markBy) + host action (haBy), so both can show at once
+  function retitle(idx){ const k=byIdx[idx]; if(!k) return;
+    let t = (markBy[idx]!==undefined) ? (k.full+' Key → '+markBy[idx]+' · LED '+idx) : friendly(k.full,idx);
+    if(haBy[idx]!==undefined) t += ' · ⚡ Host Action: '+haBy[idx];
+    k.el.title=t; }
+  // ensure the ⚡ badge + teal ring presence matches haBy (re-applied after mark/unmark, which rewrite the key's DOM)
+  function applyHaBadge(idx){ const k=byIdx[idx]; if(!k) return; const has=haBy[idx]!==undefined;
+    k.el.classList.toggle('hasact', has); let d=k.el.querySelector('.hadot');
+    if(has && !d){ d=document.createElement('span'); d.className='hadot'; k.el.appendChild(d); } else if(!has && d){ d.remove(); } }
   // deselecting rebuilds the binder palette/Advanced-Keys form; that reflow was snapping the page to the top.
   // Pin the scroll position across the re-render (now + next frame, to catch any async reflow).
   const keepScroll=(fn)=>{ const x=window.scrollX, y=window.scrollY; fn(); window.scrollTo(x,y); requestAnimationFrame(()=>window.scrollTo(x,y)); };
@@ -2513,14 +2527,22 @@ const KBOARD=(function(){
       const n=document.createElement('span'); n.className='knew'; n.textContent=bindLabel;
       const o=document.createElement('span'); o.className='kold'; o.textContent=k.base||'⎵';
       k.el.appendChild(n); k.el.appendChild(o);
-      k.el.title=k.full+' Key → '+bindLabel+' · LED '+idx;
+      applyHaBadge(idx); retitle(idx);   // re-attach the ⚡ badge (textContent='' wiped it) + refresh the title
       subSync();
     },
     unmark(idx){
       const k=byIdx[idx]; if(!k) return;
       delete markBy[idx];
-      k.el.classList.remove('mod'); k.el.textContent=k.base; k.el.title=friendly(k.full,idx);
+      k.el.classList.remove('mod'); k.el.textContent=k.base;
+      applyHaBadge(idx); retitle(idx);   // textContent reset wiped the badge — restore it
       subSync();
+    },
+    // Flag which LEDs run a Host Action. map = { ledIdx: 'action label' }. Additive to the firmware mark:
+    // a key can be both remapped AND host-bound. Clears any LEDs no longer in the map.
+    setHostActionKeys(map){
+      map = map || {};
+      for(const idx in haBy){ if(!(idx in map)){ delete haBy[idx]; applyHaBadge(idx); retitle(idx); } }
+      for(const idx in map){ haBy[idx]=map[idx]; applyHaBadge(idx); retitle(idx); }
     }
   };
 })();

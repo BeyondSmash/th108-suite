@@ -404,7 +404,16 @@
     // While capturing a key (bind / chord / macro record), tell the daemon to pause action firing so the pressed
     // key doesn't ALSO run whatever it's currently bound to (yanking a window mid-bind). 20s arm; cleared on end.
     function suppressHostActions(on) { try { fetch('/ha-suppress', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ms: on ? 20000 : 0 }) }).catch(() => {}); } catch (_) {} }
-    function saveHostActions(list, push) { try { localStorage.setItem(HOST_KEY, JSON.stringify(list)); } catch (_) {} if (push !== false) pushHostActions(list); }
+    function saveHostActions(list, push) { try { localStorage.setItem(HOST_KEY, JSON.stringify(list)); } catch (_) {} syncBoardHostActions(list); if (push !== false) pushHostActions(list); }
+    // Flag every host-bound key on the Pick-a-Key board (⚡ badge + teal ring) so it's visible which keys run a
+    // Host Action — additive to the firmware-remap mark. Re-run on every save/delete and once at init.
+    function syncBoardHostActions(list) {
+      if (!board || !board.setHostActionKeys) return;
+      const map = {};
+      (list || loadHostActions()).forEach(b => { const led = b && b.trigger && b.trigger.led; if (led == null) return;
+        const lbl = describeAction(b.action); map[led] = map[led] ? (map[led] + ' + ' + lbl) : lbl; });
+      board.setHostActionKeys(map);
+    }
     function seedHostActionsFromDaemon() {
       if (typeof window !== 'undefined' && window.TH108Defaults && window.TH108Defaults.isDefaultsMode()) return;   // Author-Defaults sandbox: don't pull the user's real host-action bindings into the scratch store (they'd leak into exported defaults)
       fetch('/host-actions').then(r => r.json()).then(d => {
@@ -826,6 +835,7 @@
     // endHostCapture() and nulls _hostCapture — so if this ran second the capture would already be torn down.
     if (board) board.onChange(s => { if (_hostCapture && _hostCapture.onBoardPick) _hostCapture.onBoardPick(s); });
     if (board) board.onChange(refresh);
+    syncBoardHostActions();   // paint ⚡ badges for host actions already saved from a previous session
 
     async function assign(item) {
       const sel = selKey(); if (!bindable(sel)) return;
