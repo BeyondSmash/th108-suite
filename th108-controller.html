@@ -397,11 +397,12 @@ try{ var _tk = /[?&]defaults=1(?:&|$)/.test(location.search) ? 'th108_DEFAULTS_t
   .kbkey.mod:hover,.kbkey.mod.sel{ color:#0d1117; }
   .kbkey .knew{ max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; padding:0 3px; font-size:.85em; }
   .kbkey .kold{ position:absolute; right:4px; bottom:1px; font-size:14px; color:#ff8f33; text-decoration:line-through; text-decoration-color:#000; text-decoration-thickness:2px; opacity:.85; }   /* ORANGE glyph, BLACK 2px strike line; 14px after "8px was unreadably small" */
-  /* host-action indicator: a small teal ⚡ in the TOP-LEFT corner (the firmware kold sits bottom-right, so they don't collide) + a teal ring, flags "this key runs a Host Action" */
-  .kbkey.hasact{ box-shadow:inset 0 0 0 2px #2dd4bf; }
-  .kbkey.hasact.sel{ box-shadow:0 0 0 2px var(--text), inset 0 0 0 2px #2dd4bf; }
-  .kbkey .hadot{ position:absolute; left:3px; top:1px; font-size:10px; line-height:1; color:#2dd4bf; pointer-events:none; }
-  .kbkey .hadot::before{ content:'⚡'; }
+  /* host-action indicator: a yellow Lucide "zap" (inlined SVG — CSP blocks external assets) in the TOP-LEFT corner
+     (the firmware kold sits bottom-right, so they don't collide) + a matching yellow ring — flags "this key runs a Host Action" */
+  .kbkey.hasact{ box-shadow:inset 0 0 0 2px #facc15; }
+  .kbkey.hasact.sel{ box-shadow:0 0 0 2px var(--text), inset 0 0 0 2px #facc15; }
+  .kbkey .hadot{ position:absolute; left:2px; top:2px; width:10px; height:10px; pointer-events:none;
+    background:url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23facc15'><path d='M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z'/></svg>") center/contain no-repeat; }
   /* right-click on a key: a one-button "Reset" tooltip instead of the browser context menu.
      Centered via computed left, NOT transform — the global button:hover sets transform:translateY(-1px),
      which would REPLACE a translateX(-50%) here and lurch the button half its width on every hover. */
