@@ -567,11 +567,13 @@
       _macroRec = { onKey, btn };
       document.addEventListener('keydown', onKey, true);
     }
-    function buildBindingFromKey(ev) {
-      const led = (board && board.ledForCode) ? board.ledForCode(ev.code) : null;
+    // Build a binding from an LED index directly (+ optional chord mods). This is the path a Pick-a-Key CLICK
+    // takes — no KeyboardEvent, so it works for keys the browser won't deliver a usable keydown for (NumLock,
+    // and other lock/media keys). buildBindingFromKey resolves the event's code to an LED and delegates here.
+    function buildBindingFromLed(led, mods) {
       if (led == null) return null;
       const t = { type: _hb.triggerType, led };
-      if (t.type === 'chord') t.mods = { ctrl: ev.ctrlKey, alt: ev.altKey, shift: ev.shiftKey, meta: ev.metaKey };
+      if (t.type === 'chord') t.mods = mods || { ctrl: false, alt: false, shift: false, meta: false };
       if (t.type === 'multitap') { t.count = _hb.count; t.windowMs = _hb.windowMs; }
       if (t.type === 'hold') t.holdMs = _hb.holdMs;
       const a = { type: _hb.actType };
@@ -579,6 +581,20 @@
       if (hasTarget(a.type)) a.target = stripQ(_hb.target);
       if (a.type === 'macro') a.steps = _hb.steps.slice();
       return { trigger: t, action: a };
+    }
+    function buildBindingFromKey(ev) {
+      const led = (board && board.ledForCode) ? board.ledForCode(ev.code) : null;
+      return buildBindingFromLed(led, { ctrl: ev.ctrlKey, alt: ev.altKey, shift: ev.shiftKey, meta: ev.metaKey });
+    }
+    // Shared commit path for both the keydown capture and the Pick-a-Key click: conflict-check, save, log, reset.
+    function commitTriggerBinding(b, btn, orig) {
+      if (!b) { btn.textContent = 'Not a keyboard key — try another'; return; }
+      const list = loadHostActions();
+      const conflict = findKeyConflict(list, b.trigger);
+      if (conflict) { btn.textContent = orig; showBindConflict(btn, conflict); return; }   // don't bind a second action onto an already-assigned key
+      list.push(b); saveHostActions(list);
+      log('✓ ' + describeTrigger(b.trigger) + ' → ' + describeAction(b.action) + ' (works page-closed)', 'ok');
+      _hb = newBuilder(); renderGrid();
     }
     function flashHint(msg) { const el = $('bdHint'); if (!el) return; el.textContent = msg; el.classList.remove('haFlash'); void el.offsetWidth; el.classList.add('haFlash'); setTimeout(() => { if (el.isConnected) el.classList.remove('haFlash'); }, 1000); }
     // A new trigger collides with an existing one ON THE SAME PHYSICAL KEY when the bare press would fire both:
@@ -607,20 +623,15 @@
       endHostCapture(true); endMacroRecord();
       suppressHostActions(true);   // the key you press to bind shouldn't fire its current action mid-bind
       const orig = btn.textContent;
-      btn.textContent = (_hb.triggerType === 'chord' ? 'Press the key COMBO…' : 'Press the trigger key…') + '  (Esc cancels)';
+      btn.textContent = 'Press the trigger key — or click it on Pick a Key…  (Esc cancels)';
       const onKey = ev => {
-        if (_hb.triggerType === 'chord' && MOD_CODE.test(ev.code)) return;   // for a chord, wait past the lone modifiers
         ev.preventDefault(); ev.stopPropagation(); endHostCapture(false);
         if (ev.code === 'Escape') { btn.textContent = orig; return; }
-        const b = buildBindingFromKey(ev);
-        if (!b) { btn.textContent = 'Not a keyboard key — try another'; return; }
-        const list = loadHostActions();
-        const conflict = findKeyConflict(list, b.trigger);
-        if (conflict) { btn.textContent = orig; showBindConflict(btn, conflict); return; }   // don't bind a second action onto an already-assigned key
-        list.push(b); saveHostActions(list);
-        log('✓ ' + describeTrigger(b.trigger) + ' → ' + describeAction(b.action) + ' (works page-closed)', 'ok');
-        _hb = newBuilder(); renderGrid(); };
-      _hostCapture = { onKey, btn, orig };
+        commitTriggerBinding(buildBindingFromKey(ev), btn, orig); };
+      // Pick-a-Key click → build the trigger straight from the clicked key's LED (the fix for keys the browser
+      // won't emit a keydown for, e.g. NumLock). A deselect click (sel→null) leaves the capture open.
+      const onBoardPick = s => { if (!s || s.idx == null) return; endHostCapture(false); commitTriggerBinding(buildBindingFromLed(s.idx, null), btn, orig); };
+      _hostCapture = { onKey, onBoardPick, btn, orig };
       document.addEventListener('keydown', onKey, true);
     }
     // Chord capture: a LIVE readout of held modifiers + the pressed key, with Accept / Clear (instead of auto-binding
@@ -687,7 +698,7 @@
       h += '</div><div class="haLine"><span class="haLbl">When I</span><select class="haTrgSel">' + TRG_OPTS.map(o => '<option value="' + o[0] + '"' + (o[0] === _hb.triggerType ? ' selected' : '') + '>' + o[1] + '</option>').join('') + '</select>';
       if (_hb.triggerType === 'multitap') h += '<input type="number" class="numin haCount" min="1" max="10" value="' + _hb.count + '"><span class="haLbl">times within</span><input type="number" class="numin haWin" min="100" max="10000" step="50" value="' + _hb.windowMs + '"><span class="haLbl">ms</span>';
       if (_hb.triggerType === 'hold') h += '<span class="haLbl">for</span><input type="number" class="numin haHold" min="150" max="3000" step="50" value="' + _hb.holdMs + '"><span class="haLbl">ms</span>';
-      h += '</div><button type="button" class="patbtn haBind">' + (_hb.triggerType === 'chord' ? 'Bind — press the key combo' : 'Bind — press the key') + '</button>';
+      h += '</div><button type="button" class="patbtn haBind">' + (_hb.triggerType === 'chord' ? 'Bind — press the key combo' : 'Bind — press or click the key') + '</button>';
       if (hasTarget(_hb.actType)) h += '<span class="haFileReg"><span class="haFileOk" title="' + haEsc(_hb.target || 'a file/program is registered') + '"' + (_hb.target ? '' : ' style="display:none"') + '>✓ <span class="haFileName">' + haEsc(midTrunc(baseName(_hb.target))) + '</span></span><button type="button" class="patbtn haClearFile" title="clear the registered file"' + (_hb.target ? '' : ' style="display:none"') + '>✕</button></span>';   // sits on the Bind line (under Running app/Choose File) so a registered file doesn't wrap the target row
       h += '</div></div>';
       host.innerHTML = h;
@@ -737,7 +748,7 @@
         _hb.steps.splice(g, 0, { ms: 200 }); renderMacroSteps(stepList); });
       const clr = host.querySelector('.haClr'); if (clr) clr.addEventListener('click', () => { endMacroRecord(); _hb.steps = []; renderMacroSteps(stepList); });
       host.querySelector('.haBind').addEventListener('click', e => (_hb.triggerType === 'chord' ? captureChord(e.target) : captureTriggerKey(e.target)));
-      $('bdHint').textContent = 'Build a host action: pick what it does, pick the trigger, then click Bind and press the key (or key combo). It runs via the background app, so it works with this page closed — the key still does its normal job too.';
+      $('bdHint').textContent = 'Build a host action: pick what it does, pick the trigger, then click Bind and press the key (or key combo) — or click the key on the Pick a Key board (handy for keys the browser won’t capture, like NumLock). It runs via the background app, so it works with this page closed — the key still does its normal job too.';
     }
 
     // modified-key marks: what OUR binder wrote, persisted so the board shows it across reloads
@@ -805,6 +816,8 @@
       akRefresh();   // hoisted — the Advanced Keys card gates exactly like the palette
     }
     if (board) board.onChange(refresh);
+    // Route a Pick-a-Key click into an in-progress host-action trigger capture (only while one is active).
+    if (board) board.onChange(s => { if (_hostCapture && _hostCapture.onBoardPick) _hostCapture.onBoardPick(s); });
 
     async function assign(item) {
       const sel = selKey(); if (!bindable(sel)) return;
