@@ -815,9 +815,11 @@
       renderGrid();
       akRefresh();   // hoisted — the Advanced Keys card gates exactly like the palette
     }
-    if (board) board.onChange(refresh);
     // Route a Pick-a-Key click into an in-progress host-action trigger capture (only while one is active).
+    // MUST run before the refresh subscriber below: refresh() re-renders the host grid, which calls
+    // endHostCapture() and nulls _hostCapture — so if this ran second the capture would already be torn down.
     if (board) board.onChange(s => { if (_hostCapture && _hostCapture.onBoardPick) _hostCapture.onBoardPick(s); });
+    if (board) board.onChange(refresh);
 
     async function assign(item) {
       const sel = selKey(); if (!bindable(sel)) return;
