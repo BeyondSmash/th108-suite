@@ -915,6 +915,33 @@ test('renderAgent twinkles-only (subagents, no numpad glyph) does not carve/dim 
   assert.equal(L._carve, null, 'twinkles draw on the letter cluster — no numpad glyph, no emphasis');
 });
 
+test('renderAgent spectrum twinkles color the lit keys red→violet by position (not one flat color)', () => {
+  const region = E.AGENT_LETTER_K;
+  const L = { type: 'agent', settings: { twinkleSpectrum: true, twinkleColor: '#ff8c00' }, rgb: [] };
+  const state = { agent: { busy: false, subagentCount: 3, checkmarkAt: 0, notifyAt: 0, attention: false, bootAt: 0 } };
+  E.renderAgent(L, 1000, state);
+  // first key (i=0, hue 0) is RED-dominant: r > g and r > b
+  const k0 = region[0] * 3;
+  assert.ok(L.rgb[k0] > L.rgb[k0 + 1] && L.rgb[k0] > L.rgb[k0 + 2], 'first twinkle is red-dominant');
+  // the three lit keys are NOT all the same color (spectrum, not flat)
+  const colorOf = i => [L.rgb[region[i] * 3], L.rgb[region[i] * 3 + 1], L.rgb[region[i] * 3 + 2]].join(',');
+  assert.notEqual(colorOf(0), colorOf(2), 'positions 0 and 2 differ (progression)');
+  // exactly subagentCount keys lit
+  let lit = 0; for (const k of region) { const o = k * 3; if (L.rgb[o] + L.rgb[o + 1] + L.rgb[o + 2] > 0) lit++; }
+  assert.equal(lit, 3, 'exactly 3 subagent twinkles lit');
+});
+
+test('renderAgent flat twinkles (spectrum off) use one color', () => {
+  const region = E.AGENT_LETTER_K;
+  const L = { type: 'agent', settings: { twinkleSpectrum: false, twinkleColor: '#ff8c00' }, rgb: [] };
+  const state = { agent: { busy: false, subagentCount: 2, checkmarkAt: 0, notifyAt: 0, attention: false, bootAt: 0 } };
+  E.renderAgent(L, 1000, state);
+  // both keys are the same hue (orange) — r>g>b ordering holds for both, and their hue ratios match
+  const k0 = region[0] * 3, k1 = region[1] * 3;
+  assert.ok(L.rgb[k0] > L.rgb[k0 + 1] && L.rgb[k0 + 1] > L.rgb[k0 + 2], 'orange-ish (r>g>b)');
+  assert.ok(L.rgb[k1] > L.rgb[k1 + 1] && L.rgb[k1 + 1] > L.rgb[k1 + 2], 'orange-ish (r>g>b)');
+});
+
 test('renderAgent with no active state leaves _carve null', () => {
   const L = { type: 'agent', settings: { dimBelow: true, dimBelowAmt: 0.9 }, rgb: [] };
   // agent feed present but nothing active

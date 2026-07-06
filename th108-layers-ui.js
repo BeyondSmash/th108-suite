@@ -1070,7 +1070,8 @@
         const regionRow=full('<div style="text-align:center;font-size:12.5px;color:var(--muted);width:100%;margin-bottom:5px">Twinkles (one per running subagent) light up on these keys</div>'
           +'<button type="button" class="s-agShowkb" title="Paint the keys where subagent twinkles may appear">⌨ Set Twinkle Keys</button>'
           +'<button type="button" class="s-agRegReset" style="margin-left:6px" title="Reset the twinkle region back to the default A–Z letter cluster">↺ Reset to letters</button>'
-          +'<span class="val s-agRegCount" style="opacity:.6;font-size:12px;margin-left:6px"></span>');
+          +'<span class="val s-agRegCount" style="opacity:.6;font-size:12px;margin-left:6px"></span>'
+          +'<div style="text-align:center;width:100%;margin-top:7px"><label class="sl" style="margin:0" title="Color each twinkle by its position (red→violet) instead of one flat color, so the number of running subagents reads as a progressing ROYGBIV spectrum across the region"><input type="checkbox" class="s-twinkleSpectrum"'+(s.twinkleSpectrum?' checked':'')+'> Spectrum twinkles (ROYGBIV by count)</label></div>');
         // Emphasis toggles
         const emphRows=
           row('Numpad<br>Silhouette','<label class="sl" style="margin:0"><input type="checkbox" class="s-silhouetteNumpad"'+(s.silhouetteNumpad?' checked':'')+'> Carve numpad from layers below while agent is active</label><span></span>')+
@@ -1163,6 +1164,7 @@
           requestAnimationFrame(()=>{ try{ card.scrollIntoView({behavior:'smooth', block:'center'}); }catch(_){ } }); }
         c('.s-agShowkb').addEventListener('click',()=>{ pb?unmountAgentBoard():mountAgentBoard(); });
         c('.s-agRegReset').addEventListener('click',()=>{ s.twinkleKeys=null; unmountAgentBoard(); updRegCount(); scheduleSaveLayers(); });
+        { const el=c('.s-twinkleSpectrum'); if(el) el.addEventListener('change',e=>{ s.twinkleSpectrum=e.target.checked; scheduleSaveLayers(); }); }
         // Emphasis toggles
         { const el=c('.s-silhouetteNumpad'); if(el) el.addEventListener('change',e=>s.silhouetteNumpad=e.target.checked); }
         { const el=c('.s-dimBelow'); if(el) el.addEventListener('change',e=>{ s.dimBelow=e.target.checked; buildLayerBody(card,L); scheduleSaveLayers(); }); }

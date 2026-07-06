@@ -1044,12 +1044,18 @@
     if (!A) return;
     // put(k, r, g, b): write to the NLED*3 flat buffer (k = slot index, 3 bytes per key)
     const put = (k, r, g, b) => { if (k < 0) return; const o = k * 3; out[o] = r | 0; out[o + 1] = g | 0; out[o + 2] = b | 0; };
-    // subagent twinkles
+    // subagent twinkles: light the first N region keys, one per running subagent.
     if (A.subagentCount > 0) {
-      const [tr, tg, tb] = hexToRgb(s.twinkleColor || '#ff8c00');
       const region = (Array.isArray(s.twinkleKeys) && s.twinkleKeys.length) ? s.twinkleKeys.map(led => INDICES.indexOf(led)).filter(k => k >= 0) : AGENT_LETTER_K;
       const n = Math.min(A.subagentCount, region.length);
-      for (let i = 0; i < n; i++) { const tw = 0.55 + 0.45 * (0.5 + 0.5 * Math.sin(now / 300 + i * 1.7)); put(region[i], tr * tw, tg * tw, tb * tw); }
+      const spectrum = !!s.twinkleSpectrum, span = Math.max(1, region.length - 1);   // spectrum: color each lit key by its position so the count reads as a red→violet progression
+      const [tr, tg, tb] = hexToRgb(s.twinkleColor || '#ff8c00');
+      for (let i = 0; i < n; i++) {
+        const tw = 0.55 + 0.45 * (0.5 + 0.5 * Math.sin(now / 300 + i * 1.7));
+        let r = tr, g = tg, b = tb;
+        if (spectrum) { const c = hsv2rgb(i / span * 0.78, 1, 1); r = c[0]; g = c[1]; b = c[2]; }   // 0.78 hue ≈ violet, so 0→red … N→further along ROYGBIV
+        put(region[i], r * tw, g * tw, b * tw);
+      }
     }
     // numpad: ! (attention) > ✓ (flash) > spinner
     if (A.attention) {
@@ -1200,7 +1206,7 @@
       if(s.sat==null) s.sat=170; if(s.gam==null) s.gam=180; }   // color via the shared sat/con/gam/bri Adjust; default to the GIF-tool's Vivid look (raw sRGB reads dull on LEDs) — adjustable in the Adjust block. hideStatic = make unchanging keys transparent
     else if(L.type==='agent'){ const ag={ twinkleColor:'#ff8c00', spinColor:'#ffffff', checkColor:'#22cc44', bangColor:'#ff3b30',
         session:'all', twinkleKeys:null, holdMs:1000, breatheMs:1600, reminderEnabled:true, reminderAfterMs:8000,
-        reminderBlinks:2, silhouetteNumpad:false, dimBelow:false, dimBelowAmt:0.9 };
+        reminderBlinks:2, silhouetteNumpad:false, dimBelow:false, dimBelowAmt:0.9, twinkleSpectrum:false };
       Object.keys(ag).forEach(k=>{ if(s[k]===undefined)s[k]=ag[k]; }); }
     else if(L.type==='audio'){
       const ad={ style:'bars', source:'system', appId:'', deviceId:'', pauseStyle:'linear',
@@ -1310,7 +1316,7 @@
     keyCell, layerCell,
     PAT_DEFAULTS, patParams, ensureSettings, defaultLayers, createState, applyConfig,
     renderBackground, renderReactive, renderGradient, renderPattern, renderMedia, adjustRgb, computeCrop, renderKeys, renderAudio,
-    applyAgentFeed, renderAgent, agentPhase, AGENT_SPIN_K, AGENT_CHECK_K, AGENT_BANG_K, AGENT_NUMPAD_K,
+    applyAgentFeed, renderAgent, agentPhase, AGENT_SPIN_K, AGENT_CHECK_K, AGENT_BANG_K, AGENT_NUMPAD_K, AGENT_LETTER_K,
     reactEnvelope, applyAdjust, layerNow, renderLayer, composite, flatEq,
     composeFrame, stampKey, releaseKey, SEND_FPS_CAP,
   };
