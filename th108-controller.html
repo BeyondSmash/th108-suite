@@ -769,6 +769,17 @@ try{ var _tk = /[?&]defaults=1(?:&|$)/.test(location.search) ? 'th108_DEFAULTS_t
   </div>
 
   <!-- ========== FAQ ========== -->
+  <div class="card s2 faqcard" id="faqTerms" data-pages="faq">
+    <div class="cardbar"><span class="grip">⠿</span></div>
+    <h3>Terminology — the jargon in tooltips, decoded</h3>
+    <p><b>The daemon</b> — a small background app that drives your keyboard's lighting when this page is closed or unfocused. It's what lets reactive lighting and effects work in <i>every</i> app, not just this browser tab.</p>
+    <p><b>Driver (page vs daemon)</b> — only one thing paints the LEDs at a time: either <b>this tab</b> (over WebHID) or the <b>daemon</b>. "Who's driving" is just which of the two is currently in control.</p>
+    <p><b>Lease / yield · auto-yield</b> — the handoff of the keyboard between the tab and the daemon. Click away and the tab <b>yields</b> to the daemon; click back and it reclaims. <b>Auto-yield</b> is this happening automatically on focus changes (you can turn it off with "Keep driving from this tab").</p>
+    <p><b>Reactive</b> — a layer type where keys light up in response to keypresses. It only sees keys typed into the focused app of whoever's driving — the tab sees only this tab; the daemon sees the whole system.</p>
+    <p><b>Churn</b> — rapid back-and-forth handoffs of the keyboard between tab and daemon (e.g. from quickly alt-tabbing). Excess churn can desync the keyboard's USB command stream.</p>
+    <p><b>Mute / wedge</b> — when the keyboard stops accepting lighting updates (its USB command queue desyncs) so the LEDs freeze or go dark. It usually self-recovers in ~30–45s via a USB restart; toggling wired ↔ Bluetooth or replugging forces an instant fix.</p>
+    <p><b>Onboard effect</b> — the keyboard's own built-in lighting (rainbow, etc.) stored in its firmware. It runs when nothing is driving from the host; the daemon or page paints over it.</p>
+  </div>
   <div class="card s2 faqcard" id="faq1" data-pages="faq">
     <div class="cardbar"><span class="grip">⠿</span></div>
     <h3>What Connect actually does</h3>
