@@ -618,6 +618,25 @@ try{ var _tk = /[?&]defaults=1(?:&|$)/.test(location.search) ? 'th108_DEFAULTS_t
     <p class="hint" style="margin:12px 0 0">⚠ <b>Browser keydown only fires while this tab is focused.</b> Reactive-in-any-app comes from the background daemon instead.</p>
     <p class="hint" style="margin:12px 0 0">💡 <b>Daemon running? Skip Connect for layer editing</b> — edits push to it live and reactive keeps working in every app. Connect is only for the GIF→keys, onboard-effect, and LCD tools (it takes the keyboard from the daemon until you close this tab).</p>
   </div>
+  <!-- TEMP: keyboard-button position tuner (dial in, then I bake the values + remove this block) -->
+  <div id="kbBtnTuner" style="position:fixed;left:12px;bottom:12px;z-index:99999;background:#161b22;border:1px solid #30363d;border-radius:10px;padding:11px 13px;font-size:12px;color:#c9d1d9;box-shadow:0 8px 24px rgba(0,0,0,.55);display:flex;flex-direction:column;gap:8px;min-width:235px;font-family:system-ui,sans-serif">
+    <div style="font-weight:700">Keyboard buttons — tuner</div>
+    <label style="display:flex;align-items:center;gap:9px">Y <input type="range" id="kbTunerY" min="-24" max="48" value="12" style="flex:1"><span id="kbTunerYv" style="min-width:40px;text-align:right;font-variant-numeric:tabular-nums">12px</span></label>
+    <button type="button" id="kbTunerLayout" style="padding:5px 9px;cursor:pointer">Layout: Side-by-side ⇄ Stacked</button>
+    <div id="kbTunerOut" style="opacity:.72;font-variant-numeric:tabular-nums">--kbBtnY: 12px · layout: row (side-by-side)</div>
+    <div style="opacity:.5;font-size:11px">Dial it, then tell me the values to bake.</div>
+  </div>
+  <script>
+  (function(){
+    var wrap=document.getElementById('kbBtns'); if(!wrap) return;
+    var y=document.getElementById('kbTunerY'), yv=document.getElementById('kbTunerYv'), lay=document.getElementById('kbTunerLayout'), out=document.getElementById('kbTunerOut');
+    var col=false;
+    function upd(){ wrap.style.setProperty('--kbBtnY', y.value+'px'); wrap.style.flexDirection=col?'column':'row'; yv.textContent=y.value+'px'; out.textContent='--kbBtnY: '+y.value+'px · layout: '+(col?'column (stacked)':'row (side-by-side)'); }
+    y.addEventListener('input',upd);
+    lay.addEventListener('click',function(){ col=!col; upd(); });
+    upd();
+  })();
+  </script>
 
   <div class="card s3" id="daemonPanel" data-pages="home">
     <div class="cardbar"><span class="grip">⠿</span><h2>Background Daemon</h2></div>
