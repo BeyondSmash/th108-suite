@@ -5,6 +5,20 @@
 
 function basename(p) { const s = String(p || '').replace(/[\\/]+$/, ''); const i = Math.max(s.lastIndexOf('/'), s.lastIndexOf('\\')); return i >= 0 ? s.slice(i + 1) : s; }
 
+// Map a foreground VSCode window TITLE to a session id — the daemon's claude-view-free focus detector.
+// A VSCode title carries its workspace folder (e.g. "game.js - ChemTetris - Visual Studio Code"), which
+// equals a session's project (basename of its cwd). Match sessions whose project appears in the title;
+// among them prefer the most-specific (longest) project name, then the busiest / most-recent — that's the
+// one you're actually working in when several live sessions share a project folder. Pure + testable.
+function pickSessionForTitle(title, sessions) {
+  const t = String(title || '').toLowerCase();
+  if (!t) return null;
+  const cands = (sessions || []).filter(s => s && s.project && s.project.length > 2 && t.includes(String(s.project).toLowerCase()));
+  if (!cands.length) return null;
+  cands.sort((a, b) => (b.project.length - a.project.length) || ((b.busy ? 1 : 0) - (a.busy ? 1 : 0)) || (b.subagentCount - a.subagentCount) || (b.lastSeen - a.lastSeen));
+  return cands[0].id;
+}
+
 function createAgentState(opts = {}) {
   // Sessions are removed on SessionEnd (fires when the Claude Code session closes), so the TTL is only a
   // SAFETY NET for a session that died without firing SessionEnd (crash/kill). Keep it long (8h) so an OPEN
@@ -13,12 +27,12 @@ function createAgentState(opts = {}) {
   // a long TTL never affects the lighting; it only keeps the dropdown showing what's actually open.
   const TTL = opts.ttlMs || 8 * 60 * 60 * 1000;
   const BUSY_TTL = opts.busyTtlMs || 3 * 60 * 1000;  // clears a stuck spinner ~3 min after the last event even if Stop was missed
-  // Focus-following: an external signal (claude-view POSTs /agent/focus on each bring-to-front) names the
-  // session the user just focused. It's a DISCRETE event, not a continuous stream — so focus normally clears
-  // by being SUPERSEDED (a new focus) or when the followed session ENDS (aggregate falls back to 'all' once
-  // it's gone). The TTL is only a long backstop so a focus you set and then walked away from eventually
-  // reverts to 'all' — matched to the session sweep TTL so a swept session and its focus expire together.
-  const FOCUS_TTL = opts.focusTtlMs || TTL;
+  // Focus-following: the daemon's own foreground-window poller (focus-detect.ps1) re-asserts the focused
+  // session every couple seconds while a VSCode window is frontmost. So the TTL is a short grace window — when
+  // you leave all Claude/VSCode windows (poller stops re-asserting), focus reverts to 'all' after it. Switching
+  // BETWEEN Claude windows is immediate (the poller sets the new one on its next tick). An external tool may
+  // still POST /agent/focus instead; either way the freshness rule is the same.
+  const FOCUS_TTL = opts.focusTtlMs || 30 * 1000;
   const map = new Map();   // session_id -> entry
   let anon = 0;
   let focusId = null, focusAt = 0;
@@ -98,4 +112,4 @@ function createAgentState(opts = {}) {
   return { ingest, aggregate, sessions, setFocus, focus };
 }
 
-module.exports = { createAgentState };
+module.exports = { createAgentState, pickSessionForTitle };

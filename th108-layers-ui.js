@@ -1061,7 +1061,7 @@
         // Session filter — TWO labeled dropdowns side by side (Active | Idle) instead of one wide grouped select.
         // Both carry "All Sessions" as their neutral top option; picking a session in one shows it there and the
         // other rests on "All Sessions". Options filled async after mount.
-        const sessionRow=full('<label class="sl" style="margin:0 0 7px;justify-content:center" title="Automatically follow whichever Claude Code session is currently focused, as reported by claude-view (optional). With no focus signal it falls back to All Sessions, so it is safe even without claude-view. See the FAQ for the one-line claude-view snippet."><input type="checkbox" class="s-agFollowFocus"'+(s.session==='focus'?' checked':'')+'> 🎯 Follow focused session (claude-view)</label>'
+        const sessionRow=full('<label class="sl" style="margin:0 0 7px;justify-content:center" title="Automatically follow whichever Claude Code session’s VSCode window is in front. The background app detects the foreground window (Windows only) and matches it to a session by project folder. Switch windows and the agent lighting follows; leave all VSCode windows and it reverts to All Sessions after a few seconds. No extra setup."><input type="checkbox" class="s-agFollowFocus"'+(s.session==='focus'?' checked':'')+'> 🎯 Follow focused session</label>'
           +'<div style="display:flex;gap:12px;width:100%">'
           +'<label style="flex:1;min-width:0;display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--muted);text-align:center">Active<select class="s-agSessionActive" style="width:100%;font-size:13px"><option value="all">All Sessions</option></select></label>'
           +'<label style="flex:1;min-width:0;display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--muted);text-align:center">Idle<select class="s-agSessionIdle" style="width:100%;font-size:13px"><option value="all">All Sessions</option></select></label>'
@@ -1129,7 +1129,7 @@
             const f=_lastFocus, ss=f&&f.following&&list.find(x=>x.id===f.following);
             sessNote.textContent = ss ? ('🎯 Following: '+ss.label)
               : (f&&f.following) ? ('🎯 Following session '+String(f.following).slice(0,6))
-              : 'Waiting for a focus signal (claude-view) — showing all sessions';
+              : 'No focused VSCode window yet — showing all sessions';
           } else if(sessions!==undefined){ sessNote.textContent=(sessions&&sessions.length)?'':(sessions===null?'(daemon not available)':'(no sessions seen yet)'); } }
         fillSessionDrop([]);
         const onPick=e=>{ s.session=e.target.value;

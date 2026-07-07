@@ -113,3 +113,36 @@ test("focus() reports id, freshness, and whether the session is known", () => {
   A.setFocus(null, 13000);
   assert.deepEqual(A.focus(13000), { id: null, fresh: false, following: null });   // cleared
 });
+
+const { pickSessionForTitle } = require('./agent-state.js');
+
+test("pickSessionForTitle maps a VSCode title to its session by project folder", () => {
+  const sessions = [
+    { id: 's1', project: 'ChemTetris', busy: false, subagentCount: 0, lastSeen: 100 },
+    { id: 's2', project: 'Epomaker Project', busy: false, subagentCount: 0, lastSeen: 100 },
+  ];
+  assert.equal(pickSessionForTitle('game.js - ChemTetris - Visual Studio Code', sessions), 's1');
+  assert.equal(pickSessionForTitle('daemon.js - Epomaker Project - Visual Studio Code', sessions), 's2');
+  assert.equal(pickSessionForTitle('Molecular Maelstrom - Brave', sessions), null);   // not a project window
+});
+
+test("pickSessionForTitle picks the busiest when several live sessions share a project", () => {
+  const sessions = [
+    { id: 'idle', project: 'ChemTetris', busy: false, subagentCount: 0, lastSeen: 500 },
+    { id: 'busy', project: 'ChemTetris', busy: true, subagentCount: 0, lastSeen: 100 },
+  ];
+  assert.equal(pickSessionForTitle('x - ChemTetris - Visual Studio Code', sessions), 'busy');
+});
+
+test("pickSessionForTitle prefers the most-specific (longest) project name", () => {
+  const sessions = [
+    { id: 'short', project: 'Chem', busy: false, subagentCount: 0, lastSeen: 100 },
+    { id: 'long', project: 'ChemTetris', busy: false, subagentCount: 0, lastSeen: 100 },
+  ];
+  assert.equal(pickSessionForTitle('x - ChemTetris - Visual Studio Code', sessions), 'long');
+});
+
+test("pickSessionForTitle ignores empty titles and too-short project names", () => {
+  assert.equal(pickSessionForTitle('', [{ id: 'a', project: 'ChemTetris', lastSeen: 1 }]), null);
+  assert.equal(pickSessionForTitle('RE - x', [{ id: 'a', project: 'RE', lastSeen: 1 }]), null);   // project len<=2 guarded out (would false-match everywhere)
+});

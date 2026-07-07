@@ -15,8 +15,16 @@ const OBP = require('../th108-onboard.js');   // packAllled() — build the cmd-
 const T = require('./hid-transport.js');
 const U = require('./usb-reset.js');
 const { KEYMAP, INDICES, UIOHOOK_TO_CODE } = require('./th108-map.js');
-const { createAgentState } = require('./agent-state.js');
+const { createAgentState, pickSessionForTitle } = require('./agent-state.js');
 const agentState = createAgentState();
+const { createFocusPoll } = require('./focus-poll.js');
+// Foreground-window focus poller (claude-view-free): feeds the frontmost VSCode window's title to the
+// matcher and follows that session. Runs ONLY while an agent layer is in 'focus' mode (gated below).
+const focusPoll = createFocusPoll({ log: (...a) => log(...a), onLine: (ev) => {   // lazy log: `log` (a const) is declared below — defer the reference to call time to dodge the TDZ
+  if (ev && ev.code && ev.title) { const id = pickSessionForTitle(ev.title, agentState.sessions(Date.now())); if (id) agentState.setFocus(id, Date.now()); }
+} });
+function wantsFocus() { return !!(state && state.layers && state.layers.some(L => L.enabled && L.type === 'agent' && L.settings && L.settings.session === 'focus')); }
+function updateFocusPolling() { if (wantsFocus()) focusPoll.start(); else focusPoll.stop(); }
 
 const CONFIG_PATH = path.join(__dirname, 'config.json');
 const FPS = 30;
@@ -115,6 +123,7 @@ function rebuildState() {
   const cfg = loadConfig();
   state = cfg ? E.createState(cfg) : null;
   if (state) state.bri = Math.max(0, Math.min(100, settings.brightness != null ? settings.brightness : 100)) / 100;   // global brightness parity with the page (shared engine reads state.bri)
+  updateFocusPolling();   // start/stop the foreground-window poller as Follow-focus is toggled in the config
 }
 rebuildState();
 
@@ -1026,6 +1035,7 @@ server.listening.then(() => console.log(`▶ TH108 daemon running — serving co
 let stopping = false;
 function shutdown(code = 0) {
   if (stopping) return; stopping = true;
+  try { focusPoll.stop(); } catch {}   // kill the foreground-window helper so it isn't orphaned
   // EXTERNAL force-kill watchdog: an INDEPENDENT process that taskkills this PID after 3s. The in-process backstop
   // (setTimeout below) can't save us when device.close()/uIOhook.stop() block — those are synchronous native calls
   // that freeze the JS thread, so the timer never fires and the process zombies (server closed, but never exits →
