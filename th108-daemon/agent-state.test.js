@@ -77,3 +77,39 @@ test('sessions() returns a label from cwd basename + short id', () => {
   assert.match(s.label, /Epomaker Project/);
   assert.equal(s.id, 'abcdef123456');
 });
+
+test("follow-focus aggregates ONLY the focused session while the signal is fresh", () => {
+  const A = createAgentState({ focusTtlMs: 10000 });
+  A.ingest({ hook_event_name: 'UserPromptSubmit', session_id: 's1', cwd: '/p1' }, 1000);   // s1 busy
+  A.ingest({ hook_event_name: 'SubagentStart', session_id: 's2', cwd: '/p2', agent_id: 'a1' }, 1000);   // s2 has a subagent
+  A.setFocus('s1', 1000);
+  const f = A.aggregate('focus', 1000);
+  assert.equal(f.busy, true);            // s1 is busy
+  assert.equal(f.subagentCount, 0);      // s2's subagent is NOT counted — we're following s1 only
+});
+
+test("follow-focus falls back to 'all' when the signal goes stale", () => {
+  const A = createAgentState({ focusTtlMs: 10000 });
+  A.ingest({ hook_event_name: 'SubagentStart', session_id: 's1', cwd: '/p1', agent_id: 'a1' }, 1000);
+  A.ingest({ hook_event_name: 'SubagentStart', session_id: 's2', cwd: '/p2', agent_id: 'b1' }, 1000);
+  A.setFocus('s1', 1000);
+  assert.equal(A.aggregate('focus', 5000).subagentCount, 1);        // fresh → s1 only
+  assert.equal(A.aggregate('focus', 12000).subagentCount, 2);       // >TTL stale → all sessions
+});
+
+test("follow-focus falls back to 'all' when the focused session is unknown/ended", () => {
+  const A = createAgentState({ focusTtlMs: 10000 });
+  A.ingest({ hook_event_name: 'SubagentStart', session_id: 's1', cwd: '/p1', agent_id: 'a1' }, 1000);
+  A.setFocus('ghost', 1000);                                        // never-seen session id
+  assert.equal(A.aggregate('focus', 1000).subagentCount, 1);       // unknown focus → all
+});
+
+test("focus() reports id, freshness, and whether the session is known", () => {
+  const A = createAgentState({ focusTtlMs: 10000 });
+  A.ingest({ hook_event_name: 'SessionStart', session_id: 's1', cwd: '/p1' }, 1000);
+  A.setFocus('s1', 1000);
+  assert.deepEqual(A.focus(1000), { id: 's1', fresh: true, following: 's1' });
+  assert.deepEqual(A.focus(12000), { id: 's1', fresh: false, following: null });   // stale
+  A.setFocus(null, 13000);
+  assert.deepEqual(A.focus(13000), { id: null, fresh: false, following: null });   // cleared
+});

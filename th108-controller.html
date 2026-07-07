@@ -808,6 +808,19 @@ try{ var _tk = /[?&]defaults=1(?:&|$)/.test(location.search) ? 'th108_DEFAULTS_t
        up as <code>Pause</code>, which is correct — that's what the key now sends). Avoid <b>Scroll Lock</b> and the
        other lock keys: the firmware forces their indicator LED on (white), which you can't paint over.</p>
   </div>
+  <div class="card s2 faqcard" id="faqFocus" data-pages="faq">
+    <div class="cardbar"><span class="grip">⠿</span></div>
+    <h3>Make the Agent layer follow the focused session</h3>
+    <p>The Agent layer can light up for one specific Claude Code session instead of all of them. The
+       <b>🎯 Follow focused session</b> checkbox (Agent layer → Session) makes it auto-follow whichever session
+       you're actually looking at — but that needs something to <i>tell</i> the daemon which one is focused.</p>
+    <p>Point any external tool (e.g. a claude-view window) at the daemon: <b>POST the focused session id</b> whenever
+       focus changes. One line:</p>
+    <p><code>fetch('http://localhost:8123/agent/focus', { method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify({ session_id: focusedId }) })</code></p>
+    <p>Send <code>session_id: null</code> to clear it. The signal is advisory with a ~10s freshness window — if it
+       stops arriving (tool closed, never set up), Follow-focus simply falls back to <b>All Sessions</b>, so it's
+       completely safe to leave the checkbox on even without any tool feeding it.</p>
+  </div>
   <div class="card s2 faqcard" id="faqAdv" data-pages="faq">
     <div class="cardbar"><span class="grip">⠿</span></div>
     <h3>Where are Advanced Keys (SOCD / Mod-Tap / Toggle / Combination)?</h3>
@@ -1851,7 +1864,7 @@ const LUI=TH108LayersUI.create({
 
   listAudioApps: ()=>fetch('/audio/apps',{cache:'no-store'}).then(r=>r.json()).then(d=>d.apps||[]),   // "Specific app" picker → daemon's currently-playing apps (app-capture.exe --list)
   listAudioInputs: ()=>fetch('/audio/inputs',{cache:'no-store'}).then(r=>r.json()).then(d=>d.inputs||[]),   // Mic device picker → daemon's recording devices (audio-sidecar.ps1 -ListInputs)
-  listAgentSessions: ()=>fetch('/status',{cache:'no-store'}).then(r=>r.json()).then(d=>d.agentSessions||[])   // Agent session filter → agentSessions from the daemon's /status payload
+  listAgentSessions: ()=>fetch('/status',{cache:'no-store'}).then(r=>r.json()).then(d=>{ const arr=d.agentSessions||[]; arr.focus=d.focusedSession||null; return arr; })   // Agent session filter → agentSessions (+ focusedSession stashed on the array) from the daemon's /status payload
 });
 LUI.init();   // restore saved layers → ensureSettings backfill → build cards → persist-on-edit listeners on #layersPanel
 

@@ -13,8 +13,13 @@ function createAgentState(opts = {}) {
   // a long TTL never affects the lighting; it only keeps the dropdown showing what's actually open.
   const TTL = opts.ttlMs || 8 * 60 * 60 * 1000;
   const BUSY_TTL = opts.busyTtlMs || 3 * 60 * 1000;  // clears a stuck spinner ~3 min after the last event even if Stop was missed
+  // Focus-following: an external signal (claude-view POSTs /agent/focus) names the session the user is
+  // looking at right now. It's advisory and OPTIONAL — a short TTL means that if the signal stops arriving
+  // (claude-view closed / never installed), focus goes stale and the layer falls back to 'all' sessions.
+  const FOCUS_TTL = opts.focusTtlMs || 10 * 1000;
   const map = new Map();   // session_id -> entry
   let anon = 0;
+  let focusId = null, focusAt = 0;
 
   function ensure(id, cwd, now) {
     let e = map.get(id);
@@ -53,8 +58,16 @@ function createAgentState(opts = {}) {
 
   function pick(filter) { return filter && filter !== 'all' ? (map.has(filter) ? [map.get(filter)] : []) : [...map.values()]; }
 
+  // Set / clear the externally-signalled focused session (claude-view). id null/'' clears it.
+  function setFocus(id, now) { focusId = (id != null && id !== '') ? String(id) : null; focusAt = now; }
+  // The focused id if the signal is still FRESH, else null (stale/never-set → caller falls back).
+  function resolveFocus(now) { return (focusId && now - focusAt < FOCUS_TTL) ? focusId : null; }
+  // For /status: what we're following + whether the signal is live and the session is actually known.
+  function focus(now) { const f = resolveFocus(now); return { id: focusId, fresh: !!f, following: (f && map.has(f)) ? f : null }; }
+
   function aggregate(filter, now) {
     sweep(now);
+    if (filter === 'focus') { const id = resolveFocus(now); filter = (id && map.has(id)) ? id : 'all'; }   // follow-focus → the live focused session; stale/unknown → behave like 'all' (never breaks without claude-view)
     const es = pick(filter);
     let busy = false, count = 0, checkmarkAt = 0, notifyAt = 0, attention = false, bootAt = 0;
     for (const e of es) {
@@ -80,7 +93,7 @@ function createAgentState(opts = {}) {
     });
   }
 
-  return { ingest, aggregate, sessions };
+  return { ingest, aggregate, sessions, setFocus, focus };
 }
 
 module.exports = { createAgentState };

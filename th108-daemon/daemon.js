@@ -899,7 +899,8 @@ const control = {
                       npFlash: settings.npFlash, npFlashColor: settings.npFlashColor, npBarIdleSec: settings.npBarIdleSec,
                       npBarGrad: settings.npBarGrad, npBarGradFit: settings.npBarGradFit, npBarKeys: settings.npBarKeys, npBarAgentTop: settings.npBarAgentTop,
                       npOnboardMask: settings.npOnboardMask,
-                      agentSessions: agentState.sessions(Date.now()) }; },
+                      agentSessions: agentState.sessions(Date.now()),
+                      focusedSession: agentState.focus(Date.now()) }; },
   setNowPlaying(on) {
     const was = settings.nowPlaying;
     settings.nowPlaying = !!on; saveSettings();
@@ -994,6 +995,7 @@ const control = {
     return { fired: true };
   },
   agentEvent: (ev) => agentState.ingest(ev, Date.now()),
+  agentFocus: (id) => agentState.setFocus(id, Date.now()),   // claude-view focus signal → the agent layer's 'focus' mode follows this session
   agentSessions: () => agentState.sessions(Date.now()),
   getAutostart, setAutostart,
   // HID/now-playing diagnostics for /metrics — pairs with the server's per-endpoint rates

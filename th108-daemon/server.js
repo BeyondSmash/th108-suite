@@ -228,6 +228,12 @@ function createServer({ control, root, port = 8123, watchdogMs = 12000 }) {
         if (control.agentEvent) control.agentEvent(ev);
         return sendJson(res, 204, {});   // hooks are fire-and-forget; keep it cheap
       }
+      if (req.method === 'POST' && u === '/agent/focus') {   // claude-view (optional) posts the focused session: { session_id } — or null/'' to clear
+        const b = await readBody(req); let body;
+        try { body = JSON.parse(b || '{}'); } catch { return sendJson(res, 400, { error: 'bad json' }); }
+        if (control.agentFocus) control.agentFocus(body.session_id != null ? body.session_id : body.sessionId);
+        return sendJson(res, 204, {});   // advisory + fire-and-forget
+      }
       if (req.method === 'GET' && u === '/agent/sessions') return sendJson(res, 200, { sessions: control.agentSessions ? control.agentSessions() : [] });
       if (req.method === 'POST' && u === '/config') {
         const b = await readBody(req); let cfg;

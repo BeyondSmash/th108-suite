@@ -1061,7 +1061,8 @@
         // Session filter — TWO labeled dropdowns side by side (Active | Idle) instead of one wide grouped select.
         // Both carry "All Sessions" as their neutral top option; picking a session in one shows it there and the
         // other rests on "All Sessions". Options filled async after mount.
-        const sessionRow=full('<div style="display:flex;gap:12px;width:100%">'
+        const sessionRow=full('<label class="sl" style="margin:0 0 7px;justify-content:center" title="Automatically follow whichever Claude Code session is currently focused, as reported by claude-view (optional). With no focus signal it falls back to All Sessions, so it is safe even without claude-view. See the FAQ for the one-line claude-view snippet."><input type="checkbox" class="s-agFollowFocus"'+(s.session==='focus'?' checked':'')+'> 🎯 Follow focused session (claude-view)</label>'
+          +'<div style="display:flex;gap:12px;width:100%">'
           +'<label style="flex:1;min-width:0;display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--muted);text-align:center">Active<select class="s-agSessionActive" style="width:100%;font-size:13px"><option value="all">All Sessions</option></select></label>'
           +'<label style="flex:1;min-width:0;display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--muted);text-align:center">Idle<select class="s-agSessionIdle" style="width:100%;font-size:13px"><option value="all">All Sessions</option></select></label>'
           +'</div><div class="val s-agSessionNote" style="opacity:.6;font-size:12px;text-align:center;margin-top:4px"></div>');
@@ -1105,13 +1106,15 @@
         // Color pickers + per-color ↺ reset to default
         ['twinkleColor','spinColor','checkColor','bangColor'].forEach(key=>{ const el=c('.s-'+key); if(el) el.addEventListener('input',e=>{ s[key]=e.target.value; scheduleSaveLayers(); }); });
         body.querySelectorAll('.s-agColReset').forEach(b=>b.addEventListener('click',()=>{ const key=b.dataset.key, def=AG_COLOR_DEF[key]; if(!def) return; s[key]=def; const el=c('.s-'+key); if(el) el.value=def; scheduleSaveLayers(); }));
-        // Session filter — two selects (Active | Idle)
-        const selActive=c('.s-agSessionActive'), selIdle=c('.s-agSessionIdle'), sessNote=c('.s-agSessionNote');
-        let _lastSessions=[];   // remembered so a pick can re-render both columns without re-fetching
-        // sessions: array = fresh fetch, null = daemon unavailable, undefined = re-render from _lastSessions (note untouched)
+        // Session filter — follow-focus checkbox + two selects (Active | Idle)
+        const selActive=c('.s-agSessionActive'), selIdle=c('.s-agSessionIdle'), sessNote=c('.s-agSessionNote'), follow=c('.s-agFollowFocus');
+        let _lastSessions=[], _lastFocus=null;   // remembered so a pick / poll can re-render without re-fetching; _lastFocus = the daemon's focusedSession {id,fresh,following}
+        // sessions: array = fresh fetch (with .focus stashed), null = daemon unavailable, undefined = re-render from _lastSessions
         function fillSessionDrop(sessions){ if(!selActive||!selIdle) return;
-          if(Array.isArray(sessions)) _lastSessions=sessions;
-          const cur=s.session||'all', esc=t=>String(t).replace(/&/g,'&amp;').replace(/</g,'&lt;'), escA=t=>String(t).replace(/"/g,'&quot;');
+          if(Array.isArray(sessions)){ _lastSessions=sessions; _lastFocus=sessions.focus||null; }
+          const followOn=(s.session==='focus');
+          selActive.disabled=selIdle.disabled=followOn;   // follow mode owns the selection → the manual dropdowns go inert
+          const cur=followOn?'all':(s.session||'all'), esc=t=>String(t).replace(/&/g,'&amp;').replace(/</g,'&lt;'), escA=t=>String(t).replace(/"/g,'&quot;');
           const opt=ag=>'<option value="'+escA(ag.id)+'"'+(ag.id===cur?' selected':'')+'>'+esc(ag.label||ag.id)+'</option>';
           const list=_lastSessions.filter(ag=>ag&&ag.id), has=list.some(ag=>ag.id===cur);
           const active=list.filter(ag=>ag.active), idle=list.filter(ag=>!ag.active);
@@ -1119,18 +1122,33 @@
           selActive.innerHTML='<option value="all"'+allSel+'>All Sessions</option>'+active.map(opt).join('');
           selIdle.innerHTML='<option value="all"'+allSel+'>All Sessions</option>'+idle.map(opt).join('');
           // a saved pick that's no longer live (ended) → keep it visible + selected, parked in the Active column
-          if(cur!=='all' && !has){ const lbl=esc(s.sessionLabel||('session '+cur.slice(0,6)));
+          if(!followOn && cur!=='all' && !has){ const lbl=esc(s.sessionLabel||('session '+cur.slice(0,6)));
             selActive.insertAdjacentHTML('beforeend','<option value="'+escA(cur)+'" selected>'+lbl+' (ended)</option>'); }
-          if(sessions!==undefined && sessNote) sessNote.textContent=(sessions&&sessions.length)?'':(sessions===null?'(daemon not available)':'(no sessions seen yet)'); }
+          if(!sessNote) return;
+          if(followOn){   // show what focus is currently following (from the daemon's focusedSession)
+            const f=_lastFocus, ss=f&&f.following&&list.find(x=>x.id===f.following);
+            sessNote.textContent = ss ? ('🎯 Following: '+ss.label)
+              : (f&&f.following) ? ('🎯 Following session '+String(f.following).slice(0,6))
+              : 'Waiting for a focus signal (claude-view) — showing all sessions';
+          } else if(sessions!==undefined){ sessNote.textContent=(sessions&&sessions.length)?'':(sessions===null?'(daemon not available)':'(no sessions seen yet)'); } }
         fillSessionDrop([]);
         const onPick=e=>{ s.session=e.target.value;
           const o=e.target.selectedOptions&&e.target.selectedOptions[0];   // remember the friendly label so it stays readable after the session ends
           s.sessionLabel = e.target.value==='all' ? '' : (o?o.textContent.replace(/ \(ended\)$/,''):'');
           scheduleSaveLayers(); fillSessionDrop(); };   // re-render both → the non-chosen column resets to All Sessions
         selActive.addEventListener('change',onPick); selIdle.addEventListener('change',onPick);
+        // Follow-focus toggle: 'focus' is a pseudo-session the daemon resolves to the live focused id (or 'all' if stale)
+        let _followTimer=0;
+        const stopFollowPoll=()=>{ if(_followTimer){ clearInterval(_followTimer); _followTimer=0; } };
+        const startFollowPoll=()=>{ stopFollowPoll(); _followTimer=setInterval(()=>{ if(!follow||!follow.isConnected||!follow.checked){ stopFollowPoll(); return; } listAgentSessions().then(fillSessionDrop).catch(()=>{}); },2500); };   // keep the "Following:" line live while following (self-stops when the card unmounts or you untick)
+        if(follow) follow.addEventListener('change',()=>{
+          if(follow.checked){ if(s.session!=='focus') s._sessionPrev=s.session||'all'; s.session='focus'; startFollowPoll(); listAgentSessions().then(fillSessionDrop).catch(()=>{}); }
+          else { s.session=s._sessionPrev||'all'; stopFollowPoll(); }
+          scheduleSaveLayers(); fillSessionDrop(); });
         // Async load on card open + re-fetch when either dropdown opens (a just-started session lands on the next open)
         listAgentSessions().then(fillSessionDrop).catch(()=>fillSessionDrop(null));
         [selActive,selIdle].forEach(sel=>sel.addEventListener('pointerdown',()=>{ listAgentSessions().then(fillSessionDrop).catch(()=>{}); }));
+        if(follow&&follow.checked) startFollowPoll();   // card opened already in follow mode → keep the label live
         // Twinkle-region paint board (same API as individual layer)
         let pb=null, pbWrap=null;
         const regionKeys={};   // idx→color source the board draws from; hoisted so Random can rewrite it live (pb.draw reads it fresh)
