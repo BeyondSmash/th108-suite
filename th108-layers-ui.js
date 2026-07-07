@@ -1392,7 +1392,7 @@
       // Bug guard: clicking empty grid/card space (a non-control) was moving focus into a stray number box
       // (reproduced even in Incognito, with NO .focus()/label in our code — a focus-on-mousedown quirk).
       // preventDefault on mousedown for non-controls cancels that focus change without affecting real controls.
-      cards.addEventListener('mousedown', e=>{ if(!e.target.closest('input,button,select,textarea,a,label')) e.preventDefault(); });
+      cards.addEventListener('mousedown', e=>{ if(e.button===0 && !e.target.closest('input,button,select,textarea,a,label')) e.preventDefault(); });   // LEFT button only — the focus-jump quirk is a left-click behavior; guarding all buttons also killed native MIDDLE-click autoscroll in the panel
     }
 
     return { init, buildCards: buildLayerCards, save: saveLayers, scheduleSave: scheduleSaveLayers, restore: restoreLayers, reorderFromDom };
