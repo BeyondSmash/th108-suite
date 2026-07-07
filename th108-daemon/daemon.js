@@ -35,9 +35,23 @@ function updateFocusPolling() { if (wantsFocus()) focusPoll.start(); else focusP
 // Focus a session's VSCode window BY its Claude PID (focus-window.ps1 walks the pid up to the parent Code
 // window — reliable, exact). While settings.focusDryRun is true it only RESOLVES + LOGS (no focus, no flash)
 // so the whole path can be exercised safely; the user flips dryRun off to go live.
+// The EXACT Claude pid for a session, read from Claude Code's own ~/.claude/sessions/{pid}.json (each has
+// {pid, sessionId, cwd, entrypoint}). Self-contained + reliable — unlike the hook's $PPID, which Git Bash
+// reports as 1 when spawned by a native process. This is what makes window-focus per-session accurate.
+function pidFromSessionFile(sessionId) {
+  if (!sessionId) return 0;
+  try {
+    const dir = path.join(require('os').homedir(), '.claude', 'sessions');
+    for (const f of fs.readdirSync(dir)) {
+      if (!f.endsWith('.json')) continue;
+      try { const j = JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8')); if (j && j.sessionId === sessionId && j.pid) return +j.pid; } catch (_) { }
+    }
+  } catch (_) { }
+  return 0;
+}
 function runFocusWindow(sessionId, opts) {
   opts = opts || {};
-  const pid = agentState.pidFor(sessionId);
+  const pid = pidFromSessionFile(sessionId) || agentState.pidFor(sessionId);   // session file = exact pid; hook $PPID is the fallback
   if (!pid) { log('👁 window-focus: no PID for session ' + String(sessionId).slice(0, 8) + ' yet (needs the $PPID hook + one hook event since restart)'); return; }
   const sess = agentState.sessions(Date.now()).find(s => s.id === sessionId);
   const hint = sess ? sess.project : '';
