@@ -1119,7 +1119,7 @@
         const selActive=c('.s-agSessionActive'), selIdle=c('.s-agSessionIdle'), sessNote=c('.s-agSessionNote'), noteTxt=c('.s-agNoteTxt'), agSymbol=c('.s-agSymbol'), follow=c('.s-agFollowFocus');
         let _lastSessions=[], _lastFocus=null, _lastFollowId=null, _lastAgg=null, _lastFcfg=null;   // _lastFocus = focusedSession {id,fresh,following}; _lastFollowId = last note session (pulse on a SWITCH); _lastAgg = live agent aggregate (drives the phase symbol); _lastFcfg = window-focus config (color + toggles)
         // Derive the current agent PHASE from the daemon's aggregate — the same priority the keyboard renders.
-        function agPhase(a){ if(!a) return null; if(a.busy) return 'busy'; if(a.attention) return 'bang'; if(a.checkmarkAt && Date.now()-a.checkmarkAt < 4000) return 'check'; if(a.subagentCount>0) return 'subs'; return null; }
+        function agPhase(a){ if(!a) return null; if(a.attention) return 'bang'; if(a.busy) return 'busy'; if(a.checkmarkAt && Date.now()-a.checkmarkAt < (s.checkMs||1000)) return 'check'; if(a.subagentCount>0) return 'subs'; return null; }   // SAME priority + check window as the keyboard's renderAgent (attention > busy > checkmark > subs)
         function setAgSymbol(a){ if(!agSymbol) return; const ph=agPhase(a);
           if(!ph){ agSymbol.style.display='none'; agSymbol.innerHTML=''; return; }
           agSymbol.style.display='inline-flex';

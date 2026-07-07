@@ -1065,16 +1065,16 @@
       // outside the reminder span it breathes normally via ph.level.
       const f = ph.reminder ? (ph.blink ? 1 : 0) : ph.level;
       for (const k of AGENT_BANG_K) put(k, br * f, bg * f, bb * f);
-    } else if (A.checkmarkAt && now - A.checkmarkAt < (s.checkMs || 1000)) {
-      const [cr, cg, cb] = hexToRgb(s.checkColor || '#22cc44');
-      for (const k of AGENT_CHECK_K) put(k, cr, cg, cb);
-    } else if (A.busy && AGENT_SPIN_K.length) {
+    } else if (A.busy && AGENT_SPIN_K.length) {   // busy BEFORE checkmark: an active turn shows the spinner, never a leftover ✓ (matches the on-screen symbol)
       const [pr, pg, pb] = hexToRgb(s.spinColor || '#ffffff');
       // comet: a bright head + a descending-brightness trail behind it. tail 4 over the 8-key ring lights ~half
       // the ring, so the head always has a visible gradient wake. faster step (340ms) since the ring is longer now.
       const speed = s.spinMs || 340, tail = s.spinTail == null ? 4 : s.spinTail;
       const N = AGENT_SPIN_K.length, lead = Math.floor(now / speed) % N, cap = Math.min(tail, N - 1);
       for (let t = 0; t <= cap; t++) { const k = AGENT_SPIN_K[(lead - t + N) % N]; const f = 1 - t / (cap + 1); put(k, pr * f, pg * f, pb * f); }
+    } else if (A.checkmarkAt && now - A.checkmarkAt < (s.checkMs || 1000)) {
+      const [cr, cg, cb] = hexToRgb(s.checkColor || '#22cc44');
+      for (const k of AGENT_CHECK_K) put(k, cr, cg, cb);
     }
     // boot sweep (own region, coexists)
     if (A.bootAt && now - A.bootAt < (s.bootMs || 1000)) {
