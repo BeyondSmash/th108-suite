@@ -1100,6 +1100,7 @@
         const kbPreviewRow=full('<button type="button" class="s-agKbShow" style="margin:0 auto">⌨ Show live agent preview</button>'
           +'<div class="s-agKbWrap" style="display:none;width:100%;margin-top:8px"><canvas class="s-agKbCanvas" style="width:100%;display:block;border-radius:8px;background:#0d1117"></canvas><div style="text-align:center;font-size:11px;opacity:.55;margin-top:3px">Live — the same agent layer your keyboard shows</div></div>');
         const windowRow=full('<div style="display:flex;flex-direction:column;gap:6px;width:100%">'
+          +'<label class="sl" style="margin:0;justify-content:center;color:var(--warn,#e0a200)" title="SAFE MODE: window-focus only RESOLVES + LOGS the target window (see the daemon log / %TEMP%\\th108-focuswin.log) — it does NOT focus any window or flash. Untick only when you’re ready for it to actually move windows + flash."><input type="checkbox" class="s-agDryRun" checked> Dry-run (log only — no focus/flash)</label>'
           +'<label class="sl" style="margin:0;justify-content:center" title="When a session needs you (the ! state), bring its VSCode window to the front and flash the outline. Windows only."><input type="checkbox" class="s-agAutoSwitch"> Bring window forward when a session needs you</label>'
           +'<label class="sl" style="margin:0;justify-content:center" title="Flash the color outline on a session’s monitor when focus switches to it — no window-stealing."><input type="checkbox" class="s-agOutlineSwitch"> Flash outline when focus switches</label>'
           +'<div style="display:flex;align-items:center;justify-content:center;gap:9px;margin-top:2px"><span style="font-size:12px;color:var(--muted)">Outline color</span><input type="color" class="s-agOutlineColor" value="#f97316" style="width:34px;height:24px;padding:0;border:none;background:none;cursor:pointer"><button type="button" class="s-agBringFront" title="Bring the followed/selected session’s VSCode window to the front + flash the outline">⤒ Bring window to front</button></div></div>');
@@ -1195,14 +1196,15 @@
         })();
         // Window-focus + color outline controls (self-contained claude-view-style actions). applyFcfg is
         // a hoisted declaration so fillSessionDrop (defined earlier) can seed the controls from /status once.
-        const wcAu=c('.s-agAutoSwitch'), wcOs=c('.s-agOutlineSwitch'), wcCol=c('.s-agOutlineColor'), wcBf=c('.s-agBringFront');
+        const wcAu=c('.s-agAutoSwitch'), wcOs=c('.s-agOutlineSwitch'), wcCol=c('.s-agOutlineColor'), wcBf=c('.s-agBringFront'), wcDry=c('.s-agDryRun');
         let _fcfgSeeded=false;
-        function applyFcfg(f){ if(!f||!wcAu||_fcfgSeeded) return; _fcfgSeeded=true; if(f.color) wcCol.value=f.color; wcAu.checked=!!f.autoSwitch; wcOs.checked=!!f.outlineOnSwitch; }   // SEED once from the daemon; after that your toggles are authoritative (re-applying every poll was reverting them)
+        function applyFcfg(f){ if(!f||!wcAu||_fcfgSeeded) return; _fcfgSeeded=true; if(f.color) wcCol.value=f.color; wcAu.checked=!!f.autoSwitch; wcOs.checked=!!f.outlineOnSwitch; if(wcDry) wcDry.checked=(f.dryRun!==false); }   // SEED once from the daemon; after that your toggles are authoritative (re-applying every poll was reverting them)
         applyFcfg(_lastFcfg);
         if(wcAu) wcAu.addEventListener('change',()=>setFocusConfig({autoSwitch:wcAu.checked}));
         if(wcOs) wcOs.addEventListener('change',()=>setFocusConfig({outlineOnSwitch:wcOs.checked}));
         if(wcCol) wcCol.addEventListener('change',()=>setFocusConfig({color:wcCol.value}));
-        if(wcBf) wcBf.addEventListener('click',()=>{ const id=(s.session==='focus')?(_lastFocus&&_lastFocus.following):(s.session&&s.session!=='all'?s.session:null); const ss=id&&_lastSessions.find(x=>x.id===id); focusWindowFront(ss?ss.project:''); });
+        if(wcDry) wcDry.addEventListener('change',()=>setFocusConfig({dryRun:wcDry.checked}));
+        if(wcBf) wcBf.addEventListener('click',()=>{ const id=(s.session==='focus')?(_lastFocus&&_lastFocus.following):(s.session&&s.session!=='all'?s.session:null); focusWindowFront(id||''); });   // pass the session id → daemon resolves its pid → walks to the VSCode window
         // Twinkle-region paint board (same API as individual layer)
         let pb=null, pbWrap=null;
         const regionKeys={};   // idx→color source the board draws from; hoisted so Random can rewrite it live (pb.draw reads it fresh)

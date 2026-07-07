@@ -27,20 +27,27 @@ const focusPoll = createFocusPoll({ log: (...a) => log(...a), onLine: (ev) => { 
   const id = pickSessionForTitle(ev.title, sess);
   if (!id) return;
   agentState.setFocus(id, Date.now());
-  if (settings.focusOutlineOnSwitch && id !== _lastFocusFlashed) { const s2 = sess.find(x => x.id === id); runFocusWindow(s2 && s2.project, { color: settings.focusOutlineColor }); }   // confirmation glow on a focus SWITCH (no window-steal — you already focused it)
+  if (settings.focusOutlineOnSwitch && id !== _lastFocusFlashed) { runFocusWindow(id, { color: settings.focusOutlineColor }); }   // confirmation glow on a focus SWITCH (no window-steal — you already focused it)
   _lastFocusFlashed = id;
 } });
 function wantsFocus() { return !!(state && state.layers && state.layers.some(L => L.enabled && L.type === 'agent' && L.settings && L.settings.session === 'focus')); }
 function updateFocusPolling() { if (wantsFocus()) focusPoll.start(); else focusPoll.stop(); }
-// Spawn focus-window.ps1 → bring a project's VSCode window to front (opts.switch) and/or flash a color edge-outline (opts.color).
-function runFocusWindow(project, opts) {
+// Focus a session's VSCode window BY its Claude PID (focus-window.ps1 walks the pid up to the parent Code
+// window — reliable, exact). While settings.focusDryRun is true it only RESOLVES + LOGS (no focus, no flash)
+// so the whole path can be exercised safely; the user flips dryRun off to go live.
+function runFocusWindow(sessionId, opts) {
   opts = opts || {};
+  const pid = agentState.pidFor(sessionId);
+  if (!pid) { log('👁 window-focus: no PID for session ' + String(sessionId).slice(0, 8) + ' yet (needs the $PPID hook + one hook event since restart)'); return; }
+  const sess = agentState.sessions(Date.now()).find(s => s.id === sessionId);
+  const hint = sess ? sess.project : '';
   try {
-    const args = ['-NoProfile', '-NonInteractive', '-WindowStyle', 'Hidden', '-ExecutionPolicy', 'Bypass', '-File', path.join(__dirname, 'focus-window.ps1')];
-    if (project) args.push('-Project', String(project));
-    if (opts.switch) args.push('-Switch');
-    if (opts.color && /^#[0-9a-f]{6}$/i.test(opts.color)) args.push('-FlashColor', opts.color);
+    const args = ['-NoProfile', '-NonInteractive', '-WindowStyle', 'Hidden', '-ExecutionPolicy', 'Bypass', '-File', path.join(__dirname, 'focus-window.ps1'), '-ClaudePid', String(pid)];
+    if (hint) args.push('-ProjectHint', String(hint));
+    if (settings.focusDryRun) { args.push('-DryRun'); }   // SAFE default: resolve+log only, no side effects
+    else { if (opts.switch) args.push('-Switch'); if (opts.color && /^#[0-9a-f]{6}$/i.test(opts.color)) args.push('-FlashColor', opts.color); }
     require('child_process').spawn('powershell.exe', args, { stdio: 'ignore', windowsHide: true }).unref();
+    log('👁 window-focus ' + (settings.focusDryRun ? '(DRY-RUN) ' : '') + 'for "' + (hint || String(sessionId).slice(0, 8)) + '" pid=' + pid + ' → see %TEMP%\\th108-focuswin.log');
   } catch (_) { }
 }
 // A session firing a Notification = "needs you" → optionally bring its window to front + flash (global 2s cooldown so a burst can't window-thrash).
@@ -48,8 +55,7 @@ let _lastAutoSwitchAt = 0;
 function checkAttentionEdge(ev) {
   if (!ev || ev.hook_event_name !== 'Notification' || !settings.focusAutoSwitch) return;
   const now = Date.now(); if (now - _lastAutoSwitchAt < 2000) return; _lastAutoSwitchAt = now;
-  const s2 = agentState.sessions(now).find(x => x.id === ev.session_id);
-  if (s2 && s2.project) runFocusWindow(s2.project, { switch: true, color: settings.focusOutlineColor });
+  runFocusWindow(ev.session_id, { switch: true, color: settings.focusOutlineColor });
 }
 
 const CONFIG_PATH = path.join(__dirname, 'config.json');
@@ -138,7 +144,7 @@ const SETTINGS_PATH = path.join(__dirname, 'settings.json');
 function loadSettings() {
   const DEF = { usbReset: true, nowPlaying: false, npTitle: '#ffffff', npArtist: '#ffd98c', lightsOn: true, brightness: 100, npRevertSec: 0, npAllow: {}, npArtFit: false,
                 npBar: false, npBarColor: '#11ff00', npBarBright: 60, npFlash: true, npFlashColor: '#ffd000', npBarIdleSec: 3, npBarGrad: 'solid', npBarGradFit: false, npBarKeys: 'row', npBarAgentTop: false, npOnboardMask: false, dimOnDisplayOff: false,
-                focusOutlineColor: '#f97316', focusAutoSwitch: false, focusOutlineOnSwitch: false };   // agent window-focus: outline glow color; focusAutoSwitch = bring a session's VSCode window to front when it needs-you; focusOutlineOnSwitch = flash the outline when focus switches (no window-steal). Both default OFF (opt-in)   // npBarAgentTop = let the agent layer's numpad glyphs render ABOVE the progress bar (z-swap on the shared keys)   // dimOnDisplayOff = blank the board while the monitor is off on the idle timeout   // npOnboardMask = set the keyboard's onboard effect to BLACK so the per-update flash is a dark blink, not rainbow   // npBarIdleSec = fade the bar out after this long with nothing playing   // npRevertSec 0 = never revert; npAllow = per-source override (absent → Spotify-only default); npBar = the 1-0 song-progress light-bar (lighting-only, no flash writes), npFlash = yellow track-change blip
+                focusOutlineColor: '#f97316', focusAutoSwitch: false, focusOutlineOnSwitch: false, focusDryRun: true };   // focusDryRun default ON: window-focus resolves + logs only (no real focus/flash) until the user turns it off   // agent window-focus: outline glow color; focusAutoSwitch = bring a session's VSCode window to front when it needs-you; focusOutlineOnSwitch = flash the outline when focus switches (no window-steal). Both default OFF (opt-in)   // npBarAgentTop = let the agent layer's numpad glyphs render ABOVE the progress bar (z-swap on the shared keys)   // dimOnDisplayOff = blank the board while the monitor is off on the idle timeout   // npOnboardMask = set the keyboard's onboard effect to BLACK so the per-update flash is a dark blink, not rainbow   // npBarIdleSec = fade the bar out after this long with nothing playing   // npRevertSec 0 = never revert; npAllow = per-source override (absent → Spotify-only default); npBar = the 1-0 song-progress light-bar (lighting-only, no flash writes), npFlash = yellow track-change blip
   try { return Object.assign({}, DEF, JSON.parse(fs.readFileSync(SETTINGS_PATH, 'utf8'))); }
   catch { return Object.assign({}, DEF); }   // usbReset default ON — the escalation fails gracefully (one log line) if the task isn't registered
 }
@@ -938,7 +944,7 @@ const control = {
                       agentSessions: agentState.sessions(Date.now()),
                       focusedSession: agentState.focus(Date.now()),
                       agentAggregate: (function(){ const agL = state && state.layers && state.layers.find(L => L.enabled && L.type === 'agent'); return agL ? agentState.aggregate(agL.settings && agL.settings.session || 'all', Date.now()) : null; })(),
-                      focusOutlineColor: settings.focusOutlineColor, focusAutoSwitch: settings.focusAutoSwitch, focusOutlineOnSwitch: settings.focusOutlineOnSwitch }; },   // the REAL agent phase the keyboard is showing, so the page can mirror it on-screen (symbol + mini preview)
+                      focusOutlineColor: settings.focusOutlineColor, focusAutoSwitch: settings.focusAutoSwitch, focusOutlineOnSwitch: settings.focusOutlineOnSwitch, focusDryRun: settings.focusDryRun }; },   // the REAL agent phase the keyboard is showing, so the page can mirror it on-screen (symbol + mini preview)
   setNowPlaying(on) {
     const was = settings.nowPlaying;
     settings.nowPlaying = !!on; saveSettings();
@@ -1034,8 +1040,8 @@ const control = {
   },
   agentEvent: (ev) => { agentState.ingest(ev, Date.now()); checkAttentionEdge(ev); },
   agentFocus: (id) => agentState.setFocus(id, Date.now()),   // external focus signal → the agent layer's 'focus' mode follows this session
-  setFocusConfig: (o) => { o = o || {}; if (o.color && /^#[0-9a-f]{6}$/i.test(o.color)) settings.focusOutlineColor = o.color; if ('autoSwitch' in o) settings.focusAutoSwitch = !!o.autoSwitch; if ('outlineOnSwitch' in o) settings.focusOutlineOnSwitch = !!o.outlineOnSwitch; saveSettings(); },
-  focusWindowManual: (project) => runFocusWindow(project, { switch: true, color: settings.focusOutlineColor }),   // manual "bring this session's window to front + flash"
+  setFocusConfig: (o) => { o = o || {}; if (o.color && /^#[0-9a-f]{6}$/i.test(o.color)) settings.focusOutlineColor = o.color; if ('autoSwitch' in o) settings.focusAutoSwitch = !!o.autoSwitch; if ('outlineOnSwitch' in o) settings.focusOutlineOnSwitch = !!o.outlineOnSwitch; if ('dryRun' in o) settings.focusDryRun = !!o.dryRun; saveSettings(); },
+  focusWindowManual: (sessionId) => runFocusWindow(sessionId, { switch: true, color: settings.focusOutlineColor }),   // manual "bring this session's window to front + flash" (dry-run while settings.focusDryRun)
   agentSessions: () => agentState.sessions(Date.now()),
   getAutostart, setAutostart,
   // HID/now-playing diagnostics for /metrics — pairs with the server's per-endpoint rates

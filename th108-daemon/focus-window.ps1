@@ -1,17 +1,34 @@
-# focus-window.ps1 — find the VSCode window for a project and optionally bring it to front and/or flash a
-# color edge-outline on its monitor. Self-contained (no claude-view) — borrows claude-view's window-info
-# enumeration + focus-vscode focusing technique. Matches by PROJECT (window title), since the daemon has
-# no per-session pid. Usage: focus-window.ps1 -Project <name> [-Switch] [-FlashColor '#f97316']
-param([string]$Project = '', [switch]$Switch, [string]$FlashColor = '')
+# focus-window.ps1 — focus a session's VSCode window BY the session's Claude PID: walk UP the process tree
+# to the parent Code.exe window (claude-view's reliable method), not a fuzzy title match. Self-contained.
+# Usage: focus-window.ps1 -ClaudePid <pid> [-ProjectHint <name>] [-Switch] [-FlashColor '#hex'] [-DryRun]
+#   -DryRun: resolve + LOG the target window, but DON'T focus or flash (safe debugging).
+# Every run appends a line to %TEMP%\th108-focuswin.log so we can see what it resolved without side effects.
+param([int]$ClaudePid, [string]$ProjectHint = '', [switch]$Switch, [string]$FlashColor = '', [switch]$DryRun)
 $ErrorActionPreference = 'SilentlyContinue'
+$logFile = Join-Path $env:TEMP 'th108-focuswin.log'
+function Log($m) { try { Add-Content -Path $logFile -Value ((Get-Date).ToString('HH:mm:ss') + ' ' + $m) } catch { } }
+
+# Walk up from the Claude PID, collecting Code.exe ancestor PIDs (borrowed from focus-vscode.ps1).
+$codeAncestors = @(); $cur = $ClaudePid
+for ($i = 0; $i -lt 20; $i++) {
+    try {
+        $wmi = Get-CimInstance Win32_Process -Filter "ProcessId = $cur" -ErrorAction Stop
+        $parent = [int]$wmi.ParentProcessId
+        if ($parent -eq 0 -or $parent -eq $cur) { break }
+        $pp = Get-Process -Id $parent -ErrorAction Stop
+        if ($pp.Name -like 'Code*') { $codeAncestors += $parent }
+        $cur = $parent
+    } catch { break }
+}
+if ($codeAncestors.Count -eq 0) { $codeAncestors = @(Get-Process -Name Code -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Id) }
+Log("pid=$ClaudePid hint='$ProjectHint' switch=$Switch flash='$FlashColor' dryrun=$DryRun codeAncestors=[$($codeAncestors -join ',')]")
+if ($codeAncestors.Count -eq 0) { Log('  -> no Code.exe found; abort'); exit 1 }
+
 Add-Type @"
-using System;
-using System.Collections.Generic;
-using System.Runtime.InteropServices;
-using System.Text;
-public class Win {
-    public delegate bool EnumCb(IntPtr h, IntPtr l);
-    [DllImport("user32.dll")] public static extern bool EnumWindows(EnumCb cb, IntPtr l);
+using System; using System.Collections.Generic; using System.Runtime.InteropServices; using System.Text;
+public class WinFocus {
+    public delegate bool EnumWinCb(IntPtr h, IntPtr l);
+    [DllImport("user32.dll")] public static extern bool EnumWindows(EnumWinCb cb, IntPtr l);
     [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);
     [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr h, IntPtr p);
     [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr h);
@@ -24,40 +41,41 @@ public class Win {
     [DllImport("user32.dll")] public static extern bool BringWindowToTop(IntPtr h);
     [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);
     [DllImport("kernel32.dll")] public static extern uint GetCurrentThreadId();
+    [DllImport("user32.dll")] public static extern void keybd_event(byte vk, byte scan, uint flags, UIntPtr extra);
     [DllImport("user32.dll")] public static extern void SwitchToThisWindow(IntPtr h, bool alt);
-    public static List<IntPtr> Find(HashSet<uint> pids) {
+    public static List<IntPtr> FindWindows(int[] pids) {
+        var set = new HashSet<uint>(); foreach (var p in pids) set.Add((uint)p);
         var res = new List<IntPtr>();
         EnumWindows((h, l) => { if (!IsWindowVisible(h)) return true; uint pid; GetWindowThreadProcessId(h, out pid);
-            if (pids.Contains(pid) && GetWindowTextLength(h) > 0) res.Add(h); return true; }, IntPtr.Zero);
+            if (set.Contains(pid) && GetWindowTextLength(h) > 0) res.Add(h); return true; }, IntPtr.Zero);
         return res;
     }
-    public static string Title(IntPtr h) { int n = GetWindowTextLength(h); if (n == 0) return ""; var sb = new StringBuilder(n + 1); GetWindowText(h, sb, sb.Capacity); return sb.ToString(); }
-    public static void Focus(IntPtr t) {
+    public static string GetTitle(IntPtr h) { int n = GetWindowTextLength(h); if (n == 0) return ""; var sb = new StringBuilder(n + 1); GetWindowText(h, sb, sb.Capacity); return sb.ToString(); }
+    public static void FocusWindow(IntPtr t) {
+        const byte VK_MENU = 0x12;
         if (IsIconic(t)) ShowWindow(t, 9); else ShowWindow(t, 5);
         IntPtr fg = GetForegroundWindow(); if (fg == t) return;
         uint fgT = GetWindowThreadProcessId(fg, IntPtr.Zero), my = GetCurrentThreadId();
         bool at = fgT != 0 && fgT != my && AttachThreadInput(fgT, my, true);
+        keybd_event(VK_MENU, 0, 0, UIntPtr.Zero);
         BringWindowToTop(t); SetForegroundWindow(t); SwitchToThisWindow(t, true);
+        keybd_event(VK_MENU, 0, 0x0002, UIntPtr.Zero);
         if (at) AttachThreadInput(fgT, my, false);
     }
 }
 "@
-$codePids = @(Get-Process -Name Code -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Id)
-if ($codePids.Count -eq 0) { exit 0 }
-$set = [System.Collections.Generic.HashSet[uint32]]::new(); foreach ($p in $codePids) { [void]$set.Add([uint32]$p) }   # [uint32], NOT [uint] — the latter is a C# alias but NOT a PowerShell 5.1 type accelerator (fails at runtime)
-$wins = [Win]::Find($set)
-if ($wins.Count -eq 0) { exit 0 }
-$target = $null
-if ($Project) { foreach ($w in $wins) { if ([Win]::Title($w) -like "*$Project*") { $target = $w; break } } }
-if (-not $target) { $fg = [Win]::GetForegroundWindow(); if ($wins -contains $fg) { $target = $fg } else { $target = $wins[0] } }
-if (-not $target) { exit 0 }
-if ($Switch) { [Win]::Focus($target) }
+$wins = [WinFocus]::FindWindows([int[]]$codeAncestors)
+if ($wins.Count -eq 0) { Log('  -> no visible VSCode windows for those ancestors; abort'); exit 1 }
+$best = $null
+if ($ProjectHint) { $best = $wins | Where-Object { [WinFocus]::GetTitle($_) -like "*$ProjectHint*" } | Select-Object -First 1 }
+if (-not $best) { $best = $wins | Where-Object { [WinFocus]::GetTitle($_) -like '*Visual Studio Code*' } | Select-Object -First 1 }
+if (-not $best) { $best = $wins[0] }
+Log("  -> target hwnd=$($best.ToInt64()) title='$([WinFocus]::GetTitle($best))'  (of $($wins.Count) window(s))")
+
+if ($DryRun) { Log('  -> DRY RUN: not focusing, not flashing'); exit 0 }
+if ($Switch) { [WinFocus]::FocusWindow($best); Log('  -> focused') }
 if ($FlashColor) {
     $flash = Join-Path (Split-Path $MyInvocation.MyCommand.Path) 'focus-flash.ps1'
-    if (Test-Path $flash) {
-        Start-Process powershell.exe -WindowStyle Hidden -ArgumentList @(
-            '-NoProfile', '-NonInteractive', '-WindowStyle', 'Hidden', '-STA', '-ExecutionPolicy', 'Bypass',
-            '-File', $flash, '-Hwnd', $target.ToInt64(), '-Color', $FlashColor)
-    }
+    if (Test-Path $flash) { Start-Process powershell.exe -WindowStyle Hidden -ArgumentList @('-NoProfile', '-NonInteractive', '-WindowStyle', 'Hidden', '-STA', '-ExecutionPolicy', 'Bypass', '-File', $flash, '-Hwnd', $best.ToInt64(), '-Color', $FlashColor); Log('  -> flash spawned') }
 }
 exit 0

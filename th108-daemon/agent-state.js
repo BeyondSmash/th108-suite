@@ -39,7 +39,7 @@ function createAgentState(opts = {}) {
 
   function ensure(id, cwd, now) {
     let e = map.get(id);
-    if (!e) { e = { subs: new Set(), busy: false, busyAt: 0, checkmarkAt: 0, notifyAt: 0, attention: false, bootAt: 0, firstSeen: now, cwd: cwd || '', lastSeen: now }; map.set(id, e); }
+    if (!e) { e = { subs: new Set(), busy: false, busyAt: 0, checkmarkAt: 0, notifyAt: 0, attention: false, bootAt: 0, firstSeen: now, cwd: cwd || '', pid: 0, lastSeen: now }; map.set(id, e); }
     if (cwd) e.cwd = cwd;
     e.lastSeen = now;
     return e;
@@ -57,6 +57,7 @@ function createAgentState(opts = {}) {
     const id = hook.session_id;
     if (name === 'SessionEnd') { map.delete(id); return; }
     const e = ensure(id, hook.cwd, now);
+    if (hook.claude_pid) { const p = +hook.claude_pid; if (p > 0) e.pid = p; }   // the hook forwards $PPID (a process in the session's tree) so window-focus can walk up to the VSCode window
     switch (name) {
       case 'UserPromptSubmit': e.busy = true; e.busyAt = now; e.attention = false; break;
       case 'PreToolUse': case 'PostToolUse': e.busy = true; e.busyAt = now; e.attention = false; break;   // tool activity = still working → keeps the spinner alive through a LONG turn (the single UserPromptSubmit alone would age out of BUSY_TTL)
@@ -110,7 +111,8 @@ function createAgentState(opts = {}) {
     });
   }
 
-  return { ingest, aggregate, sessions, setFocus, focus };
+  function pidFor(id) { const e = map.get(id); return e ? (e.pid || 0) : 0; }   // the session's Claude PID (from the hook), for window-focus
+  return { ingest, aggregate, sessions, setFocus, focus, pidFor };
 }
 
 module.exports = { createAgentState, pickSessionForTitle };

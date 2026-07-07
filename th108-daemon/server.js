@@ -225,6 +225,7 @@ function createServer({ control, root, port = 8123, watchdogMs = 12000 }) {
       if (req.method === 'POST' && u === '/agent/event') {   // Claude Code hook posts raw hook JSON here
         const b = await readBody(req); let ev;
         try { ev = JSON.parse(b || '{}'); } catch { return sendJson(res, 400, { error: 'bad json' }); }
+        const cp = req.headers['x-claude-pid']; if (cp && !ev.claude_pid) ev.claude_pid = cp;   // hook forwards $PPID via header → agent-state stores it for window-focus
         if (control.agentEvent) control.agentEvent(ev);
         return sendJson(res, 204, {});   // hooks are fire-and-forget; keep it cheap
       }
@@ -243,7 +244,7 @@ function createServer({ control, root, port = 8123, watchdogMs = 12000 }) {
       if (req.method === 'POST' && u === '/agent/focus-window') {   // manual: bring a session's window to front + flash
         const b = await readBody(req); let body;
         try { body = JSON.parse(b || '{}'); } catch { return sendJson(res, 400, { error: 'bad json' }); }
-        if (control.focusWindowManual) control.focusWindowManual(body.project || '');
+        if (control.focusWindowManual) control.focusWindowManual(body.session_id || body.project || '');
         return sendJson(res, 204, {});
       }
       if (req.method === 'GET' && u === '/agent/sessions') return sendJson(res, 200, { sessions: control.agentSessions ? control.agentSessions() : [] });
