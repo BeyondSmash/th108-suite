@@ -26,7 +26,7 @@ function createAgentState(opts = {}) {
   // of vanishing after a few quiet minutes. Idle sessions are inert in aggregate() (busy=false, no subs), so
   // a long TTL never affects the lighting; it only keeps the dropdown showing what's actually open.
   const TTL = opts.ttlMs || 8 * 60 * 60 * 1000;
-  const BUSY_TTL = opts.busyTtlMs || 3 * 60 * 1000;  // clears a stuck spinner ~3 min after the last event even if Stop was missed
+  const BUSY_TTL = opts.busyTtlMs || 5 * 60 * 1000;  // clears a stuck spinner this long after the last activity event even if Stop was missed. With PreToolUse/PostToolUse refreshing it, this only has to span a between-tool thinking gap
   // Focus-following: the daemon's own foreground-window poller (focus-detect.ps1) re-asserts the focused
   // session every couple seconds while a VSCode window is frontmost. So the TTL is a short grace window — when
   // you leave all Claude/VSCode windows (poller stops re-asserting), focus reverts to 'all' after it. Switching
@@ -59,6 +59,7 @@ function createAgentState(opts = {}) {
     const e = ensure(id, hook.cwd, now);
     switch (name) {
       case 'UserPromptSubmit': e.busy = true; e.busyAt = now; e.attention = false; break;
+      case 'PreToolUse': case 'PostToolUse': e.busy = true; e.busyAt = now; e.attention = false; break;   // tool activity = still working → keeps the spinner alive through a LONG turn (the single UserPromptSubmit alone would age out of BUSY_TTL)
       case 'Stop': e.busy = false; e.subs.clear(); e.attention = false; e.checkmarkAt = now; break;
       case 'SubagentStart': e.subs.add(hook.agent_id || ('anon:' + (++anon))); e.attention = false; break;
       case 'SubagentStop': {

@@ -146,3 +146,12 @@ test("pickSessionForTitle ignores empty titles and too-short project names", () 
   assert.equal(pickSessionForTitle('', [{ id: 'a', project: 'ChemTetris', lastSeen: 1 }]), null);
   assert.equal(pickSessionForTitle('RE - x', [{ id: 'a', project: 'RE', lastSeen: 1 }]), null);   // project len<=2 guarded out (would false-match everywhere)
 });
+
+test("PostToolUse refreshes busy so a long turn keeps the spinner (past BUSY_TTL)", () => {
+  const A = createAgentState({ busyTtlMs: 5000 });
+  A.ingest(ev('UserPromptSubmit'), 1000);
+  assert.equal(A.aggregate('all', 5000).busy, true);    // 4s in, still busy
+  A.ingest(ev('PostToolUse'), 5000);                    // tool activity refreshes busyAt=5000
+  assert.equal(A.aggregate('all', 9000).busy, true);    // 8s after the prompt but only 4s after the last tool → STILL busy (would have aged out at 6000 without the refresh)
+  assert.equal(A.aggregate('all', 11000).busy, false);  // >5s after the last activity → clears
+});
