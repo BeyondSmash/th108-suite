@@ -1192,7 +1192,8 @@
         // Window-focus + color outline controls (self-contained claude-view-style actions). applyFcfg is
         // a hoisted declaration so fillSessionDrop (defined earlier) can seed the controls from /status once.
         const wcAu=c('.s-agAutoSwitch'), wcOs=c('.s-agOutlineSwitch'), wcCol=c('.s-agOutlineColor'), wcBf=c('.s-agBringFront');
-        function applyFcfg(f){ if(!f||!wcAu) return; if(f.color) wcCol.value=f.color; wcAu.checked=!!f.autoSwitch; wcOs.checked=!!f.outlineOnSwitch; }
+        let _fcfgSeeded=false;
+        function applyFcfg(f){ if(!f||!wcAu||_fcfgSeeded) return; _fcfgSeeded=true; if(f.color) wcCol.value=f.color; wcAu.checked=!!f.autoSwitch; wcOs.checked=!!f.outlineOnSwitch; }   // SEED once from the daemon; after that your toggles are authoritative (re-applying every poll was reverting them)
         applyFcfg(_lastFcfg);
         if(wcAu) wcAu.addEventListener('change',()=>setFocusConfig({autoSwitch:wcAu.checked}));
         if(wcOs) wcOs.addEventListener('change',()=>setFocusConfig({outlineOnSwitch:wcOs.checked}));
