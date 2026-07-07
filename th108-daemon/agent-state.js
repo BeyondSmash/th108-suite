@@ -106,7 +106,7 @@ function createAgentState(opts = {}) {
     return [...map.entries()].map(([id, e]) => {
       const proj = basename(e.cwd) || 'session', clock = e.firstSeen ? fmtClock(e.firstSeen) : '';
       const active = e.busy || e.subs.size > 0 || e.attention;   // working (mid-turn / subagents) or waiting on the user = "active"; otherwise idle-but-open
-      return { id, project: proj, startedAt: e.firstSeen || 0, label: clock ? proj + ' · ' + clock : proj + ' ' + id.slice(0, 6), active, busy: e.busy, subagentCount: e.subs.size, lastSeen: e.lastSeen };
+      return { id, project: proj, startedAt: e.firstSeen || 0, label: clock ? proj + ' · ' + clock : proj + ' ' + id.slice(0, 6), active, busy: e.busy, subagentCount: e.subs.size, attention: e.attention, lastSeen: e.lastSeen };
     });
   }
 

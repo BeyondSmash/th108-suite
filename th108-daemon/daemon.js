@@ -20,11 +20,37 @@ const agentState = createAgentState();
 const { createFocusPoll } = require('./focus-poll.js');
 // Foreground-window focus poller (claude-view-free): feeds the frontmost VSCode window's title to the
 // matcher and follows that session. Runs ONLY while an agent layer is in 'focus' mode (gated below).
+let _lastFocusFlashed = null;
 const focusPoll = createFocusPoll({ log: (...a) => log(...a), onLine: (ev) => {   // lazy log: `log` (a const) is declared below — defer the reference to call time to dodge the TDZ
-  if (ev && ev.code && ev.title) { const id = pickSessionForTitle(ev.title, agentState.sessions(Date.now())); if (id) agentState.setFocus(id, Date.now()); }
+  if (!(ev && ev.code && ev.title)) return;
+  const sess = agentState.sessions(Date.now());
+  const id = pickSessionForTitle(ev.title, sess);
+  if (!id) return;
+  agentState.setFocus(id, Date.now());
+  if (settings.focusOutlineOnSwitch && id !== _lastFocusFlashed) { const s2 = sess.find(x => x.id === id); runFocusWindow(s2 && s2.project, { color: settings.focusOutlineColor }); }   // confirmation glow on a focus SWITCH (no window-steal — you already focused it)
+  _lastFocusFlashed = id;
 } });
 function wantsFocus() { return !!(state && state.layers && state.layers.some(L => L.enabled && L.type === 'agent' && L.settings && L.settings.session === 'focus')); }
 function updateFocusPolling() { if (wantsFocus()) focusPoll.start(); else focusPoll.stop(); }
+// Spawn focus-window.ps1 → bring a project's VSCode window to front (opts.switch) and/or flash a color edge-outline (opts.color).
+function runFocusWindow(project, opts) {
+  opts = opts || {};
+  try {
+    const args = ['-NoProfile', '-NonInteractive', '-WindowStyle', 'Hidden', '-ExecutionPolicy', 'Bypass', '-File', path.join(__dirname, 'focus-window.ps1')];
+    if (project) args.push('-Project', String(project));
+    if (opts.switch) args.push('-Switch');
+    if (opts.color && /^#[0-9a-f]{6}$/i.test(opts.color)) args.push('-FlashColor', opts.color);
+    require('child_process').spawn('powershell.exe', args, { stdio: 'ignore', windowsHide: true }).unref();
+  } catch (_) { }
+}
+// A session firing a Notification = "needs you" → optionally bring its window to front + flash (global 2s cooldown so a burst can't window-thrash).
+let _lastAutoSwitchAt = 0;
+function checkAttentionEdge(ev) {
+  if (!ev || ev.hook_event_name !== 'Notification' || !settings.focusAutoSwitch) return;
+  const now = Date.now(); if (now - _lastAutoSwitchAt < 2000) return; _lastAutoSwitchAt = now;
+  const s2 = agentState.sessions(now).find(x => x.id === ev.session_id);
+  if (s2 && s2.project) runFocusWindow(s2.project, { switch: true, color: settings.focusOutlineColor });
+}
 
 const CONFIG_PATH = path.join(__dirname, 'config.json');
 const FPS = 30;
@@ -111,7 +137,8 @@ let framesSent = 0, framesDeduped = 0;   // HID 0x32 stream stats for /metrics (
 const SETTINGS_PATH = path.join(__dirname, 'settings.json');
 function loadSettings() {
   const DEF = { usbReset: true, nowPlaying: false, npTitle: '#ffffff', npArtist: '#ffd98c', lightsOn: true, brightness: 100, npRevertSec: 0, npAllow: {}, npArtFit: false,
-                npBar: false, npBarColor: '#11ff00', npBarBright: 60, npFlash: true, npFlashColor: '#ffd000', npBarIdleSec: 3, npBarGrad: 'solid', npBarGradFit: false, npBarKeys: 'row', npBarAgentTop: false, npOnboardMask: false, dimOnDisplayOff: false };   // npBarAgentTop = let the agent layer's numpad glyphs render ABOVE the progress bar (z-swap on the shared keys)   // dimOnDisplayOff = blank the board while the monitor is off on the idle timeout   // npOnboardMask = set the keyboard's onboard effect to BLACK so the per-update flash is a dark blink, not rainbow   // npBarIdleSec = fade the bar out after this long with nothing playing   // npRevertSec 0 = never revert; npAllow = per-source override (absent → Spotify-only default); npBar = the 1-0 song-progress light-bar (lighting-only, no flash writes), npFlash = yellow track-change blip
+                npBar: false, npBarColor: '#11ff00', npBarBright: 60, npFlash: true, npFlashColor: '#ffd000', npBarIdleSec: 3, npBarGrad: 'solid', npBarGradFit: false, npBarKeys: 'row', npBarAgentTop: false, npOnboardMask: false, dimOnDisplayOff: false,
+                focusOutlineColor: '#f97316', focusAutoSwitch: false, focusOutlineOnSwitch: false };   // agent window-focus: outline glow color; focusAutoSwitch = bring a session's VSCode window to front when it needs-you; focusOutlineOnSwitch = flash the outline when focus switches (no window-steal). Both default OFF (opt-in)   // npBarAgentTop = let the agent layer's numpad glyphs render ABOVE the progress bar (z-swap on the shared keys)   // dimOnDisplayOff = blank the board while the monitor is off on the idle timeout   // npOnboardMask = set the keyboard's onboard effect to BLACK so the per-update flash is a dark blink, not rainbow   // npBarIdleSec = fade the bar out after this long with nothing playing   // npRevertSec 0 = never revert; npAllow = per-source override (absent → Spotify-only default); npBar = the 1-0 song-progress light-bar (lighting-only, no flash writes), npFlash = yellow track-change blip
   try { return Object.assign({}, DEF, JSON.parse(fs.readFileSync(SETTINGS_PATH, 'utf8'))); }
   catch { return Object.assign({}, DEF); }   // usbReset default ON — the escalation fails gracefully (one log line) if the task isn't registered
 }
@@ -910,7 +937,8 @@ const control = {
                       npOnboardMask: settings.npOnboardMask,
                       agentSessions: agentState.sessions(Date.now()),
                       focusedSession: agentState.focus(Date.now()),
-                      agentAggregate: (function(){ const agL = state && state.layers && state.layers.find(L => L.enabled && L.type === 'agent'); return agL ? agentState.aggregate(agL.settings && agL.settings.session || 'all', Date.now()) : null; })() }; },   // the REAL agent phase the keyboard is showing, so the page can mirror it on-screen (symbol + mini preview)
+                      agentAggregate: (function(){ const agL = state && state.layers && state.layers.find(L => L.enabled && L.type === 'agent'); return agL ? agentState.aggregate(agL.settings && agL.settings.session || 'all', Date.now()) : null; })(),
+                      focusOutlineColor: settings.focusOutlineColor, focusAutoSwitch: settings.focusAutoSwitch, focusOutlineOnSwitch: settings.focusOutlineOnSwitch }; },   // the REAL agent phase the keyboard is showing, so the page can mirror it on-screen (symbol + mini preview)
   setNowPlaying(on) {
     const was = settings.nowPlaying;
     settings.nowPlaying = !!on; saveSettings();
@@ -1004,8 +1032,10 @@ const control = {
     U.fire(log);
     return { fired: true };
   },
-  agentEvent: (ev) => agentState.ingest(ev, Date.now()),
-  agentFocus: (id) => agentState.setFocus(id, Date.now()),   // claude-view focus signal → the agent layer's 'focus' mode follows this session
+  agentEvent: (ev) => { agentState.ingest(ev, Date.now()); checkAttentionEdge(ev); },
+  agentFocus: (id) => agentState.setFocus(id, Date.now()),   // external focus signal → the agent layer's 'focus' mode follows this session
+  setFocusConfig: (o) => { o = o || {}; if (o.color && /^#[0-9a-f]{6}$/i.test(o.color)) settings.focusOutlineColor = o.color; if ('autoSwitch' in o) settings.focusAutoSwitch = !!o.autoSwitch; if ('outlineOnSwitch' in o) settings.focusOutlineOnSwitch = !!o.outlineOnSwitch; saveSettings(); },
+  focusWindowManual: (project) => runFocusWindow(project, { switch: true, color: settings.focusOutlineColor }),   // manual "bring this session's window to front + flash"
   agentSessions: () => agentState.sessions(Date.now()),
   getAutostart, setAutostart,
   // HID/now-playing diagnostics for /metrics — pairs with the server's per-endpoint rates

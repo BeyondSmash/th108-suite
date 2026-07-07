@@ -234,6 +234,18 @@ function createServer({ control, root, port = 8123, watchdogMs = 12000 }) {
         if (control.agentFocus) control.agentFocus(body.session_id != null ? body.session_id : body.sessionId);
         return sendJson(res, 204, {});   // advisory + fire-and-forget
       }
+      if (req.method === 'POST' && u === '/agent/focus-config') {   // outline color + auto-switch / outline-on-switch toggles
+        const b = await readBody(req); let body;
+        try { body = JSON.parse(b || '{}'); } catch { return sendJson(res, 400, { error: 'bad json' }); }
+        if (control.setFocusConfig) control.setFocusConfig(body);
+        return sendJson(res, 204, {});
+      }
+      if (req.method === 'POST' && u === '/agent/focus-window') {   // manual: bring a session's window to front + flash
+        const b = await readBody(req); let body;
+        try { body = JSON.parse(b || '{}'); } catch { return sendJson(res, 400, { error: 'bad json' }); }
+        if (control.focusWindowManual) control.focusWindowManual(body.project || '');
+        return sendJson(res, 204, {});
+      }
       if (req.method === 'GET' && u === '/agent/sessions') return sendJson(res, 200, { sessions: control.agentSessions ? control.agentSessions() : [] });
       if (req.method === 'POST' && u === '/config') {
         const b = await readBody(req); let cfg;

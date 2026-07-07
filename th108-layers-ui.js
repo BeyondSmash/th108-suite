@@ -45,7 +45,9 @@
           onPatternPick = opts.onPatternPick || noop,                   // page hook: picking a pattern while a firmware effect shows = "back to layers"
           onAudioSource = opts.onAudioSource || noop,                   // page hook: audio-layer source pick → start/stop in-tab Web Audio capture
           liveAudioActive = opts.liveAudioActive || (()=>false),        // page hook: is real in-tab capture running? (Live preview blanks when not)
-          listAgentSessions = opts.listAgentSessions || (()=>Promise.resolve([])); // page hook: fetch agentSessions from /status or /agent/sessions
+          listAgentSessions = opts.listAgentSessions || (()=>Promise.resolve([])), // page hook: fetch agentSessions from /status or /agent/sessions
+          setFocusConfig = opts.setFocusConfig || noop,                 // page hook: POST outline color + auto-switch/outline-on-switch toggles
+          focusWindowFront = opts.focusWindowFront || noop;             // page hook: POST "bring this session's window to front + flash"
 
     // ----- persist full layer state (settings survive page refresh) -----
     let _slsT=0;
@@ -1096,9 +1098,13 @@
           +'<button type="button" class="s-agTrig" data-trig="bang">Exclamation</button></div>');
         const kbPreviewRow=full('<button type="button" class="s-agKbShow" style="margin:0 auto">⌨ Show live agent preview</button>'
           +'<div class="s-agKbWrap" style="display:none;width:100%;margin-top:8px"><canvas class="s-agKbCanvas" style="width:100%;display:block;border-radius:8px;background:#0d1117"></canvas><div style="text-align:center;font-size:11px;opacity:.55;margin-top:3px">Live — the same agent layer your keyboard shows</div></div>');
+        const windowRow=full('<div style="display:flex;flex-direction:column;gap:6px;width:100%">'
+          +'<label class="sl" style="margin:0;justify-content:center" title="When a session needs you (the ! state), bring its VSCode window to the front and flash the outline. Windows only."><input type="checkbox" class="s-agAutoSwitch"> Bring window forward when a session needs you</label>'
+          +'<label class="sl" style="margin:0;justify-content:center" title="Flash the color outline on a session’s monitor when focus switches to it — no window-stealing."><input type="checkbox" class="s-agOutlineSwitch"> Flash outline when focus switches</label>'
+          +'<div style="display:flex;align-items:center;justify-content:center;gap:9px;margin-top:2px"><span style="font-size:12px;color:var(--muted)">Outline color</span><input type="color" class="s-agOutlineColor" value="#f97316" style="width:34px;height:24px;padding:0;border:none;background:none;cursor:pointer"><button type="button" class="s-agBringFront" title="Bring the followed/selected session’s VSCode window to the front + flash the outline">⤒ Bring window to front</button></div></div>');
         body.innerHTML='<div class="ctl">'+
           sec('Colors')+colorRows+
-          sec('Session')+sessionRow+kbPreviewRow+
+          sec('Session')+sessionRow+kbPreviewRow+windowRow+
           sec('Twinkle Region')+regionRow+
           sec('Emphasis')+emphRows+
           sub('Exclamation Animation')+bangRows+
@@ -1110,7 +1116,7 @@
         body.querySelectorAll('.s-agColReset').forEach(b=>b.addEventListener('click',()=>{ const key=b.dataset.key, def=AG_COLOR_DEF[key]; if(!def) return; s[key]=def; const el=c('.s-'+key); if(el) el.value=def; scheduleSaveLayers(); }));
         // Session filter — follow-focus checkbox + two selects (Active | Idle)
         const selActive=c('.s-agSessionActive'), selIdle=c('.s-agSessionIdle'), sessNote=c('.s-agSessionNote'), noteTxt=c('.s-agNoteTxt'), agSymbol=c('.s-agSymbol'), follow=c('.s-agFollowFocus');
-        let _lastSessions=[], _lastFocus=null, _lastFollowId=null, _lastAgg=null;   // remembered so a pick / poll can re-render without re-fetching; _lastFocus = focusedSession {id,fresh,following}; _lastFollowId = last note session (to pulse on a SWITCH); _lastAgg = the daemon's live agent aggregate (drives the on-screen phase symbol)
+        let _lastSessions=[], _lastFocus=null, _lastFollowId=null, _lastAgg=null, _lastFcfg=null;   // _lastFocus = focusedSession {id,fresh,following}; _lastFollowId = last note session (pulse on a SWITCH); _lastAgg = live agent aggregate (drives the phase symbol); _lastFcfg = window-focus config (color + toggles)
         // Derive the current agent PHASE from the daemon's aggregate — the same priority the keyboard renders.
         function agPhase(a){ if(!a) return null; if(a.busy) return 'busy'; if(a.attention) return 'bang'; if(a.checkmarkAt && Date.now()-a.checkmarkAt < 4000) return 'check'; if(a.subagentCount>0) return 'subs'; return null; }
         function setAgSymbol(a){ if(!agSymbol) return; const ph=agPhase(a);
@@ -1122,7 +1128,7 @@
           else { agSymbol.innerHTML='<i class="ag-twk"></i>'+a.subagentCount; agSymbol.style.color=s.twinkleColor||'#ff8c00'; const tw=agSymbol.querySelector('.ag-twk'); if(tw) tw.style.background=s.twinkleColor||'#ff8c00'; agSymbol.title=a.subagentCount+' subagent'+(a.subagentCount===1?'':'s'); } }
         // sessions: array = fresh fetch (with .focus stashed), null = daemon unavailable, undefined = re-render from _lastSessions
         function fillSessionDrop(sessions){ if(!selActive||!selIdle) return;
-          if(Array.isArray(sessions)){ _lastSessions=sessions; _lastFocus=sessions.focus||null; if('agg' in sessions) _lastAgg=sessions.agg; }
+          if(Array.isArray(sessions)){ _lastSessions=sessions; _lastFocus=sessions.focus||null; if('agg' in sessions) _lastAgg=sessions.agg; if('fcfg' in sessions){ _lastFcfg=sessions.fcfg; applyFcfg(_lastFcfg); } }
           const followOn=(s.session==='focus');
           selActive.disabled=selIdle.disabled=followOn;   // follow mode owns the selection → the manual dropdowns go inert
           const cur=followOn?'all':(s.session||'all'), esc=t=>String(t).replace(/&/g,'&amp;').replace(/</g,'&lt;'), escA=t=>String(t).replace(/"/g,'&quot;');
@@ -1183,6 +1189,15 @@
           pbtn.addEventListener('click',()=>{ (pwrap.style.display==='none')?pshow():phide(); });
           window.addEventListener('resize',()=>{ if(praf) psize(); });
         })();
+        // Window-focus + color outline controls (self-contained claude-view-style actions). applyFcfg is
+        // a hoisted declaration so fillSessionDrop (defined earlier) can seed the controls from /status once.
+        const wcAu=c('.s-agAutoSwitch'), wcOs=c('.s-agOutlineSwitch'), wcCol=c('.s-agOutlineColor'), wcBf=c('.s-agBringFront');
+        function applyFcfg(f){ if(!f||!wcAu) return; if(f.color) wcCol.value=f.color; wcAu.checked=!!f.autoSwitch; wcOs.checked=!!f.outlineOnSwitch; }
+        applyFcfg(_lastFcfg);
+        if(wcAu) wcAu.addEventListener('change',()=>setFocusConfig({autoSwitch:wcAu.checked}));
+        if(wcOs) wcOs.addEventListener('change',()=>setFocusConfig({outlineOnSwitch:wcOs.checked}));
+        if(wcCol) wcCol.addEventListener('change',()=>setFocusConfig({color:wcCol.value}));
+        if(wcBf) wcBf.addEventListener('click',()=>{ const id=(s.session==='focus')?(_lastFocus&&_lastFocus.following):(s.session&&s.session!=='all'?s.session:null); const ss=id&&_lastSessions.find(x=>x.id===id); focusWindowFront(ss?ss.project:''); });
         // Twinkle-region paint board (same API as individual layer)
         let pb=null, pbWrap=null;
         const regionKeys={};   // idx→color source the board draws from; hoisted so Random can rewrite it live (pb.draw reads it fresh)

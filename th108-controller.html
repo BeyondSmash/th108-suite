@@ -1888,7 +1888,9 @@ const LUI=TH108LayersUI.create({
 
   listAudioApps: ()=>fetch('/audio/apps',{cache:'no-store'}).then(r=>r.json()).then(d=>d.apps||[]),   // "Specific app" picker → daemon's currently-playing apps (app-capture.exe --list)
   listAudioInputs: ()=>fetch('/audio/inputs',{cache:'no-store'}).then(r=>r.json()).then(d=>d.inputs||[]),   // Mic device picker → daemon's recording devices (audio-sidecar.ps1 -ListInputs)
-  listAgentSessions: ()=>fetch('/status',{cache:'no-store'}).then(r=>r.json()).then(d=>{ const arr=d.agentSessions||[]; arr.focus=d.focusedSession||null; arr.agg=d.agentAggregate||null; return arr; })   // Agent session filter → agentSessions (+ focusedSession + the live agentAggregate stashed on the array) from the daemon's /status payload
+  listAgentSessions: ()=>fetch('/status',{cache:'no-store'}).then(r=>r.json()).then(d=>{ const arr=d.agentSessions||[]; arr.focus=d.focusedSession||null; arr.agg=d.agentAggregate||null; arr.fcfg={color:d.focusOutlineColor,autoSwitch:d.focusAutoSwitch,outlineOnSwitch:d.focusOutlineOnSwitch}; return arr; }),   // Agent session filter → agentSessions (+ focusedSession + live agentAggregate + focus/outline config) from the daemon's /status
+  setFocusConfig: (o)=>fetch('/agent/focus-config',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(o)}).catch(()=>{}),   // outline color + auto-switch / outline-on-switch toggles
+  focusWindowFront: (project)=>fetch('/agent/focus-window',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({project})}).catch(()=>{})   // manual: bring a session's VSCode window to front + flash
 });
 LUI.init();   // restore saved layers → ensureSettings backfill → build cards → persist-on-edit listeners on #layersPanel
 
