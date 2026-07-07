@@ -909,7 +909,8 @@ const control = {
                       npBarGrad: settings.npBarGrad, npBarGradFit: settings.npBarGradFit, npBarKeys: settings.npBarKeys, npBarAgentTop: settings.npBarAgentTop,
                       npOnboardMask: settings.npOnboardMask,
                       agentSessions: agentState.sessions(Date.now()),
-                      focusedSession: agentState.focus(Date.now()) }; },
+                      focusedSession: agentState.focus(Date.now()),
+                      agentAggregate: (function(){ const agL = state && state.layers && state.layers.find(L => L.enabled && L.type === 'agent'); return agL ? agentState.aggregate(agL.settings && agL.settings.session || 'all', Date.now()) : null; })() }; },   // the REAL agent phase the keyboard is showing, so the page can mirror it on-screen (symbol + mini preview)
   setNowPlaying(on) {
     const was = settings.nowPlaying;
     settings.nowPlaying = !!on; saveSettings();

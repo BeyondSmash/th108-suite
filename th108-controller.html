@@ -603,8 +603,10 @@ try{ var _tk = /[?&]defaults=1(?:&|$)/.test(location.search) ? 'th108_DEFAULTS_t
   <div class="card s3" id="connectCard" data-pages="home">
     <div class="cardbar"><span class="grip">⠿</span><h2>Keyboard</h2><span class="aux dim" id="status">not connected</span><span id="driverPill" class="driverpill" data-driver="" title="which entity is currently driving the keyboard LEDs — WebHID = this browser tab, Daemon = the always-on background app" hidden></span></div>
     <div class="row" style="display:flex;align-items:flex-start;gap:10px;flex-wrap:wrap">
-      <button id="connect" class="primary" title="hands the keyboard from the daemon to this page and starts your layers automatically">Connect Keyboard</button>
-      <button id="driveToggle" class="go" disabled title="switch who drives the keyboard LEDs — this tab (WebHID) or the background daemon">Drive from this Tab ▶</button>
+      <div id="kbBtns" style="display:flex;gap:10px;align-items:center;transform:translateY(var(--kbBtnY,12px))">
+        <button id="connect" class="primary" title="hands the keyboard from the daemon to this page and starts your layers automatically">Connect Keyboard</button>
+        <button id="driveToggle" class="go" disabled title="switch who drives the keyboard LEDs — this tab (WebHID) or the background daemon">Drive from this Tab ▶</button>
+      </div>
       <div style="display:flex;flex-direction:column;gap:5px">
         <label style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:#9aa0aa;cursor:pointer;white-space:nowrap" title="When this tab gains focus, automatically take the keyboard from the daemon (reuses the lease for a clean handoff). Takes over once you've connected at least once — a cold first connect still needs one click (browser WebHID rule)."><input type="checkbox" id="autoConnectFocus"> Auto-connect on focus</label>
         <label style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:#9aa0aa;cursor:pointer;white-space:nowrap" title="Don't show the “Another controller took over the keyboard” banner when this tab loses the lease"><input type="checkbox" id="hideYieldBanner"> Hide yield banner</label>
@@ -1867,7 +1869,7 @@ const LUI=TH108LayersUI.create({
 
   listAudioApps: ()=>fetch('/audio/apps',{cache:'no-store'}).then(r=>r.json()).then(d=>d.apps||[]),   // "Specific app" picker → daemon's currently-playing apps (app-capture.exe --list)
   listAudioInputs: ()=>fetch('/audio/inputs',{cache:'no-store'}).then(r=>r.json()).then(d=>d.inputs||[]),   // Mic device picker → daemon's recording devices (audio-sidecar.ps1 -ListInputs)
-  listAgentSessions: ()=>fetch('/status',{cache:'no-store'}).then(r=>r.json()).then(d=>{ const arr=d.agentSessions||[]; arr.focus=d.focusedSession||null; return arr; })   // Agent session filter → agentSessions (+ focusedSession stashed on the array) from the daemon's /status payload
+  listAgentSessions: ()=>fetch('/status',{cache:'no-store'}).then(r=>r.json()).then(d=>{ const arr=d.agentSessions||[]; arr.focus=d.focusedSession||null; arr.agg=d.agentAggregate||null; return arr; })   // Agent session filter → agentSessions (+ focusedSession + the live agentAggregate stashed on the array) from the daemon's /status payload
 });
 LUI.init();   // restore saved layers → ensureSettings backfill → build cards → persist-on-edit listeners on #layersPanel
 

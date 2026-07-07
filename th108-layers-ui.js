@@ -1065,7 +1065,7 @@
           +'<div style="display:flex;gap:12px;width:100%">'
           +'<label style="flex:1;min-width:0;display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--muted);text-align:center">Active<select class="s-agSessionActive" style="width:100%;font-size:13px"><option value="all">All Sessions</option></select></label>'
           +'<label style="flex:1;min-width:0;display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--muted);text-align:center">Idle<select class="s-agSessionIdle" style="width:100%;font-size:13px"><option value="all">All Sessions</option></select></label>'
-          +'</div><div class="val s-agSessionNote" style="opacity:.6;font-size:12px;text-align:center;margin-top:4px"></div>');
+          +'</div><div class="val s-agSessionNote" style="opacity:.85;font-size:12px;text-align:center;margin-top:4px;display:flex;align-items:center;justify-content:center;gap:7px"><span class="s-agNoteTxt"></span><span class="s-agSymbol" style="display:none;align-items:center;font-weight:700"></span></div>');
         // Twinkle-region paint-board row (mirrors individual layer). Twinkles = one dot per running subagent;
         // this picks WHICH keys they can appear on (default = the A–Z letter cluster).
         const regionRow=full('<div style="text-align:center;font-size:12.5px;color:var(--muted);width:100%;margin-bottom:5px">Twinkles (one per running subagent) light up on these keys</div>'
@@ -1107,11 +1107,20 @@
         ['twinkleColor','spinColor','checkColor','bangColor'].forEach(key=>{ const el=c('.s-'+key); if(el) el.addEventListener('input',e=>{ s[key]=e.target.value; scheduleSaveLayers(); }); });
         body.querySelectorAll('.s-agColReset').forEach(b=>b.addEventListener('click',()=>{ const key=b.dataset.key, def=AG_COLOR_DEF[key]; if(!def) return; s[key]=def; const el=c('.s-'+key); if(el) el.value=def; scheduleSaveLayers(); }));
         // Session filter — follow-focus checkbox + two selects (Active | Idle)
-        const selActive=c('.s-agSessionActive'), selIdle=c('.s-agSessionIdle'), sessNote=c('.s-agSessionNote'), follow=c('.s-agFollowFocus');
-        let _lastSessions=[], _lastFocus=null, _lastFollowId=null;   // remembered so a pick / poll can re-render without re-fetching; _lastFocus = the daemon's focusedSession {id,fresh,following}; _lastFollowId = which session the note last showed (to pulse on a SWITCH)
+        const selActive=c('.s-agSessionActive'), selIdle=c('.s-agSessionIdle'), sessNote=c('.s-agSessionNote'), noteTxt=c('.s-agNoteTxt'), agSymbol=c('.s-agSymbol'), follow=c('.s-agFollowFocus');
+        let _lastSessions=[], _lastFocus=null, _lastFollowId=null, _lastAgg=null;   // remembered so a pick / poll can re-render without re-fetching; _lastFocus = focusedSession {id,fresh,following}; _lastFollowId = last note session (to pulse on a SWITCH); _lastAgg = the daemon's live agent aggregate (drives the on-screen phase symbol)
+        // Derive the current agent PHASE from the daemon's aggregate — the same priority the keyboard renders.
+        function agPhase(a){ if(!a) return null; if(a.busy) return 'busy'; if(a.attention) return 'bang'; if(a.checkmarkAt && Date.now()-a.checkmarkAt < 4000) return 'check'; if(a.subagentCount>0) return 'subs'; return null; }
+        function setAgSymbol(a){ if(!agSymbol) return; const ph=agPhase(a);
+          if(!ph){ agSymbol.style.display='none'; agSymbol.innerHTML=''; return; }
+          agSymbol.style.display='inline-flex';
+          if(ph==='busy'){ agSymbol.innerHTML='<i class="ag-spin"></i>'; const sp=agSymbol.querySelector('.ag-spin'); if(sp) sp.style.borderTopColor=s.spinColor||'#ffffff'; agSymbol.title='working…'; }
+          else if(ph==='check'){ agSymbol.innerHTML='✓'; agSymbol.style.color=s.checkColor||'#22cc44'; agSymbol.title='done'; }
+          else if(ph==='bang'){ agSymbol.innerHTML='<span class="ag-bang">!</span>'; agSymbol.style.color=s.bangColor||'#ff3b30'; agSymbol.title='needs you'; }
+          else { agSymbol.innerHTML='<i class="ag-twk"></i>'+a.subagentCount; agSymbol.style.color=s.twinkleColor||'#ff8c00'; const tw=agSymbol.querySelector('.ag-twk'); if(tw) tw.style.background=s.twinkleColor||'#ff8c00'; agSymbol.title=a.subagentCount+' subagent'+(a.subagentCount===1?'':'s'); } }
         // sessions: array = fresh fetch (with .focus stashed), null = daemon unavailable, undefined = re-render from _lastSessions
         function fillSessionDrop(sessions){ if(!selActive||!selIdle) return;
-          if(Array.isArray(sessions)){ _lastSessions=sessions; _lastFocus=sessions.focus||null; }
+          if(Array.isArray(sessions)){ _lastSessions=sessions; _lastFocus=sessions.focus||null; if('agg' in sessions) _lastAgg=sessions.agg; }
           const followOn=(s.session==='focus');
           selActive.disabled=selIdle.disabled=followOn;   // follow mode owns the selection → the manual dropdowns go inert
           const cur=followOn?'all':(s.session||'all'), esc=t=>String(t).replace(/&/g,'&amp;').replace(/</g,'&lt;'), escA=t=>String(t).replace(/"/g,'&quot;');
@@ -1124,16 +1133,17 @@
           // a saved pick that's no longer live (ended) → keep it visible + selected, parked in the Active column
           if(!followOn && cur!=='all' && !has){ const lbl=esc(s.sessionLabel||('session '+cur.slice(0,6)));
             selActive.insertAdjacentHTML('beforeend','<option value="'+escA(cur)+'" selected>'+lbl+' (ended)</option>'); }
-          if(!sessNote) return;
+          if(!noteTxt) return;
+          setAgSymbol(_lastAgg);   // live agent phase (spinner / ✓ / ! / subagent count) next to the note — mirrors the keyboard
           if(followOn){   // show what focus is currently following (from the daemon's focusedSession)
             const f=_lastFocus, ss=f&&f.following&&list.find(x=>x.id===f.following);
-            sessNote.textContent = ss ? ('🎯 Following: '+ss.label)
+            noteTxt.textContent = ss ? ('🎯 Following: '+ss.label)
               : (f&&f.following) ? ('🎯 Following session '+String(f.following).slice(0,6))
               : 'No focused VSCode window yet — showing all sessions';
             const fid=(f&&f.following)||null;
             if(fid && fid!==_lastFollowId){ sessNote.classList.remove('ag-focus-flash'); void sessNote.offsetWidth; sessNote.classList.add('ag-focus-flash'); }   // pulse only when focus SWITCHES to a new session (not on every 2.5s poll of the same one)
             _lastFollowId=fid;
-          } else { _lastFollowId=null; if(sessions!==undefined) sessNote.textContent=(sessions&&sessions.length)?'':(sessions===null?'(daemon not available)':'(no sessions seen yet)'); } }
+          } else { _lastFollowId=null; if(sessions!==undefined) noteTxt.textContent=(sessions&&sessions.length)?'':(sessions===null?'(daemon not available)':'(no sessions seen yet)'); } }
         fillSessionDrop([]);
         const onPick=e=>{ s.session=e.target.value;
           const o=e.target.selectedOptions&&e.target.selectedOptions[0];   // remember the friendly label so it stays readable after the session ends
@@ -1325,7 +1335,14 @@
         '@keyframes lsecRay{ from{ transform:rotate(var(--a)) translateY(-11px) scaleY(.5); opacity:.9 } to{ transform:rotate(var(--a)) translateY(-26px) scaleY(1); opacity:0 } }'+   // start ~11px out so the rays clear the 14px glyph instead of hugging it
         // Follow-focus "switched to a new session" pulse: brighten + blue glow + slight pop, settling back (properties return to neutral, so no need to know the base color)
         '.ag-focus-flash{ animation:agFocusFlash .7s ease-out; }'+
-        '@keyframes agFocusFlash{ 0%{ filter:brightness(1.9); text-shadow:0 0 11px rgba(130,180,255,.95); transform:scale(1.09); } 100%{ filter:brightness(1); text-shadow:0 0 0 rgba(130,180,255,0); transform:scale(1); } }';
+        '@keyframes agFocusFlash{ 0%{ filter:brightness(1.9); text-shadow:0 0 11px rgba(130,180,255,.95); transform:scale(1.09); } 100%{ filter:brightness(1); text-shadow:0 0 0 rgba(130,180,255,0); transform:scale(1); } }'+
+        // on-screen agent-phase symbol (mirrors the keyboard): busy spinner, ! pulse, subagent twinkle dot
+        '.s-agSymbol .ag-spin{ display:inline-block; width:11px; height:11px; border:2px solid rgba(255,255,255,.22); border-top-color:#fff; border-radius:50%; animation:agSpin .8s linear infinite; }'+
+        '@keyframes agSpin{ to{ transform:rotate(360deg); } }'+
+        '.s-agSymbol .ag-bang{ display:inline-block; animation:agBangPulse .6s ease-in-out infinite; }'+
+        '@keyframes agBangPulse{ 0%,100%{ opacity:1; transform:scale(1); } 50%{ opacity:.35; transform:scale(1.25); } }'+
+        '.s-agSymbol .ag-twk{ display:inline-block; width:7px; height:7px; border-radius:50%; margin-right:3px; vertical-align:-1px; animation:agTwk .9s ease-in-out infinite; }'+
+        '@keyframes agTwk{ 0%,100%{ opacity:.4; } 50%{ opacity:1; } }';
       document.head.appendChild(st); }
     // radial ray-burst on a lock/collapse button click: 12 short lines shoot outward + fade over 250ms
     function burstRays(btn){ const b=document.createElement('span'); b.className='rayburst';
