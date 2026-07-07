@@ -73,10 +73,12 @@ function start(opts) {
 
   function spawnSidecar() {
     if (stopped) return;
+    if (proc) { try { proc.kill(); } catch (_) {} proc = null; }   // never run two sidecars at once — a second concurrent chain doubles the WinRT leak (and each exit respawns, so it self-sustains)
     sidecarUpAt = Date.now();
-    proc = spawn('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', path.join(__dirname, 'media-sidecar.ps1')], { stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true });
+    const p = spawn('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', path.join(__dirname, 'media-sidecar.ps1')], { stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true });
+    proc = p;
     let carry = '';
-    proc.stdout.on('data', (d) => {
+    p.stdout.on('data', (d) => {
       carry += d.toString('utf8');
       let i;
       while ((i = carry.indexOf('\n')) >= 0) {
@@ -127,7 +129,7 @@ function start(opts) {
         } catch (_) { }
       }
     });
-    proc.on('exit', () => { proc = null; if (!stopped) { log('… media sidecar exited — restarting in 5s'); setTimeout(spawnSidecar, 5000); } });
+    p.on('exit', () => { if (proc !== p) return; proc = null; if (!stopped) { log('… media sidecar exited — restarting in 5s'); setTimeout(spawnSidecar, 5000); } });   // only the CURRENT proc's exit respawns; a superseded proc dies quietly (no duplicate chains)
   }
 
   // SIDECAR WATCHDOG (anti-stasis): the sidecar emits >= every 2s while playing and on any change.

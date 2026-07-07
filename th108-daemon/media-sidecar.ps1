@@ -29,8 +29,16 @@ $last = ''
 $lastThumbKey = ''
 $lastEmit = (Get-Date).AddSeconds(-10)
 $iter = 0
+$self = [System.Diagnostics.Process]::GetCurrentProcess()
 while ($true) {
   Start-Sleep -Milliseconds 1000
+  # SELF-RECYCLE before the WinRT leak can lag the machine. The per-iteration async projections leak BOTH heap
+  # (RCWs -- the GC.Collect below fights that) AND threads (AsTask/RPC apartment threads the GC can't reclaim);
+  # an orphaned sidecar hit ~1.5GB / 9700 threads over 17h and stuttered the whole system's cursor (2026-07-06).
+  # Exit cleanly when we cross a safe cap (fresh is ~85MB / ~20 threads; these are ~3x/~20x that, still tiny) --
+  # the daemon respawns a fresh sidecar in ~5s, and an ORPHAN (its daemon gone) just dies here instead of leaking.
+  $self.Refresh()
+  if ($self.WorkingSet64 -gt 250MB -or $self.Threads.Count -gt 400 -or $iter -gt 5400) { break }   # 5400 iters ~= 90 min: a time backstop if neither mem nor threads trip first
   # Reclaim accumulated WinRT RCWs every ~20s. PowerShell rarely GCs inside a tight polling loop, so the
   # per-iteration WinRT projection objects (session manager, sessions, media properties, timeline, thumbnail
   # streams) pile up UNRELEASED and the process balloons -- this leaked to ~1.5GB / 6.9 CPU-hours over a
