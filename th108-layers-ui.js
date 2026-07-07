@@ -1284,7 +1284,7 @@
         '.lbody .lsecbox.zeb > .lsec, .lbody .lsecbox.zeb > .lsub, .lbody .lsecbox.zeb > .ph, .lbody .lsecbox.zeb > .lsecbody, .lbody .lsecbox.zeb > .ctl{ background:rgba(145,150,160,.16); }'+
         // Agent-card "Agent Alerts" group: a titled outer box wrapping the four alert sections so they read as one cluster
         '.lbody .aa-group{ grid-column:1/-1; margin:6px 0 10px; padding:0 9px 9px; border:1.5px solid rgba(120,150,220,.45); border-radius:13px; background:rgba(120,150,220,.05); }'+
-        '.lbody .aa-group-title{ text-align:center; font-weight:700; font-size:13px; color:var(--text); letter-spacing:.3px; padding:8px 0 6px; }'+
+        '.lbody .aa-group-title{ text-align:center; font-weight:700; font-size:15.5px; color:var(--text); letter-spacing:.4px; padding:9px 0 7px; }'+
         '.lbody .aa-group > .lsecbox{ margin:0 0 8px; }'+   // tighten the inner boxes inside the group
         '.lbody .aa-group > .lsecbox:last-child{ margin-bottom:0; }'+
         '.lbody .lsecbox.collapsed > .lsec, .lbody .lsecbox.collapsed > .lsub, .lbody .lsecbox.collapsed > .ph{ border-bottom:1.5px solid rgba(145,150,160,.42); border-radius:11px; }'+   // collapsed → header is the whole box: full rounding + a bottom border
