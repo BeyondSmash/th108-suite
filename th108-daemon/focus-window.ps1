@@ -44,7 +44,7 @@ public class Win {
 "@
 $codePids = @(Get-Process -Name Code -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Id)
 if ($codePids.Count -eq 0) { exit 0 }
-$set = [System.Collections.Generic.HashSet[uint]]::new(); foreach ($p in $codePids) { [void]$set.Add([uint]$p) }
+$set = [System.Collections.Generic.HashSet[uint32]]::new(); foreach ($p in $codePids) { [void]$set.Add([uint32]$p) }   # [uint32], NOT [uint] — the latter is a C# alias but NOT a PowerShell 5.1 type accelerator (fails at runtime)
 $wins = [Win]::Find($set)
 if ($wins.Count -eq 0) { exit 0 }
 $target = $null
