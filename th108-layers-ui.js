@@ -1123,7 +1123,7 @@
         function setAgSymbol(a){ if(!agSymbol) return; const ph=agPhase(a);
           if(!ph){ agSymbol.style.display='none'; agSymbol.innerHTML=''; return; }
           agSymbol.style.display='inline-flex';
-          if(ph==='busy'){ agSymbol.innerHTML='<i class="ag-spin"></i>'; const sp=agSymbol.querySelector('.ag-spin'); if(sp) sp.style.borderTopColor=s.spinColor||'#ffffff'; agSymbol.title='working…'; }
+          if(ph==='busy'){ agSymbol.innerHTML='<svg class="ag-pxload" viewBox="0 0 20 20" width="13" height="13" fill="currentColor" style="display:block"><rect class="agpx agpx-1" x="0" y="0" width="4" height="4"/><rect class="agpx agpx-2" x="8" y="0" width="4" height="4"/><rect class="agpx agpx-3" x="16" y="0" width="4" height="4"/><rect class="agpx agpx-4" x="16" y="8" width="4" height="4"/><rect class="agpx agpx-5" x="16" y="16" width="4" height="4"/><rect class="agpx agpx-6" x="8" y="16" width="4" height="4"/><rect class="agpx agpx-7" x="0" y="16" width="4" height="4"/><rect class="agpx agpx-8" x="0" y="8" width="4" height="4"/></svg>'; agSymbol.style.color=s.spinColor||'#ffffff'; agSymbol.title='working…'; }   // pixel-square chase loader (8 cells around a square perimeter, clockwise from top-left)
           else if(ph==='check'){ agSymbol.innerHTML='✓'; agSymbol.style.color=s.checkColor||'#22cc44'; agSymbol.title='done'; }
           else if(ph==='bang'){ agSymbol.innerHTML='<span class="ag-bang">!</span>'; agSymbol.style.color=s.bangColor||'#ff3b30'; agSymbol.title='needs you'; }
           else { agSymbol.innerHTML='<i class="ag-twk"></i>'+a.subagentCount; agSymbol.style.color=s.twinkleColor||'#ff8c00'; const tw=agSymbol.querySelector('.ag-twk'); if(tw) tw.style.background=s.twinkleColor||'#ff8c00'; agSymbol.title=a.subagentCount+' subagent'+(a.subagentCount===1?'':'s'); } }
@@ -1375,8 +1375,9 @@
         '.ag-focus-flash{ animation:agFocusFlash .7s ease-out; }'+
         '@keyframes agFocusFlash{ 0%{ filter:brightness(1.9); text-shadow:0 0 11px rgba(130,180,255,.95); transform:scale(1.09); } 100%{ filter:brightness(1); text-shadow:0 0 0 rgba(130,180,255,0); transform:scale(1); } }'+
         // on-screen agent-phase symbol (mirrors the keyboard): busy spinner, ! pulse, subagent twinkle dot
-        '.s-agSymbol .ag-spin{ display:inline-block; width:11px; height:11px; border:2px solid rgba(255,255,255,.22); border-top-color:#fff; border-radius:50%; animation:agSpin .8s linear infinite; }'+
-        '@keyframes agSpin{ to{ transform:rotate(360deg); } }'+
+        '.s-agSymbol .ag-pxload .agpx{ animation:agPxSpin .8s ease-in-out infinite; }'+
+        '.s-agSymbol .agpx-1{ animation-delay:0s } .s-agSymbol .agpx-2{ animation-delay:.1s } .s-agSymbol .agpx-3{ animation-delay:.2s } .s-agSymbol .agpx-4{ animation-delay:.3s } .s-agSymbol .agpx-5{ animation-delay:.4s } .s-agSymbol .agpx-6{ animation-delay:.5s } .s-agSymbol .agpx-7{ animation-delay:.6s } .s-agSymbol .agpx-8{ animation-delay:.7s }'+
+        '@keyframes agPxSpin{ 0%{ opacity:0 } 1%{ opacity:1 } 100%{ opacity:0 } }'+
         '.s-agSymbol .ag-bang{ display:inline-block; animation:agBangPulse .6s ease-in-out infinite; }'+
         '@keyframes agBangPulse{ 0%,100%{ opacity:1; transform:scale(1); } 50%{ opacity:.35; transform:scale(1.25); } }'+
         '.s-agSymbol .ag-twk{ display:inline-block; width:7px; height:7px; border-radius:50%; margin-right:3px; vertical-align:-1px; animation:agTwk .9s ease-in-out infinite; }'+
