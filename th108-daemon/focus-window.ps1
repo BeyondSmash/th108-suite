@@ -51,16 +51,15 @@ public class WinFocus {
         return res;
     }
     public static string GetTitle(IntPtr h) { int n = GetWindowTextLength(h); if (n == 0) return ""; var sb = new StringBuilder(n + 1); GetWindowText(h, sb, sb.Capacity); return sb.ToString(); }
+    // SAFE focus: restore-if-minimized + raise + best-effort foreground. Deliberately does NOT use
+    // AttachThreadInput (can freeze the target thread's input queue → VSCode hangs, requiring a task-kill)
+    // and does NOT synthesize the Alt key (accelerator risk). If Windows' foreground lock refuses
+    // SetForegroundWindow, the window still comes forward via ShowWindow/BringWindowToTop — it just may
+    // not steal focus. Reliability traded for never being able to hang or close the editor.
     public static void FocusWindow(IntPtr t) {
-        const byte VK_MENU = 0x12;
-        if (IsIconic(t)) ShowWindow(t, 9); else ShowWindow(t, 5);
-        IntPtr fg = GetForegroundWindow(); if (fg == t) return;
-        uint fgT = GetWindowThreadProcessId(fg, IntPtr.Zero), my = GetCurrentThreadId();
-        bool at = fgT != 0 && fgT != my && AttachThreadInput(fgT, my, true);
-        keybd_event(VK_MENU, 0, 0, UIntPtr.Zero);
-        BringWindowToTop(t); SetForegroundWindow(t); SwitchToThisWindow(t, true);
-        keybd_event(VK_MENU, 0, 0x0002, UIntPtr.Zero);
-        if (at) AttachThreadInput(fgT, my, false);
+        if (IsIconic(t)) ShowWindow(t, 9); else ShowWindow(t, 5);   // SW_RESTORE / SW_SHOW — never minimizes or closes
+        BringWindowToTop(t);
+        SetForegroundWindow(t);
     }
 }
 "@
