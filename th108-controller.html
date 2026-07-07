@@ -1661,6 +1661,22 @@ function audioFeedTick(now){
 }
 requestAnimationFrame(audioFeedTick);
 
+// AGENT layer: poll the daemon's REAL agent state (aggregate) into state.agent while an agent layer is
+// enabled, so the TAB's keyboard shows the SAME numpad symbols the daemon does (renderAgent runs in
+// composeFrame but was getting no feed — the page never called applyAgentFeed). The aggregate/phase changes
+// slowly, so a 1.5s poll is plenty; renderAgent animates the spinner/twinkles per-frame off `now`.
+let _dmnAgent=null, _dmnAgentAt=0;
+setInterval(async ()=>{
+  const agL=state.layers.find(L=>L.enabled && L.type==='agent');
+  if(!agL || !DC.present){ _dmnAgent=null; return; }
+  try{ const s=await (await fetch('/status',{cache:'no-store'})).json(); _dmnAgent=s.agentAggregate||null; if(_dmnAgent) _dmnAgentAt=performance.now(); }
+  catch(_){ _dmnAgent=null; }
+}, 1500);
+function feedAgent(){
+  const agL=state.layers.find(L=>L.enabled && L.type==='agent'); if(!agL) return;
+  TH108Engine.applyAgentFeed(state, (_dmnAgent && performance.now()-_dmnAgentAt<6000) ? _dmnAgent : null);
+}
+
 // ----- song-progress bar (keys 1-0): the daemon renders it when IT drives; while THIS tab drives we draw
 // it ourselves from the daemon's media position so the toggle/color/brightness change live on-tab. -----
 const NP_DIGITS=['Digit1','Digit2','Digit3','Digit4','Digit5','Digit6','Digit7','Digit8','Digit9','Digit0']
@@ -1717,6 +1733,7 @@ async function layerTick(){
     if(!layerInFlight){
       layerInFlight=true;
       try{ feedAudio(now); }catch(_){ }                  // refresh state.audio on the worker clock (smooth even when this tab is backgrounded)
+      try{ feedAgent(); }catch(_){ }                     // refresh state.agent so the agent layer's numpad symbols render on the tab-driven keyboard too
       const flat=TH108Engine.composeFrame(state, now);   // engine renders due layers (≤30fps each) + composites → flat frame
       applyNpBar(flat);                                  // overlay the daemon's song-progress bar on keys 1-0 while this tab drives
       if(!TH108Engine.flatEq(flat, state.lastFlat) || now-state.lastSent>=1000){   // skip unchanged frames; resend ≥1×/s as a keepalive so firmware doesn't reclaim the board

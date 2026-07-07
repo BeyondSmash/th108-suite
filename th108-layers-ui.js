@@ -1375,9 +1375,9 @@
         '.ag-focus-flash{ animation:agFocusFlash .7s ease-out; }'+
         '@keyframes agFocusFlash{ 0%{ filter:brightness(1.9); text-shadow:0 0 11px rgba(130,180,255,.95); transform:scale(1.09); } 100%{ filter:brightness(1); text-shadow:0 0 0 rgba(130,180,255,0); transform:scale(1); } }'+
         // on-screen agent-phase symbol (mirrors the keyboard): busy spinner, ! pulse, subagent twinkle dot
-        '.s-agSymbol .ag-pxload .agpx{ animation:agPxSpin .8s ease-in-out infinite; }'+
-        '.s-agSymbol .agpx-1{ animation-delay:0s } .s-agSymbol .agpx-2{ animation-delay:.1s } .s-agSymbol .agpx-3{ animation-delay:.2s } .s-agSymbol .agpx-4{ animation-delay:.3s } .s-agSymbol .agpx-5{ animation-delay:.4s } .s-agSymbol .agpx-6{ animation-delay:.5s } .s-agSymbol .agpx-7{ animation-delay:.6s } .s-agSymbol .agpx-8{ animation-delay:.7s }'+
-        '@keyframes agPxSpin{ 0%{ opacity:0 } 1%{ opacity:1 } 100%{ opacity:0 } }'+
+        '.s-agSymbol .ag-pxload .agpx{ animation-name:agPxSpin; animation-duration:.8s; animation-timing-function:ease-in-out; animation-iteration-count:infinite; }'+   // longhands (NOT the shorthand) so per-cell animation-delay below isn\'t reset to 0 — that was making all 8 pulse in sync instead of chasing
+        '.s-agSymbol .ag-pxload .agpx-1{ animation-delay:0s } .s-agSymbol .ag-pxload .agpx-2{ animation-delay:.1s } .s-agSymbol .ag-pxload .agpx-3{ animation-delay:.2s } .s-agSymbol .ag-pxload .agpx-4{ animation-delay:.3s } .s-agSymbol .ag-pxload .agpx-5{ animation-delay:.4s } .s-agSymbol .ag-pxload .agpx-6{ animation-delay:.5s } .s-agSymbol .ag-pxload .agpx-7{ animation-delay:.6s } .s-agSymbol .ag-pxload .agpx-8{ animation-delay:.7s }'+
+        '@keyframes agPxSpin{ 0%{ opacity:.12 } 12%{ opacity:1 } 60%{ opacity:.12 } 100%{ opacity:.12 } }'+   // brief bright sweep then dim — a comet chasing around the square (was 0→1→0 which read as a flat pulse)
         '.s-agSymbol .ag-bang{ display:inline-block; animation:agBangPulse .6s ease-in-out infinite; }'+
         '@keyframes agBangPulse{ 0%,100%{ opacity:1; transform:scale(1); } 50%{ opacity:.35; transform:scale(1.25); } }'+
         '.s-agSymbol .ag-twk{ display:inline-block; width:7px; height:7px; border-radius:50%; margin-right:3px; vertical-align:-1px; animation:agTwk .9s ease-in-out infinite; }'+
