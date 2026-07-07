@@ -1094,9 +1094,11 @@
           +'<button type="button" class="s-agTrig" data-trig="spinner">Spinner</button> '
           +'<button type="button" class="s-agTrig" data-trig="check">Checkmark</button> '
           +'<button type="button" class="s-agTrig" data-trig="bang">Exclamation</button></div>');
+        const kbPreviewRow=full('<button type="button" class="s-agKbShow" style="margin:0 auto">⌨ Show live agent preview</button>'
+          +'<div class="s-agKbWrap" style="display:none;width:100%;margin-top:8px"><canvas class="s-agKbCanvas" style="width:100%;display:block;border-radius:8px;background:#0d1117"></canvas><div style="text-align:center;font-size:11px;opacity:.55;margin-top:3px">Live — the same agent layer your keyboard shows</div></div>');
         body.innerHTML='<div class="ctl">'+
           sec('Colors')+colorRows+
-          sec('Session')+sessionRow+
+          sec('Session')+sessionRow+kbPreviewRow+
           sec('Twinkle Region')+regionRow+
           sec('Emphasis')+emphRows+
           sub('Exclamation Animation')+bangRows+
@@ -1162,6 +1164,25 @@
         listAgentSessions().then(fillSessionDrop).catch(()=>fillSessionDrop(null));
         [selActive,selIdle].forEach(sel=>sel.addEventListener('pointerdown',()=>{ listAgentSessions().then(fillSessionDrop).catch(()=>{}); }));
         if(follow&&follow.checked) startFollowPoll();   // card opened already in follow mode → keep the label live
+        // ⌨ Live agent preview: render the SAME agent layer the keyboard shows (E.renderAgent) onto a mini canvas.
+        (function(){
+          const pbtn=c('.s-agKbShow'), pwrap=c('.s-agKbWrap'), pcv=c('.s-agKbCanvas');
+          if(!pbtn||!pwrap||!pcv) return;
+          const pctx=pcv.getContext('2d'), AR=E.BOARDW/E.BOARDH, PL={settings:s, rgb:new Uint8Array(E.NLED*3)};
+          let praf=0, ppoll=0;
+          const psize=()=>{ const w=Math.max(120, pcv.clientWidth||pwrap.clientWidth||360); pcv.width=Math.round(w*2); pcv.height=Math.round(w*2/AR); };
+          function pdraw(){ const W=pcv.width, H=pcv.height; pctx.setTransform(1,0,0,1,0,0); pctx.fillStyle='#0d1117'; pctx.fillRect(0,0,W,H);
+            for(let k=0;k<E.NLED;k++){ const cell=E.keyCell(E.INDICES[k]); if(!cell) continue; const cx=cell[0],cy=cell[1],w=cell[2],h=cell[3];
+              const x=(cx-w/2)*W, y=(cy-h/2)*H, ww=w*W, hh=h*H, o=k*3, r=PL.rgb[o],g=PL.rgb[o+1],b=PL.rgb[o+2];
+              pctx.fillStyle=(r+g+b>6)?('rgb('+r+','+g+','+b+')'):'#20262e'; pctx.fillRect(x+1,y+1,Math.max(1,ww-2),Math.max(1,hh-2)); } }
+          function ploop(){ if(!praf) return; E.renderAgent(PL, performance.now(), {agent:_lastAgg}); pdraw(); praf=requestAnimationFrame(ploop); }
+          function pshow(){ pwrap.style.display='block'; psize(); pbtn.textContent='⌨ Hide live agent preview'; if(!praf) praf=requestAnimationFrame(ploop);
+            listAgentSessions().then(fillSessionDrop).catch(()=>{});   // pull the live aggregate now (preview shows real state even with Follow off)
+            if(!ppoll) ppoll=setInterval(()=>{ if(!pwrap.isConnected||pwrap.style.display==='none'){ clearInterval(ppoll); ppoll=0; return; } listAgentSessions().then(fillSessionDrop).catch(()=>{}); }, 2000); }
+          function phide(){ pwrap.style.display='none'; pbtn.textContent='⌨ Show live agent preview'; if(praf){ cancelAnimationFrame(praf); praf=0; } if(ppoll){ clearInterval(ppoll); ppoll=0; } }
+          pbtn.addEventListener('click',()=>{ (pwrap.style.display==='none')?pshow():phide(); });
+          window.addEventListener('resize',()=>{ if(praf) psize(); });
+        })();
         // Twinkle-region paint board (same API as individual layer)
         let pb=null, pbWrap=null;
         const regionKeys={};   // idx→color source the board draws from; hoisted so Random can rewrite it live (pb.draw reads it fresh)
