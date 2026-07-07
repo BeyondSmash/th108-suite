@@ -1108,7 +1108,7 @@
         body.querySelectorAll('.s-agColReset').forEach(b=>b.addEventListener('click',()=>{ const key=b.dataset.key, def=AG_COLOR_DEF[key]; if(!def) return; s[key]=def; const el=c('.s-'+key); if(el) el.value=def; scheduleSaveLayers(); }));
         // Session filter — follow-focus checkbox + two selects (Active | Idle)
         const selActive=c('.s-agSessionActive'), selIdle=c('.s-agSessionIdle'), sessNote=c('.s-agSessionNote'), follow=c('.s-agFollowFocus');
-        let _lastSessions=[], _lastFocus=null;   // remembered so a pick / poll can re-render without re-fetching; _lastFocus = the daemon's focusedSession {id,fresh,following}
+        let _lastSessions=[], _lastFocus=null, _lastFollowId=null;   // remembered so a pick / poll can re-render without re-fetching; _lastFocus = the daemon's focusedSession {id,fresh,following}; _lastFollowId = which session the note last showed (to pulse on a SWITCH)
         // sessions: array = fresh fetch (with .focus stashed), null = daemon unavailable, undefined = re-render from _lastSessions
         function fillSessionDrop(sessions){ if(!selActive||!selIdle) return;
           if(Array.isArray(sessions)){ _lastSessions=sessions; _lastFocus=sessions.focus||null; }
@@ -1130,7 +1130,10 @@
             sessNote.textContent = ss ? ('🎯 Following: '+ss.label)
               : (f&&f.following) ? ('🎯 Following session '+String(f.following).slice(0,6))
               : 'No focused VSCode window yet — showing all sessions';
-          } else if(sessions!==undefined){ sessNote.textContent=(sessions&&sessions.length)?'':(sessions===null?'(daemon not available)':'(no sessions seen yet)'); } }
+            const fid=(f&&f.following)||null;
+            if(fid && fid!==_lastFollowId){ sessNote.classList.remove('ag-focus-flash'); void sessNote.offsetWidth; sessNote.classList.add('ag-focus-flash'); }   // pulse only when focus SWITCHES to a new session (not on every 2.5s poll of the same one)
+            _lastFollowId=fid;
+          } else { _lastFollowId=null; if(sessions!==undefined) sessNote.textContent=(sessions&&sessions.length)?'':(sessions===null?'(daemon not available)':'(no sessions seen yet)'); } }
         fillSessionDrop([]);
         const onPick=e=>{ s.session=e.target.value;
           const o=e.target.selectedOptions&&e.target.selectedOptions[0];   // remember the friendly label so it stays readable after the session ends
@@ -1319,7 +1322,10 @@
         // radial ray-burst on lock/collapse click: 12 short lines shoot outward from the button center + fade over 250ms (inherits the button color — amber on a locked toggle)
         '.rayburst{ position:absolute; left:50%; top:50%; width:0; height:0; pointer-events:none; z-index:3; }'+
         '.rayburst i{ position:absolute; left:0; top:0; width:2px; height:7px; margin:-3.5px 0 0 -1px; border-radius:1px; background:currentColor; transform-origin:50% 50%; animation:lsecRay .25s ease-out forwards; }'+
-        '@keyframes lsecRay{ from{ transform:rotate(var(--a)) translateY(-11px) scaleY(.5); opacity:.9 } to{ transform:rotate(var(--a)) translateY(-26px) scaleY(1); opacity:0 } }';   // start ~11px out so the rays clear the 14px glyph instead of hugging it
+        '@keyframes lsecRay{ from{ transform:rotate(var(--a)) translateY(-11px) scaleY(.5); opacity:.9 } to{ transform:rotate(var(--a)) translateY(-26px) scaleY(1); opacity:0 } }'+   // start ~11px out so the rays clear the 14px glyph instead of hugging it
+        // Follow-focus "switched to a new session" pulse: brighten + blue glow + slight pop, settling back (properties return to neutral, so no need to know the base color)
+        '.ag-focus-flash{ animation:agFocusFlash .7s ease-out; }'+
+        '@keyframes agFocusFlash{ 0%{ filter:brightness(1.9); text-shadow:0 0 11px rgba(130,180,255,.95); transform:scale(1.09); } 100%{ filter:brightness(1); text-shadow:0 0 0 rgba(130,180,255,0); transform:scale(1); } }';
       document.head.appendChild(st); }
     // radial ray-burst on a lock/collapse button click: 12 short lines shoot outward + fade over 250ms
     function burstRays(btn){ const b=document.createElement('span'); b.className='rayburst';
