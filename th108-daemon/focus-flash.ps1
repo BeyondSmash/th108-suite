@@ -5,10 +5,19 @@
 param([Int64]$Hwnd, [string]$Color = '#f97316', [int]$Thick = 6)
 $ErrorActionPreference = 'SilentlyContinue'
 
-# Singleton: kill any previous th108 flash before starting (separate lock from claude-view's)
+# Singleton: retire any previous th108 flash before starting. CRITICAL SAFETY: Windows REUSES PIDs, so a
+# stale PID in the lock file may now belong to a totally unrelated process (e.g. VSCode's Code.exe). Never
+# Stop-Process a bare PID — VERIFY it's actually a powershell running THIS script first, or we could kill
+# (and close) the user's editor. (That exact bug closed all VSCode windows once, 2026-07-07.)
 $lockFile = "$env:TEMP\focus-flash-th108.lock"
 if (Test-Path $lockFile) {
-    try { $oldPid = [int](Get-Content $lockFile -Raw).Trim(); if ($oldPid -ne $PID) { Stop-Process -Id $oldPid -Force -ErrorAction SilentlyContinue } } catch { }
+    try {
+        $oldPid = [int](Get-Content $lockFile -Raw).Trim()
+        if ($oldPid -ne $PID) {
+            $op = Get-CimInstance Win32_Process -Filter "ProcessId=$oldPid" -ErrorAction SilentlyContinue
+            if ($op -and $op.Name -eq 'powershell.exe' -and $op.CommandLine -like '*focus-flash*') { Stop-Process -Id $oldPid -Force -ErrorAction SilentlyContinue }
+        }
+    } catch { }
 }
 $PID | Set-Content $lockFile -Force -NoNewline
 
