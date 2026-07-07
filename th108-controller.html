@@ -611,6 +611,7 @@ try{ var _tk = /[?&]defaults=1(?:&|$)/.test(location.search) ? 'th108_DEFAULTS_t
         <label style="display:inline-flex;align-items:flex-start;gap:6px;font-size:12px;color:#9aa0aa;cursor:pointer" title="Never hand the keyboard to the daemon when this tab loses focus — this page keeps driving. Trade-off: reactive lighting won't respond to keys typed in OTHER apps (the browser only delivers keys to a focused tab), but the board never swaps owners on focus changes, so it can't churn/wedge. Turn this on if switching between the site and another app has ever dropped your lighting."><input type="checkbox" id="keepDrivingNoYield" style="margin-top:1px"> <span style="line-height:1.2;white-space:nowrap">Keep driving from this tab<br><span style="opacity:.6">(no auto-yield)</span></span></label>
       </div>
     </div>
+    <hr style="border:none;border-top:1px solid var(--border);margin:14px 0">
     <p class="hint" style="margin:0">While connected, click this page once so it has keyboard focus, then type — pressed keys flash orange.</p>
     <p class="hint" style="margin:12px 0 0">⚠ <b>Browser keydown only fires while this tab is focused.</b> Reactive-in-any-app comes from the background daemon instead.</p>
     <p class="hint" style="margin:12px 0 0">💡 <b>Daemon running? Skip Connect for layer editing</b> — edits push to it live and reactive keeps working in every app. Connect is only for the GIF→keys, onboard-effect, and LCD tools (it takes the keyboard from the daemon until you close this tab).</p>
