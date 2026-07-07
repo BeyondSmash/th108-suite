@@ -817,9 +817,12 @@ try{ var _tk = /[?&]defaults=1(?:&|$)/.test(location.search) ? 'th108_DEFAULTS_t
     <p>Point any external tool (e.g. a claude-view window) at the daemon: <b>POST the focused session id</b> whenever
        focus changes. One line:</p>
     <p><code>fetch('http://localhost:8123/agent/focus', { method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify({ session_id: focusedId }) })</code></p>
-    <p>Send <code>session_id: null</code> to clear it. The signal is advisory with a ~10s freshness window — if it
-       stops arriving (tool closed, never set up), Follow-focus simply falls back to <b>All Sessions</b>, so it's
-       completely safe to leave the checkbox on even without any tool feeding it.</p>
+    <p>Send <code>session_id: null</code> to clear it. It follows the session you last focused until you focus
+       another one or that session ends — then Follow-focus falls back to <b>All Sessions</b> (as it also does when
+       nothing has ever fed it), so it's completely safe to leave the checkbox on even without any tool.</p>
+    <p><b>Already wired for you:</b> if you use <b>claude-view</b> to bring a Claude window forward, the
+       <code>~/bin/focus-vscode.ps1</code> it calls now also POSTs the focused session here — so Follow-focus just
+       works, no extra setup.</p>
   </div>
   <div class="card s2 faqcard" id="faqAdv" data-pages="faq">
     <div class="cardbar"><span class="grip">⠿</span></div>

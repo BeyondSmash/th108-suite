@@ -13,10 +13,12 @@ function createAgentState(opts = {}) {
   // a long TTL never affects the lighting; it only keeps the dropdown showing what's actually open.
   const TTL = opts.ttlMs || 8 * 60 * 60 * 1000;
   const BUSY_TTL = opts.busyTtlMs || 3 * 60 * 1000;  // clears a stuck spinner ~3 min after the last event even if Stop was missed
-  // Focus-following: an external signal (claude-view POSTs /agent/focus) names the session the user is
-  // looking at right now. It's advisory and OPTIONAL — a short TTL means that if the signal stops arriving
-  // (claude-view closed / never installed), focus goes stale and the layer falls back to 'all' sessions.
-  const FOCUS_TTL = opts.focusTtlMs || 10 * 1000;
+  // Focus-following: an external signal (claude-view POSTs /agent/focus on each bring-to-front) names the
+  // session the user just focused. It's a DISCRETE event, not a continuous stream — so focus normally clears
+  // by being SUPERSEDED (a new focus) or when the followed session ENDS (aggregate falls back to 'all' once
+  // it's gone). The TTL is only a long backstop so a focus you set and then walked away from eventually
+  // reverts to 'all' — matched to the session sweep TTL so a swept session and its focus expire together.
+  const FOCUS_TTL = opts.focusTtlMs || TTL;
   const map = new Map();   // session_id -> entry
   let anon = 0;
   let focusId = null, focusAt = 0;
