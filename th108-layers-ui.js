@@ -1064,6 +1064,7 @@
         // Both carry "All Sessions" as their neutral top option; picking a session in one shows it there and the
         // other rests on "All Sessions". Options filled async after mount.
         const sessionRow=full('<label class="sl" style="margin:0 0 7px;justify-content:center" title="Automatically follow whichever Claude Code session’s VSCode window is in front. The background app detects the foreground window (Windows only) and matches it to a session by project folder. Switch windows and the agent lighting follows; leave all VSCode windows and it reverts to All Sessions after a few seconds. No extra setup."><input type="checkbox" class="s-agFollowFocus"'+(s.session==='focus'?' checked':'')+'> 🎯 Follow focused session</label>'
+          +'<div style="text-align:center;font-size:11px;opacity:.5;margin:-3px 0 6px">Follows by project — switching Claude tabs within one project won’t change it</div>'
           +'<div style="display:flex;gap:12px;width:100%">'
           +'<label style="flex:1;min-width:0;display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--muted);text-align:center">Active<select class="s-agSessionActive" style="width:100%;font-size:13px"><option value="all">All Sessions</option></select></label>'
           +'<label style="flex:1;min-width:0;display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--muted);text-align:center">Idle<select class="s-agSessionIdle" style="width:100%;font-size:13px"><option value="all">All Sessions</option></select></label>'

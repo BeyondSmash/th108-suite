@@ -840,8 +840,11 @@ try{ var _tk = /[?&]defaults=1(?:&|$)/.test(location.search) ? 'th108_DEFAULTS_t
        matches it to a session by <b>project folder</b> (the window title carries it). Leave all VSCode windows —
        switch to a browser, say — and after a few seconds it reverts to <b>All Sessions</b>. Windows only; on other
        platforms Follow-focus simply stays on All Sessions.</p>
-    <p><b>One limit:</b> if several <i>live</i> sessions share the same project folder, it follows the busiest one
-       (the window title can't tell two terminals in the same folder apart).</p>
+    <p><b>Granularity — it follows by PROJECT, not by tab.</b> Focus is matched from the VSCode window, which only
+       identifies the project folder. So <b>switching between Claude tabs/sessions inside the same project won't
+       change what's followed</b> (and won't re-flash) — if several live sessions share a project, it follows the
+       busiest one. Per-tab following isn't possible from the window alone: two sessions in one window share it, and
+       the Claude hooks give the daemon only a session id + folder, no per-session title to tell tabs apart.</p>
     <p><i>Advanced:</i> anything can also drive it directly by POSTing <code>{ session_id }</code> to
        <code>http://localhost:8123/agent/focus</code> (<code>null</code> clears it) — but you don't need to.</p>
   </div>
