@@ -64,7 +64,7 @@ function runFocusWindow(sessionId, opts) {
       if (fs.existsSync(cv)) {
         const a = ['-NoProfile', '-NonInteractive', '-WindowStyle', 'Hidden', '-ExecutionPolicy', 'Bypass', '-File', cv, '-ClaudePid', String(pid)];
         if (hint) a.push('-ProjectHint', String(hint));
-        require('child_process').spawn('powershell.exe', a, { stdio: 'ignore', windowsHide: true }).unref();
+        require('child_process').spawn('powershell.exe', a, { stdio: 'ignore' }).unref();   // match claude-view EXACTLY (no windowsHide/CREATE_NO_WINDOW) — -WindowStyle Hidden already hides the PS window; eliminates the one creation-flag difference from focus_window.rs
         log('👁 window-focus LIVE (claude-view focus-vscode.ps1) for "' + (hint || String(sessionId).slice(0, 8)) + '" pid=' + pid);
         return;
       }
