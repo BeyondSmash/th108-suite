@@ -58,10 +58,12 @@ function runFocusWindow(sessionId, opts) {
   try {
     const args = ['-NoProfile', '-NonInteractive', '-WindowStyle', 'Hidden', '-ExecutionPolicy', 'Bypass', '-File', path.join(__dirname, 'focus-window.ps1'), '-ClaudePid', String(pid)];
     if (hint) args.push('-ProjectHint', String(hint));
-    if (settings.focusDryRun) { args.push('-DryRun'); }   // SAFE default: resolve+log only, no side effects
-    else { if (opts.switch) args.push('-Switch'); if (opts.color && /^#[0-9a-f]{6}$/i.test(opts.color)) args.push('-FlashColor', opts.color); }
+    // HARD-LOCKED to dry-run. The live path repeatedly closed/hung the user's VSCode and the root cause is
+    // not yet found, so -Switch/-FlashColor are DELIBERATELY never passed — opts + settings.focusDryRun are
+    // intentionally ignored here. Re-enable only after the flash/focus is proven safe in isolation.
+    args.push('-DryRun');
     require('child_process').spawn('powershell.exe', args, { stdio: 'ignore', windowsHide: true }).unref();
-    log('👁 window-focus ' + (settings.focusDryRun ? '(DRY-RUN) ' : '') + 'for "' + (hint || String(sessionId).slice(0, 8)) + '" pid=' + pid + ' → see %TEMP%\\th108-focuswin.log');
+    log('👁 window-focus (DRY-RUN, hard-locked) for "' + (hint || String(sessionId).slice(0, 8)) + '" pid=' + pid + ' → %TEMP%\\th108-focuswin.log');
   } catch (_) { }
 }
 // A session firing a Notification = "needs you" → optionally bring its window to front + flash (global 2s cooldown so a burst can't window-thrash).
