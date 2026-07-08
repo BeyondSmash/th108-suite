@@ -52,18 +52,29 @@ function pidFromSessionFile(sessionId) {
 function runFocusWindow(sessionId, opts) {
   opts = opts || {};
   const pid = pidFromSessionFile(sessionId) || agentState.pidFor(sessionId);   // session file = exact pid; hook $PPID is the fallback
-  if (!pid) { log('👁 window-focus: no PID for session ' + String(sessionId).slice(0, 8) + ' yet (needs the $PPID hook + one hook event since restart)'); return; }
+  if (!pid) { log('👁 window-focus: no PID for session ' + String(sessionId).slice(0, 8) + ' yet'); return; }
   const sess = agentState.sessions(Date.now()).find(s => s.id === sessionId);
   const hint = sess ? sess.project : '';
   try {
-    const args = ['-NoProfile', '-NonInteractive', '-WindowStyle', 'Hidden', '-ExecutionPolicy', 'Bypass', '-File', path.join(__dirname, 'focus-window.ps1'), '-ClaudePid', String(pid)];
+    // LIVE only from the MANUAL button (opts.live) AND only when dry-run is off. It calls claude-view's OWN
+    // proven ~/bin/focus-vscode.ps1 EXACTLY as claude-view invokes it — the code that already works for the
+    // user — instead of our reinvented one. NEVER wired to the auto-triggers, so there is no cascade.
+    if (opts.live && !settings.focusDryRun) {
+      const cv = path.join(require('os').homedir(), 'bin', 'focus-vscode.ps1');
+      if (fs.existsSync(cv)) {
+        const a = ['-NoProfile', '-NonInteractive', '-WindowStyle', 'Hidden', '-ExecutionPolicy', 'Bypass', '-File', cv, '-ClaudePid', String(pid)];
+        if (hint) a.push('-ProjectHint', String(hint));
+        require('child_process').spawn('powershell.exe', a, { stdio: 'ignore', windowsHide: true }).unref();
+        log('👁 window-focus LIVE (claude-view focus-vscode.ps1) for "' + (hint || String(sessionId).slice(0, 8)) + '" pid=' + pid);
+        return;
+      }
+      log('👁 ~/bin/focus-vscode.ps1 not found — staying log-only');
+    }
+    // everything else (dry-run, or any AUTO trigger) → our log-only resolver, no side effects
+    const args = ['-NoProfile', '-NonInteractive', '-WindowStyle', 'Hidden', '-ExecutionPolicy', 'Bypass', '-File', path.join(__dirname, 'focus-window.ps1'), '-ClaudePid', String(pid), '-DryRun'];
     if (hint) args.push('-ProjectHint', String(hint));
-    // HARD-LOCKED to dry-run. The live path repeatedly closed/hung the user's VSCode and the root cause is
-    // not yet found, so -Switch/-FlashColor are DELIBERATELY never passed — opts + settings.focusDryRun are
-    // intentionally ignored here. Re-enable only after the flash/focus is proven safe in isolation.
-    args.push('-DryRun');
     require('child_process').spawn('powershell.exe', args, { stdio: 'ignore', windowsHide: true }).unref();
-    log('👁 window-focus (DRY-RUN, hard-locked) for "' + (hint || String(sessionId).slice(0, 8)) + '" pid=' + pid + ' → %TEMP%\\th108-focuswin.log');
+    log('👁 window-focus (dry-run) for "' + (hint || String(sessionId).slice(0, 8)) + '" pid=' + pid + ' → %TEMP%\\th108-focuswin.log');
   } catch (_) { }
 }
 // A session firing a Notification = "needs you" → optionally bring its window to front + flash (global 2s cooldown so a burst can't window-thrash).
@@ -1057,7 +1068,7 @@ const control = {
   agentEvent: (ev) => { agentState.ingest(ev, Date.now()); checkAttentionEdge(ev); },
   agentFocus: (id) => agentState.setFocus(id, Date.now()),   // external focus signal → the agent layer's 'focus' mode follows this session
   setFocusConfig: (o) => { o = o || {}; if (o.color && /^#[0-9a-f]{6}$/i.test(o.color)) settings.focusOutlineColor = o.color; if ('autoSwitch' in o) settings.focusAutoSwitch = !!o.autoSwitch; if ('outlineOnSwitch' in o) settings.focusOutlineOnSwitch = !!o.outlineOnSwitch; if ('dryRun' in o) settings.focusDryRun = !!o.dryRun; saveSettings(); },
-  focusWindowManual: (sessionId) => runFocusWindow(sessionId, { switch: true, color: settings.focusOutlineColor }),   // manual "bring this session's window to front + flash" (dry-run while settings.focusDryRun)
+  focusWindowManual: (sessionId) => runFocusWindow(sessionId, { live: true }),   // manual button → LIVE via claude-view's proven focus-vscode.ps1 (only path that ever goes live; dry-run toggle still gates it)
   agentSessions: () => agentState.sessions(Date.now()),
   getAutostart, setAutostart,
   // HID/now-playing diagnostics for /metrics — pairs with the server's per-endpoint rates
