@@ -1,36 +1,17 @@
-# focus-vscode.ps1 — Focus the VSCode window for a specific session, by its Claude PID.
-# Usage: focus-vscode.ps1 -ClaudePid <pid> [-ProjectHint <name>] [-Color '#f97316']
+# focus-vscode.ps1 — Focus a VSCode window and flash an edge-glow outline.
+# Usage: focus-vscode.ps1 -Hwnd <int64> [-Color '#f97316']                       (direct window handle — the window picker)
+#        focus-vscode.ps1 -ClaudePid <pid> [-ProjectHint <name>] [-Color '#f97316']  (walk a Claude PID → its VSCode window)
 #
-# Bundled, self-contained copy of the proven claude-view focus method (walk the Claude PID up to its parent
-# Code.exe window, then AttachThreadInput + SwitchToThisWindow to steal foreground past the Win11 lock). The
-# ONLY addition over claude-view's ~/bin/focus-vscode.ps1 is the optional -Color, passed to our OWN
-# focus-flash.ps1 (same folder) so the edge-glow matches the user's chosen outline color instead of a baked
-# orange. No dependency on claude-view being installed.
+# Bundled, self-contained copy of the proven claude-view focus method (AttachThreadInput + SwitchToThisWindow
+# to steal foreground past the Win11 lock). -Hwnd focuses an exact window (from list-vscode-windows.ps1);
+# -ClaudePid walks the process tree up to the session's parent Code.exe window. -Color is passed to our OWN
+# focus-flash.ps1 (same folder) so the glow matches the user's outline color. No dependency on claude-view.
 param(
     [int]$ClaudePid,
     [string]$ProjectHint = "",
-    [string]$Color = ""
+    [string]$Color = "",
+    [Int64]$Hwnd = 0
 )
-
-# Walk up from Claude PID, collect Code.exe ancestor PIDs.
-$codeAncestorPids = @()
-$current = $ClaudePid
-for ($i = 0; $i -lt 20; $i++) {
-    try {
-        $wmi = Get-CimInstance Win32_Process -Filter "ProcessId = $current" -ErrorAction Stop
-        $parentId = [int]$wmi.ParentProcessId
-        if ($parentId -eq 0 -or $parentId -eq $current) { break }
-        $parent = Get-Process -Id $parentId -ErrorAction Stop
-        if ($parent.Name -like "Code*") { $codeAncestorPids += $parentId }
-        $current = $parentId
-    } catch { break }
-}
-
-if ($codeAncestorPids.Count -eq 0) {
-    $codeAncestorPids = @(Get-Process -Name Code -ErrorAction SilentlyContinue |
-        Select-Object -ExpandProperty Id)
-}
-if ($codeAncestorPids.Count -eq 0) { Write-Error "No Code.exe found"; exit 1 }
 
 Add-Type @"
 using System;
@@ -108,24 +89,47 @@ public class WinFocus {
 }
 "@
 
-$pidArray = [int[]]$codeAncestorPids
-$windows = [WinFocus]::FindWindows($pidArray)
+if ($Hwnd -ne 0) {
+    # Direct-by-handle path (window picker): focus the exact window — no PID walk / enumeration needed.
+    $best = [IntPtr][Int64]$Hwnd
+} else {
+    # Walk up from the Claude PID, collecting Code.exe ancestor PIDs → the session's parent VSCode window.
+    $codeAncestorPids = @()
+    $current = $ClaudePid
+    for ($i = 0; $i -lt 20; $i++) {
+        try {
+            $wmi = Get-CimInstance Win32_Process -Filter "ProcessId = $current" -ErrorAction Stop
+            $parentId = [int]$wmi.ParentProcessId
+            if ($parentId -eq 0 -or $parentId -eq $current) { break }
+            $parent = Get-Process -Id $parentId -ErrorAction Stop
+            if ($parent.Name -like "Code*") { $codeAncestorPids += $parentId }
+            $current = $parentId
+        } catch { break }
+    }
+    if ($codeAncestorPids.Count -eq 0) {
+        $codeAncestorPids = @(Get-Process -Name Code -ErrorAction SilentlyContinue |
+            Select-Object -ExpandProperty Id)
+    }
+    if ($codeAncestorPids.Count -eq 0) { Write-Error "No Code.exe found"; exit 1 }
 
-if ($windows.Count -eq 0) { Write-Error "No visible VSCode windows found"; exit 1 }
+    $pidArray = [int[]]$codeAncestorPids
+    $windows = [WinFocus]::FindWindows($pidArray)
+    if ($windows.Count -eq 0) { Write-Error "No visible VSCode windows found"; exit 1 }
 
-# Pick the window matching the project hint, fall back to first VSCode window.
-$best = $null
-if ($ProjectHint) {
-    $best = $windows |
-        Where-Object { [WinFocus]::GetTitle($_) -like "*$ProjectHint*" } |
-        Select-Object -First 1
+    # Pick the window matching the project hint, fall back to first VSCode window.
+    $best = $null
+    if ($ProjectHint) {
+        $best = $windows |
+            Where-Object { [WinFocus]::GetTitle($_) -like "*$ProjectHint*" } |
+            Select-Object -First 1
+    }
+    if (-not $best) {
+        $best = $windows |
+            Where-Object { [WinFocus]::GetTitle($_) -like "*Visual Studio Code*" } |
+            Select-Object -First 1
+    }
+    if (-not $best) { $best = $windows[0] }
 }
-if (-not $best) {
-    $best = $windows |
-        Where-Object { [WinFocus]::GetTitle($_) -like "*Visual Studio Code*" } |
-        Select-Object -First 1
-}
-if (-not $best) { $best = $windows[0] }
 
 $r = [WinFocus]::FocusWindow($best)
 

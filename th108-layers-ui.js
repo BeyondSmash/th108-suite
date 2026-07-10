@@ -47,7 +47,9 @@
           liveAudioActive = opts.liveAudioActive || (()=>false),        // page hook: is real in-tab capture running? (Live preview blanks when not)
           listAgentSessions = opts.listAgentSessions || (()=>Promise.resolve([])), // page hook: fetch agentSessions from /status or /agent/sessions
           setFocusConfig = opts.setFocusConfig || noop,                 // page hook: POST outline color + auto-switch/outline-on-switch toggles
-          focusWindowFront = opts.focusWindowFront || noop;             // page hook: POST "bring this session's window to front + flash"
+          focusWindowFront = opts.focusWindowFront || noop,             // page hook: POST "bring this session's window to front + flash"
+          focusWindowByHwnd = opts.focusWindowByHwnd || noop,           // page hook: POST "focus this exact VSCode window by handle"
+          listVscodeWindows = opts.listVscodeWindows || (()=>Promise.resolve([]));  // page hook: fetch every open VSCode window (by title) for the picker
 
     // ----- persist full layer state (settings survive page refresh) -----
     let _slsT=0;
@@ -1151,13 +1153,8 @@
           // a saved pick that's no longer live (ended) → keep it visible + selected, parked in the Active column
           if(!followOn && cur!=='all' && !has){ const lbl=esc(s.sessionLabel||('session '+cur.slice(0,6)));
             selActive.insertAdjacentHTML('beforeend','<option value="'+escA(cur)+'" selected>'+lbl+' (ended)</option>'); }
-          // Window-focus picker — one option per WINDOW, not per session. Multiple Claude sessions (terminal
-          // tabs/chats) can share one VSCode window; they'd show as duplicate rows and all focus the same window.
-          // Focus targets a window by its workspace (project), so dedupe by project → one row per window.
-          if(winPick){ const wcur=winPick.value, seen={}, wins=[];
-            for(const ag of list){ const k=ag.project||ag.label||ag.id; if(seen[k]) continue; seen[k]=1; wins.push(ag); }
-            winPick.innerHTML='<option value="">↳ Followed / selected session</option>'+wins.map(ag=>'<option value="'+escA(ag.id)+'">'+esc(ag.project||ag.label||ag.id)+'</option>').join('');
-            if(wcur && wins.some(ag=>ag.id===wcur)) winPick.value=wcur; }   // dropped pick (window closed) falls back to the default option
+          // (window picker is populated separately from ACTUAL open VSCode windows — see fillWinPick below —
+          // not from live sessions, so an idle chat's window still lists)
           if(!noteTxt) return;
           setAgSymbol(_lastAgg);   // live agent phase (spinner / ✓ / ! / subagent count) next to the note — mirrors the keyboard
           if(followOn){   // show what focus is currently following (from the daemon's focusedSession)
@@ -1217,10 +1214,20 @@
         if(wcCol) wcCol.addEventListener('change',()=>setFocusConfig({color:wcCol.value}));
         { const wcColRst=c('.s-agOutlineReset'); if(wcColRst&&wcCol) wcColRst.addEventListener('click',()=>{ wcCol.value='#f97316'; wcCol.dispatchEvent(new Event('input',{bubbles:true})); setFocusConfig({color:'#f97316'}); }); }   // reset outline color to the default (dispatch input so attachHex syncs the hex TEXT box, not just the swatch)
         if(wcDry) wcDry.addEventListener('change',()=>setFocusConfig({dryRun:wcDry.checked}));
-        if(wcBf) wcBf.addEventListener('click',()=>{ const picked=winPick&&winPick.value;
-          const id = picked || ((s.session==='focus')?(_lastFocus&&_lastFocus.following):(s.session&&s.session!=='all'?s.session:null));
-          focusWindowFront(id||''); });   // explicit pick wins; else the followed/selected session → daemon resolves its pid → walks to the VSCode window
-        if(winPick) winPick.addEventListener('pointerdown',()=>{ listAgentSessions().then(fillSessionDrop).catch(()=>{}); });   // refresh the window list when opened (a just-started session lands on the next open)
+        // Window picker: populate from ACTUAL open VSCode windows (every window lists, even if its chat is idle
+        // and no longer tracked as a live session). Each option = one window (value=hwnd), so no duplicates and
+        // no "focuses the wrong window". Preserve the user's pick across refreshes by hwnd.
+        function fillWinPick(){ if(!winPick) return; return listVscodeWindows().then(wins=>{ if(!winPick) return;
+          wins = Array.isArray(wins) ? wins : [];
+          const wcur=winPick.value, escA=t=>String(t).replace(/&/g,'&amp;').replace(/"/g,'&quot;'), esc=t=>String(t).replace(/&/g,'&amp;').replace(/</g,'&lt;');
+          winPick.innerHTML='<option value="">↳ Followed / selected session</option>'+wins.map(w=>'<option value="'+w.hwnd+'" data-title="'+escA(w.title||'')+'">'+esc(w.label||w.title||w.hwnd)+'</option>').join('');
+          if(wcur && wins.some(w=>String(w.hwnd)===wcur)) winPick.value=wcur; }).catch(()=>{}); }
+        if(wcBf) wcBf.addEventListener('click',()=>{ const opt=winPick&&winPick.selectedOptions&&winPick.selectedOptions[0], hwnd=winPick&&winPick.value;
+          if(hwnd){ focusWindowByHwnd(hwnd, opt?opt.getAttribute('data-title'):''); return; }   // explicit window pick → focus that exact window by handle
+          const id = (s.session==='focus')?(_lastFocus&&_lastFocus.following):(s.session&&s.session!=='all'?s.session:null);   // else the followed/selected session
+          focusWindowFront(id||''); });
+        if(winPick) winPick.addEventListener('pointerdown',fillWinPick);   // refresh the window list when opened (a just-opened window lands on the next open)
+        fillWinPick();   // populate on card open
         // Twinkle-region paint board (same API as individual layer)
         let pb=null, pbWrap=null;
         const regionKeys={};   // idx→color source the board draws from; hoisted so Random can rewrite it live (pb.draw reads it fresh)

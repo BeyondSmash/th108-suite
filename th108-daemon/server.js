@@ -241,10 +241,12 @@ function createServer({ control, root, port = 8123, watchdogMs = 12000 }) {
         if (control.setFocusConfig) control.setFocusConfig(body);
         return sendJson(res, 204, {});
       }
-      if (req.method === 'POST' && u === '/agent/focus-window') {   // manual: bring a session's window to front + flash
+      if (req.method === 'GET' && u === '/agent/windows') return sendJson(res, 200, { windows: control.listVscodeWindows ? await control.listVscodeWindows() : [] });   // every open VSCode window for the picker
+      if (req.method === 'POST' && u === '/agent/focus-window') {   // manual: bring a window to front + flash — by exact hwnd (picker) or by session (followed/selected)
         const b = await readBody(req); let body;
         try { body = JSON.parse(b || '{}'); } catch { return sendJson(res, 400, { error: 'bad json' }); }
-        if (control.focusWindowManual) control.focusWindowManual(body.session_id || body.project || '');
+        if (body.hwnd && control.focusWindowByHwnd) control.focusWindowByHwnd(body.hwnd, body.title || '');
+        else if (control.focusWindowManual) control.focusWindowManual(body.session_id || body.project || '');
         return sendJson(res, 204, {});
       }
       if (req.method === 'GET' && u === '/agent/sessions') return sendJson(res, 200, { sessions: control.agentSessions ? control.agentSessions() : [] });

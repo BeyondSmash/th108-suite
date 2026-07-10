@@ -79,6 +79,54 @@ function runFocusWindow(sessionId, opts) {
     log('👁 window-focus (dry-run) for "' + (hint || String(sessionId).slice(0, 8)) + '" pid=' + pid + ' → %TEMP%\\th108-focuswin.log');
   } catch (_) { }
 }
+// Focus a window directly by its HWND (the window picker lists every open VSCode window, not just live
+// sessions, so there's no session pid to walk — we already have the exact handle). Same proven script/flash.
+function runFocusWindowByHwnd(hwnd, title, opts) {
+  opts = opts || {};
+  hwnd = Number(hwnd) || 0;
+  if (!hwnd) { log('👁 window-focus: no hwnd given'); return; }
+  try {
+    if (opts.live && !settings.focusDryRun) {
+      const cv = path.join(__dirname, 'focus-vscode.ps1');
+      if (fs.existsSync(cv)) {
+        const a = ['-NoProfile', '-NonInteractive', '-WindowStyle', 'Hidden', '-ExecutionPolicy', 'Bypass', '-File', cv, '-Hwnd', String(hwnd)];
+        if (settings.focusOutlineColor) a.push('-Color', String(settings.focusOutlineColor));
+        require('child_process').spawn('powershell.exe', a, { stdio: 'ignore' }).unref();
+        log('👁 window-focus LIVE (by hwnd) "' + (title || hwnd) + '" hwnd=' + hwnd + ' color=' + (settings.focusOutlineColor || '-'));
+        return;
+      }
+      log('👁 focus-vscode.ps1 not found — staying log-only');
+    }
+    log('👁 window-focus (dry-run) by hwnd "' + (title || hwnd) + '" hwnd=' + hwnd);   // dry-run: nothing to resolve, just note it
+  } catch (_) { }
+}
+// Derive a legible window label from a VSCode title: "file - Folder - Visual Studio Code" → "Folder".
+function vscWinLabel(title) {
+  const t = String(title || '').replace(/\s*[-–—]\s*Visual Studio Code\s*$/i, '').trim();
+  const parts = t.split(/\s+[-–—]\s+/);
+  return (parts[parts.length - 1] || t).trim() || 'VSCode';
+}
+// Enumerate every OPEN VSCode window (list-vscode-windows.ps1), independent of Claude sessions. Cached ~2s
+// because the picker re-polls each time it's opened.
+let _vscWinCache = { at: 0, list: [] };
+function listVscodeWindows() {
+  return new Promise(resolve => {
+    if (Date.now() - _vscWinCache.at < 2000) return resolve(_vscWinCache.list);
+    const script = path.join(__dirname, 'list-vscode-windows.ps1');
+    try {
+      const proc = _spawn('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', script], { windowsHide: true });
+      let out = ''; if (proc.stdout) proc.stdout.on('data', d => out += d);
+      proc.on('close', () => {
+        let arr = []; try { const j = JSON.parse(out.trim() || '[]'); arr = Array.isArray(j) ? j : [j]; } catch { arr = []; }
+        const list = arr.filter(w => w && w.hwnd).map(w => ({ hwnd: w.hwnd, title: w.title || '', label: vscWinLabel(w.title) }));
+        _vscWinCache = { at: Date.now(), list };
+        resolve(list);
+      });
+      proc.on('error', () => resolve(_vscWinCache.list));
+      setTimeout(() => { try { proc.kill(); } catch { } resolve(_vscWinCache.list); }, 6000);
+    } catch { resolve(_vscWinCache.list); }
+  });
+}
 // A session firing a Notification = "needs you" → optionally bring its window to front + flash (global 2s cooldown so a burst can't window-thrash).
 let _lastAutoSwitchAt = 0;
 function checkAttentionEdge(ev) {
@@ -1071,6 +1119,8 @@ const control = {
   agentFocus: (id) => agentState.setFocus(id, Date.now()),   // external focus signal → the agent layer's 'focus' mode follows this session
   setFocusConfig: (o) => { o = o || {}; if (o.color && /^#[0-9a-f]{6}$/i.test(o.color)) settings.focusOutlineColor = o.color; if ('autoSwitch' in o) settings.focusAutoSwitch = !!o.autoSwitch; if ('outlineOnSwitch' in o) settings.focusOutlineOnSwitch = !!o.outlineOnSwitch; if ('dryRun' in o) settings.focusDryRun = !!o.dryRun; saveSettings(); },
   focusWindowManual: (sessionId) => runFocusWindow(sessionId, { live: true }),   // manual button → LIVE via claude-view's proven focus-vscode.ps1 (only path that ever goes live; dry-run toggle still gates it)
+  focusWindowByHwnd: (hwnd, title) => runFocusWindowByHwnd(hwnd, title, { live: true }),   // window picker → focus an exact VSCode window by handle (dry-run toggle still gates it)
+  listVscodeWindows,   // every open VSCode window (by title), for the window picker — independent of chat activity
   agentSessions: () => agentState.sessions(Date.now()),
   getAutostart, setAutostart,
   // HID/now-playing diagnostics for /metrics — pairs with the server's per-endpoint rates
