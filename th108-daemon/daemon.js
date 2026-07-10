@@ -56,19 +56,21 @@ function runFocusWindow(sessionId, opts) {
   const sess = agentState.sessions(Date.now()).find(s => s.id === sessionId);
   const hint = sess ? sess.project : '';
   try {
-    // LIVE only from the MANUAL button (opts.live) AND only when dry-run is off. It calls claude-view's OWN
-    // proven ~/bin/focus-vscode.ps1 EXACTLY as claude-view invokes it — the code that already works for the
-    // user — instead of our reinvented one. NEVER wired to the auto-triggers, so there is no cascade.
+    // LIVE only from the MANUAL button (opts.live) AND only when dry-run is off. It calls our BUNDLED
+    // focus-vscode.ps1 — a verbatim copy of claude-view's proven focus method (the code that already works
+    // for the user), self-contained in this folder, plus -Color so the edge-glow matches the user's outline
+    // color. NEVER wired to the auto-triggers, so there is no cascade.
     if (opts.live && !settings.focusDryRun) {
-      const cv = path.join(require('os').homedir(), 'bin', 'focus-vscode.ps1');
+      const cv = path.join(__dirname, 'focus-vscode.ps1');
       if (fs.existsSync(cv)) {
         const a = ['-NoProfile', '-NonInteractive', '-WindowStyle', 'Hidden', '-ExecutionPolicy', 'Bypass', '-File', cv, '-ClaudePid', String(pid)];
         if (hint) a.push('-ProjectHint', String(hint));
-        require('child_process').spawn('powershell.exe', a, { stdio: 'ignore' }).unref();   // match claude-view EXACTLY (no windowsHide/CREATE_NO_WINDOW) — -WindowStyle Hidden already hides the PS window; eliminates the one creation-flag difference from focus_window.rs
-        log('👁 window-focus LIVE (claude-view focus-vscode.ps1) for "' + (hint || String(sessionId).slice(0, 8)) + '" pid=' + pid);
+        if (settings.focusOutlineColor) a.push('-Color', String(settings.focusOutlineColor));
+        require('child_process').spawn('powershell.exe', a, { stdio: 'ignore' }).unref();   // match claude-view invocation (no windowsHide/CREATE_NO_WINDOW) — -WindowStyle Hidden already hides the PS window
+        log('👁 window-focus LIVE (bundled focus-vscode.ps1) for "' + (hint || String(sessionId).slice(0, 8)) + '" pid=' + pid + ' color=' + (settings.focusOutlineColor || '-'));
         return;
       }
-      log('👁 ~/bin/focus-vscode.ps1 not found — staying log-only');
+      log('👁 focus-vscode.ps1 not found — staying log-only');
     }
     // everything else (dry-run, or any AUTO trigger) → our log-only resolver, no side effects
     const args = ['-NoProfile', '-NonInteractive', '-WindowStyle', 'Hidden', '-ExecutionPolicy', 'Bypass', '-File', path.join(__dirname, 'focus-window.ps1'), '-ClaudePid', String(pid), '-DryRun'];
