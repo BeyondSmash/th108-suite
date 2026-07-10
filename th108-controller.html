@@ -2357,6 +2357,8 @@ document.getElementById('importFile').addEventListener('change',async e=>{
   try{
     const arr=JSON.parse(await f.text());
     if(!Array.isArray(arr)) throw new Error('file is not a layer array');
+    // confirm AFTER a successful parse (so we only prompt on a valid file) — Import replaces the whole current setup
+    if(!confirm('Import '+arr.length+' layer'+(arr.length===1?'':'s')+' from "'+f.name+'"?\n\nThis REPLACES your current layer setup and reloads the page. Your media Library and saved Profiles are kept.')){ e.target.value=''; return; }
     localStorage.setItem('th108_layers', JSON.stringify(arr));
     if(!(window.TH108Defaults && TH108Defaults.isDefaultsMode())) DC.pushConfig();   // sandbox: don't push scratch to the daemon
     log('imported '+arr.length+' layers — reloading…','ok');
