@@ -1120,7 +1120,7 @@
         const c=q=>body.querySelector(q);
         // Color pickers + per-color ↺ reset to default
         ['twinkleColor','spinColor','checkColor','bangColor'].forEach(key=>{ const el=c('.s-'+key); if(el) el.addEventListener('input',e=>{ s[key]=e.target.value; scheduleSaveLayers(); }); });
-        body.querySelectorAll('.s-agColReset').forEach(b=>b.addEventListener('click',()=>{ const key=b.dataset.key, def=AG_COLOR_DEF[key]; if(!def) return; s[key]=def; const el=c('.s-'+key); if(el) el.value=def; scheduleSaveLayers(); }));
+        body.querySelectorAll('.s-agColReset').forEach(b=>b.addEventListener('click',()=>{ const key=b.dataset.key, def=AG_COLOR_DEF[key]; if(!def) return; s[key]=def; const el=c('.s-'+key); if(el){ el.value=def; el.dispatchEvent(new Event('input',{bubbles:true})); } scheduleSaveLayers(); }));   // dispatch input so attachHex syncs the hex TEXT box (was stale until a refresh)
         // Session filter — follow-focus checkbox + two selects (Active | Idle)
         const selActive=c('.s-agSessionActive'), selIdle=c('.s-agSessionIdle'), sessNote=c('.s-agSessionNote'), noteTxt=c('.s-agNoteTxt'), agSymbol=c('.s-agSymbol'), follow=c('.s-agFollowFocus'), winPick=c('.s-agWinPick');
         let _lastSessions=[], _lastFocus=null, _lastFollowId=null, _lastAgg=null, _lastFcfg=null;   // _lastFocus = focusedSession {id,fresh,following}; _lastFollowId = last note session (pulse on a SWITCH); _lastAgg = live agent aggregate (drives the phase symbol); _lastFcfg = window-focus config (color + toggles)
@@ -1215,7 +1215,7 @@
         if(wcAu) wcAu.addEventListener('change',()=>setFocusConfig({autoSwitch:wcAu.checked}));
         if(wcOs) wcOs.addEventListener('change',()=>setFocusConfig({outlineOnSwitch:wcOs.checked}));
         if(wcCol) wcCol.addEventListener('change',()=>setFocusConfig({color:wcCol.value}));
-        { const wcColRst=c('.s-agOutlineReset'); if(wcColRst&&wcCol) wcColRst.addEventListener('click',()=>{ wcCol.value='#f97316'; setFocusConfig({color:'#f97316'}); }); }   // reset outline color to the default
+        { const wcColRst=c('.s-agOutlineReset'); if(wcColRst&&wcCol) wcColRst.addEventListener('click',()=>{ wcCol.value='#f97316'; wcCol.dispatchEvent(new Event('input',{bubbles:true})); setFocusConfig({color:'#f97316'}); }); }   // reset outline color to the default (dispatch input so attachHex syncs the hex TEXT box, not just the swatch)
         if(wcDry) wcDry.addEventListener('change',()=>setFocusConfig({dryRun:wcDry.checked}));
         if(wcBf) wcBf.addEventListener('click',()=>{ const picked=winPick&&winPick.value;
           const id = picked || ((s.session==='focus')?(_lastFocus&&_lastFocus.following):(s.session&&s.session!=='all'?s.session:null));
