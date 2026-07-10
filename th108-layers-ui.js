@@ -1104,7 +1104,7 @@
           +'<label class="sl" style="margin:0;justify-content:center" title="When a session needs you (the ! state), bring its VSCode window to the front and flash the outline. Windows only."><input type="checkbox" class="s-agAutoSwitch"> Bring window forward when a session needs you</label>'
           +'<label class="sl" style="margin:0;justify-content:center" title="Flash the color outline on a session’s monitor when focus switches to it — no window-stealing."><input type="checkbox" class="s-agOutlineSwitch"> Flash outline when focus switches</label>'
           +'<div style="display:flex;align-items:center;justify-content:center;gap:8px;margin-top:2px"><span style="font-size:12px;color:var(--muted);white-space:nowrap">Focus window</span><select class="s-agWinPick" title="Pick a specific session’s VSCode window to bring to front. Leave on the default to use whichever session the layer is following/selected." style="flex:1;max-width:230px"><option value="">↳ Followed / selected session</option></select></div>'
-          +'<div style="display:flex;align-items:center;justify-content:center;gap:9px;margin-top:2px"><span style="font-size:12px;color:var(--muted)">Outline color</span><input type="color" class="s-agOutlineColor" value="#f97316" style="width:34px;height:24px;padding:0;border:none;background:none;cursor:pointer"><button type="button" class="s-agBringFront" title="Bring the chosen (or followed/selected) session’s VSCode window to the front + flash the outline">⤒ Bring window to front</button></div></div>');
+          +'<div style="display:flex;align-items:center;justify-content:center;gap:9px;margin-top:2px"><span style="font-size:12px;color:var(--muted)">Outline color</span><input type="color" class="s-agOutlineColor" value="#f97316" style="width:34px;height:24px;padding:0;border:none;background:none;cursor:pointer"><button type="button" class="sreset s-agOutlineReset" title="Reset outline color to the default (#F97316)">↺</button><button type="button" class="s-agBringFront" title="Bring the chosen (or followed/selected) session’s VSCode window to the front + flash the outline">⤒ Bring window to front</button></div></div>');
         body.innerHTML='<div class="ctl">'+
           sec('Colors')+colorRows+
           sec('Session')+sessionRow+kbPreviewRow+windowRow+
@@ -1147,10 +1147,13 @@
           // a saved pick that's no longer live (ended) → keep it visible + selected, parked in the Active column
           if(!followOn && cur!=='all' && !has){ const lbl=esc(s.sessionLabel||('session '+cur.slice(0,6)));
             selActive.insertAdjacentHTML('beforeend','<option value="'+escA(cur)+'" selected>'+lbl+' (ended)</option>'); }
-          // Window-focus picker — one option per live session (each = one VSCode window). Preserve the user's pick across refreshes.
-          if(winPick){ const wcur=winPick.value;
-            winPick.innerHTML='<option value="">↳ Followed / selected session</option>'+list.map(ag=>'<option value="'+escA(ag.id)+'">'+esc(ag.label||ag.id)+'</option>').join('');
-            if(wcur && list.some(ag=>ag.id===wcur)) winPick.value=wcur; }   // dropped pick (window closed) falls back to the default option
+          // Window-focus picker — one option per WINDOW, not per session. Multiple Claude sessions (terminal
+          // tabs/chats) can share one VSCode window; they'd show as duplicate rows and all focus the same window.
+          // Focus targets a window by its workspace (project), so dedupe by project → one row per window.
+          if(winPick){ const wcur=winPick.value, seen={}, wins=[];
+            for(const ag of list){ const k=ag.project||ag.label||ag.id; if(seen[k]) continue; seen[k]=1; wins.push(ag); }
+            winPick.innerHTML='<option value="">↳ Followed / selected session</option>'+wins.map(ag=>'<option value="'+escA(ag.id)+'">'+esc(ag.project||ag.label||ag.id)+'</option>').join('');
+            if(wcur && wins.some(ag=>ag.id===wcur)) winPick.value=wcur; }   // dropped pick (window closed) falls back to the default option
           if(!noteTxt) return;
           setAgSymbol(_lastAgg);   // live agent phase (spinner / ✓ / ! / subagent count) next to the note — mirrors the keyboard
           if(followOn){   // show what focus is currently following (from the daemon's focusedSession)
@@ -1208,6 +1211,7 @@
         if(wcAu) wcAu.addEventListener('change',()=>setFocusConfig({autoSwitch:wcAu.checked}));
         if(wcOs) wcOs.addEventListener('change',()=>setFocusConfig({outlineOnSwitch:wcOs.checked}));
         if(wcCol) wcCol.addEventListener('change',()=>setFocusConfig({color:wcCol.value}));
+        { const wcColRst=c('.s-agOutlineReset'); if(wcColRst&&wcCol) wcColRst.addEventListener('click',()=>{ wcCol.value='#f97316'; setFocusConfig({color:'#f97316'}); }); }   // reset outline color to the default
         if(wcDry) wcDry.addEventListener('change',()=>setFocusConfig({dryRun:wcDry.checked}));
         if(wcBf) wcBf.addEventListener('click',()=>{ const picked=winPick&&winPick.value;
           const id = picked || ((s.session==='focus')?(_lastFocus&&_lastFocus.following):(s.session&&s.session!=='all'?s.session:null));
