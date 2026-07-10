@@ -1103,7 +1103,8 @@
           +'<label class="sl" style="margin:0;justify-content:center;color:var(--warn,#e0a200)" title="While checked, the ⤒ button only RESOLVES + LOGS the target window (safe, %TEMP%\\th108-focuswin.log). Uncheck to let the button actually focus the window — it runs claude-view\'s own proven ~/bin/focus-vscode.ps1 (the code that already works for you), manual-only, never auto."><input type="checkbox" class="s-agDryRun" checked> Dry-run (log only) — uncheck to focus live via claude-view’s script</label>'
           +'<label class="sl" style="margin:0;justify-content:center" title="When a session needs you (the ! state), bring its VSCode window to the front and flash the outline. Windows only."><input type="checkbox" class="s-agAutoSwitch"> Bring window forward when a session needs you</label>'
           +'<label class="sl" style="margin:0;justify-content:center" title="Flash the color outline on a session’s monitor when focus switches to it — no window-stealing."><input type="checkbox" class="s-agOutlineSwitch"> Flash outline when focus switches</label>'
-          +'<div style="display:flex;align-items:center;justify-content:center;gap:9px;margin-top:2px"><span style="font-size:12px;color:var(--muted)">Outline color</span><input type="color" class="s-agOutlineColor" value="#f97316" style="width:34px;height:24px;padding:0;border:none;background:none;cursor:pointer"><button type="button" class="s-agBringFront" title="Bring the followed/selected session’s VSCode window to the front + flash the outline">⤒ Bring window to front</button></div></div>');
+          +'<div style="display:flex;align-items:center;justify-content:center;gap:8px;margin-top:2px"><span style="font-size:12px;color:var(--muted);white-space:nowrap">Focus window</span><select class="s-agWinPick" title="Pick a specific session’s VSCode window to bring to front. Leave on the default to use whichever session the layer is following/selected." style="flex:1;max-width:230px"><option value="">↳ Followed / selected session</option></select></div>'
+          +'<div style="display:flex;align-items:center;justify-content:center;gap:9px;margin-top:2px"><span style="font-size:12px;color:var(--muted)">Outline color</span><input type="color" class="s-agOutlineColor" value="#f97316" style="width:34px;height:24px;padding:0;border:none;background:none;cursor:pointer"><button type="button" class="s-agBringFront" title="Bring the chosen (or followed/selected) session’s VSCode window to the front + flash the outline">⤒ Bring window to front</button></div></div>');
         body.innerHTML='<div class="ctl">'+
           sec('Colors')+colorRows+
           sec('Session')+sessionRow+kbPreviewRow+windowRow+
@@ -1117,7 +1118,7 @@
         ['twinkleColor','spinColor','checkColor','bangColor'].forEach(key=>{ const el=c('.s-'+key); if(el) el.addEventListener('input',e=>{ s[key]=e.target.value; scheduleSaveLayers(); }); });
         body.querySelectorAll('.s-agColReset').forEach(b=>b.addEventListener('click',()=>{ const key=b.dataset.key, def=AG_COLOR_DEF[key]; if(!def) return; s[key]=def; const el=c('.s-'+key); if(el) el.value=def; scheduleSaveLayers(); }));
         // Session filter — follow-focus checkbox + two selects (Active | Idle)
-        const selActive=c('.s-agSessionActive'), selIdle=c('.s-agSessionIdle'), sessNote=c('.s-agSessionNote'), noteTxt=c('.s-agNoteTxt'), agSymbol=c('.s-agSymbol'), follow=c('.s-agFollowFocus');
+        const selActive=c('.s-agSessionActive'), selIdle=c('.s-agSessionIdle'), sessNote=c('.s-agSessionNote'), noteTxt=c('.s-agNoteTxt'), agSymbol=c('.s-agSymbol'), follow=c('.s-agFollowFocus'), winPick=c('.s-agWinPick');
         let _lastSessions=[], _lastFocus=null, _lastFollowId=null, _lastAgg=null, _lastFcfg=null;   // _lastFocus = focusedSession {id,fresh,following}; _lastFollowId = last note session (pulse on a SWITCH); _lastAgg = live agent aggregate (drives the phase symbol); _lastFcfg = window-focus config (color + toggles)
         // Derive the current agent PHASE from the daemon's aggregate — the same priority the keyboard renders.
         function agPhase(a){ if(!a) return null; if(a.attention) return 'bang'; if(a.busy) return 'busy'; if(a.checkmarkAt && Date.now()-a.checkmarkAt < 4000) return 'check'; if(a.subagentCount>0) return 'subs'; return null; }   // priority attention > busy > checkmark > subs. Check window 4s (NOT the keyboard's 1s): the site only sees the aggregate on the ~2.5s /status poll, so a 1s window is usually MISSED between polls — a wider one lets a poll reliably catch the checkmark (the keyboard renders every frame so it keeps the real 1s).
@@ -1146,6 +1147,10 @@
           // a saved pick that's no longer live (ended) → keep it visible + selected, parked in the Active column
           if(!followOn && cur!=='all' && !has){ const lbl=esc(s.sessionLabel||('session '+cur.slice(0,6)));
             selActive.insertAdjacentHTML('beforeend','<option value="'+escA(cur)+'" selected>'+lbl+' (ended)</option>'); }
+          // Window-focus picker — one option per live session (each = one VSCode window). Preserve the user's pick across refreshes.
+          if(winPick){ const wcur=winPick.value;
+            winPick.innerHTML='<option value="">↳ Followed / selected session</option>'+list.map(ag=>'<option value="'+escA(ag.id)+'">'+esc(ag.label||ag.id)+'</option>').join('');
+            if(wcur && list.some(ag=>ag.id===wcur)) winPick.value=wcur; }   // dropped pick (window closed) falls back to the default option
           if(!noteTxt) return;
           setAgSymbol(_lastAgg);   // live agent phase (spinner / ✓ / ! / subagent count) next to the note — mirrors the keyboard
           if(followOn){   // show what focus is currently following (from the daemon's focusedSession)
@@ -1204,7 +1209,10 @@
         if(wcOs) wcOs.addEventListener('change',()=>setFocusConfig({outlineOnSwitch:wcOs.checked}));
         if(wcCol) wcCol.addEventListener('change',()=>setFocusConfig({color:wcCol.value}));
         if(wcDry) wcDry.addEventListener('change',()=>setFocusConfig({dryRun:wcDry.checked}));
-        if(wcBf) wcBf.addEventListener('click',()=>{ const id=(s.session==='focus')?(_lastFocus&&_lastFocus.following):(s.session&&s.session!=='all'?s.session:null); focusWindowFront(id||''); });   // pass the session id → daemon resolves its pid → walks to the VSCode window
+        if(wcBf) wcBf.addEventListener('click',()=>{ const picked=winPick&&winPick.value;
+          const id = picked || ((s.session==='focus')?(_lastFocus&&_lastFocus.following):(s.session&&s.session!=='all'?s.session:null));
+          focusWindowFront(id||''); });   // explicit pick wins; else the followed/selected session → daemon resolves its pid → walks to the VSCode window
+        if(winPick) winPick.addEventListener('pointerdown',()=>{ listAgentSessions().then(fillSessionDrop).catch(()=>{}); });   // refresh the window list when opened (a just-started session lands on the next open)
         // Twinkle-region paint board (same API as individual layer)
         let pb=null, pbWrap=null;
         const regionKeys={};   // idx→color source the board draws from; hoisted so Random can rewrite it live (pb.draw reads it fresh)
