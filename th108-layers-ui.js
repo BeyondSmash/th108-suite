@@ -627,7 +627,7 @@
           full('<span style="display:grid;grid-template-columns:auto auto;gap:7px 24px;justify-content:center;flex:1 1 100%">'+srcBubbles+'</span>')+
           full('<span class="val s-srcNow" style="opacity:.8;flex:1 1 100%;text-align:center;font-size:12px;min-height:1em"></span>')+   // "▶ what's playing" (tab/mic = shared-tab title; + a hint when this tab isn't driving the keyboard)
           full('<span class="val" style="opacity:.55;flex:1 1 100%;text-align:center;font-size:12px;line-height:1.4">Specific Tab &amp; Mic / Line-in are captured in this page (reliable mic pick) — they show on the keyboard while this site is open AND driving it. System Audio &amp; Specific App run in the daemon (work with this page closed); Mic also has a daemon fallback for when the tab is closed (pick its device below).</span>')+   // centered note: capture-location gotcha + mic page/daemon split
-          (s.source==='app' ? sub('Specific App')+full(centerAside('<select class="s-appId" style="max-width:180px"></select>', '<button type="button" class="s-appRefresh" title="Rescan currently-playing apps" style="flex:none">Refresh</button><span class="val s-appNote" style="opacity:.7"></span>')) : '')+
+          (s.source==='app' ? sub('Specific App')+full(centerAside('<select class="s-appId" style="max-width:180px"></select>', '<button type="button" class="s-appRefresh" title="Rescan currently-playing apps" style="flex:none">Refresh</button>'))+full('<span class="val s-appNote" style="opacity:.7;flex:1 1 100%;text-align:center;font-size:12px;min-height:1em"></span>') : '')+   // note on its own centered line UNDER the dropdown+Refresh (was floated to the right of Refresh)
           (s.source==='mic' ? sub('Mic Input')+
             row('Device',centerAside('<select class="s-micDev" style="max-width:200px;padding-right:24px"><option value="">— Default Recording Device —</option></select>', '<button type="button" class="s-micDevRefresh" title="Rescan recording devices" style="flex:none">⟳</button>'))+
             full('<span class="val" style="opacity:.55;flex:1 1 100%;text-align:center;font-size:11px;line-height:1.4">Which mic the DAEMON captures when this tab is CLOSED (the default endpoint is often silent). While the tab drives, your browser-picked mic is used instead.</span>')+
@@ -759,7 +759,7 @@
             (apps||[]).filter(a=>a&&a.name && !HIDE_APPS.has(a.name.toLowerCase().replace(/\.exe$/,''))).forEach(a=>{ if(a.name===cur) has=true; optsHtml.push('<option value="'+esc(a.name)+'"'+(a.name===cur?' selected':'')+'>'+esc(cap(a.name))+'</option>'); });
             if(cur && !has) optsHtml.push('<option value="'+esc(cur)+'" selected>'+esc(cap(cur))+' (idle)</option>');   // keep the saved pick visible
             sel.innerHTML=optsHtml.join('');
-            if(note) note.textContent=(apps&&apps.length)?'':'nothing playing — start audio, then ⟳'; };
+            if(note) note.textContent=(apps&&apps.length)?'':'Nothing playing — start audio, then ⟳'; };
           const load=()=>{ if(note) note.textContent='scanning…'; Promise.resolve(opts.listAudioApps && opts.listAudioApps()).then(a=>fill(a||[])).catch(()=>{ if(note) note.textContent='(daemon not running — start it to list apps)'; fill([]); }); };
           if(sel) sel.addEventListener('change',e=>{ s.appId=e.target.value; });   // panel 'change' listener pushes config → daemon (re)starts app capture
           if(rf) rf.addEventListener('click',load);
@@ -1005,11 +1005,15 @@
             peek.style.left=Math.round(left)+'px'; };
           // insert the duplicate INLINE right after the section header nearest the top of the view (what you're tuning)
           const showDup=(skipScroll)=>{ L._livePeekOpen=true; const aim=window.innerHeight*0.16; let best=null, bd=1e9;
-            card.querySelectorAll('.lsec,.lsub').forEach(sc=>{ const t=sc.getBoundingClientRect().top; if(Math.abs(t-aim)<bd){ bd=Math.abs(t-aim); best=sc; } });
+            // Only anchor to sections CURRENTLY IN VIEW → the duplicate always lands in the visible area near your
+            // work, never above the fold. (Anchoring off-screen-above + block:'center' used to scroll UP to the
+            // original inline preview, which then auto-hid the duplicate — the "scrolls me back to the original" bug.)
+            card.querySelectorAll('.lsec,.lsub').forEach(sc=>{ const t=sc.getBoundingClientRect().top; if(t<8||t>window.innerHeight-40) return;
+              if(Math.abs(t-aim)<bd){ bd=Math.abs(t-aim); best=sc; } });
             const sbody = best && best.closest('.lsecbox') && best.closest('.lsecbox').querySelector('.lsecbody');
             if(sbody) sbody.insertBefore(dup, sbody.firstChild);   // INSIDE the section's boxed body so the dup respects the box padding/border (was landing between header and body → broke out of the box)
             else if(best && best.parentNode) best.insertAdjacentElement('afterend', dup); else body.appendChild(dup);
-            if(!skipScroll) requestAnimationFrame(()=>{ try{ dup.scrollIntoView({behavior:'smooth', block:'center'}); }catch(_){ } });   // lerp-scroll to the new second/lower live preview (skipped on a rebuild-restore so a toggle doesn't yank the scroll)
+            if(!skipScroll) requestAnimationFrame(()=>{ const dr=dup.getBoundingClientRect(); if(dr.top<0||dr.bottom>window.innerHeight){ try{ dup.scrollIntoView({behavior:'smooth', block:'nearest'}); }catch(_){ } } });   // scroll ONLY if the duplicate isn't already fully visible, and 'nearest' so it never yanks upward past the original
             peekBtn.textContent='Hide'; };
           const hideDup=()=>{ L._livePeekOpen=false; if(dup.parentNode) dup.parentNode.removeChild(dup); peekBtn.textContent='Show'; };
           const fadePill=(on)=>{ peek.style.opacity=on?'1':'0'; peek.style.pointerEvents=on?'auto':'none'; pillVisible=on; };   // 250ms via the CSS transition
