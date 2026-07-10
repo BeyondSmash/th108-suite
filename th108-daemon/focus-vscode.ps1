@@ -137,7 +137,7 @@ try {
     if (Test-Path $flashScript) {
         $flashArgs = @(
             "-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden",
-            "-STA", "-ExecutionPolicy", "Bypass", "-File", $flashScript,
+            "-STA", "-ExecutionPolicy", "Bypass", "-File", ('"' + $flashScript + '"'),   # QUOTE the path — it lives under "…\Epomaker Project\…" (spaces); Start-Process -ArgumentList won't auto-quote it, so an unquoted path splits and the child can't find the script
             "-Hwnd", $best.ToInt64()
         )
         if ($Color) { $flashArgs += @("-Color", $Color) }
