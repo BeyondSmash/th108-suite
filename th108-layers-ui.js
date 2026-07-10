@@ -1222,6 +1222,40 @@
         const regionKeys={};   // idx→color source the board draws from; hoisted so Random can rewrite it live (pb.draw reads it fresh)
         const updRegCount=()=>{ const el=c('.s-agRegCount'); if(el) el.textContent = pb ? (pb.selCount()+' keys selected') : (Array.isArray(s.twinkleKeys)&&s.twinkleKeys.length ? s.twinkleKeys.length+' custom keys' : 'A–Z (26 keys)'); };
         updRegCount();
+        // Connector: the twinkle-region board mounts at the TOP of the grid, far from these controls. Draw an
+        // elbow line (in the twinkle color) from the "Twinkle Region" section box out to the board so the user
+        // can see which preview the controls drive. Lives on document.body (absolute, page coords) so it spans
+        // across the compositor; recomputed on scroll/resize while the board is open, removed when it closes.
+        let _twConn=null, _twConnTimer=0;
+        const twAnchorEl=()=> body.querySelector('.lsecbox[data-sec="twinkle-region"]') || c('.s-agShowkb');
+        function twConnUpdate(){
+          if(!pbWrap || !document.body.contains(pbWrap) || !document.body.contains(body)){ twConnHide(); return; }   // board or its card gone (e.g. card rebuilt) → self-heal
+          const ctrl=twAnchorEl(); if(!ctrl) return;
+          if(!_twConn){ _twConn=document.createElementNS('http://www.w3.org/2000/svg','svg');
+            _twConn.setAttribute('class','tw-connector');
+            _twConn.style.cssText='position:absolute;left:0;top:0;pointer-events:none;z-index:30;overflow:visible;opacity:.85';
+            _twConn.innerHTML='<path fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="filter:drop-shadow(0 0 3px rgba(0,0,0,.5))"/><circle r="3.5"/><circle r="3.5"/>';
+            document.body.appendChild(_twConn); }
+          const col=s.twinkleColor||'#ff8c00', sx=window.scrollX, sy=window.scrollY;
+          const a=pbWrap.getBoundingClientRect(), b=ctrl.getBoundingClientRect();
+          const A={x:a.right+sx, y:a.top+a.height/2+sy}, B={x:b.right+sx, y:b.top+b.height/2+sy};
+          const vw=window.innerWidth||document.documentElement.clientWidth;
+          const M=Math.min(Math.max(a.right,b.right)+26, vw-8)+sx;   // elbow column in the right margin, clamped inside the viewport
+          const r=Math.min(10, Math.abs(B.y-A.y)/2)||0, dir=(B.y>=A.y)?1:-1;
+          const d='M '+A.x+' '+A.y+' H '+(M-r)+' Q '+M+' '+A.y+' '+M+' '+(A.y+dir*r)+' V '+(B.y-dir*r)+' Q '+M+' '+B.y+' '+(M-r)+' '+B.y+' H '+B.x;
+          const p=_twConn.querySelector('path'); p.setAttribute('d',d); p.setAttribute('stroke',col);
+          const dots=_twConn.querySelectorAll('circle');
+          dots[0].setAttribute('cx',A.x); dots[0].setAttribute('cy',A.y); dots[0].setAttribute('fill',col);
+          dots[1].setAttribute('cx',B.x); dots[1].setAttribute('cy',B.y); dots[1].setAttribute('fill',col);
+        }
+        function twConnShow(){ document.querySelectorAll('.tw-connector').forEach(n=>{ if(n!==_twConn) n.remove(); });   // clear any stray connector from a prior orphaned board
+          twConnUpdate();
+          window.addEventListener('scroll', twConnUpdate, {passive:true}); window.addEventListener('resize', twConnUpdate);
+          if(!_twConnTimer) _twConnTimer=setInterval(twConnUpdate, 250);   // catch layout shifts with no scroll/resize event (card drag, collapse)
+        }
+        function twConnHide(){ window.removeEventListener('scroll', twConnUpdate); window.removeEventListener('resize', twConnUpdate);
+          if(_twConnTimer){ clearInterval(_twConnTimer); _twConnTimer=0; }
+          if(_twConn){ _twConn.remove(); _twConn=null; } }
         function mountAgentBoard(){
           if(pb) return;
           pbWrap=document.createElement('div'); pbWrap.className='pb-wrap pb-large';
@@ -1242,9 +1276,10 @@
           });
           c('.s-agShowkb').textContent='⌨ Hide Twinkle Region';
           updRegCount();
-          requestAnimationFrame(()=>{ try{ pbWrap.scrollIntoView({behavior:'smooth', block:'start'}); }catch(_){ try{ pbWrap.scrollIntoView(); }catch(__){ } } });
+          requestAnimationFrame(()=>{ try{ pbWrap.scrollIntoView({behavior:'smooth', block:'start'}); }catch(_){ try{ pbWrap.scrollIntoView(); }catch(__){ } } twConnShow(); });
         }
         function unmountAgentBoard(){ if(!pb) return;
+          twConnHide();
           const before=window.scrollY, r=pbWrap.getBoundingClientRect();
           pb.destroy(); pb=null; const w=pbWrap; pbWrap=null; if(w&&w.parentNode) w.parentNode.removeChild(w);
           const shift=Math.max(0, Math.min(r.height, -r.top)); if(shift>0) window.scrollTo(0, before-shift);
