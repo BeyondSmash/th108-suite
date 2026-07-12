@@ -49,6 +49,11 @@ function pidFromSessionFile(sessionId) {
   } catch (_) { }
   return 0;
 }
+// Resolve the outline color for a project/workspace: its per-project override if set, else the global default.
+function colorFor(project) {
+  const m = settings.focusProjectColors;
+  return (project && m && m[project]) || settings.focusOutlineColor || '';
+}
 function runFocusWindow(sessionId, opts) {
   opts = opts || {};
   const pid = pidFromSessionFile(sessionId) || agentState.pidFor(sessionId);   // session file = exact pid; hook $PPID is the fallback
@@ -63,11 +68,12 @@ function runFocusWindow(sessionId, opts) {
     if (opts.live && !settings.focusDryRun) {
       const cv = path.join(__dirname, 'focus-vscode.ps1');
       if (fs.existsSync(cv)) {
+        const col = colorFor(hint);
         const a = ['-NoProfile', '-NonInteractive', '-WindowStyle', 'Hidden', '-ExecutionPolicy', 'Bypass', '-File', cv, '-ClaudePid', String(pid)];
         if (hint) a.push('-ProjectHint', String(hint));
-        if (settings.focusOutlineColor) a.push('-Color', String(settings.focusOutlineColor));
+        if (col) a.push('-Color', String(col));
         require('child_process').spawn('powershell.exe', a, { stdio: 'ignore' }).unref();   // match claude-view invocation (no windowsHide/CREATE_NO_WINDOW) — -WindowStyle Hidden already hides the PS window
-        log('👁 window-focus LIVE (bundled focus-vscode.ps1) for "' + (hint || String(sessionId).slice(0, 8)) + '" pid=' + pid + ' color=' + (settings.focusOutlineColor || '-'));
+        log('👁 window-focus LIVE (bundled focus-vscode.ps1) for "' + (hint || String(sessionId).slice(0, 8)) + '" pid=' + pid + ' color=' + (col || '-'));
         return;
       }
       log('👁 focus-vscode.ps1 not found — staying log-only');
@@ -89,10 +95,11 @@ function runFocusWindowByHwnd(hwnd, title, opts) {
     if (opts.live && !settings.focusDryRun) {
       const cv = path.join(__dirname, 'focus-vscode.ps1');
       if (fs.existsSync(cv)) {
+        const col = colorFor(vscWinLabel(title));   // per-project override keyed by the window's workspace name
         const a = ['-NoProfile', '-NonInteractive', '-WindowStyle', 'Hidden', '-ExecutionPolicy', 'Bypass', '-File', cv, '-Hwnd', String(hwnd)];
-        if (settings.focusOutlineColor) a.push('-Color', String(settings.focusOutlineColor));
+        if (col) a.push('-Color', String(col));
         require('child_process').spawn('powershell.exe', a, { stdio: 'ignore' }).unref();
-        log('👁 window-focus LIVE (by hwnd) "' + (title || hwnd) + '" hwnd=' + hwnd + ' color=' + (settings.focusOutlineColor || '-'));
+        log('👁 window-focus LIVE (by hwnd) "' + (title || hwnd) + '" hwnd=' + hwnd + ' color=' + (col || '-'));
         return;
       }
       log('👁 focus-vscode.ps1 not found — staying log-only');
@@ -221,7 +228,7 @@ const SETTINGS_PATH = path.join(__dirname, 'settings.json');
 function loadSettings() {
   const DEF = { usbReset: true, nowPlaying: false, npTitle: '#ffffff', npArtist: '#ffd98c', lightsOn: true, brightness: 100, npRevertSec: 0, npAllow: {}, npArtFit: false,
                 npBar: false, npBarColor: '#11ff00', npBarBright: 60, npFlash: true, npFlashColor: '#ffd000', npBarIdleSec: 3, npBarGrad: 'solid', npBarGradFit: false, npBarKeys: 'row', npBarAgentTop: false, npOnboardMask: false, dimOnDisplayOff: false,
-                focusOutlineColor: '#f97316', focusAutoSwitch: false, focusOutlineOnSwitch: false, focusDryRun: true };   // focusDryRun default ON: window-focus resolves + logs only (no real focus/flash) until the user turns it off   // agent window-focus: outline glow color; focusAutoSwitch = bring a session's VSCode window to front when it needs-you; focusOutlineOnSwitch = flash the outline when focus switches (no window-steal). Both default OFF (opt-in)   // npBarAgentTop = let the agent layer's numpad glyphs render ABOVE the progress bar (z-swap on the shared keys)   // dimOnDisplayOff = blank the board while the monitor is off on the idle timeout   // npOnboardMask = set the keyboard's onboard effect to BLACK so the per-update flash is a dark blink, not rainbow   // npBarIdleSec = fade the bar out after this long with nothing playing   // npRevertSec 0 = never revert; npAllow = per-source override (absent → Spotify-only default); npBar = the 1-0 song-progress light-bar (lighting-only, no flash writes), npFlash = yellow track-change blip
+                focusOutlineColor: '#f97316', focusProjectColors: {}, focusAutoSwitch: false, focusOutlineOnSwitch: false, focusDryRun: true };   // focusProjectColors = per-project outline overrides { "Portfolio": "#1543f9", … } keyed by workspace name; falls back to focusOutlineColor. focusDryRun default ON: window-focus resolves + logs only (no real focus/flash) until the user turns it off   // agent window-focus: outline glow color; focusAutoSwitch = bring a session's VSCode window to front when it needs-you; focusOutlineOnSwitch = flash the outline when focus switches (no window-steal). Both default OFF (opt-in)   // npBarAgentTop = let the agent layer's numpad glyphs render ABOVE the progress bar (z-swap on the shared keys)   // dimOnDisplayOff = blank the board while the monitor is off on the idle timeout   // npOnboardMask = set the keyboard's onboard effect to BLACK so the per-update flash is a dark blink, not rainbow   // npBarIdleSec = fade the bar out after this long with nothing playing   // npRevertSec 0 = never revert; npAllow = per-source override (absent → Spotify-only default); npBar = the 1-0 song-progress light-bar (lighting-only, no flash writes), npFlash = yellow track-change blip
   try { return Object.assign({}, DEF, JSON.parse(fs.readFileSync(SETTINGS_PATH, 'utf8'))); }
   catch { return Object.assign({}, DEF); }   // usbReset default ON — the escalation fails gracefully (one log line) if the task isn't registered
 }
@@ -1021,7 +1028,7 @@ const control = {
                       agentSessions: agentState.sessions(Date.now()),
                       focusedSession: agentState.focus(Date.now()),
                       agentAggregate: (function(){ const agL = state && state.layers && state.layers.find(L => L.enabled && L.type === 'agent'); return agL ? agentState.aggregate(agL.settings && agL.settings.session || 'all', Date.now()) : null; })(),
-                      focusOutlineColor: settings.focusOutlineColor, focusAutoSwitch: settings.focusAutoSwitch, focusOutlineOnSwitch: settings.focusOutlineOnSwitch, focusDryRun: settings.focusDryRun }; },   // the REAL agent phase the keyboard is showing, so the page can mirror it on-screen (symbol + mini preview)
+                      focusOutlineColor: settings.focusOutlineColor, focusProjectColors: settings.focusProjectColors || {}, focusAutoSwitch: settings.focusAutoSwitch, focusOutlineOnSwitch: settings.focusOutlineOnSwitch, focusDryRun: settings.focusDryRun }; },   // the REAL agent phase the keyboard is showing, so the page can mirror it on-screen (symbol + mini preview)
   setNowPlaying(on) {
     const was = settings.nowPlaying;
     settings.nowPlaying = !!on; saveSettings();
@@ -1117,7 +1124,9 @@ const control = {
   },
   agentEvent: (ev) => { agentState.ingest(ev, Date.now()); checkAttentionEdge(ev); },
   agentFocus: (id) => agentState.setFocus(id, Date.now()),   // external focus signal → the agent layer's 'focus' mode follows this session
-  setFocusConfig: (o) => { o = o || {}; if (o.color && /^#[0-9a-f]{6}$/i.test(o.color)) settings.focusOutlineColor = o.color; if ('autoSwitch' in o) settings.focusAutoSwitch = !!o.autoSwitch; if ('outlineOnSwitch' in o) settings.focusOutlineOnSwitch = !!o.outlineOnSwitch; if ('dryRun' in o) settings.focusDryRun = !!o.dryRun; saveSettings(); },
+  setFocusConfig: (o) => { o = o || {}; if (o.color && /^#[0-9a-f]{6}$/i.test(o.color)) settings.focusOutlineColor = o.color; if ('autoSwitch' in o) settings.focusAutoSwitch = !!o.autoSwitch; if ('outlineOnSwitch' in o) settings.focusOutlineOnSwitch = !!o.outlineOnSwitch; if ('dryRun' in o) settings.focusDryRun = !!o.dryRun;
+    if (o.projectColor && o.projectColor.project) { if (!settings.focusProjectColors || typeof settings.focusProjectColors !== 'object') settings.focusProjectColors = {}; const p = String(o.projectColor.project), c = o.projectColor.color; if (c && /^#[0-9a-f]{6}$/i.test(c)) settings.focusProjectColors[p] = c; else delete settings.focusProjectColors[p]; }   // set a project's outline override, or clear it (null/invalid) to fall back to the default
+    saveSettings(); },
   focusWindowManual: (sessionId) => runFocusWindow(sessionId, { live: true }),   // manual button → LIVE via claude-view's proven focus-vscode.ps1 (only path that ever goes live; dry-run toggle still gates it)
   focusWindowByHwnd: (hwnd, title) => runFocusWindowByHwnd(hwnd, title, { live: true }),   // window picker → focus an exact VSCode window by handle (dry-run toggle still gates it)
   listVscodeWindows,   // every open VSCode window (by title), for the window picker — independent of chat activity

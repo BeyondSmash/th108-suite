@@ -1110,6 +1110,7 @@
           +'<label class="sl" style="margin:0;justify-content:center" title="When a session needs you (the ! state), bring its VSCode window to the front and flash the outline. Windows only."><input type="checkbox" class="s-agAutoSwitch"> Bring window forward when a session needs you</label>'
           +'<label class="sl" style="margin:0;justify-content:center" title="Flash the color outline on a session’s monitor when focus switches to it — no window-stealing."><input type="checkbox" class="s-agOutlineSwitch"> Flash outline when focus switches</label>'
           +'<div style="display:flex;align-items:center;justify-content:center;gap:8px;margin-top:2px"><span style="font-size:12px;color:var(--muted);white-space:nowrap">Focus window</span><select class="s-agWinPick" title="Pick any open VSCode window to bring to front + flash the outline. Lists every window (even idle chats). Leave on the default to use whichever session the layer is following/selected." style="flex:1;max-width:230px"><option value="">↳ Followed / selected session</option></select></div>'
+          +'<div class="s-agWinColorRow" style="display:none;align-items:center;justify-content:center;gap:8px;margin-top:2px" title="Give the picked project its OWN outline color. Focusing any window of that project flashes this color instead of the default below."><span style="font-size:12px;color:var(--muted)">Color for <b class="s-agWinColorName" style="color:var(--text,#e6edf3)"></b></span><input type="color" class="s-agWinColor" style="width:34px;height:24px;padding:0;border:none;background:none;cursor:pointer"><button type="button" class="sreset s-agWinColorReset" title="Clear this project’s color — fall back to the default outline color">↺</button></div>'
           +'<div style="display:flex;align-items:center;justify-content:center;gap:9px;margin-top:2px"><span style="font-size:12px;color:var(--muted)">Outline color</span><input type="color" class="s-agOutlineColor" value="#f97316" style="width:34px;height:24px;padding:0;border:none;background:none;cursor:pointer"><button type="button" class="sreset s-agOutlineReset" title="Reset outline color to the default (#F97316)">↺</button><button type="button" class="s-agBringFront" title="Bring the chosen (or followed/selected) session’s VSCode window to the front + flash the outline">⤒ Bring window to front</button></div></div>');
         body.innerHTML='<div class="ctl">'+
           sec('Colors')+colorRows+
@@ -1125,7 +1126,7 @@
         body.querySelectorAll('.s-agColReset').forEach(b=>b.addEventListener('click',()=>{ const key=b.dataset.key, def=AG_COLOR_DEF[key]; if(!def) return; s[key]=def; const el=c('.s-'+key); if(el){ el.value=def; el.dispatchEvent(new Event('input',{bubbles:true})); } scheduleSaveLayers(); }));   // dispatch input so attachHex syncs the hex TEXT box (was stale until a refresh)
         // Session filter — follow-focus checkbox + two selects (Active | Idle)
         const selActive=c('.s-agSessionActive'), selIdle=c('.s-agSessionIdle'), sessNote=c('.s-agSessionNote'), noteTxt=c('.s-agNoteTxt'), agSymbol=c('.s-agSymbol'), follow=c('.s-agFollowFocus'), winPick=c('.s-agWinPick');
-        let _lastSessions=[], _lastFocus=null, _lastFollowId=null, _lastAgg=null, _lastFcfg=null;   // _lastFocus = focusedSession {id,fresh,following}; _lastFollowId = last note session (pulse on a SWITCH); _lastAgg = live agent aggregate (drives the phase symbol); _lastFcfg = window-focus config (color + toggles)
+        let _lastSessions=[], _lastFocus=null, _lastFollowId=null, _lastAgg=null, _lastFcfg=null, _projColors={};   // _lastFocus = focusedSession {id,fresh,following}; _lastFollowId = last note session (pulse on a SWITCH); _lastAgg = live agent aggregate (drives the phase symbol); _lastFcfg = window-focus config (color + toggles); _projColors = per-project outline overrides (project → hex)
         // Derive the current agent PHASE from the daemon's aggregate — the same priority the keyboard renders.
         function agPhase(a){ if(!a) return null; if(a.attention) return 'bang'; if(a.busy) return 'busy'; if(a.checkmarkAt && Date.now()-a.checkmarkAt < 4000) return 'check'; if(a.subagentCount>0) return 'subs'; return null; }   // priority attention > busy > checkmark > subs. Check window 4s (NOT the keyboard's 1s): the site only sees the aggregate on the ~2.5s /status poll, so a 1s window is usually MISSED between polls — a wider one lets a poll reliably catch the checkmark (the keyboard renders every frame so it keeps the real 1s).
         let _symSig=null;
@@ -1207,7 +1208,7 @@
         // a hoisted declaration so fillSessionDrop (defined earlier) can seed the controls from /status once.
         const wcAu=c('.s-agAutoSwitch'), wcOs=c('.s-agOutlineSwitch'), wcCol=c('.s-agOutlineColor'), wcBf=c('.s-agBringFront'), wcDry=c('.s-agDryRun');
         let _fcfgSeeded=false;
-        function applyFcfg(f){ if(!f||!wcAu||_fcfgSeeded) return; _fcfgSeeded=true; if(f.color) wcCol.value=f.color; wcAu.checked=!!f.autoSwitch; wcOs.checked=!!f.outlineOnSwitch; if(wcDry) wcDry.checked=(f.dryRun!==false); }   // SEED once from the daemon; after that your toggles are authoritative (re-applying every poll was reverting them)
+        function applyFcfg(f){ if(!f||!wcAu||_fcfgSeeded) return; _fcfgSeeded=true; if(f.color) wcCol.value=f.color; if(f.projectColors&&typeof f.projectColors==='object') _projColors=Object.assign({}, f.projectColors); wcAu.checked=!!f.autoSwitch; wcOs.checked=!!f.outlineOnSwitch; if(wcDry) wcDry.checked=(f.dryRun!==false); }   // SEED once from the daemon; after that your toggles are authoritative (re-applying every poll was reverting them)
         applyFcfg(_lastFcfg);
         if(wcAu) wcAu.addEventListener('change',()=>setFocusConfig({autoSwitch:wcAu.checked}));
         if(wcOs) wcOs.addEventListener('change',()=>setFocusConfig({outlineOnSwitch:wcOs.checked}));
@@ -1221,12 +1222,23 @@
           wins = Array.isArray(wins) ? wins : [];
           const wcur=winPick.value, escA=t=>String(t).replace(/&/g,'&amp;').replace(/"/g,'&quot;'), esc=t=>String(t).replace(/&/g,'&amp;').replace(/</g,'&lt;');
           winPick.innerHTML='<option value="">↳ Followed / selected session</option>'+wins.map(w=>'<option value="'+w.hwnd+'" data-title="'+escA(w.title||'')+'">'+esc(w.label||w.title||w.hwnd)+'</option>').join('');
-          if(wcur && wins.some(w=>String(w.hwnd)===wcur)) winPick.value=wcur; }).catch(()=>{}); }
+          if(wcur && wins.some(w=>String(w.hwnd)===wcur)) winPick.value=wcur; updWinColorRow(); }).catch(()=>{}); }
         if(wcBf) wcBf.addEventListener('click',()=>{ const opt=winPick&&winPick.selectedOptions&&winPick.selectedOptions[0], hwnd=winPick&&winPick.value;
           if(hwnd){ focusWindowByHwnd(hwnd, opt?opt.getAttribute('data-title'):''); return; }   // explicit window pick → focus that exact window by handle
           const id = (s.session==='focus')?(_lastFocus&&_lastFocus.following):(s.session&&s.session!=='all'?s.session:null);   // else the followed/selected session
           focusWindowFront(id||''); });
         if(winPick) winPick.addEventListener('pointerdown',fillWinPick);   // refresh the window list when opened (a just-opened window lands on the next open)
+        // Per-project outline color: when a specific window is picked, edit THAT project's override (keyed by
+        // workspace name so it's stable across restarts/hwnd changes). Blank pick (default option) → row hidden.
+        const winColRow=c('.s-agWinColorRow'), winColName=c('.s-agWinColorName'), winCol=c('.s-agWinColor'), winColRst=c('.s-agWinColorReset');
+        const curWinProject=()=>{ const o=winPick&&winPick.selectedOptions&&winPick.selectedOptions[0]; return (winPick&&winPick.value&&o)?o.textContent:''; };   // the picked window's project label (empty on the default option)
+        function updWinColorRow(){ if(!winColRow) return; const proj=curWinProject();
+          if(!proj){ winColRow.style.display='none'; return; }
+          winColRow.style.display='flex'; if(winColName) winColName.textContent=proj;
+          if(winCol){ winCol.value=_projColors[proj]||wcCol.value||'#f97316'; winCol.dispatchEvent(new Event('input',{bubbles:true})); } }   // show this project's color (or the default as a starting point); dispatch input so attachHex syncs the hex text box
+        if(winPick) winPick.addEventListener('change',updWinColorRow);
+        if(winCol) winCol.addEventListener('change',()=>{ const proj=curWinProject(); if(!proj) return; _projColors[proj]=winCol.value; setFocusConfig({projectColor:{project:proj,color:winCol.value}}); });   // persist the override on release (the programmatic input dispatch in updWinColorRow only syncs the hex text box, never writes a phantom override)
+        if(winColRst) winColRst.addEventListener('click',()=>{ const proj=curWinProject(); if(!proj) return; delete _projColors[proj]; setFocusConfig({projectColor:{project:proj,color:null}}); if(winCol){ winCol.value=wcCol.value||'#f97316'; winCol.dispatchEvent(new Event('input',{bubbles:true})); } });   // clear override → fall back to the default outline color
         fillWinPick();   // populate on card open
         // Twinkle-region paint board (same API as individual layer)
         let pb=null, pbWrap=null;
