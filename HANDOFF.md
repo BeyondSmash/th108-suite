@@ -1,41 +1,46 @@
-# HANDOFF — 2026-07-03
+# HANDOFF — 2026-07-09
 
-> Durable rules / protocol / detailed dev reference: **`_HANDOFF.md`** (gitignored, local) + project memory + `.superpowers/sdd/progress.md` (this session's full ledger + endgame roadmap). This file = the focused, scannable state of THIS session.
+> Durable rules / protocol / detailed dev reference: **`_HANDOFF.md`** (gitignored, local) + project memory. This file = the focused, scannable state of THIS session.
 
 ## Where things stand
-Two features shipped this session, both on `master` (no branch, nothing pushed): the **agent-activity lighting layer** (Tasks 1–6 done + reviewed; only its on-board VISUAL glance is left) and the **arbitrated device-lease** handoff system (Tasks 1–5 done, per-task + final whole-branch reviewed, hardware-checkpointed at each stage), then a long night of banner/toggle UI polish. Final review verdict: **merge-ready with one hardware glance outstanding**.
+Agent-layer **window-focus** feature is functionally complete: the "Focus window" picker now lists every open VSCode window (not just live Claude sessions), focuses the exact one by handle, and supports **per-project outline colors**. The Dry-run safety checkbox was removed (focus is live by default). Also shipped this session: outline-flash fix, twinkle-region connector, audio-layer polish, Import confirmation. Next task is the **new-user test-environment setup** (author ship defaults in a sandbox).
 
 ## Ledger
-### ✅ Solved (verified)
-- **Device lease Tasks 1–5** — single-owner arbitration (daemon vs WebHID tab) killing the two-writer FIFO-mute. Per-task reviewed; hardware checkpoints PASSED: daemon-only claim/release (`621c81a`+`9b061eb`), tab-vs-daemon (`7556682`+`e43de2e`), tab-vs-tab banner (`80b72bf`+`1225cc1`). Pure lease + tests `th108-daemon/device-lease.js` (10/10).
-- **Lease safety fixes** — `release()` rejects forged/non-owner callers (`0430531`); page marked owner at claim-grant so close-on-loss can't be missed (`e43de2e`); modern-clientId heartbeat skips the legacy self-yield collision (`9b061eb`); `onLeaseLost` multi-subscriber so banner + handle-close both fire (`1225cc1`).
-- **Site "Start Daemon" no-op** — fixed via a `_startreq.txt` signal the live tray watches (`aa6db5c`); proven: quit daemon → drop signal → revived <5s.
-- **Agent-layer daemon routes** — live-verified: `POST /agent/event`→204, `GET /agent/sessions` tracks busy/subagentCount/label; `Stop` resets.
-- **numpad4 not typing** — scrambled firmware keymap entry (Numpad→Digits remap), NOT the lease/lighting work; fixed by user rebind. "Reset X" no-ops unless the page is Connected (needs the device for the keymap RMW) — expected.
 
-### 🟡 Open / in-progress
-- **[NEXT] Agent-layer on-board VISUAL glance** — the item interrupted at session start. Add an Agent layer → Preview in Chrome; confirm twinkles / numpad spinner / green ✓ / "!" real-blink animate, Dim-below + Silhouette-numpad darken a layer below, "!" blinks to dark. Optional: install 7 hooks (`docs/agent-hooks-setup.md`) → real Claude Code session → board.
-- **Lease Minor #2 (HARDWARE)** — the fast reclaim probe was shortened 1500→400ms (`1c46e50`, `daemon.js` `openIfPossible`/`fastReopen`). Verify a page-close reclaim with a **real Sudachi/Steam session running** still detects contention. If it slips: bump 400→700ms or drop `fastReopen`.
-- **Banner stuck-open fix (`c80e462`) — interaction-verify** — guarded the `transitionend` re-expand; confirm by rapid focus ping-pong between two Auto-connect-on-focus tabs (banner must not linger after regaining control).
-- **Dark-on-handoff** — reduced ~1.5s→~0.4s via `fastReopen` (`1c46e50`); user did a sanity pass. Re-confirm feel if #2 changes the probe timing.
-- **Optional polish (not done)** — double `/claim` per connect (harmless); auto-connect `dt.click()` lacks own single-flight guard (`onAwayChange`, downstream guards cover it).
-- **Endgame roadmap** (`.superpowers/sdd/progress.md`): agent glance → defaults test-env (memory `th108-defaults-test-env`, HARD: never touch personal config) → final project review → GitHub-site hosting + user-friendly packaging → demo video + design writeup → social (X) → portfolio (build with Fable 5).
+### ✅ Solved (verified)
+- **Window-focus actually focuses** — `5b37761` matched claude-view's invocation (dropped `windowsHide`); user confirmed "it worked!".
+- **Outline glow never launched (spaces-in-path)** — `3dba208`: `Start-Process -ArgumentList` doesn't auto-quote the `-File` path, and the bundled path has spaces (`…\Epomaker Project\…`) so the child PS couldn't find `focus-flash.ps1`. Quoted it; verified via log (`flash START` fires) + user saw the green glow.
+- **Window-enumeration picker** — `0639e46`: `/agent/windows` returns all 3 windows incl. Portfolio (HTTP 200 confirmed); focusing Portfolio **by hwnd** brought it to front with a green outline — user confirmed. Daemon confirmed already restarted.
+
+### 🟡 Open / in-progress (code done, NOT hardware-verified — needs daemon restart + a look)
+- **Per-project outline colors** — `6b1d3cf`. Daemon-side (`colorFor`, `setFocusConfig` projectColor, `/status`) needs a **daemon restart** to activate. Verify: pick Portfolio → set blue → ⤒ flashes blue; ChemTetris → still default orange. Keyed by project/workspace name (`vscWinLabel`), stored in `settings.focusProjectColors`.
+- **Dry-run checkbox removed** — `8bb96c7`. Page-reload shows it gone; daemon default flip (`focusDryRun:false`) needs restart (user's config already false). Latent kill-switch kept: set `focusDryRun:true` in `th108-daemon/config.json`.
+- **Per-project label** — `3bffa13`: reads "Color (override) for <project>". Not visually confirmed.
+- **Twinkle-region connector** — `496c46e`: elbow line from controls → mounted keyboard preview. Not visually confirmed by user.
+- **Audio layer** — `cbd43ab`: "Nothing playing" note centered under dropdown+Refresh (capital N); live-preview pill "Show" no longer scrolls up to the original. Not confirmed by user.
+- **Hex-text sync on color resets** — `7117e4c`: reset buttons now dispatch `input` so the hex box updates without a refresh. Simple, unconfirmed.
+- **NEXT TASK: new-user test-environment setup** — see Next action.
 
 ### 🔴 Regressed / suspect
-- None live. (freeze→dark handoff was a mild regression from Task 4 closing the WebHID handle; addressed by `fastReopen` `1c46e50`, pending the #2 glance.)
+- None open. **History note:** window-focus caused **4 VSCode-window-close incidents** earlier (`a76e2df`, `b701ade`) before switching to claude-view's proven method + **manual-only, no auto-cascade**. KEEP window-focus manual-only. The auto-triggers (`focusAutoSwitch`/`focusOutlineOnSwitch`) deliberately route to the log-only path in `daemon.js` and must NOT be wired live.
 
 ## Build / run
-- **Daemon** (restart to pick up `daemon.js`/`device-lease.js`/`th108-engine.js` changes): `wscript th108-daemon/start-hidden.vbs` or the tray (`start-tray.vbs`) → serves controller + API on `http://localhost:8123`. Health: `curl -s http://127.0.0.1:8123/status`.
-- **Controller**: `http://localhost:8123/` in Chrome/Brave; hard-reload (Ctrl+Shift+R) for page-JS changes.
-- **Tests**: `cd th108-daemon && node --test *.test.js`; `node --test th108-engine.test.js`; `node --check <file>`. Inline HTML: extract `<script>` + `new vm.Script()` each (catches syntax, NOT TDZ).
-- **Diagnose down/hung daemon**: `powershell -File th108-daemon/_state-check.ps1`.
+- **Daemon** serves the controller at `http://localhost:8123` and runs background lighting. Start/restart via the tray (setup.cmd / start-tray.vbs); a running tray watches `_startreq.txt`. **Restart the daemon** to load `daemon.js`/`server.js` changes.
+- **PowerShell scripts are read per-spawn** — `focus-vscode.ps1`, `focus-flash.ps1`, `list-vscode-windows.ps1` take effect immediately, NO daemon restart needed.
+- Quick daemon-alive check: `curl -s http://localhost:8123/agent/windows` → 200 + window list = restarted with the new route.
+- Syntax gate after editing: `node --check th108-layers-ui.js && node --check th108-daemon/daemon.js`; for HTML inline scripts, wrap each `<script>` body in `new Function(...)`.
 
 ## Gotchas
-- **ONE controller at a time** — daemon↔page now arbitrated by the lease; a foreign app (Sudachi/Steam) grabbing the keyboard HID still desyncs the FIFO → mute (external, lease can't mediate).
-- **Un-wedge a muted board** fastest: toggle **BT↔wired** (full USB re-enumerate); the daemon's USB-restart ladder self-heals in ~30–40s.
-- **Commits**: author `Beyon <you@example.com>`, **NO Co-Authored-By/Claude trailer** (`git -c user.name="Beyon" -c user.email="you@example.com" commit --author="Beyon <you@example.com>" -m "..."`).
-- **Inline-script TDZ** (`th108-controller.html`): a load-time ref to a `const`/`let` before its declaration silently halts the WHOLE page; `node --check` can't catch it — verify the page loads in Chrome.
-- Untracked scratch (deletable): `_keytest.html`, `th108-daemon/_agentverify.out`.
+- **Commits:** author `Beyon <you@example.com>`, **NO** Claude / Co-Authored-By trailer. `git -c user.name="Beyon" -c user.email="you@example.com" commit --author="Beyon <you@example.com>" -m "…"`.
+- **Never commit** Epomaker copyrighted bundles (`app.*.js`, `chunk-*.js`, `*.js.txt`) or the OpenRGB zip.
+- **PowerShell** is the win32 host; don't route it through Bash. `Start-Process -ArgumentList` won't quote paths with spaces — pre-quote them (bit us in `3dba208`).
+- **Daemon session list is IN-MEMORY** — wiped on restart; idle chats disappear from *session-based* views until they send a hook (this is why "Portfolio" vanished from the old session picker). The window picker is now **window-based** so it's immune.
+- **One controller at a time** — daemon vs page; use localhost, not `file://`.
+- Untracked junk in tree (`_keytest.html`, `th108-daemon/_agentverify.out`) — not part of any task; leave or clean.
 
 ## Next action
-Restart the daemon, then do the **agent-layer visual glance** (add an Agent layer → Preview, watch the board) AND — while at the keyboard — the lease **#2 foreign-writer check** (page-close reclaim with Sudachi/Steam running). Those two board checks clear the last 🟡 items; then move to the defaults test-env (memory `th108-defaults-test-env`).
+**Start the new-user test-environment setup** — a sandbox seeded from the user's current config to author ship-to-users **default** settings.
+- **Brainstorm/design FIRST** (`superpowers:brainstorming`) before coding — scope isolation carefully.
+- **HARD CONSTRAINT:** never modify the user's personal profile/config. See memory `th108-defaults-test-env`.
+- **Isolation is the risk:** a prior defaults-sandbox review found 4 criticals by auditing *every* persistence channel (localStorage / IndexedDB / HTTP `/config` / `config.json`), not just the happy path — prefer one systematic choke point over per-site gates. See memory `feedback-verify-all-channels-not-happy-path`.
+- First, though: user should **restart the daemon** and confirm per-project colors + the window picker on hardware.
