@@ -1106,7 +1106,6 @@
         const kbPreviewRow=full('<button type="button" class="s-agKbShow" style="margin:0 auto">⌨ Show live agent preview</button>'
           +'<div class="s-agKbWrap" style="display:none;width:100%;margin-top:8px"><canvas class="s-agKbCanvas" style="width:100%;display:block;border-radius:8px;background:#0d1117"></canvas><div style="text-align:center;font-size:11px;opacity:.55;margin-top:3px">Live — the same agent layer your keyboard shows</div></div>');
         const windowRow=full('<div style="display:flex;flex-direction:column;gap:6px;width:100%">'
-          +'<label class="sl" style="margin:0;justify-content:center;color:var(--warn,#e0a200)" title="While checked, the ⤒ button only RESOLVES + LOGS the target window (safe, %TEMP%\\th108-focuswin.log). Uncheck to let the button actually focus the window — it runs claude-view\'s own proven ~/bin/focus-vscode.ps1 (the code that already works for you), manual-only, never auto."><input type="checkbox" class="s-agDryRun" checked> Dry-run (log only) — uncheck to focus live via claude-view’s script</label>'
           +'<label class="sl" style="margin:0;justify-content:center" title="When a session needs you (the ! state), bring its VSCode window to the front and flash the outline. Windows only."><input type="checkbox" class="s-agAutoSwitch"> Bring window forward when a session needs you</label>'
           +'<label class="sl" style="margin:0;justify-content:center" title="Flash the color outline on a session’s monitor when focus switches to it — no window-stealing."><input type="checkbox" class="s-agOutlineSwitch"> Flash outline when focus switches</label>'
           +'<div style="display:flex;align-items:center;justify-content:center;gap:8px;margin-top:2px"><span style="font-size:12px;color:var(--muted);white-space:nowrap">Focus window</span><select class="s-agWinPick" title="Pick any open VSCode window to bring to front + flash the outline. Lists every window (even idle chats). Leave on the default to use whichever session the layer is following/selected." style="flex:1;max-width:230px"><option value="">↳ Followed / selected session</option></select></div>'
@@ -1206,15 +1205,14 @@
         })();
         // Window-focus + color outline controls (self-contained claude-view-style actions). applyFcfg is
         // a hoisted declaration so fillSessionDrop (defined earlier) can seed the controls from /status once.
-        const wcAu=c('.s-agAutoSwitch'), wcOs=c('.s-agOutlineSwitch'), wcCol=c('.s-agOutlineColor'), wcBf=c('.s-agBringFront'), wcDry=c('.s-agDryRun');
+        const wcAu=c('.s-agAutoSwitch'), wcOs=c('.s-agOutlineSwitch'), wcCol=c('.s-agOutlineColor'), wcBf=c('.s-agBringFront');
         let _fcfgSeeded=false;
-        function applyFcfg(f){ if(!f||!wcAu||_fcfgSeeded) return; _fcfgSeeded=true; if(f.color) wcCol.value=f.color; if(f.projectColors&&typeof f.projectColors==='object') _projColors=Object.assign({}, f.projectColors); wcAu.checked=!!f.autoSwitch; wcOs.checked=!!f.outlineOnSwitch; if(wcDry) wcDry.checked=(f.dryRun!==false); }   // SEED once from the daemon; after that your toggles are authoritative (re-applying every poll was reverting them)
+        function applyFcfg(f){ if(!f||!wcAu||_fcfgSeeded) return; _fcfgSeeded=true; if(f.color) wcCol.value=f.color; if(f.projectColors&&typeof f.projectColors==='object') _projColors=Object.assign({}, f.projectColors); wcAu.checked=!!f.autoSwitch; wcOs.checked=!!f.outlineOnSwitch; }   // SEED once from the daemon; after that your toggles are authoritative (re-applying every poll was reverting them)
         applyFcfg(_lastFcfg);
         if(wcAu) wcAu.addEventListener('change',()=>setFocusConfig({autoSwitch:wcAu.checked}));
         if(wcOs) wcOs.addEventListener('change',()=>setFocusConfig({outlineOnSwitch:wcOs.checked}));
         if(wcCol) wcCol.addEventListener('change',()=>setFocusConfig({color:wcCol.value}));
         { const wcColRst=c('.s-agOutlineReset'); if(wcColRst&&wcCol) wcColRst.addEventListener('click',()=>{ wcCol.value='#f97316'; wcCol.dispatchEvent(new Event('input',{bubbles:true})); setFocusConfig({color:'#f97316'}); }); }   // reset outline color to the default (dispatch input so attachHex syncs the hex TEXT box, not just the swatch)
-        if(wcDry) wcDry.addEventListener('change',()=>setFocusConfig({dryRun:wcDry.checked}));
         // Window picker: populate from ACTUAL open VSCode windows (every window lists, even if its chat is idle
         // and no longer tracked as a live session). Each option = one window (value=hwnd), so no duplicates and
         // no "focuses the wrong window". Preserve the user's pick across refreshes by hwnd.
