@@ -513,6 +513,7 @@ try{ var _tk = /[?&]defaults=1(?:&|$)/.test(location.search) ? 'th108_DEFAULTS_t
 <div id="defaultsBanner" hidden style="background:#8a5a00;color:#fff;text-align:center;padding:7px 12px;font-size:13px;font-weight:600">
   ⚑ Authoring Defaults — your personal config is untouched (scratch sandbox).
   <a id="defaultsExit" href="#" style="color:#fff;text-decoration:underline;margin-left:10px">Exit</a>
+  <button id="defaultsReseed" type="button" style="margin-left:12px;padding:3px 12px" title="Discard this sandbox draft and re-copy your CURRENT live layers / brightness / theme as the starting point. Use this if the sandbox is showing an old snapshot instead of your current look.">Re-seed from my current setup</button>
   <button id="defaultsExport" type="button" style="margin-left:12px;padding:3px 12px" title="Exports the layer look (colors / patterns / brightness / theme). NOTE: a Media layer's image is NOT shipped — new visitors would see it empty — so avoid personal media in the default look.">Export defaults.json</button>
 </div>
 
@@ -1286,6 +1287,18 @@ if (window.TH108Defaults && TH108Defaults.isDefaultsMode()) {
   const bn = document.getElementById('defaultsBanner'); if (bn) bn.hidden = false;
   const ex = document.getElementById('defaultsExit');
   if (ex) ex.addEventListener('click', e => { e.preventDefault(); const u = new URL(location.href); u.searchParams.delete('defaults'); location.href = u.href; });
+  const rs = document.getElementById('defaultsReseed');
+  if (rs) rs.addEventListener('click', () => {
+    // seedSandbox only copies real->scratch when the scratch slot is EMPTY (to preserve an in-progress
+    // draft across sessions). So a stale draft masks the current setup. This wipes every scratch
+    // (th108_DEFAULTS_*) key on the RAW store, then reloads -> seedSandbox re-copies from the live keys.
+    if (!confirm('Re-seed the sandbox from your current setup?\n\nThis discards the current authoring draft and re-copies your live layers, brightness, and theme as the fresh starting point.')) return;
+    const rem = Storage.prototype.removeItem.bind(localStorage);   // bypass the shim so an already-prefixed key deletes as-is
+    const doomed = [];
+    for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (k && k.indexOf(TH108Defaults.DEFAULTS_PREFIX) === 0) doomed.push(k); }
+    doomed.forEach(rem);
+    location.reload();
+  });
   const exp = document.getElementById('defaultsExport');
   if (exp) exp.addEventListener('click', () => {
     // localStorage is shimmed -> getItem reads the scratch (prefixed) values
