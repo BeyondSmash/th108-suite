@@ -517,6 +517,13 @@ try{ var _tk = /[?&]defaults=1(?:&|$)/.test(location.search) ? 'th108_DEFAULTS_t
   <button id="defaultsExport" type="button" style="margin-left:12px;padding:3px 12px" title="Exports the layer look (colors / patterns / brightness / theme). NOTE: a Media layer's image is NOT shipped — new visitors would see it empty — so avoid personal media in the default look.">Export defaults.json</button>
 </div>
 
+<!-- Daemon-install prompt: shown only on the hosted (non-localhost) web build. Dismiss-forever. Wired in JS. -->
+<div id="daemonInstallBanner" hidden style="background:#0e3a4c;color:#dbeef7;text-align:center;padding:9px 14px;font-size:13px;line-height:1.5;border-bottom:1px solid #17546b">
+  You’re on the web version — lighting runs only while this tab is open. Install the companion daemon for <b>always-on lighting</b> plus the <b>Audio</b> &amp; <b>Agent</b> layers.
+  <a id="daemonInstallHow" href="#docs" style="color:#7fd1ef;text-decoration:underline;margin-left:8px;font-weight:600">Get the daemon →</a>
+  <a id="daemonInstallDismiss" href="#" style="color:#9fb8c4;text-decoration:underline;margin-left:10px">Dismiss</a>
+</div>
+
 <!-- device-lease deprecated-controller banner (Task 5): hidden by default, shown when this tab loses
      the lease (DC.onLeaseLost) or a claim comes back denied; Take control back re-claims + reopens WebHID. -->
 <header>
@@ -1033,6 +1040,17 @@ try{ var _tk = /[?&]defaults=1(?:&|$)/.test(location.search) ? 'th108_DEFAULTS_t
        effects need th108 running.</p>
   </div>
 
+  <div class="card s3 doccard" id="docDaemon" data-pages="docs">
+    <div class="cardbar"><span class="grip">⠿</span><h2>Get the daemon</h2></div>
+    <p style="font-size:12px">The web page alone drives your keyboard over WebHID while this tab is open — great for a quick try. The optional <b>companion daemon</b> unlocks the rest: <b>always-on lighting</b> (keeps running with the page closed), the <b>Audio</b> and <b>Agent</b> layers, Now-Playing on the LCD, and Host Actions.</p>
+    <ol style="font-size:12px;line-height:1.7;padding-left:18px;margin:6px 0">
+      <li>Install <a href="https://nodejs.org" target="_blank" rel="noopener" style="color:var(--blue,#58a6ff)">Node.js LTS</a> — one-time; the daemon runs on it.</li>
+      <li>Download the th108 suite (project folder / release zip).</li>
+      <li>Run <code>setup.cmd</code> — it installs dependencies, enables start-at-login, and opens the controller at <code>http://localhost:8123/</code>.</li>
+    </ol>
+    <p class="hint">Windows only for now. The daemon is a small local Node process — nothing is uploaded anywhere. Once it’s running you open <code>http://localhost:8123/</code> and this prompt no longer appears.</p>
+  </div>
+
   <div class="card s3 doccard" id="docChangelog" data-pages="docs">
     <div class="cardbar"><span class="grip">⠿</span><h2>Changelog</h2></div>
     <p style="font-size:12px">Notable additions. Newer entries land on top as the suite updates.</p>
@@ -1320,6 +1338,21 @@ if (window.TH108Defaults && !TH108Defaults.isDefaultsMode() && !localStorage.get
   } catch (e) { console.warn('first-run defaults seed skipped', e); }   // missing/bad file -> fall back to engine defaultLayers()
   localStorage.setItem('th108_seeded', '1');   // mark ATTEMPTED (success OR fail) so a missing/404 defaults.json can't re-fire the blocking XHR every load
 }
+// ── Daemon-install prompt: on the hosted (non-localhost) web build, nudge visitors toward the companion
+// daemon (always-on + Audio/Agent layers). Origin-based, no live probe. Dismiss-forever. Skipped when
+// served BY the daemon (localhost), on file://, or in the ?defaults=1 sandbox. ──
+(function(){
+  if (window.TH108Defaults && TH108Defaults.isDefaultsMode()) return;
+  const served = location.protocol === 'http:' || location.protocol === 'https:';
+  const isLocal = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+  if (!served || isLocal) return;
+  if (localStorage.getItem('th108.hideDaemonInstallPrompt') === '1') return;
+  const bn = document.getElementById('daemonInstallBanner'); if (!bn) return;
+  bn.hidden = false;
+  const dm = document.getElementById('daemonInstallDismiss');
+  if (dm) dm.addEventListener('click', e => { e.preventDefault(); localStorage.setItem('th108.hideDaemonInstallPrompt', '1'); bn.hidden = true; });
+  // "Get the daemon →" is a plain #docs link — the hash router switches to the Docs tab (docDaemon card).
+})();
 // shared engine (board map, renderers, compositor, state) — pull the bits we reference by short name
 const {KEYMAP, INDICES, NLED, BOARDW, BOARDH, hexToRgb} = TH108Engine;
 // (GRID + the grid-aware keyCell moved into th108-gif-panel.js — they are GIF-tool-only)
