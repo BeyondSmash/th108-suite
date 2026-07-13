@@ -47,7 +47,7 @@ That's it. Lighting now runs in the background in every app, survives closing th
 
 **Updating:** after pulling new code, restart the daemon to load it — **tray → Restart Daemon**, or the **↻ Restart Daemon** button on the page. (Skipped the admin helpers and want them later? Run, as admin: `powershell -ExecutionPolicy Bypass -File th108-daemon\install-admin-extras.ps1`.)
 
-**Uninstall:** run `uninstall.cmd` (removes auto-start + the shortcut; leaves your saved layers). The admin helpers, if installed, are removed with their own scripts' `-Remove` flag / `Unregister-ScheduledTask`.
+**Uninstall:** run `uninstall.cmd`. It fully reverses setup in one go — stops the daemon, removes auto-start, the Start-menu shortcut, and the built helper, then (behind a *single* admin prompt) removes the recovery task and the WebHID grant. Your saved layers and media library are left untouched; delete the folder to finish.
 
 ## Why the stock software can't do this
 

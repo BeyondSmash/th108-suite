@@ -10,8 +10,10 @@ cd /d "%~dp0"
 
 where node >nul 2>nul
 if errorlevel 1 (
-  echo [!] Node.js is required but was not found.
-  echo     Install the LTS from https://nodejs.org and re-run setup.cmd
+  echo [!] Node.js is required but was not found - it is a free, one-time install
+  echo     ^(the daemon runs on it^). Opening the download page now...
+  start "" https://nodejs.org/en/download
+  echo     Install the LTS, then double-click setup.cmd again.
   pause
   exit /b 1
 )
@@ -72,4 +74,6 @@ echo The daemon keeps your lighting running even with the page closed.
 echo.
 echo Skipped the admin prompt and want the helpers later? Run as admin:
 echo   powershell -ExecutionPolicy Bypass -File th108-daemon\install-admin-extras.ps1
+echo.
+echo To remove everything later, run uninstall.cmd (keeps your saved layers).
 pause
