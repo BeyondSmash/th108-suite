@@ -35,13 +35,7 @@ try{ var _tk = /[?&]defaults=1(?:&|$)/.test(location.search) ? 'th108_DEFAULTS_t
   }
   ::view-transition-old(root),::view-transition-new(root){ animation-duration:.45s; }
 
-  /* overflow-anchor:none EVERYWHERE — kills the "scroll snaps to top" bug: the daemon /status poll mutates
-     panel DOM every 2.5s, which reset the browser's scroll anchor and snapped a scrolled page to the top
-     (native reset — no JS scroll call, no focus, no height change). overflow-anchor is per-scroll-container
-     and NOT inherited, so it must be on the actual scroll container (html) + every anchor candidate — hence
-     the universal selector. The poll never changes page height, so anchoring only ever produced the bad reset
-     here; disabling it globally costs nothing. (An earlier body-only rule missed the html scroll container.) */
-  *{ box-sizing:border-box; overflow-anchor:none; }
+  *{ box-sizing:border-box; }
   html{ scrollbar-gutter:stable; }   /* reserve scrollbar space on every tab so a short page (Profiles) doesn't widen the viewport and shift centered content right */
   body{ font:14px/1.55 "Plus Jakarta Sans",system-ui,sans-serif; background:var(--bg); color:var(--text);
         margin:0; padding:0 24px 20px; }
@@ -2241,12 +2235,14 @@ function masonryGrid(g, sel){   // pack one grid's cards into their vertical gap
 }
 function layoutMasonry(){
   if(drag) return;                                       // never reflow mid-drag — it fights the FLIP rect measurements
+  const sy=window.scrollY;                               // Fill re-span transiently sets each card's gridRowEnd:auto (natural height) before the span → total height wobbles → on a barely-scrollable page the browser clamps scroll to the top. setFillMode preserves scroll; this observer-driven path (fired by ANY layer-card DOM churn, e.g. the 2.5s agent-follow /status poll rebuilding a <select>) did NOT — that was the "scroll snaps to top every ~2.5s" bug. Capture + restore.
   masonryGrid(gridEl, '.card');                          // bento grid
   // Layer-compositor cards are deliberately NOT masonry-packed: masonry's column auto-placement reorders them
   // away from their logical top-to-bottom order, which (a) showed cards in the wrong column and (b) broke
   // drag-to-reorder (DOM order ≠ visual order → adjacent layers wouldn't swap). It also caused the mounted
   // paint board + audio dup to collapse/overflow. They keep clean DOM-order rows in BOTH Grid and Fill.
   if(layerCardsEl){ layerCardsEl.style.gridAutoRows=''; layerCardsEl.querySelectorAll('.lcard, .pb-wrap').forEach(c=>{ c.style.gridRowEnd=''; }); }
+  if(window.scrollY!==sy){ window.scrollTo(0,sy); requestAnimationFrame(()=>{ if(window.scrollY!==sy) window.scrollTo(0,sy); }); }   // restore now + next frame (a late layout can re-clamp)
 }
 let mRaf=0;
 // ponytail: rAF-coalesced; the ResizeObserver may re-fire from our own span writes, but height is content-driven
