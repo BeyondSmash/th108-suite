@@ -161,20 +161,14 @@ window.TH108DaemonClient = (function () {
       async function refresh() {
         try {
           const r = await fetch('/status', { cache: 'no-store' }); if (!r.ok) throw 0;
-          const s = await r.json(); alive = true;
-          // scroll-anchor guard: this poll churns panel DOM every 2.5s (status text, the live feed's innerHTML
-          // with ever-changing "Xs ago" stamps, the source-list rebuild). That resets the browser's scroll
-          // anchor and, on a barely-scrollable page, snaps the window to the top (a NATIVE reset — no JS scroll
-          // call, no height change). Capture the offset now; restore it next frame ONLY if the poll bumped it
-          // upward by >40px, so a real user scroll-down is never fought.
-          const _scEl = document.scrollingElement || document.documentElement, _syPoll = _scEl ? _scEl.scrollTop : 0;
-          noteLease(s);
+          const s = await r.json(); alive = true; noteLease(s);
           if (typeof s.brightness === 'number' && window.__adoptDaemonBrightness) window.__adoptDaemonBrightness(s.brightness);   // reflect a daemon-side brightness change (e.g. Brightness-cycle host action) on this tab even while WE drive
           // bio-card grab-bar: show the real setup.cmd path (from the daemon) + the copy button
           const spTxt = document.getElementById('setupPathTxt'), spWrap = document.getElementById('setupPathWrap'), trTxt = document.getElementById('trayPathTxt');
           if (spTxt && spWrap && s.setupPath) { if (spTxt.textContent !== s.setupPath) spTxt.textContent = s.setupPath; spWrap.style.display = 'inline-flex'; }
           if (trTxt && s.setupPath) { const t = s.setupPath.replace(/setup\.cmd$/i, 'th108-daemon\\start-tray.vbs'); if (trTxt.textContent !== t) trTxt.textContent = t; }   // start-tray.vbs sits in th108-daemon/ next to setup.cmd
-          st.textContent = 'daemon: running · ' + (s.paused ? 'yielded to this page' : (s.deviceConnected ? 'driving the keyboard — layer edits here apply LIVE, no Connect needed' : 'waiting for the keyboard'));
+          const _stTxt = 'daemon: running · ' + (s.paused ? 'yielded to this page' : (s.deviceConnected ? 'driving the keyboard — layer edits here apply LIVE, no Connect needed' : 'waiting for the keyboard'));
+          if (st.textContent !== _stTxt) st.textContent = _stTxt;   // only rewrite on change — a stable status must not churn the DOM every 2.5s (was resetting scroll anchoring → page snapped to top)
           auto.disabled = false; quit.disabled = false; if (restart) restart.disabled = false;
           // state rides /status; don't fight a click in progress. A daemon built before this setting
           // doesn't report the field — show the toggle disabled (it would 404) instead of a false "off".
@@ -270,7 +264,6 @@ window.TH108DaemonClient = (function () {
               } else { feedWrap.style.display = 'none'; }
             }
           }
-          if (_scEl) requestAnimationFrame(() => { if (_syPoll - _scEl.scrollTop > 40) _scEl.scrollTop = _syPoll; });   // undo a poll-induced snap-to-top
         } catch (_) { alive = false; st.textContent = 'daemon: not running — start it with setup.cmd (lighting then survives closing this tab)'; auto.disabled = true; quit.disabled = true; if (restart) restart.disabled = true; if (usb) usb.disabled = true; if (np) np.disabled = true; }
       }
       async function refreshAuto() { if (!alive) return; try { const r = await fetch('/autostart', { cache: 'no-store' }); auto.checked = !!(await r.json()).enabled; } catch (_) {} }

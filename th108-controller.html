@@ -35,6 +35,12 @@ try{ var _tk = /[?&]defaults=1(?:&|$)/.test(location.search) ? 'th108_DEFAULTS_t
 
   *{ box-sizing:border-box; }
   html{ scrollbar-gutter:stable; }   /* reserve scrollbar space on every tab so a short page (Profiles) doesn't widen the viewport and shift centered content right */
+  /* overflow-anchor:none on body (the whole content subtree): the daemon /status poll rewrites panel text
+     every 2.5s; on a barely-scrollable page that reset the browser's scroll anchor and snapped scroll to the
+     top. The poll never changes page height, so disabling anchoring costs nothing here. (overflow-anchor is
+     NOT inherited, so it must sit on the content root, not html.) Paired with a change-guard on the poll's
+     text writes so a stable status doesn't churn the DOM at all. */
+  body{ overflow-anchor:none; }
   body{ font:14px/1.55 "Plus Jakarta Sans",system-ui,sans-serif; background:var(--bg); color:var(--text);
         margin:0; padding:0 24px 20px; }
   /* theme-change easing: ONLY as a fallback when the View Transitions API is missing (html.no-vt set at boot).
