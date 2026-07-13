@@ -11,6 +11,10 @@
   // anything not here (host-actions, keymap, calibration, profiles, layout, iso-view, media) is
   // never seeded, so a new visitor can't inherit personal/machine state.
   const SEED_KEYS = ['th108_layers', 'th108_layerOrder', 'th108_bri', 'th108_lightsOn', 'th108_theme'];
+  // Workspace-comfort keys: seeded INTO the sandbox so the card arrangement + Grid/Fill mode match your
+  // real setup while authoring, but deliberately NOT exported (not in SEED_KEYS) — a fresh visitor gets the
+  // default card layout, not yours. Purely cosmetic/local, so copying them can't leak personal state.
+  const COMFORT_KEYS = ['th108_layout2', 'th108_cardfill'];
 
   function prefixKey(key) {
     if (typeof key !== 'string' || !key.startsWith('th108') || key.startsWith(DEFAULTS_PREFIX)) return key;
@@ -29,7 +33,7 @@
   // Copy raw SEED_KEYS -> their prefixed counterparts if the scratch slot is empty. Run ONCE, on the RAW
   // storage, BEFORE installStorageShim — so it reads the real keys and writes the scratch keys.
   function seedSandbox(storage) {
-    for (const k of SEED_KEYS) {
+    for (const k of SEED_KEYS.concat(COMFORT_KEYS)) {   // export allowlist + local workspace comfort
       const pk = prefixKey(k);
       if (storage.getItem(pk) == null) { const v = storage.getItem(k); if (v != null) storage.setItem(pk, v); }
     }
@@ -89,5 +93,5 @@
     win.fetch = guarded;
   }
 
-  return { DEFAULTS_PREFIX, SEED_KEYS, prefixKey, isDefaultsMode, seedSnapshot, seedSandbox, installStorageShim, isBlockedDaemonWrite, installDaemonWriteGuard };
+  return { DEFAULTS_PREFIX, SEED_KEYS, COMFORT_KEYS, prefixKey, isDefaultsMode, seedSnapshot, seedSandbox, installStorageShim, isBlockedDaemonWrite, installDaemonWriteGuard };
 });

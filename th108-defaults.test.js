@@ -88,6 +88,19 @@ test('seedSandbox copies only SEED_KEYS from raw to prefixed, once', () => {
   assert.equal(m.getItem('th108_DEFAULTS_th108_layers'), '[9]');
 });
 
+test('seedSandbox seeds COMFORT_KEYS (card layout) too, but they are NOT in the export snapshot', () => {
+  const m = mockStorage();
+  m.setItem('th108_layers', '[1]');
+  m.setItem('th108_layout2', '["cardA","cardB"]');   // real card arrangement
+  m.setItem('th108_cardfill', '1');                    // real Fill mode
+  D.seedSandbox(m);
+  assert.equal(m.getItem('th108_DEFAULTS_th108_layout2'), '["cardA","cardB"]', 'layout seeded into sandbox');
+  assert.equal(m.getItem('th108_DEFAULTS_th108_cardfill'), '1', 'fill mode seeded into sandbox');
+  // but the shipped snapshot must NOT carry them (a fresh visitor gets the default arrangement)
+  const snap = D.seedSnapshot(k => m.getItem('th108_DEFAULTS_' + k) ?? m.getItem(k));
+  assert.ok(!('th108_layout2' in snap) && !('th108_cardfill' in snap), 'comfort keys never exported');
+});
+
 test('installStorageShim redirects th108* access to the prefixed key; leaves others alone', () => {
   const m = mockStorage();
   D.installStorageShim(m);
