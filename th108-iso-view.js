@@ -130,7 +130,13 @@
         '.iso-sliders{display:flex;justify-content:center;align-items:flex-end;gap:22px;flex-wrap:wrap;padding:9px 12px 2px}' +
         '.iso-sld{display:inline-flex;flex-direction:column;gap:3px;font-size:12px;color:var(--muted,#8b949e)}' +
         '.iso-sld-top{display:flex;justify-content:space-between;align-items:baseline;gap:14px}.iso-sld-top small{color:var(--text);font-size:11px}' +
-        '.iso-sld input{width:190px;accent-color:var(--accent,#0ea5a5)}' +   // coral slider in BOTH docked + popped (popout misses the page-global input[type=range] rule)
+        // custom track (light gray) + teal thumb — matches the app's .srange sliders. accent-color alone left
+        // Chrome rendering the UNFILLED track dark, which looked wrong in light mode.
+        '.iso-sld input{-webkit-appearance:none;appearance:none;width:190px;height:14px;margin:0;background:transparent;cursor:pointer}' +
+        '.iso-sld input::-webkit-slider-runnable-track{height:5px;background:rgba(176,182,196,.5);border-radius:3px}' +
+        '.iso-sld input::-moz-range-track{height:5px;background:rgba(176,182,196,.5);border-radius:3px}' +
+        '.iso-sld input::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:14px;height:14px;border-radius:50%;background:var(--accent,#0ea5a5);margin-top:-4.5px;box-shadow:0 1px 2px rgba(0,0,0,.18)}' +
+        '.iso-sld input::-moz-range-thumb{width:14px;height:14px;border:none;border-radius:50%;background:var(--accent,#0ea5a5);box-shadow:0 1px 2px rgba(0,0,0,.18)}' +
         '.iso-gl{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--muted,#8b949e)}.iso-gl input{width:90px}' +
         '.iso-cv{display:block;width:720px;height:392px;margin:6px auto 2px;touch-action:none;cursor:grab}.iso-cv.drag{cursor:grabbing}' +
         '.iso-legend{display:flex;flex-wrap:wrap;gap:6px;padding:9px 12px 2px;border-top:1px solid var(--border)}' +   // border = separator between the viewport and the footer (legend + readout)
@@ -511,6 +517,7 @@
       // center the labels + board as ONE unit so the labels always sit close to the board (docked OR maximized — no big gap)
       const LBGAP=16, unitW=(maxX-minX)+LBGAP+maxLW, unitLeft=Math.max(8,(CW-unitW)/2);
       const labelRight=unitLeft+maxLW, cx=labelRight+LBGAP-minX, cy=(CH-(maxY-minY))/2-minY;
+      const lightMode = document.documentElement.dataset.theme === 'light';   // light viewport (light bg + darker plates) so it fits light mode; lit keys stay solid so they still read
 
       if(glass){
         if(panel.classList.contains('popped')){   // a pop-out window has NO page behind it to see through (backdrop-filter can't reach the desktop) → paint a frosted dark-glass sheen so Glass still reads
@@ -520,7 +527,7 @@
           gg.addColorStop(0,'rgba(150,170,205,'+(0.05+gl*0.16).toFixed(3)+')'); gg.addColorStop(0.4,'rgba(70,85,110,0.03)'); gg.addColorStop(1,'rgba(0,0,0,0.12)');
           ctx.fillStyle=gg; ctx.fillRect(0,0,CW,CH);
         } else ctx.clearRect(0,0,CW,CH);   // docked: transparent canvas → the frosted panel shows the page through it
-      } else { ctx.fillStyle='#0d1117'; ctx.fillRect(0,0,CW,CH); }
+      } else { ctx.fillStyle = lightMode ? '#e8ebf1' : '#0d1117'; ctx.fillRect(0,0,CW,CH); }
 
       _planes=[];
       for(let j=0;j<N;j++){ const pl=P0[j], by=byOf(j), dz=dzOf(j), raw=avgColor(pl.rgb);
@@ -537,7 +544,9 @@
 
       for(let j=0;j<N;j++){ const pl=P0[j], rgb=pl.rgb, by=byOf(j), dz=dzOf(j), mask=pl.L?carveMask(pl.L):null;
         if(showKeys){   // the per-layer plane backdrop is part of "show keys" → hidden too when Keys is off (only lit keys float)
-          ctx.fillStyle = pl.sys?(pl.off?'rgba(120,90,160,.04)':'rgba(120,90,160,.10)'):(pl.off?'rgba(120,130,150,.05)':'rgba(90,110,140,.09)');
+          ctx.fillStyle = lightMode
+            ? (pl.sys?(pl.off?'rgba(95,75,130,.10)':'rgba(95,75,130,.18)'):(pl.off?'rgba(70,85,115,.11)':'rgba(70,90,120,.18)'))
+            : (pl.sys?(pl.off?'rgba(120,90,160,.04)':'rgba(120,90,160,.10)'):(pl.off?'rgba(120,130,150,.05)':'rgba(90,110,140,.09)'));
           if(AMP>0){   // subdivide the backdrop into a wave-displaced mesh so it ripples WITH the keys (one flat quad can't)
             const NU=16, NV=6;
             for(let gv=0; gv<NV; gv++){ const v0=gv/NV, v1=(gv+1)/NV; ctx.beginPath();
@@ -555,8 +564,8 @@
           ctx.beginPath(); ctx.moveTo(cor[0][0],cor[0][1]); for(let i=1;i<4;i++) ctx.lineTo(cor[i][0],cor[i][1]); ctx.closePath();
           if(lum>6){ ctx.shadowBlur=pl.off?0:Math.min(14,lum/14); ctx.shadowColor='rgb('+cr+','+cg+','+cb+')';
             ctx.fillStyle=pl.off?'rgba('+cr+','+cg+','+cb+',.22)':'rgb('+cr+','+cg+','+cb+')'; ctx.fill(); ctx.shadowBlur=0; }
-          else if(showKeys){ ctx.shadowBlur=0; ctx.fillStyle=pl.off?'rgba(150,160,175,.045)':'rgba(150,160,175,.10)'; ctx.fill();   // inactive key → a faint keycap + outline so the layout reads; off/inactive planes get an even fainter keycap so the whole plane reads dim
-            ctx.strokeStyle=pl.off?'rgba(180,190,205,.075)':'rgba(180,190,205,.17)'; ctx.lineWidth=1; ctx.stroke(); }
+          else if(showKeys){ ctx.shadowBlur=0; ctx.fillStyle = lightMode ? (pl.off?'rgba(95,105,125,.12)':'rgba(95,105,125,.22)') : (pl.off?'rgba(150,160,175,.045)':'rgba(150,160,175,.10)'); ctx.fill();   // inactive key → a faint keycap + outline so the layout reads; off/inactive planes get an even fainter keycap so the whole plane reads dim
+            ctx.strokeStyle = lightMode ? (pl.off?'rgba(75,85,110,.20)':'rgba(65,75,100,.32)') : (pl.off?'rgba(180,190,205,.075)':'rgba(180,190,205,.17)'); ctx.lineWidth=1; ctx.stroke(); }
           if(mask && mask[r.k]>0.15){   // silhouetted/carving key → black it out (it removes light from below), then a red minus on top
             ctx.shadowBlur=0; ctx.fillStyle='#000'; ctx.fill();   // re-fill the same key quad black
             const m=proj((r.u-0.5)*BW0,(r.v-0.5)*BD+dz,by+wz,cx,cy);
@@ -579,7 +588,9 @@
         const tc=8-LB[0].y; if(tc>0) for(const L of LB) L.y+=tc; }
       ctx.font='600 12.65px '+FAM; ctx.textAlign='right'; ctx.textBaseline='middle';
       for(const L of LB){ const pl=L.pl;
-        ctx.fillStyle=pl.sys?(pl.off?'rgba(190,170,230,.5)':'rgba(190,170,230,.95)'):(pl.off?'rgba(139,148,158,.55)':'rgba(230,237,243,.92)');
+        ctx.fillStyle = lightMode
+          ? (pl.sys?(pl.off?'rgba(120,95,165,.6)':'rgba(85,55,140,.95)'):(pl.off?'rgba(95,105,120,.6)':'rgba(28,33,44,.92)'))
+          : (pl.sys?(pl.off?'rgba(190,170,230,.5)':'rgba(190,170,230,.95)'):(pl.off?'rgba(139,148,158,.55)':'rgba(230,237,243,.92)'));
         ctx.fillText(labelStr(pl), labelRight, L.y); }
       readEl.textContent = 'zoom '+zoom+'% · yaw '+Math.round(((yaw/D2R)%360+360)%360)+'° · tilt '+Math.round(pitch/D2R)+'° · gap '+gapToSlider(gap)+(drawer?' · drawer '+drawer:'');
 
