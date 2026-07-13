@@ -261,10 +261,11 @@ try{ var _tk = /[?&]defaults=1(?:&|$)/.test(location.search) ? 'th108_DEFAULTS_t
   .srange input[type=range]{ -webkit-appearance:none; appearance:none; position:absolute; left:0; top:50%; transform:translateY(-50%); width:100%; height:14px; margin:0; background:transparent; }
   .srange input[type=range]::-webkit-slider-runnable-track{ height:5px; background:rgba(176,182,196,.5); border-radius:3px; }   /* brighter than --border so the track doesn't vanish on the tinted zebra section boxes */
   .srange input[type=range]::-moz-range-track{ height:5px; background:rgba(176,182,196,.5); border-radius:3px; }
-  .srange input[type=range]::-webkit-slider-thumb{ -webkit-appearance:none; appearance:none; width:14px; height:14px; border-radius:50%; background:var(--text); margin-top:-4.5px; cursor:pointer; }
-  .srange input[type=range]::-moz-range-thumb{ width:14px; height:14px; border:none; border-radius:50%; background:var(--text); cursor:pointer; }
-  .srange input[type=range].snapped::-webkit-slider-thumb{ background:var(--accent); }
-  .srange input[type=range].snapped::-moz-range-thumb{ background:var(--accent); }
+  /* coral thumb to match the native accent-color sliders (was var(--text) — a heavy black circle in light mode) */
+  .srange input[type=range]::-webkit-slider-thumb{ -webkit-appearance:none; appearance:none; width:14px; height:14px; border-radius:50%; background:var(--accent); margin-top:-4.5px; cursor:pointer; box-shadow:0 1px 2px rgba(0,0,0,.18); }
+  .srange input[type=range]::-moz-range-thumb{ width:14px; height:14px; border:none; border-radius:50%; background:var(--accent); cursor:pointer; box-shadow:0 1px 2px rgba(0,0,0,.18); }
+  .srange input[type=range].snapped::-webkit-slider-thumb{ background:var(--text); }   /* snapped-to-90° = distinct dark thumb */
+  .srange input[type=range].snapped::-moz-range-thumb{ background:var(--text); }
   .srange .tick{ position:absolute; top:50%; height:9px; width:2px; background:var(--blue); transform:translate(-50%,-50%); pointer-events:none; border-radius:1px; }   /* marks the snap/default value — short, centered on the track */
 
   /* layer cards — bento sub-grid inside the compositor card (order still = stacking order, row-major) */

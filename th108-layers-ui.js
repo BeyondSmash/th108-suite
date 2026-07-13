@@ -1434,9 +1434,9 @@
         '.lbody .lsecbox.locked > .lsecbody, .lbody .lsecbox.locked > .ctl{ pointer-events:none; }'+
         '.lbody .lsecbox.locked > .lsecbody input[type=range], .lbody .lsecbox.locked > .ctl input[type=range]{ opacity:.4; filter:grayscale(1); }'+
         '.lsec-actions{ position:absolute; right:7px; top:50%; transform:translateY(-50%); display:flex; gap:2px; align-items:center; }'+
-        '.lsec-actions button{ position:relative; background:rgba(13,17,23,.82); border:1px solid rgba(145,150,160,.45); cursor:pointer; color:var(--text); padding:3px; display:flex; align-items:center; border-radius:7px; }'+   // dark chip so the icon contrasts/reads; position:relative anchors the click ray-burst
-        '.lsec-actions button:hover{ background:rgba(40,46,56,.95); border-color:rgba(145,150,160,.7); }'+
-        '.lsec-actions button.on{ color:var(--warn,#e0a200); }'+
+        '.lsec-actions button{ position:relative; background:var(--inset); border:1px solid var(--border); cursor:pointer; color:var(--muted); padding:3px; display:flex; align-items:center; border-radius:7px; }'+   // theme-aware chip (was a hardcoded dark chip that looked wrong + low-contrast in light mode); position:relative anchors the click ray-burst
+        '.lsec-actions button:hover{ background:var(--ring); border-color:var(--muted); color:var(--text); }'+
+        '.lsec-actions button.on{ color:var(--warn,#e0a200); background:color-mix(in srgb, var(--warn) 14%, var(--inset)); border-color:color-mix(in srgb, var(--warn) 35%, var(--border)); }'+
         '.lsec-actions svg{ width:14px; height:14px; display:block; }'+
         '.lsec-chevwrap svg{ transition:transform .15s ease; }'+
         '.lsecbox.collapsed .lsec-chevwrap svg{ transform:rotate(-90deg); }'+
