@@ -8,7 +8,7 @@
    runs before the defaults-sandbox shim installs, so read the scratch theme key directly when ?defaults=1
    (keeps the sandbox first-paint faithful to the scratch theme it's authoring). */
 try{ var _tk = /[?&]defaults=1(?:&|$)/.test(location.search) ? 'th108_DEFAULTS_th108_theme' : 'th108_theme'; document.documentElement.dataset.theme = localStorage.getItem(_tk)||'light'; }catch(_){ }</script>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect x='4' y='12' width='56' height='40' rx='10' fill='%230ea5a5'/%3E%3Crect x='14' y='22' width='10' height='8' rx='2' fill='%23fff'/%3E%3Crect x='28' y='22' width='10' height='8' rx='2' fill='%23ffd98c'/%3E%3Crect x='42' y='22' width='10' height='8' rx='2' fill='%2398d0ff'/%3E%3Crect x='14' y='36' width='38' height='8' rx='2' fill='%236ed2b7'/%3E%3C/svg%3E">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect x='4' y='12' width='56' height='40' rx='10' fill='%23949bff'/%3E%3Crect x='14' y='22' width='10' height='8' rx='2' fill='%23fff'/%3E%3Crect x='28' y='22' width='10' height='8' rx='2' fill='%23ffd98c'/%3E%3Crect x='42' y='22' width='10' height='8' rx='2' fill='%2398d0ff'/%3E%3Crect x='14' y='36' width='38' height='8' rx='2' fill='%236ed2b7'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500..900&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -17,8 +17,8 @@ try{ var _tk = /[?&]defaults=1(?:&|$)/.test(location.search) ? 'th108_DEFAULTS_t
   :root{
     --bg:#f7f2f2; --card:#ffffff; --inset:#f4f1ee; --elev:#ffffff;
     --text:#0d1117; --muted:#8a8f98; --border:#e8e4df; --ring:#eef0f6;
-    --accent:#0ea5a5; --blue:#98d0ff; --mint:#6ed2b7; --pink:#f9c5d8; --yellow:#ffd98c; --lav:#c9b8ff;
-    --num:#c2553e; --ok:#1a7f4b; --err:#c93c32; --warn:#a87617;
+    --accent:#bfd5ff; --blue:#98d0ff; --mint:#6ed2b7; --pink:#f9c5d8; --yellow:#ffd98c; --lav:#c9b8ff;
+    --num:#eb5524; --ok:#1a7f4b; --err:#c93c32; --warn:#a87617;
     --tabbg:rgba(13,17,23,.05); --tabhl:#ffffff; --shadow:0 1px 2px rgba(13,17,23,.04);
     --logoink:#1e3a5f;
     --zebra:rgba(150,110,70,.06);   /* section/row striping — WARM in light mode to match the warm theme (was a cold blue) */
@@ -27,10 +27,10 @@ try{ var _tk = /[?&]defaults=1(?:&|$)/.test(location.search) ? 'th108_DEFAULTS_t
   [data-theme="dark"]{
     --bg:#090c10; --card:#0d1117; --inset:#161b22; --elev:#21262d;
     --text:#f0f2f8; --muted:#8b949e; --border:#21262d; --ring:#21262d;
-    --num:#ffa294; --ok:#3fb950; --err:#f85149; --warn:#d29922;
+    --accent:#949bff; --num:#ff8157; --ok:#3fb950; --err:#f85149; --warn:#d29922;
     --tabbg:rgba(240,242,248,.06); --tabhl:#21262d; --shadow:none;
     --logoink:#8aa6d4;   /* navy reads as black on the night bg — same hue family, lifted for contrast */
-    --zebra:var(--zebra);   /* cool tint is fine on the dark bg */
+    --zebra:rgba(127,154,212,.06);   /* cool tint is fine on the dark bg */
     color-scheme:dark;
   }
   ::view-transition-old(root),::view-transition-new(root){ animation-duration:.45s; }
