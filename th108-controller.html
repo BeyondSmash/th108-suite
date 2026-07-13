@@ -235,7 +235,9 @@ try{ var _tk = /[?&]defaults=1(?:&|$)/.test(location.search) ? 'th108_DEFAULTS_t
   select:focus-visible{ border-color:var(--accent); }   /* keyboard focus → subtle accent border instead of the ring */
   select option{ background:var(--bg); color:var(--text); }
   select option:nth-child(even){ background:var(--inset); }   /* zebra rows in the open dropdown list (Chrome honors option bg) */
-  input[type=text],input[type=number]{ font:inherit; background:var(--inset); color:var(--text); border:1px solid var(--border); border-radius:10px; }
+  /* typable fields: distinct from the near-white card — a slightly deeper field bg + a clearer border
+     (--inset alone was too close to the white card to read as a text box). color-mix keeps it theme-aware. */
+  input[type=text],input[type=number]{ font:inherit; background:color-mix(in srgb, var(--text) 5%, var(--inset)); color:var(--text); border:1px solid color-mix(in srgb, var(--text) 20%, transparent); border-radius:10px; }
   input[type=checkbox],input[type=radio]{ accent-color:var(--accent); }
   input[type=range]{ accent-color:var(--accent); }
   input[type=color]{ width:48px; height:28px; background:none; border:1px solid var(--border); border-radius:8px; }
@@ -337,7 +339,7 @@ try{ var _tk = /[?&]defaults=1(?:&|$)/.test(location.search) ? 'th108_DEFAULTS_t
   .numin{ font:inherit; width:62px; background:var(--card); color:var(--text); border:1px solid var(--border); border-radius:8px; padding:2px 4px; }   /* triple-digit values (220, 900, 1.00) must not clip */
   .lbody .ctl span:has(> input.numin){ width:max-content; }   /* the number-input wrapper otherwise STRETCHES to fill its grid cell → the empty space (right of the 62px box) becomes a dead-zone whose click focuses the input. Hug the content so that empty area belongs to the grid (inert), not the input. */
   .lhead .numin{ width:52px; }   /* "100" must not clip against the padding */
-  .hexin{ background:var(--inset); color:var(--text); border:1px solid var(--border); border-radius:8px; padding:2px 6px; font:inherit; width:92px; }   /* fits all 7 chars of #RRGGBB without clipping */
+  .hexin{ background:color-mix(in srgb, var(--text) 5%, var(--inset)); color:var(--text); border:1px solid color-mix(in srgb, var(--text) 20%, transparent); border-radius:8px; padding:2px 6px; font:inherit; width:92px; }   /* fits all 7 chars of #RRGGBB without clipping */
   .cwrap{ display:inline-flex; align-items:center; gap:6px; flex-wrap:wrap; }
   .patgrid{ display:flex; flex-wrap:wrap; gap:4px; margin-bottom:8px; }
   .patbtn{ font:600 12px/1 "Plus Jakarta Sans",system-ui,sans-serif; background:var(--card); color:var(--text);
@@ -351,8 +353,8 @@ try{ var _tk = /[?&]defaults=1(?:&|$)/.test(location.search) ? 'th108_DEFAULTS_t
            justify-content:center; font-size:30px; margin-bottom:10px; }
   .bigtype{ font-family:"Fraunces",Georgia,serif; font-weight:800; font-size:25px; letter-spacing:-.4px; }
   .faqcard h3{ font-family:"Fraunces",Georgia,serif; font-weight:700; font-size:17.5px; margin:0 0 8px; letter-spacing:-.2px; }
-  .faqcard p{ margin:0; color:#a8b4c0; font-size:14.5px; line-height:1.6; padding:7px 10px; border-radius:8px; }   /* brighter+larger; padded so each paragraph is its own readable band */
-  .faqcard b{ color:#dbe2ea; }   /* bold: clear emphasis, a touch below stark white */
+  .faqcard p{ margin:0; color:color-mix(in srgb, var(--text) 78%, var(--bg)); font-size:14.5px; line-height:1.6; padding:7px 10px; border-radius:8px; }   /* brighter+larger; padded so each paragraph is its own readable band */
+  .faqcard b{ color:var(--text); }   /* bold: clear emphasis, a touch below stark white */
   .faqcard p+p{ margin-top:6px; }   /* small gap — the band padding does the separating now */
   .faqcard p:nth-of-type(even){ background:var(--zebra); }   /* zebra the sections within a card for easier reading */
   .faqcard.fqz1{ background-image:linear-gradient(var(--zebra),var(--zebra)); }   /* per-card zebra tone (assigned by JS in DOM order) */
@@ -367,11 +369,11 @@ try{ var _tk = /[?&]defaults=1(?:&|$)/.test(location.search) ? 'th108_DEFAULTS_t
   /* docs tab */
   .doccard h3{ font-family:"Fraunces",Georgia,serif; font-weight:700; font-size:16px; margin:14px 0 5px; letter-spacing:-.2px; }
   .doccard h3:first-of-type{ margin-top:4px; }
-  .doccard p, .doccard li{ color:#a8b4c0; font-size:14px; line-height:1.6; }   /* brighter + larger for readability */
+  .doccard p, .doccard li{ color:color-mix(in srgb, var(--text) 78%, var(--bg)); font-size:14px; line-height:1.6; }   /* brighter + larger for readability */
   .doccard p{ margin:0 0 6px; }
   .doccard ul{ margin:0 0 8px; padding-left:18px; }
   .doccard li{ margin:2px 0; }
-  .doccard li b, .doccard p b{ color:#dbe2ea; }   /* bold: a touch below stark white */
+  .doccard li b, .doccard p b{ color:var(--text); }   /* bold: a touch below stark white */
   /* Feature Guide: zebra-blocked sections + color-coded titles for scanability */
   .doccard .fgsec{ padding:9px 14px 6px; border-radius:12px; margin:7px 0; }
   .doccard .fgsec:nth-of-type(even){ background:var(--zebra); }   /* subtle zebra on the dark card */
@@ -501,7 +503,7 @@ try{ var _tk = /[?&]defaults=1(?:&|$)/.test(location.search) ? 'th108_DEFAULTS_t
 
   /* profiles */
   .profrow{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; background:var(--inset); border-radius:14px; padding:8px 10px; margin-bottom:8px; }
-  .profrow input[type=text]{ flex:1; min-width:140px; padding:5px 9px; background:var(--card); font-weight:600; }
+  .profrow input[type=text]{ flex:1; min-width:140px; padding:5px 9px; font-weight:600; }   /* inherits the theme-aware field bg + border from the base input rule */
   .profrow button{ margin:0; padding:6px 12px; }
 
   /* ===== theme the LCD module's injected dark styles (body-prefixed = higher specificity) ===== */
