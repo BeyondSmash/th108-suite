@@ -8,7 +8,7 @@
    runs before the defaults-sandbox shim installs, so read the scratch theme key directly when ?defaults=1
    (keeps the sandbox first-paint faithful to the scratch theme it's authoring). */
 try{ var _tk = /[?&]defaults=1(?:&|$)/.test(location.search) ? 'th108_DEFAULTS_th108_theme' : 'th108_theme'; document.documentElement.dataset.theme = localStorage.getItem(_tk)||'light'; }catch(_){ }</script>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect x='4' y='12' width='56' height='40' rx='10' fill='%23fa8072'/%3E%3Crect x='14' y='22' width='10' height='8' rx='2' fill='%23fff'/%3E%3Crect x='28' y='22' width='10' height='8' rx='2' fill='%23ffd98c'/%3E%3Crect x='42' y='22' width='10' height='8' rx='2' fill='%2398d0ff'/%3E%3Crect x='14' y='36' width='38' height='8' rx='2' fill='%236ed2b7'/%3E%3C/svg%3E">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect x='4' y='12' width='56' height='40' rx='10' fill='%230ea5a5'/%3E%3Crect x='14' y='22' width='10' height='8' rx='2' fill='%23fff'/%3E%3Crect x='28' y='22' width='10' height='8' rx='2' fill='%23ffd98c'/%3E%3Crect x='42' y='22' width='10' height='8' rx='2' fill='%2398d0ff'/%3E%3Crect x='14' y='36' width='38' height='8' rx='2' fill='%236ed2b7'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500..900&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -17,7 +17,7 @@ try{ var _tk = /[?&]defaults=1(?:&|$)/.test(location.search) ? 'th108_DEFAULTS_t
   :root{
     --bg:#f7f2f2; --card:#ffffff; --inset:#f4f1ee; --elev:#ffffff;
     --text:#0d1117; --muted:#8a8f98; --border:#e8e4df; --ring:#eef0f6;
-    --accent:#fa8072; --blue:#98d0ff; --mint:#6ed2b7; --pink:#f9c5d8; --yellow:#ffd98c; --lav:#c9b8ff;
+    --accent:#0ea5a5; --blue:#98d0ff; --mint:#6ed2b7; --pink:#f9c5d8; --yellow:#ffd98c; --lav:#c9b8ff;
     --num:#c2553e; --ok:#1a7f4b; --err:#c93c32; --warn:#a87617;
     --tabbg:rgba(13,17,23,.05); --tabhl:#ffffff; --shadow:0 1px 2px rgba(13,17,23,.04);
     --logoink:#1e3a5f;
@@ -356,7 +356,7 @@ try{ var _tk = /[?&]defaults=1(?:&|$)/.test(location.search) ? 'th108_DEFAULTS_t
   .faqcard p+p{ margin-top:6px; }   /* small gap — the band padding does the separating now */
   .faqcard p:nth-of-type(even){ background:var(--zebra); }   /* zebra the sections within a card for easier reading */
   .faqcard.fqz1{ background-image:linear-gradient(var(--zebra),var(--zebra)); }   /* per-card zebra tone (assigned by JS in DOM order) */
-  .faqcard.fqz2{ background-image:linear-gradient(rgba(250,128,114,.04),rgba(250,128,114,.04)); }
+  .faqcard.fqz2{ background-image:linear-gradient(rgba(14,165,165,.04),rgba(14,165,165,.04)); }
   .faqcard.fqz3{ background-image:linear-gradient(rgba(86,211,100,.038),rgba(86,211,100,.038)); }
   /* troubleshooting cards live on the FAQ tab but read as their own group (chip survives drag-reorder) */
   .tbtag{ background:var(--yellow); color:#0d1117; font-size:10.5px; font-weight:700; letter-spacing:.4px;
@@ -376,7 +376,7 @@ try{ var _tk = /[?&]defaults=1(?:&|$)/.test(location.search) ? 'th108_DEFAULTS_t
   .doccard .fgsec{ padding:9px 14px 6px; border-radius:12px; margin:7px 0; }
   .doccard .fgsec:nth-of-type(even){ background:var(--zebra); }   /* subtle zebra on the dark card */
   #docFeatures .fgsec h3{ margin-top:3px; }
-  #docFeatures .fgsec:nth-of-type(8n+1) h3{ color:#fa8072; }   /* coral  */
+  #docFeatures .fgsec:nth-of-type(8n+1) h3{ color:#0ea5a5; }   /* coral  */
   #docFeatures .fgsec:nth-of-type(8n+2) h3{ color:#58a6ff; }   /* blue   */
   #docFeatures .fgsec:nth-of-type(8n+3) h3{ color:#56d364; }   /* green  */
   #docFeatures .fgsec:nth-of-type(8n+4) h3{ color:#e3b341; }   /* amber  */
@@ -2544,7 +2544,7 @@ const KBOARD=(function(){
     if(FULL[code]!==undefined) return FULL[code];
     if(code.startsWith('Numpad')&&/^\d$/.test(code.slice(6))) return 'Numpad '+code.slice(6);
     return label(code)||'Space'; };
-  const PAL=['#98d0ff','#6ed2b7','#f9c5d8','#ffd98c','#fa8072','#c9b8ff'];   // per-key hover/select color, cycled
+  const PAL=['#98d0ff','#6ed2b7','#f9c5d8','#ffd98c','#0ea5a5','#c9b8ff'];   // per-key hover/select color, cycled
   let selEl=null, sel=null; const subs=[], byIdx={}, markBy={}, haBy={};       // sel={idx,code,label} — the binder subscribes via onChange; markBy = firmware remaps, haBy = Host-Action labels per LED
   const notify=()=>subs.forEach(cb=>{ try{ cb(sel); }catch(_){ } });
   // compose a key's tooltip from its base + firmware remap (markBy) + host action (haBy), so both can show at once

@@ -130,7 +130,7 @@
         '.iso-sliders{display:flex;justify-content:center;align-items:flex-end;gap:22px;flex-wrap:wrap;padding:9px 12px 2px}' +
         '.iso-sld{display:inline-flex;flex-direction:column;gap:3px;font-size:12px;color:var(--muted,#8b949e)}' +
         '.iso-sld-top{display:flex;justify-content:space-between;align-items:baseline;gap:14px}.iso-sld-top small{color:var(--text);font-size:11px}' +
-        '.iso-sld input{width:190px;accent-color:var(--accent,#fa8072)}' +   // coral slider in BOTH docked + popped (popout misses the page-global input[type=range] rule)
+        '.iso-sld input{width:190px;accent-color:var(--accent,#0ea5a5)}' +   // coral slider in BOTH docked + popped (popout misses the page-global input[type=range] rule)
         '.iso-gl{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--muted,#8b949e)}.iso-gl input{width:90px}' +
         '.iso-cv{display:block;width:720px;height:392px;margin:6px auto 2px;touch-action:none;cursor:grab}.iso-cv.drag{cursor:grabbing}' +
         '.iso-legend{display:flex;flex-wrap:wrap;gap:6px;padding:9px 12px 2px;border-top:1px solid var(--border)}' +   // border = separator between the viewport and the footer (legend + readout)
