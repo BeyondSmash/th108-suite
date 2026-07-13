@@ -84,7 +84,7 @@
     <p class="sub">Uploads an image or <b>animated GIF</b> to the keyboard's 160×96 screen over WebHID (cmd 0x50, RGB565),
        with per-channel color calibration applied to every frame.</p>
 
-    <div class="row"><span id="lcdDevNote" class="hint">not connected — connect on the main page first</span></div>
+    <div class="row"><span id="lcdDevNote" class="in" style="font-weight:700">Not connected — connect on the main page first</span></div>
 
     <div class="row" style="display:flex;align-items:center;flex-wrap:wrap;gap:6px">
       <svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M10.3 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v10l-3.1-3.1a2 2 0 0 0-2.814.014L6 21"/><path d="m14 19.5 3-3 3 3"/><path d="M17 22v-5.5"/><circle cx="9" cy="9" r="2"/></svg>
@@ -872,8 +872,9 @@
     if (up) up.disabled = !scrDev;
     if (off) off.disabled = !scrDev;
     if (sc) sc.disabled = !ctlDev;
-    if (st) st.textContent = scrDev ? (ctlDev ? 'screen + control bound' : 'screen bound (clock needs the control interface)')
-      : 'not connected — connect on the main page first';
+    if (st) { st.textContent = scrDev ? (ctlDev ? 'Screen + control bound' : 'Screen bound (clock needs the control interface)')
+      : 'Not connected — connect on the main page first';
+      st.className = scrDev && ctlDev ? 'ok' : 'in'; st.style.fontWeight = '700'; }   // status color: green when fully bound, amber otherwise
   }
 
   let shown = false;                      // true while the overlay is open — gates the window-level paste/keydown handlers

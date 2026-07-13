@@ -200,23 +200,6 @@ window.TH108DaemonClient = (function () {
             }
             const fitEl = document.getElementById('npArtFit');
             if (fitEl) { const knows = 'npArtFit' in s; fitEl.disabled = !knows; if (knows && document.activeElement !== fitEl) fitEl.value = s.npArtFit ? 'fit' : 'crop'; }
-            // pause-revert: slider 1-15s + a "Never" checkbox. revertSec 0 = Never.
-            const rv = document.getElementById('npRevert'), rvl = document.getElementById('npRevertLbl'),
-                  rvNever = document.getElementById('npRevertNever'), rvReset = document.getElementById('npRevertReset'),
-                  rvTick = document.getElementById('npRevertTick');
-            if (rv && rvNever) {
-              const knows = 'npRevertSec' in s;
-              if (knows && document.activeElement !== rv && document.activeElement !== rvNever) {
-                const sec = s.npRevertSec | 0;
-                rvNever.checked = (sec === 0);
-                if (sec >= 1) rv.value = Math.min(15, sec);   // keep slider showing the active value; 0 leaves it at its last position
-              }
-              const off = rvNever.checked;
-              rv.disabled = !knows || off;
-              if (rvReset) rvReset.disabled = !knows || off;
-              rvNever.disabled = !knows;
-              if (rvl) rvl.textContent = off ? 'never' : (+rv.value + 's') + (s.npHasGif === false ? ' · upload a GIF once' : '');
-            }
             // recognized media sources (whitelist) — Spotify allowed by default, others off
             const srcHost = document.getElementById('npSources');
             if (srcHost && Array.isArray(s.npSources)) renderSources(srcHost, s.npSources);
@@ -303,25 +286,6 @@ window.TH108DaemonClient = (function () {
           }
         } catch (_) { log('now-playing toggle failed', 'err'); refresh(); }
       });
-      const rv = document.getElementById('npRevert'), rvl = document.getElementById('npRevertLbl'),
-            rvNever = document.getElementById('npRevertNever'), rvReset = document.getElementById('npRevertReset'),
-            rvTick = document.getElementById('npRevertTick');
-      const postRevert = async (sec) => {
-        try {
-          await fetch('/nowplaying', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ revertSec: sec }) });
-          log('♪ pause-revert: ' + (sec ? 'after ' + sec + 's paused, the LCD returns to your GIF' : 'never (the song stays on the LCD)'), 'ok');
-        } catch (_) { log('pause-revert change failed', 'err'); }
-      };
-      const liveRevertLbl = () => { if (rvl) rvl.textContent = (rvNever && rvNever.checked) ? 'never' : (+rv.value + 's'); };   // tick stays at the static 3s default marker
-      if (rv) {
-        rv.addEventListener('input', liveRevertLbl);
-        rv.addEventListener('change', () => { if (!rvNever.checked) postRevert(+rv.value); });
-      }
-      if (rvNever) rvNever.addEventListener('change', () => {
-        rv.disabled = rvNever.checked; if (rvReset) rvReset.disabled = rvNever.checked;
-        liveRevertLbl(); postRevert(rvNever.checked ? 0 : +rv.value);
-      });
-      if (rvReset) rvReset.addEventListener('click', () => { rv.value = 3; liveRevertLbl(); if (!rvNever.checked) postRevert(3); });
       for (const [id, key] of [['npTitleColor', 'titleColor'], ['npArtistColor', 'artistColor']]) {
         const el = document.getElementById(id);
         if (el) el.addEventListener('change', async () => {   // 'change' = picker closed — one flash re-paint per pick, not per drag
