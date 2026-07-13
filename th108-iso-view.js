@@ -103,20 +103,20 @@
       const st = document.createElement('style'); st.id = 'iso-view-css';
       st.textContent =
         '.iso-panel{position:fixed;left:50%;top:84px;transform:translateX(-50%);z-index:60;width:760px;' +
-        'background:var(--card,#161b22);border:1px solid var(--line,#30363d);border-radius:12px;' +
-        'box-shadow:0 18px 50px rgba(0,0,0,.5);font:inherit;color:var(--fg,#e6edf3)}' +
-        '.iso-head{display:flex;align-items:center;gap:10px;padding:9px 12px;border-bottom:1px solid var(--line,#30363d);cursor:grab;user-select:none}' +
+        'background:var(--card,#161b22);border:1px solid var(--border);border-radius:12px;' +
+        'box-shadow:0 18px 50px rgba(0,0,0,.5);font:inherit;color:var(--text)}' +
+        '.iso-head{display:flex;align-items:center;gap:10px;padding:9px 12px;border-bottom:1px solid var(--border);cursor:grab;user-select:none}' +
         '.iso-head.drag{cursor:grabbing}.iso-grip{color:var(--muted,#8b949e)}.iso-head b{font-size:14px}.iso-spacer{margin-left:auto}' +
         '.iso-x{display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:50%;' +
         'background:none;border:0;color:var(--muted,#8b949e);font-size:13px;line-height:1;cursor:pointer;padding:0;margin:0}' +
-        '.iso-x:hover{color:var(--fg,#e6edf3);background:rgba(255,255,255,.06)}' +
+        '.iso-x:hover{color:var(--text);background:rgba(255,255,255,.06)}' +
         '.iso-panel.popped{position:static;left:0;top:0;transform:none;width:100%;height:100vh;border:0;border-radius:0;box-shadow:none;display:flex;flex-direction:column}' +
         '.iso-panel.popped .iso-head{cursor:default}.iso-panel.popped .iso-grip{display:none}.iso-panel.popped .iso-x{display:none}' +   // popped: the OS window X is present → the in-UI X is redundant
         '.iso-panel.popped .iso-cv{flex:1 1 0;min-height:0;width:100%;height:auto;margin:6px 0 2px}' +   // flex-basis 0 + min-height:0 → the canvas truly shrinks when the header grows (auto basis aspect-locks a <canvas> so it wouldn\'t)
-        '.iso-ctl{display:flex;justify-content:center;align-items:center;gap:10px;flex-wrap:wrap;padding:4px 12px 9px;border-bottom:1px solid var(--line,#30363d)}' +   // border = separator between the controls (header) and the viewport
+        '.iso-ctl{display:flex;justify-content:center;align-items:center;gap:10px;flex-wrap:wrap;padding:4px 12px 9px;border-bottom:1px solid var(--border)}' +   // border = separator between the controls (header) and the viewport
         // modern buttons: soft rounded pills, subtle fill, smooth hover, glowing active state (shared by header + control bar)
         '.iso-ctl button,.iso-head>button.iso-pop,.iso-head>button.iso-popin,.iso-head>button.iso-rs,.iso-head>button.iso-reset,.iso-head>button.iso-wmax{margin:0;padding:5px 12px;' +
-        'font-size:12px;font-weight:600;border-radius:8px;border:1px solid rgba(255,255,255,.10);background:rgba(255,255,255,.06);color:var(--fg,#e6edf3);' +
+        'font-size:12px;font-weight:600;border-radius:8px;border:1px solid rgba(255,255,255,.10);background:rgba(255,255,255,.06);color:var(--text);' +
         'box-shadow:none;cursor:pointer;transition:background .15s,border-color .15s,transform .08s}' +
         '.iso-ctl button:hover,.iso-head>button.iso-pop:hover,.iso-head>button.iso-popin:hover,.iso-head>button.iso-rs:hover,.iso-head>button.iso-reset:hover,.iso-head>button.iso-wmax:hover{background:rgba(255,255,255,.13);border-color:rgba(255,255,255,.22)}' +
         '.iso-ctl button:active,.iso-head>button.iso-pop:active,.iso-head>button.iso-popin:active,.iso-head>button.iso-rs:active,.iso-head>button.iso-reset:active,.iso-head>button.iso-wmax:active{transform:translateY(1px)}' +
@@ -125,17 +125,17 @@
         // the three Enhanced sub-toggles framed as a subset (blue tint ties them to the Enhanced button); negative left margin tucks the frame up against Enhanced
         '.iso-fxgroup{display:inline-flex;align-items:center;gap:7px;padding:4px 8px;margin-left:-3px;border-radius:11px;border:1px solid rgba(88,166,255,.40);background:rgba(88,166,255,.07)}' +
         '.iso-fxgroup button{font-size:11.5px;padding:4px 10px}' +
-        '.iso-ctl select.iso-wave{margin:0;padding:5px 8px;font-size:12px;font-weight:600;border-radius:8px;border:1px solid rgba(255,255,255,.10);background:rgba(255,255,255,.06);color:var(--fg,#e6edf3);cursor:pointer}' +
+        '.iso-ctl select.iso-wave{margin:0;padding:5px 8px;font-size:12px;font-weight:600;border-radius:8px;border:1px solid rgba(255,255,255,.10);background:rgba(255,255,255,.06);color:var(--text);cursor:pointer}' +
         '.iso-ctl select.iso-wave:hover{background-image:linear-gradient(0deg,rgba(255,255,255,.10),rgba(255,255,255,.10))}.iso-ctl select.iso-wave:focus{outline:none}' +   // hover brighten via flat overlay (pure paint — no text jiggle); no lingering focus ring
         '.iso-sliders{display:flex;justify-content:center;align-items:flex-end;gap:22px;flex-wrap:wrap;padding:9px 12px 2px}' +
         '.iso-sld{display:inline-flex;flex-direction:column;gap:3px;font-size:12px;color:var(--muted,#8b949e)}' +
-        '.iso-sld-top{display:flex;justify-content:space-between;align-items:baseline;gap:14px}.iso-sld-top small{color:var(--fg,#e6edf3);font-size:11px}' +
+        '.iso-sld-top{display:flex;justify-content:space-between;align-items:baseline;gap:14px}.iso-sld-top small{color:var(--text);font-size:11px}' +
         '.iso-sld input{width:190px;accent-color:var(--accent,#fa8072)}' +   // coral slider in BOTH docked + popped (popout misses the page-global input[type=range] rule)
         '.iso-gl{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--muted,#8b949e)}.iso-gl input{width:90px}' +
         '.iso-cv{display:block;width:720px;height:392px;margin:6px auto 2px;touch-action:none;cursor:grab}.iso-cv.drag{cursor:grabbing}' +
-        '.iso-legend{display:flex;flex-wrap:wrap;gap:6px;padding:9px 12px 2px;border-top:1px solid var(--line,#30363d)}' +   // border = separator between the viewport and the footer (legend + readout)
+        '.iso-legend{display:flex;flex-wrap:wrap;gap:6px;padding:9px 12px 2px;border-top:1px solid var(--border)}' +   // border = separator between the viewport and the footer (legend + readout)
         '.iso-chip{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;padding:3px 8px;border-radius:999px;' +
-        'background:rgba(255,255,255,.05);box-shadow:inset 0 0 0 1px var(--line,#30363d);cursor:pointer;user-select:none}' +
+        'background:rgba(255,255,255,.05);box-shadow:inset 0 0 0 1px var(--border);cursor:pointer;user-select:none}' +
         '.iso-chip.foc{box-shadow:inset 0 0 0 1px var(--blue,#58a6ff)}.iso-chip.off{opacity:.5}' +
         '.iso-seq{color:var(--muted,#8b949e);font-size:12px;user-select:none;align-self:center}' +   // › between chips: reads as the stacking order, bottom → top (same idiom as the binder's macro-step chips)
         // Reorder mode: the draggable chips pulse a soft blue stroke so it's obvious THEY are the handles
@@ -144,17 +144,17 @@
         '.iso-chip.dragging{opacity:.45}' +
         // drop marks override the pulse (animation off so the edge line shows); blue = will re-slot, red = drop here changes nothing
         '.iso-chip.dropbefore,.iso-chip.dropafter{animation:none}' +
-        '.iso-chip.dropbefore{box-shadow:inset 0 0 0 1px var(--line,#30363d),-3px 0 0 var(--blue,#58a6ff)}' +
-        '.iso-chip.dropafter{box-shadow:inset 0 0 0 1px var(--line,#30363d),3px 0 0 var(--blue,#58a6ff)}' +
-        '.iso-chip.dropnoop.dropbefore{box-shadow:inset 0 0 0 1px var(--line,#30363d),-3px 0 0 #f85149}' +
-        '.iso-chip.dropnoop.dropafter{box-shadow:inset 0 0 0 1px var(--line,#30363d),3px 0 0 #f85149}' +
+        '.iso-chip.dropbefore{box-shadow:inset 0 0 0 1px var(--border),-3px 0 0 var(--blue,#58a6ff)}' +
+        '.iso-chip.dropafter{box-shadow:inset 0 0 0 1px var(--border),3px 0 0 var(--blue,#58a6ff)}' +
+        '.iso-chip.dropnoop.dropbefore{box-shadow:inset 0 0 0 1px var(--border),-3px 0 0 #f85149}' +
+        '.iso-chip.dropnoop.dropafter{box-shadow:inset 0 0 0 1px var(--border),3px 0 0 #f85149}' +
         '.iso-chip .pw{width:13px;height:13px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:9px;' +
         'box-shadow:inset 0 0 0 1px var(--muted,#8b949e)}.iso-chip.on .pw{background:#3fb950;box-shadow:none;color:#0d1117}' +
         '.iso-foot{padding:7px 12px 11px;font-size:11px;color:var(--muted,#8b949e);line-height:1.5}' +
-        '.iso-read{color:var(--fg,#e6edf3);font-weight:600;margin-bottom:4px}' +
+        '.iso-read{color:var(--text);font-weight:600;margin-bottom:4px}' +
         '.iso-hint{margin-top:2px}.iso-hint+.iso-hint{margin-top:1px}' +
-        '.iso-hk{display:inline-block;min-width:54px;color:var(--fg,#e6edf3);font-weight:700;font-size:9.5px;letter-spacing:.5px;text-transform:uppercase;opacity:.55;margin-right:4px}' +
-        '.iso-foot kbd{font:inherit;font-size:10px;background:rgba(255,255,255,.10);border:1px solid rgba(255,255,255,.18);border-radius:4px;padding:0 4px;color:var(--fg,#e6edf3)}' +
+        '.iso-hk{display:inline-block;min-width:54px;color:var(--text);font-weight:700;font-size:9.5px;letter-spacing:.5px;text-transform:uppercase;opacity:.55;margin-right:4px}' +
+        '.iso-foot kbd{font:inherit;font-size:10px;background:rgba(255,255,255,.10);border:1px solid rgba(255,255,255,.18);border-radius:4px;padding:0 4px;color:var(--text)}' +
         // glossy glass: a diagonal light-sweep over the tinted base, a punchier backdrop, and bright inner bevel highlights
         '.iso-panel.glass{background:linear-gradient(135deg,rgba(255,255,255,.14),rgba(255,255,255,.03) 32%,rgba(255,255,255,0) 55%,rgba(255,255,255,.04)),rgba(20,25,33,var(--glass-a,.45));' +
         'backdrop-filter:blur(var(--glass-b,12px)) saturate(1.8) brightness(1.06) url(#iso-glass-ref);-webkit-backdrop-filter:blur(var(--glass-b,12px)) saturate(1.8) brightness(1.06);' +   // url() = SVG displacement-map filter → real edge refraction (Chromium; Safari falls back to blur)
