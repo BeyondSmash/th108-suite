@@ -17,7 +17,7 @@ try{ var _tk = /[?&]defaults=1(?:&|$)/.test(location.search) ? 'th108_DEFAULTS_t
   :root{
     --bg:#f7f2f2; --card:#ffffff; --inset:#f4f1ee; --elev:#ffffff;
     --text:#0d1117; --muted:#8a8f98; --border:#e8e4df; --ring:#eef0f6;
-    --accent:#bfd5ff; --blue:#98d0ff; --mint:#6ed2b7; --pink:#f9c5d8; --yellow:#ffd98c; --lav:#c9b8ff;
+    --accent:#bfd5ff; --accent-strong:#6d8fe6; --blue:#98d0ff; --mint:#6ed2b7; --pink:#f9c5d8; --yellow:#ffd98c; --lav:#c9b8ff;   /* accent-strong: a saturated shade for SELECTED/active fills so they pop even when --accent is a pale tint */
     --num:#eb5524; --ok:#1a7f4b; --err:#c93c32; --warn:#a87617;
     --tabbg:rgba(13,17,23,.05); --tabhl:#ffffff; --shadow:0 1px 2px rgba(13,17,23,.04);
     --logoink:#1e3a5f;
@@ -27,7 +27,7 @@ try{ var _tk = /[?&]defaults=1(?:&|$)/.test(location.search) ? 'th108_DEFAULTS_t
   [data-theme="dark"]{
     --bg:#090c10; --card:#0d1117; --inset:#161b22; --elev:#21262d;
     --text:#f0f2f8; --muted:#8b949e; --border:#21262d; --ring:#21262d;
-    --accent:#949bff; --num:#ff8157; --ok:#3fb950; --err:#f85149; --warn:#d29922;
+    --accent:#949bff; --accent-strong:var(--accent); --num:#ff8157; --ok:#3fb950; --err:#f85149; --warn:#d29922;   /* dark accent already reads on the dark bg */
     --tabbg:rgba(240,242,248,.06); --tabhl:#21262d; --shadow:none;
     --logoink:#8aa6d4;   /* navy reads as black on the night bg — same hue family, lifted for contrast */
     --zebra:rgba(127,154,212,.06);   /* cool tint is fine on the dark bg */
@@ -238,7 +238,7 @@ try{ var _tk = /[?&]defaults=1(?:&|$)/.test(location.search) ? 'th108_DEFAULTS_t
   /* typable fields: distinct from the near-white card — a slightly deeper field bg + a clearer border
      (--inset alone was too close to the white card to read as a text box). color-mix keeps it theme-aware. */
   input[type=text],input[type=number]{ font:inherit; background:color-mix(in srgb, var(--text) 5%, var(--inset)); color:var(--text); border:1px solid color-mix(in srgb, var(--text) 20%, transparent); border-radius:10px; }
-  input[type=checkbox],input[type=radio]{ accent-color:var(--accent); }
+  input[type=checkbox],input[type=radio]{ accent-color:var(--accent-strong); }   /* strong shade so a checked box reads clearly even with a pale --accent */
   input[type=range]{ accent-color:var(--accent); }
   input[type=color]{ width:48px; height:28px; background:none; border:1px solid var(--border); border-radius:8px; }
   .tin{ padding:6px 10px; }
@@ -345,7 +345,7 @@ try{ var _tk = /[?&]defaults=1(?:&|$)/.test(location.search) ? 'th108_DEFAULTS_t
   .patbtn{ font:600 12px/1 "Plus Jakarta Sans",system-ui,sans-serif; background:var(--card); color:var(--text);
            border:0; box-shadow:0 0 0 1.5px var(--ring); border-radius:999px; padding:6px 10px; cursor:pointer; margin:0; }
   .patbtn:hover{ box-shadow:0 0 0 1.5px var(--accent); }
-  .patbtn.sel{ background:var(--accent); box-shadow:none; color:#0d1117; }
+  .patbtn.sel{ background:var(--accent-strong); box-shadow:none; color:#fff; }   /* selected chip: strong fill + white text so it clearly stands out from the unselected white chips */
   canvas.cv{ border:1px solid var(--border); border-radius:12px; background:#000; }
 
   /* bio tile */
