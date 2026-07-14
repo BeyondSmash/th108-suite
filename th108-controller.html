@@ -1379,7 +1379,13 @@ let _deferLogAt=0;       // debounce the "left to the background daemon" line: a
 // only become the driver when the holder closes (automatic handoff). No Web Locks → behave as before.
 window.__isDriver = false;
 let __driverResolve; const __driverGained = new Promise(r=>{ __driverResolve=r; });   // resolves when THIS tab is the sole driver
-if(navigator.locks && navigator.locks.request){
+if(window.TH108Defaults && TH108Defaults.isDefaultsMode()){
+  // The isolated Author-Defaults sandbox NEVER auto-drives (it defers to the daemon like any tab) and only
+  // touches the board for an explicit Drive-from-Tab preview. So it must NOT hold the shared cross-tab driver
+  // lock — otherwise just having the sandbox open falsely blocks the real controller tab from connecting
+  // ("another tab is driving", though the sandbox isn't). Local driver flag only; don't hold the lock.
+  window.__isDriver = true; __driverResolve();
+} else if(navigator.locks && navigator.locks.request){
   navigator.locks.request('th108-driver', { mode:'exclusive' }, ()=> new Promise(()=>{
     window.__isDriver = true; __driverResolve();
     log('this tab now drives the keyboard','dim');
