@@ -436,6 +436,7 @@ function cycleBrightness(a) {
   brightnessBlinkKey = (!flashAll && value >= 10 && value <= 100) ? (DIGIT_KS[value / 10 - 1] != null ? DIGIT_KS[value / 10 - 1] : -1) : -1;
   brightnessBlinkAt = (flashAll || brightnessBlinkKey >= 0) ? Date.now() : 0;
   saveSettings();
+  tick().catch(() => {});   // paint NOW instead of waiting up to ~33ms for the next render tick (tickBusy guards against overlap)
   log('🔆 brightness cycle → ' + value + '%' + (flashAll ? ' · flash' : '') + (state ? '' : ' (idle — no board to paint)'));   // when the PAGE is driving, the page adopts this via its /status poll (settings.brightness rides /status)
 }
 // brightnessToggle: flip global brightness between the binding's "on" value (default 100) and 0 (off), apply live.
@@ -444,6 +445,7 @@ function toggleBrightness(a) {
   settings.brightness = value;
   if (state) { state.bri = value / 100; state.lastFlat = null; }
   saveSettings();
+  tick().catch(() => {});   // paint NOW instead of waiting for the next render tick
   log('🔆 brightness toggle → ' + value + '%' + (state ? '' : ' (idle — no board to paint)'));
 }
 // per-binding state for the stateful triggers (multitap taps, hold timers) + a fire debounce for key/chord.
@@ -455,7 +457,7 @@ function _haReset() { for (const st of _haState.values()) if (st.holdTimer) clea
 // page that closes mid-capture can't wedge actions off forever.
 let _haSuppressUntil = 0;
 function setHaSuppress(ms) { _haSuppressUntil = ms > 0 ? Date.now() + Math.min(ms, 60000) : 0; }
-function _haDebounceFire(b, now) { if (now - (_haLastFire.get(b) || 0) < 400) return; _haLastFire.set(b, now); fireHostAction(b); }
+function _haDebounceFire(b, now) { if (now - (_haLastFire.get(b) || 0) < 120) return; _haLastFire.set(b, now); fireHostAction(b); }   // 120ms: swallows key auto-repeat (~33ms) but lets deliberate rapid taps through (was 400ms, which dropped fast brightness-cycle / re-toggle presses and felt laggy)
 uIOhook.on('keydown', e => {
   const led = UIO2IDX[e.keycode]; if (led === undefined || !hostActions.length) return;
   const now = Date.now(); if (now < _haSuppressUntil) return;   // page is mid-bind: don't fire the key's existing action
