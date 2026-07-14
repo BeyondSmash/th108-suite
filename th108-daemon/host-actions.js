@@ -14,7 +14,7 @@
 //                 'launch'        { target }                 — open a program / file / URL
 //                 'brightnessCycle' {}                       — step global brightness +10%, wrap 100→0, white-blink at 100
 
-const ACTIONS = new Set(['micToggle', 'profileNext', 'profilePrev', 'profileSelect', 'macro', 'launch', 'focusApp', 'winMin', 'winMax', 'winRestore', 'brightnessCycle']);
+const ACTIONS = new Set(['micToggle', 'profileNext', 'profilePrev', 'profileSelect', 'macro', 'launch', 'focusApp', 'winMin', 'winMax', 'winRestore', 'brightnessCycle', 'brightnessToggle']);
 const TRIGGERS = new Set(['key', 'chord', 'multitap', 'hold']);
 
 // Global-brightness cycle step: +`step`%, wrapping past 100 back to 0. Returns the new value and whether it
@@ -27,6 +27,8 @@ function nextBrightness(cur, step) {
   return { value: n, blink: n === 100 };
 }
 
+// brightnessToggle: >0 → off (0); 0 → the configured "on" value. Pure/testable.
+function toggleBrightness(cur, onVal) { return (Number(cur) || 0) > 0 ? 0 : clampInt(onVal, 100, 0, 100); }
 function clampInt(v, def, lo, hi) { v = Math.round(+v); if (!isFinite(v)) return def; return Math.max(lo, Math.min(hi, v)); }
 function pickMods(m) { m = m || {}; return { ctrl: !!m.ctrl, alt: !!m.alt, shift: !!m.shift, meta: !!m.meta }; }
 
@@ -54,6 +56,8 @@ function normalize(list) {
       return null;
     }).filter(Boolean) : [];
     if (a.type === 'launch' || a.type === 'focusApp') a.target = String(action.target || '').trim().replace(/^["']+|["']+$/g, '').trim();   // strip surrounding quotes (Windows "Copy as path")
+    if (a.type === 'brightnessCycle') a.flashMax = action.flashMax !== false;   // flash the WHOLE board white at 100% (default on); false → keep the number-key readout at 100%
+    if (a.type === 'brightnessToggle') a.value = clampInt(action.value, 100, 0, 100);   // the "on" brightness %; the action toggles between this and 0 (off)
     out.push({ trigger: t, action: a });
   }
   return out;
@@ -75,4 +79,4 @@ function tapFires(taps, now, count, windowMs) {
   return { fire: false, taps: kept };
 }
 
-module.exports = { normalize, chordMatches, tapFires, nextBrightness, ACTIONS, TRIGGERS };
+module.exports = { normalize, chordMatches, tapFires, nextBrightness, toggleBrightness, ACTIONS, TRIGGERS };

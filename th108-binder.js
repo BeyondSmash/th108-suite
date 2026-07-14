@@ -387,7 +387,7 @@
     // LED), so a firmware-remapped key resolves to the same LED the daemon watches. ----
     const HOST_KEY = 'th108_host_actions';
     const haEsc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-    const ACT_OPTS = [['micToggle', 'Mic / Music lighting toggle'], ['brightnessCycle', 'Brightness cycle (10% steps · white-blink at 100%)'], ['profileNext', 'Profile → Next'], ['profilePrev', 'Profile → Previous'], ['profileSelect', 'Jump to a profile…'], ['launch', 'Launch a program / file / URL…'], ['focusApp', 'Switch to a program (focus or launch)…'], ['winMin', 'Minimize active window'], ['winMax', 'Maximize active window'], ['winRestore', 'Restore / unmaximize active window'], ['macro', 'Run a macro (key sequence)…']];
+    const ACT_OPTS = [['micToggle', 'Mic / Music lighting toggle'], ['brightnessCycle', 'Brightness cycle (10% steps · white-blink at 100%)'], ['brightnessToggle', 'Toggle brightness (custom % ↔ off)…'], ['profileNext', 'Profile → Next'], ['profilePrev', 'Profile → Previous'], ['profileSelect', 'Jump to a profile…'], ['launch', 'Launch a program / file / URL…'], ['focusApp', 'Switch to a program (focus or launch)…'], ['winMin', 'Minimize active window'], ['winMax', 'Maximize active window'], ['winRestore', 'Restore / unmaximize active window'], ['macro', 'Run a macro (key sequence)…']];
     const hasTarget = t => t === 'launch' || t === 'focusApp';   // actions that take a program/URL target
     const TRG_OPTS = [['key', 'Single press'], ['multitap', 'Multi-tap (N presses)'], ['chord', 'Chord (modifiers + key)'], ['hold', 'Long-press (hold)']];
     const MOD_CODE = /^(Control|Shift|Alt|Meta)(Left|Right)$/;   // a lone modifier keydown (skip while waiting for the real key)
@@ -441,6 +441,8 @@
       if (a.type === 'launch') return 'Launch ' + (a.target || '?');
       if (a.type === 'focusApp') return 'Switch to ' + (a.target || '?');
       if (a.type === 'macro') return 'Macro (' + ((a.steps || []).length) + ' keys)';
+      if (a.type === 'brightnessCycle') return 'Brightness cycle' + (a.flashMax === false ? '' : ' · flash at 100%');
+      if (a.type === 'brightnessToggle') return 'Toggle brightness ' + (a.value == null ? 100 : a.value) + '% ↔ off';
       return (ACT_OPTS.find(o => o[0] === a.type) || [, a.type])[1];
     }
     // an .exe binding shows its program icon (the daemon extracts it; the browser can't). cached per path.
@@ -489,7 +491,7 @@
       return haEsc(describeAction(a)); };
     // the in-progress binding being authored (the builder form's state)
     let _hb = null;
-    function newBuilder() { return { actType: 'micToggle', triggerType: 'key', count: 2, windowMs: 400, holdMs: 500, profileIndex: 1, target: '', steps: [] }; }
+    function newBuilder() { return { actType: 'micToggle', triggerType: 'key', count: 2, windowMs: 400, holdMs: 500, profileIndex: 1, target: '', steps: [], briFlashMax: true, briToggleVal: 100 }; }
     let _hostCapture = null, _macroRec = null, _macroDragI = null, _chordCancel = null;
     function endHostCapture(restore) { if (!_hostCapture) return; document.removeEventListener('keydown', _hostCapture.onKey, true); if (restore && _hostCapture.btn && _hostCapture.btn.isConnected) _hostCapture.btn.textContent = _hostCapture.orig; _hostCapture = null; suppressHostActions(false); }
     function endMacroRecord() { if (!_macroRec) return; document.removeEventListener('keydown', _macroRec.onKey, true); if (_macroRec.btn && _macroRec.btn.isConnected) { _macroRec.btn.textContent = '⏺ Record'; _macroRec.btn.classList.remove('recording'); } _macroRec = null; suppressHostActions(false); }
@@ -590,6 +592,8 @@
       if (a.type === 'profileSelect') a.index = Math.max(0, (_hb.profileIndex | 0) - 1);   // UI is 1-based
       if (hasTarget(a.type)) a.target = stripQ(_hb.target);
       if (a.type === 'macro') a.steps = _hb.steps.slice();
+      if (a.type === 'brightnessCycle') a.flashMax = _hb.briFlashMax;
+      if (a.type === 'brightnessToggle') a.value = _hb.briToggleVal;
       return { trigger: t, action: a };
     }
     function buildBindingFromKey(ev) {
@@ -687,6 +691,8 @@
         if (a.type === 'profileSelect') a.index = Math.max(0, (_hb.profileIndex | 0) - 1);
         if (hasTarget(a.type)) a.target = stripQ(_hb.target);
         if (a.type === 'macro') a.steps = _hb.steps.slice();
+        if (a.type === 'brightnessCycle') a.flashMax = _hb.briFlashMax;
+        if (a.type === 'brightnessToggle') a.value = _hb.briToggleVal;
         list.push({ trigger: t, action: a }); saveHostActions(list);
         log('✓ ' + describeTrigger(t) + ' → ' + describeAction(a) + ' (works page-closed)', 'ok');
         _hb = newBuilder(); renderGrid(); };
@@ -711,6 +717,8 @@
       if (_hb.actType === 'profileSelect') h += '<span class="haLbl">Profile #</span><input type="number" class="numin haPidx" min="1" max="10" value="' + _hb.profileIndex + '">';
       if (hasTarget(_hb.actType)) h += '<span class="haTargetWrap"><input type="text" class="haTarget' + (_hb.target ? ' haHasFile' : '') + '" placeholder="program path or URL" value="' + haEsc(_hb.target) + '"><button type="button" class="patbtn haPick" title="Pick from your currently-open apps">Running app ▾</button><button type="button" class="patbtn haBrowse" title="Pick a program (.exe) — opens a file dialog via the background app">Choose File</button></span>';
       if (_hb.actType === 'macro') h += '<button type="button" class="patbtn haRec">⏺ Record</button><button type="button" class="patbtn haDelay">+ Delay</button><button type="button" class="patbtn haClr">Clear</button><div class="haStepList"></div>';
+      if (_hb.actType === 'brightnessCycle') h += '<label style="display:inline-flex;align-items:center;gap:6px;font-size:12px;cursor:pointer" title="At 100% flash the whole board white once as a max cue (off = keep the number-key readout)"><input type="checkbox" class="haBriFlash"' + (_hb.briFlashMax ? ' checked' : '') + '> Flash white at 100%</label>';
+      if (_hb.actType === 'brightnessToggle') h += '<span class="haLbl">% when on</span><input type="number" class="numin haBriVal" min="0" max="100" value="' + _hb.briToggleVal + '">';
       h += '</div><div class="haLine"><span class="haLbl">When I</span><select class="haTrgSel">' + TRG_OPTS.map(o => '<option value="' + o[0] + '"' + (o[0] === _hb.triggerType ? ' selected' : '') + '>' + o[1] + '</option>').join('') + '</select>';
       if (_hb.triggerType === 'multitap') h += '<input type="number" class="numin haCount" min="1" max="10" value="' + _hb.count + '"><span class="haLbl">times within</span><input type="number" class="numin haWin" min="100" max="10000" step="50" value="' + _hb.windowMs + '"><span class="haLbl">ms</span>';
       if (_hb.triggerType === 'hold') h += '<span class="haLbl">for</span><input type="number" class="numin haHold" min="150" max="3000" step="50" value="' + _hb.holdMs + '"><span class="haLbl">ms</span>';
@@ -737,6 +745,8 @@
           set(Math.max(lo, Math.min(hi, v))); });
         el.addEventListener('blur', () => { let v = Math.floor(+el.value); if (!isFinite(v) || el.value === '') v = get(); v = Math.max(lo, Math.min(hi, v)); set(v); el.value = v; }); };
       wireClampNum('.haPidx', 1, 10, () => _hb.profileIndex, v => _hb.profileIndex = v);
+      wireClampNum('.haBriVal', 0, 100, () => _hb.briToggleVal, v => _hb.briToggleVal = v);
+      { const cb = host.querySelector('.haBriFlash'); if (cb) cb.addEventListener('change', () => _hb.briFlashMax = cb.checked); }
       { const tgt = host.querySelector('.haTarget'), ok = host.querySelector('.haFileOk'), nm = host.querySelector('.haFileName');
         if (tgt) { const toEnd = () => requestAnimationFrame(() => { if (document.activeElement !== tgt) tgt.scrollLeft = 1e6; });   // show the END (filename), not the C:\ start
           if (tgt.value) toEnd(); tgt.addEventListener('blur', toEnd); }   // re-scroll on blur (the browser snaps it back to the start otherwise)

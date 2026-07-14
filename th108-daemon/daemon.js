@@ -194,7 +194,7 @@ let lcdBusy = false;     // a now-playing flash upload is running — the 0x32 s
 let npBlinkAt = 0;       // timestamp of a throttled-skip → blink the spacebar red twice
 let npFlashAt = 0;       // timestamp of a track change → flash the number row (keys 1-0) for 150ms
 let profileFlashAt = 0, profileFlashColor = '#ffffff', profileFlashLed = -1;   // profile-switch number flash
-let brightnessBlinkAt = 0, brightnessBlinkKey = -1;   // brightnessCycle host-action: flash the number-row key that maps to the new % (1→10% … 0→100%) as a readout
+let brightnessBlinkAt = 0, brightnessBlinkKey = -1, brightnessBlinkAll = false;   // brightnessCycle host-action: flash the number-row key that maps to the new % (1→10% … 0→100%) as a readout; brightnessBlinkAll = flash the WHOLE board white at 100%
 const PROFILE_FLASH_MS = 990, PROFILE_BLINK_MS = 330, PROFILE_BLINK_ON = 180;   // ~1s number flash, blinking ~3× (180ms on / 150ms off)
 let barCount = 0, barStepAt = 0;   // ANIMATED lit-key count for the progress-bar (lerps toward target one key per BAR_STEP_MS — a seek visibly counts up/down)
 const BAR_STEP_MS = 50, BAR_FADE_MS = 600;   // 50ms per key (the sequential walk) / 600ms idle crossfade-out
@@ -421,18 +421,30 @@ function fireHostAction(b) {
   if (a.type === 'winMin') return winCmd(':MIN');
   if (a.type === 'winMax') return winCmd(':MAX');
   if (a.type === 'winRestore') return winCmd(':RESTORE');
-  if (a.type === 'brightnessCycle') return cycleBrightness();
+  if (a.type === 'brightnessCycle') return cycleBrightness(a);
+  if (a.type === 'brightnessToggle') return toggleBrightness(a);
 }
-// brightnessCycle: step global brightness +10% (wrap 100→0), apply live, and white-flash the board at 100%.
-function cycleBrightness() {
-  const { value } = HA.nextBrightness(settings.brightness);
+// brightnessCycle: step global brightness +10% (wrap 100→0), apply live. At 100% flash the WHOLE board white
+// once (opt-out per binding via flashMax=false → keep the number-row readout); below 100% flash the readout key.
+function cycleBrightness(a) {
+  const { value, blink } = HA.nextBrightness(settings.brightness);   // blink = landed exactly on 100
   settings.brightness = value;
   if (state) { state.bri = value / 100; state.lastFlat = null; }   // live + bust the send dedupe so it applies now
-  // flash the number-row key that reads the new % (10%→"1" … 90%→"9" … 100%→"0"); 0% = board dark, no readout
-  brightnessBlinkKey = (value >= 10 && value <= 100) ? (DIGIT_KS[value / 10 - 1] != null ? DIGIT_KS[value / 10 - 1] : -1) : -1;
-  brightnessBlinkAt = brightnessBlinkKey >= 0 ? Date.now() : 0;
+  const flashAll = blink && (!a || a.flashMax !== false);          // 100% + flash enabled → whole-board white cue
+  brightnessBlinkAll = flashAll;
+  // flash the number-row key that reads the new % (10%→"1" … 90%→"9" … 100%→"0") — skipped when we flash the whole board; 0% = board dark, no readout
+  brightnessBlinkKey = (!flashAll && value >= 10 && value <= 100) ? (DIGIT_KS[value / 10 - 1] != null ? DIGIT_KS[value / 10 - 1] : -1) : -1;
+  brightnessBlinkAt = (flashAll || brightnessBlinkKey >= 0) ? Date.now() : 0;
   saveSettings();
-  log('🔆 brightness cycle → ' + value + '%' + (state ? '' : ' (idle — no board to paint)'));   // when the PAGE is driving, the page adopts this via its /status poll (settings.brightness rides /status)
+  log('🔆 brightness cycle → ' + value + '%' + (flashAll ? ' · flash' : '') + (state ? '' : ' (idle — no board to paint)'));   // when the PAGE is driving, the page adopts this via its /status poll (settings.brightness rides /status)
+}
+// brightnessToggle: flip global brightness between the binding's "on" value (default 100) and 0 (off), apply live.
+function toggleBrightness(a) {
+  const value = HA.toggleBrightness(settings.brightness, a && a.value != null ? a.value : 100);
+  settings.brightness = value;
+  if (state) { state.bri = value / 100; state.lastFlat = null; }
+  saveSettings();
+  log('🔆 brightness toggle → ' + value + '%' + (state ? '' : ' (idle — no board to paint)'));
 }
 // per-binding state for the stateful triggers (multitap taps, hold timers) + a fire debounce for key/chord.
 const _haState = new Map();   // binding ref → { taps:[], holdTimer }
@@ -671,10 +683,12 @@ async function runTick() {
         else if (pt >= 0 && (pt % PROFILE_BLINK_MS) < PROFILE_BLINK_ON) { const [pr, pg, pb] = hexRGB(profileFlashColor); const o = profileFlashLed * 4; flat[o + 1] = pr; flat[o + 2] = pg; flat[o + 3] = pb; }
       }
     }
-    if (brightnessBlinkAt && brightnessBlinkKey >= 0) {   // brightness readout: the number-row key for the new % flashes full white ~220ms (flatEq sends the on/off edges)
+    if (brightnessBlinkAt) {   // brightness readout flash ~220ms (flatEq sends the on/off edges): whole board white at 100% (flashMax), else the number-row key for the new %
       const bt = Date.now() - brightnessBlinkAt;
-      if (bt >= 0 && bt < 220) { const o = brightnessBlinkKey * 4; flat[o + 1] = 255; flat[o + 2] = 255; flat[o + 3] = 255; }
-      else if (bt >= 220) brightnessBlinkAt = 0;
+      if (bt >= 0 && bt < 220) {
+        if (brightnessBlinkAll) { for (let o = 0; o < flat.length; o += 4) { flat[o + 1] = 255; flat[o + 2] = 255; flat[o + 3] = 255; } }   // all keys white = "you're at max"
+        else if (brightnessBlinkKey >= 0) { const o = brightnessBlinkKey * 4; flat[o + 1] = 255; flat[o + 2] = 255; flat[o + 3] = 255; }
+      } else if (bt >= 220) { brightnessBlinkAt = 0; brightnessBlinkAll = false; }
     }
     if (!E.flatEq(flat, state.lastFlat) || now - state.lastSent >= 1000) {
       sendingFrame = true;

@@ -70,3 +70,17 @@ test('nextBrightness cycles +10%, wraps 100->0, blinks only at 100', () => {
   assert.deepEqual(HA.nextBrightness(100),{ value: 0,   blink: false });  // wrap past max
   assert.deepEqual(HA.nextBrightness(55), { value: 60,  blink: false });  // odd start snaps to grid
 });
+
+test('normalize carries brightnessCycle flashMax (default true) + brightnessToggle value (clamped, default 100)', () => {
+  assert.equal(HA.normalize([{ trigger:{type:'key',led:1}, action:{type:'brightnessCycle'} }])[0].action.flashMax, true);
+  assert.equal(HA.normalize([{ trigger:{type:'key',led:1}, action:{type:'brightnessCycle', flashMax:false} }])[0].action.flashMax, false);
+  assert.equal(HA.normalize([{ trigger:{type:'key',led:2}, action:{type:'brightnessToggle', value:150} }])[0].action.value, 100);  // clamped
+  assert.equal(HA.normalize([{ trigger:{type:'key',led:2}, action:{type:'brightnessToggle'} }])[0].action.value, 100);            // default
+});
+
+test('toggleBrightness flips between the on-value and 0 (off)', () => {
+  assert.equal(HA.toggleBrightness(0, 100), 100);   // off -> on
+  assert.equal(HA.toggleBrightness(100, 100), 0);   // on -> off
+  assert.equal(HA.toggleBrightness(50, 80), 0);     // any >0 -> off
+  assert.equal(HA.toggleBrightness(0, 150), 100);   // on-value clamped to 100
+});
