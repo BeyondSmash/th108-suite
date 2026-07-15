@@ -37,6 +37,19 @@ test('flashLed maps profile index -> digit/numpad LED, -1 out of range', () => {
   assert.equal(PC.flashLed('numberRow', -1, D, N), -1);
 });
 
+test('composeApply: overlay supplies its own section, base supplies the remainder', () => {
+  const base = { type: 'global', layers: ['BL'], hostActions: ['BH'] };
+  // global P applies itself fully (base unused)
+  assert.deepEqual(PC.composeApply({ type: 'global', layers: ['PL'], hostActions: ['PH'] }, base), { layers: ['PL'], hostActions: ['PH'] });
+  // lighting overlay: its layers + base hotkeys (hotkeys revert to base)
+  assert.deepEqual(PC.composeApply({ type: 'lighting', layers: ['PL'] }, base), { layers: ['PL'], hostActions: ['BH'] });
+  // hotkey overlay: base layers + its hotkeys (lighting reverts to base)
+  assert.deepEqual(PC.composeApply({ type: 'hotkey', hostActions: ['PH'] }, base), { layers: ['BL'], hostActions: ['PH'] });
+  // no base → leave the other section as-is (null), preserving pre-base behavior
+  assert.deepEqual(PC.composeApply({ type: 'lighting', layers: ['PL'] }, null), { layers: ['PL'], hostActions: null });
+  assert.deepEqual(PC.composeApply({ type: 'hotkey', hostActions: ['PH'] }, null), { layers: null, hostActions: ['PH'] });
+});
+
 test('flashActive true within [0, dur), false otherwise', () => {
   assert.equal(PC.flashActive(1000, 1000, 1000), true);    // ft = 0
   assert.equal(PC.flashActive(1999, 1000, 1000), true);    // ft = 999

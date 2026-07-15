@@ -49,7 +49,7 @@ function applyAppProfile(exe) {
   _lastAppExe = key;
   const maps = settings.appProfiles;
   if (!Array.isArray(maps) || !maps.length) return;
-  const want = HA.wantedAppProfile(maps, exe, settings.appProfileDefault);   // its mapping, else the default; null → leave the board as-is
+  const want = HA.wantedAppProfile(maps, exe, settings.appProfileDefault || settings.primaryProfile);   // its mapping, else the explicit default, else revert to the primary base; null → leave the board as-is
   if (want == null) return;
   _appProfWant = want;
   if (_appProfTimer) clearTimeout(_appProfTimer);
@@ -256,7 +256,7 @@ function loadSettings() {
   const DEF = { usbReset: true, nowPlaying: false, npTitle: '#ffffff', npArtist: '#ffd98c', lightsOn: true, brightness: 100, npRevertSec: 0, npAllow: {}, npArtFit: false,
                 npBar: false, npBarColor: '#11ff00', npBarBright: 60, npFlash: true, npFlashColor: '#ffd000', npBarIdleSec: 3, npBarGrad: 'solid', npBarGradFit: false, npBarKeys: 'row', npBarAgentTop: false, npOnboardMask: false, dimOnDisplayOff: false,
                 focusOutlineColor: '#f97316', focusProjectColors: {}, focusAutoSwitch: false, focusOutlineOnSwitch: false, focusDryRun: false,
-                appProfiles: [], appProfileDefault: null };   // appProfiles = [{exe, profile}] auto-switch lighting per focused app (profile = a saved profile's NAME); appProfileDefault = profile name to show when no app matches (null = leave as-is)   // focusProjectColors = per-project outline overrides { "Portfolio": "#1543f9", … } keyed by workspace name; falls back to focusOutlineColor. focusDryRun default OFF now (window-focus is proven safe + manual-only); the checkbox was removed, but the daemon gate stays as a latent config-only kill-switch (set focusDryRun:true in config.json to make the ⤒ button resolve+log only)   // agent window-focus: outline glow color; focusAutoSwitch = bring a session's VSCode window to front when it needs-you; focusOutlineOnSwitch = flash the outline when focus switches (no window-steal). Both default OFF (opt-in)   // npBarAgentTop = let the agent layer's numpad glyphs render ABOVE the progress bar (z-swap on the shared keys)   // dimOnDisplayOff = blank the board while the monitor is off on the idle timeout   // npOnboardMask = set the keyboard's onboard effect to BLACK so the per-update flash is a dark blink, not rainbow   // npBarIdleSec = fade the bar out after this long with nothing playing   // npRevertSec 0 = never revert; npAllow = per-source override (absent → Spotify-only default); npBar = the 1-0 song-progress light-bar (lighting-only, no flash writes), npFlash = yellow track-change blip
+                appProfiles: [], appProfileDefault: null, primaryProfile: null };   // appProfiles = [{exe, profile}] auto-switch lighting per focused app (profile = a saved profile's NAME); appProfileDefault = profile name to show when no app matches (null → falls back to primaryProfile); primaryProfile = the base GLOBAL profile that non-global overlays compose against   // focusProjectColors = per-project outline overrides { "Portfolio": "#1543f9", … } keyed by workspace name; falls back to focusOutlineColor. focusDryRun default OFF now (window-focus is proven safe + manual-only); the checkbox was removed, but the daemon gate stays as a latent config-only kill-switch (set focusDryRun:true in config.json to make the ⤒ button resolve+log only)   // agent window-focus: outline glow color; focusAutoSwitch = bring a session's VSCode window to front when it needs-you; focusOutlineOnSwitch = flash the outline when focus switches (no window-steal). Both default OFF (opt-in)   // npBarAgentTop = let the agent layer's numpad glyphs render ABOVE the progress bar (z-swap on the shared keys)   // dimOnDisplayOff = blank the board while the monitor is off on the idle timeout   // npOnboardMask = set the keyboard's onboard effect to BLACK so the per-update flash is a dark blink, not rainbow   // npBarIdleSec = fade the bar out after this long with nothing playing   // npRevertSec 0 = never revert; npAllow = per-source override (absent → Spotify-only default); npBar = the 1-0 song-progress light-bar (lighting-only, no flash writes), npFlash = yellow track-change blip
   try { return Object.assign({}, DEF, JSON.parse(fs.readFileSync(SETTINGS_PATH, 'utf8'))); }
   catch { return Object.assign({}, DEF); }   // usbReset default ON — the escalation fails gracefully (one log line) if the task isn't registered
 }
@@ -339,16 +339,22 @@ function toggleAudioLayer() {
   syncAudioCapture();   // disabling the audio layer stops capture; enabling restarts it
   log('🎚 host action: audio layer "' + (L.name || '') + '" ' + (L.enabled ? 'ON' : 'OFF'));
 }
-function applyProfile(p, label) {   // shared apply path (cycle + direct-select); applies aspects per profile type
+// The base = the primary GLOBAL profile (by name), else the first global as an auto-fallback (single global → auto-base); null if no global exists → overlays then leave the other section as-is.
+function getPrimaryProfile() {
+  let p = settings.primaryProfile ? profiles.find(x => x && x.name === settings.primaryProfile) : null;
+  if (!p || (p.type || 'lighting') !== 'global') p = profiles.find(x => x && (x.type || 'lighting') === 'global') || null;
+  return (p && (p.type || 'lighting') === 'global') ? p : null;
+}
+function applyProfile(p, label) {   // shared apply path (cycle + direct-select + app-switch): compose P against the base per type
   if (!p) return;
-  const asp = PC.applyAspects(p.type);
-  if (asp.layers && Array.isArray(p.layers)) {
-    try { fs.writeFileSync(CONFIG_PATH, JSON.stringify(p.layers)); } catch {}   // persist so it survives + the page sees it
-    if (!paused && state) { state = E.applyConfig(state, p.layers);   // apply live unless the page holds the device
+  const c = PC.composeApply(p, getPrimaryProfile());   // P supplies the section its type owns; the base fills the remainder (null section = leave as-is)
+  if (Array.isArray(c.layers)) {
+    try { fs.writeFileSync(CONFIG_PATH, JSON.stringify(c.layers)); } catch {}   // persist so it survives + the page sees it
+    if (!paused && state) { state = E.applyConfig(state, c.layers);   // apply live unless the page holds the device
       if (state) { state.bri = Math.max(0, Math.min(100, settings.brightness != null ? settings.brightness : 100)) / 100; state.lastFlat = null; } }
   }
-  if (asp.hotkeys) {   // swap Host Actions, preserving the LIVE profile-cycle bindings so the cycle key survives
-    hostActions = HA.normalize(PC.mergeKeepingCycle(p.hostActions || [], hostActions)); saveHostActions(); _haReset();
+  if (c.hostActions !== null) {   // swap Host Actions, preserving the LIVE profile-cycle bindings so the cycle key survives
+    hostActions = HA.normalize(PC.mergeKeepingCycle(c.hostActions, hostActions)); saveHostActions(); _haReset();
   }
   syncAudioCapture();
   if (indicator.on) { profileFlashAt = Date.now(); profileFlashColor = p.color || '#ffffff'; profileFlashLed = PC.flashLed(indicator.keys, curProfile, DIGIT_KS, NUMPAD_KS); }
@@ -1179,6 +1185,8 @@ const control = {
     settings.appProfileDefault = o.default ? String(o.default) : null;
     saveSettings(); updateFocusPolling();   // (re)start or stop the foreground watcher based on whether any mapping now exists
   },
+  // The primary/base profile name (a global), pushed by the Profiles tab; overlays compose against it.
+  setPrimary: (name) => { settings.primaryProfile = (name && typeof name === 'string') ? name : null; saveSettings(); },
   focusWindowManual: (sessionId) => runFocusWindow(sessionId, { live: true }),   // manual button → LIVE via claude-view's proven focus-vscode.ps1 (only path that ever goes live; dry-run toggle still gates it)
   focusWindowByHwnd: (hwnd, title) => runFocusWindowByHwnd(hwnd, title, { live: true }),   // window picker → focus an exact VSCode window by handle (dry-run toggle still gates it)
   listVscodeWindows,   // every open VSCode window (by title), for the window picker — independent of chat activity

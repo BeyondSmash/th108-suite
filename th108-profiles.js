@@ -60,7 +60,7 @@
     function saveActive(name) { try { localStorage.setItem('th108_activeProfile', name || ''); } catch (_) {} }
     // the primary/base profile (a GLOBAL profile) — the baseline app-overlays sit on top of. Name handle.
     function loadPrimary() { try { return localStorage.getItem('th108_primaryProfile') || ''; } catch (_) { return ''; } }
-    function savePrimary(name) { try { localStorage.setItem('th108_primaryProfile', name || ''); } catch (_) {} }
+    function savePrimary(name) { try { localStorage.setItem('th108_primaryProfile', name || ''); } catch (_) {} pushToDaemon(); }   // daemon composes overlays against the base, so sync it
     // profiles are referenced by NAME (app-rules, the default, the selected tick, the primary), so a rename/delete must follow through
     function renameProfileRefs(oldName, newName) {
       const m = loadAppMap(); let changed = false;
@@ -134,7 +134,8 @@
       try { fetch('/profiles', { method: 'POST', headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
           profiles: (list || load()).map(p => ({ name: p.name, layers: p.layers || [], order: p.order || null, type: p.type || 'lighting', color: p.color || '', hostActions: p.hostActions || [] })),
-          indicator: loadIndicator()
+          indicator: loadIndicator(),
+          primary: loadPrimary()   // the base/primary profile name → the daemon composes non-global overlays against it
         }) }).catch(() => {}); } catch (_) {}
     }
     function store(list) { try { localStorage.setItem(KEY, JSON.stringify(list)); } catch (_) { } pushToDaemon(list); }

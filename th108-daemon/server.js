@@ -108,6 +108,7 @@ function createServer({ control, root, port = 8123, watchdogMs = 12000 }) {
         try { body = JSON.parse(b || '{}'); } catch { return sendJson(res, 400, { error: 'bad json' }); }
         if (control.setProfiles) control.setProfiles(body.profiles || []);
         if (control.setIndicator && body.indicator) control.setIndicator(body.indicator);
+        if (control.setPrimary) control.setPrimary(body.primary || null);   // the base/primary profile name (composes overlays)
         return sendJson(res, 200, { ok: true });
       }
       if (req.method === 'POST' && u === '/app-profiles') {   // page pushes the app→profile auto-switch map
