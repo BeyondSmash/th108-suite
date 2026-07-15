@@ -193,6 +193,8 @@
         host.appendChild(p);
         return;
       }
+      // exactly one profile is always "selected"; fall back to the top card if the stored one is gone
+      const activeName = (function () { const a = loadActive(); if (list.some(p => p.name === a)) return a; const d = list[0].name; if (d !== a) saveActive(d); return d; })();
       list.forEach((prof, i) => {
         const row = document.createElement('div'); row.className = 'profrow';
         const name = document.createElement('input');
@@ -204,10 +206,11 @@
           log('profile renamed → "' + l[i].name + '"', 'dim');
         });
         const sel = document.createElement('input');
-        sel.type = 'checkbox'; sel.className = 'profSel'; sel.checked = (loadActive() === prof.name);
+        sel.type = 'checkbox'; sel.className = 'profSel'; sel.checked = (prof.name === activeName);
         sel.title = 'select — apply this profile to the board live';
         sel.addEventListener('change', () => { saveActive(prof.name); applyData(load()[i], i); render(); });   // radio-style: applies live + becomes the selected profile; re-render leaves only this box ticked
         row.appendChild(sel);   // leftmost — the select tick
+        if (sel.checked) { row.style.outline = '2px solid var(--accent-strong)'; row.style.outlineOffset = '-2px'; }   // ring the selected card in the accent
         const color = document.createElement('input');
         color.type = 'color'; color.value = prof.color || defaultColor(i); color.title = 'on-keyboard flash color for this profile';
         color.addEventListener('input', () => { const l = load(); l[i].color = color.value; store(l); });

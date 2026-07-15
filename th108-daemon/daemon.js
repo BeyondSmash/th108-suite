@@ -42,8 +42,11 @@ function updateFocusPolling() { if (wantsFocus()) focusPoll.start(); else focusP
 // flicking through windows doesn't strobe the board; matches on process name (case-insensitive, the same
 // `name` /open-apps reports); resolves the target by profile NAME so reordering profiles can't mis-map.
 // Reuses selectProfile — the exact path a cycle key triggers — so there's no extra HID risk.
-let _appProfTimer = null, _appProfWant = null;
+let _appProfTimer = null, _appProfWant = null, _lastAppExe = null;
 function applyAppProfile(exe) {
+  const key = String(exe || '').toLowerCase();
+  if (key === _lastAppExe) return;   // fire ONLY on an actual foreground change — the watcher emits every 2s even for the same window, and a /profiles push resets curProfile, so without this the same profile re-applies every tick (write-storms the HID channel)
+  _lastAppExe = key;
   const maps = settings.appProfiles;
   if (!Array.isArray(maps) || !maps.length) return;
   const want = HA.wantedAppProfile(maps, exe, settings.appProfileDefault);   // its mapping, else the default; null → leave the board as-is

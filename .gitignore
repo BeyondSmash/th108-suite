@@ -67,3 +67,6 @@ th108-daemon/wake-audio-recovery-test.ps1
 
 # --- one-off dev helper (app-capture build swap) ---
 th108-daemon/apply-capture-fix.cmd
+
+# --- personal machine helper (per-app numpad remap via AutoHotkey; not a suite feature) ---
+numpad-blender.ahk
