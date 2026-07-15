@@ -55,6 +55,9 @@
     const $ = id => document.getElementById(id);
 
     function load() { try { const a = JSON.parse(localStorage.getItem(KEY) || '[]'); return Array.isArray(a) ? a : []; } catch (_) { return []; } }
+    // the profile last selected via the row checkbox (by name) — reflected on render as a radio-style tick
+    function loadActive() { try { return localStorage.getItem('th108_activeProfile') || ''; } catch (_) { return ''; } }
+    function saveActive(name) { try { localStorage.setItem('th108_activeProfile', name || ''); } catch (_) {} }
     const PALETTE = ['#ff3b30', '#ff9500', '#ffcc00', '#34c759', '#00c7be', '#0a84ff', '#5e5ce6', '#bf5af2', '#ff2d55', '#a2845e'];
     const defaultColor = i => PALETTE[((i % PALETTE.length) + PALETTE.length) % PALETTE.length];
     function loadIndicator() { try { return Object.assign({ on: true, keys: 'numberRow' }, JSON.parse(localStorage.getItem('th108_profileIndicator') || '{}')); } catch (_) { return { on: true, keys: 'numberRow' }; } }
@@ -140,8 +143,8 @@
     function appRow(entry, i) {
       const row = document.createElement('div'); row.className = 'profrow'; row.style.gap = '6px';
       const appSel = document.createElement('select'); appSel.title = 'app to match, by process name';
-      const opts = new Map();   // exe(lower) → display label
-      (_openApps || []).forEach(a => { if (a.name) opts.set(a.name.toLowerCase(), a.title || a.name); });
+      const opts = new Map();   // exe(lower) → display label (matching is by process, so the label is the app's file description, not the per-window title)
+      (_openApps || []).forEach(a => { if (a.name) opts.set(a.name.toLowerCase(), (a.desc && a.desc.trim()) || a.title || a.name); });
       const cur = (entry.exe || '').toLowerCase();
       if (cur && !opts.has(cur)) opts.set(cur, entry.exe + ' (not running)');
       opts.forEach((label, exe) => { const op = document.createElement('option'); op.value = exe; op.textContent = label; if (exe === cur) op.selected = true; appSel.appendChild(op); });
@@ -200,6 +203,11 @@
           name.value = l[i].name;
           log('profile renamed → "' + l[i].name + '"', 'dim');
         });
+        const sel = document.createElement('input');
+        sel.type = 'checkbox'; sel.className = 'profSel'; sel.checked = (loadActive() === prof.name);
+        sel.title = 'select — apply this profile to the board live';
+        sel.addEventListener('change', () => { saveActive(prof.name); applyData(load()[i], i); render(); });   // radio-style: applies live + becomes the selected profile; re-render leaves only this box ticked
+        row.appendChild(sel);   // leftmost — the select tick
         const color = document.createElement('input');
         color.type = 'color'; color.value = prof.color || defaultColor(i); color.title = 'on-keyboard flash color for this profile';
         color.addEventListener('input', () => { const l = load(); l[i].color = color.value; store(l); });

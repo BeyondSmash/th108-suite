@@ -1033,7 +1033,7 @@ const control = {
   // doesn't have to type a path. Deduped by exe path; the browser can't enumerate this, only the daemon can.
   listOpenApps() {
     return new Promise(resolve => {
-      const ps = "Get-Process | Where-Object { $_.MainWindowHandle -ne 0 -and $_.MainWindowTitle -ne '' } | ForEach-Object { $pp=$null; try { $pp=$_.Path } catch {}; if ($pp) { [pscustomobject]@{ path=$pp; name=$_.ProcessName; title=$_.MainWindowTitle } } } | ConvertTo-Json -Compress";
+      const ps = "Get-Process | Where-Object { $_.MainWindowHandle -ne 0 -and $_.MainWindowTitle -ne '' } | ForEach-Object { $pp=$null; try { $pp=$_.Path } catch {}; if ($pp) { $d=$null; try { $d=([System.Diagnostics.FileVersionInfo]::GetVersionInfo($pp)).FileDescription } catch {}; [pscustomobject]@{ path=$pp; name=$_.ProcessName; title=$_.MainWindowTitle; desc=$d } } } | ConvertTo-Json -Compress";
       try {
         const proc = _spawn('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', ps], { windowsHide: true });
         let out = ''; if (proc.stdout) proc.stdout.on('data', d => out += d);
@@ -1041,7 +1041,7 @@ const control = {
           let arr = []; try { const j = JSON.parse(out.trim() || '[]'); arr = Array.isArray(j) ? j : [j]; } catch { arr = []; }
           const DENY = new Set(['applicationframehost', 'textinputhost', 'shellexperiencehost', 'startmenuexperiencehost', 'searchhost', 'searchapp', 'lockapp', 'widgets', 'systemsettings', 'systemsettingsbroker']);   // UWP window-hosts / system artifacts, not real switch targets
           const seen = new Set(), apps = [];
-          for (const a of arr) { if (!a || !a.path) continue; if (DENY.has((a.name || '').toLowerCase())) continue; const k = a.path.toLowerCase(); if (seen.has(k)) continue; seen.add(k); apps.push({ path: a.path, name: a.name || '', title: a.title || '' }); }
+          for (const a of arr) { if (!a || !a.path) continue; if (DENY.has((a.name || '').toLowerCase())) continue; const k = a.path.toLowerCase(); if (seen.has(k)) continue; seen.add(k); apps.push({ path: a.path, name: a.name || '', title: a.title || '', desc: a.desc || '' }); }   // desc = the exe's FileDescription ("Steam Client WebHelper", "Google Chrome") — a stable app name vs the per-window title
           apps.sort((x, y) => (x.title || x.name).localeCompare(y.title || y.name));
           resolve(apps);
         });
