@@ -29,6 +29,15 @@ function nextBrightness(cur, step) {
 
 // brightnessToggle: >0 → off (0); 0 → the configured "on" value. Pure/testable.
 function toggleBrightness(cur, onVal) { return (Number(cur) || 0) > 0 ? 0 : clampInt(onVal, 100, 0, 100); }
+
+// App-specific lighting: which saved-profile NAME the focused `exe` should show — its own mapping (matched by
+// process name, case-insensitive), else the `def` default; null/'' → no switch (leave the board as-is). Pure/testable.
+function wantedAppProfile(maps, exe, def) {
+  if (!Array.isArray(maps)) return null;
+  const m = maps.find(x => x && x.exe && String(x.exe).toLowerCase() === String(exe || '').toLowerCase());
+  const want = m ? m.profile : def;
+  return (want == null || want === '') ? null : String(want);
+}
 function clampInt(v, def, lo, hi) { v = Math.round(+v); if (!isFinite(v)) return def; return Math.max(lo, Math.min(hi, v)); }
 function pickMods(m) { m = m || {}; return { ctrl: !!m.ctrl, alt: !!m.alt, shift: !!m.shift, meta: !!m.meta }; }
 
@@ -79,4 +88,4 @@ function tapFires(taps, now, count, windowMs) {
   return { fire: false, taps: kept };
 }
 
-module.exports = { normalize, chordMatches, tapFires, nextBrightness, toggleBrightness, ACTIONS, TRIGGERS };
+module.exports = { normalize, chordMatches, tapFires, nextBrightness, toggleBrightness, wantedAppProfile, ACTIONS, TRIGGERS };

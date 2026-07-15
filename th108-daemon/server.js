@@ -110,6 +110,12 @@ function createServer({ control, root, port = 8123, watchdogMs = 12000 }) {
         if (control.setIndicator && body.indicator) control.setIndicator(body.indicator);
         return sendJson(res, 200, { ok: true });
       }
+      if (req.method === 'POST' && u === '/app-profiles') {   // page pushes the app→profile auto-switch map
+        const b = await readBody(req); let body;
+        try { body = JSON.parse(b || '{}'); } catch { return sendJson(res, 400, { error: 'bad json' }); }
+        if (control.setAppProfiles) control.setAppProfiles(body);
+        return sendJson(res, 200, { ok: true });
+      }
       if (req.method === 'POST' && u === '/apply-profile') {   // page-side manual Apply → daemon applies live + flashes
         const b = await readBody(req); let body;
         try { body = JSON.parse(b || '{}'); } catch { return sendJson(res, 400, { error: 'bad json' }); }

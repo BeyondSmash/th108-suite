@@ -25,13 +25,12 @@ $iter = 0
 while ($true) {
     $h = [FgWin]::GetForegroundWindow()
     $procId = [int][FgWin]::Pid($h)
+    $exe = ''
     $isCode = $false
-    try { $p = Get-Process -Id $procId -ErrorAction Stop; if ($p.Name -like 'Code*') { $isCode = $true } } catch { }
-    if ($isCode) {
-        [Console]::Out.WriteLine((@{ code = $true; title = [FgWin]::Title($h); pid = $procId } | ConvertTo-Json -Compress))
-    } else {
-        [Console]::Out.WriteLine('{"code":false}')
-    }
+    try { $p = Get-Process -Id $procId -ErrorAction Stop; $exe = $p.Name; if ($p.Name -like 'Code*') { $isCode = $true } } catch { }
+    # Always emit exe+title so BOTH consumers work: agent-follow keys off `code`+`title` (VSCode only);
+    # app-specific profiles key off `exe` (any app, the ProcessName the /open-apps picker also reports).
+    [Console]::Out.WriteLine((@{ code = $isCode; exe = $exe; title = [FgWin]::Title($h); pid = $procId } | ConvertTo-Json -Compress))
     Start-Sleep -Milliseconds 2000
     # self-recycle before any GDI/handle creep can accumulate (same guard as the media sidecar); the daemon respawns
     $iter++

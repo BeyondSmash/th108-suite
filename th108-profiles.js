@@ -116,6 +116,56 @@
     }
     function store(list) { try { localStorage.setItem(KEY, JSON.stringify(list)); } catch (_) { } pushToDaemon(list); }
 
+    // ---- App-specific lighting: auto-switch profile when an app takes focus (daemon-driven, page can be closed) ----
+    const APPKEY = 'th108_appProfiles';
+    function loadAppMap() { try { const o = JSON.parse(localStorage.getItem(APPKEY) || '{}'); return { map: Array.isArray(o.map) ? o.map : [], default: typeof o.default === 'string' ? o.default : '' }; } catch (_) { return { map: [], default: '' }; } }
+    function saveAppMap(m) { try { localStorage.setItem(APPKEY, JSON.stringify(m)); } catch (_) {} pushAppMap(m); }
+    function pushAppMap(m) {
+      if (typeof window !== 'undefined' && window.TH108Defaults && window.TH108Defaults.isDefaultsMode()) return;   // Author-Defaults sandbox: don't clobber the real map
+      m = m || loadAppMap();
+      try { fetch('/app-profiles', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ map: m.map, default: m.default }) }).catch(() => {}); } catch (_) {}
+    }
+    let _openApps = null;   // cached running windowed-app list for the pickers ([{name,title}]); /open-apps is daemon-only
+    function loadOpenApps(cb) {
+      if (_openApps) return cb(_openApps);
+      try { fetch('/open-apps').then(r => r.json()).then(j => cb(_openApps = (j && j.apps) || [])).catch(() => cb(_openApps = [])); }
+      catch (_) { cb(_openApps = []); }
+    }
+    function fillProfileSelect(sel, profs, selected, includeLeave) {
+      sel.textContent = '';
+      if (includeLeave) { const op = document.createElement('option'); op.value = ''; op.textContent = '— leave as-is —'; sel.appendChild(op); }
+      profs.forEach(p => { const op = document.createElement('option'); op.value = p.name; op.textContent = p.name; if (p.name === selected) op.selected = true; sel.appendChild(op); });
+      if (selected && !profs.some(p => p.name === selected)) { const op = document.createElement('option'); op.value = selected; op.textContent = selected + ' (missing)'; op.selected = true; sel.appendChild(op); }   // stale mapping → still show it so the user can see + fix
+    }
+    function appRow(entry, i) {
+      const row = document.createElement('div'); row.className = 'profrow'; row.style.gap = '6px';
+      const appSel = document.createElement('select'); appSel.title = 'app to match, by process name';
+      const opts = new Map();   // exe(lower) → display label
+      (_openApps || []).forEach(a => { if (a.name) opts.set(a.name.toLowerCase(), a.title || a.name); });
+      const cur = (entry.exe || '').toLowerCase();
+      if (cur && !opts.has(cur)) opts.set(cur, entry.exe + ' (not running)');
+      opts.forEach((label, exe) => { const op = document.createElement('option'); op.value = exe; op.textContent = label; if (exe === cur) op.selected = true; appSel.appendChild(op); });
+      appSel.addEventListener('change', () => { const m = loadAppMap(); if (m.map[i]) { m.map[i].exe = appSel.value; saveAppMap(m); } });
+      const arrow = document.createElement('span'); arrow.textContent = '→'; arrow.style.opacity = '.55';
+      const profSel = document.createElement('select'); profSel.title = 'profile to switch to when this app is focused';
+      fillProfileSelect(profSel, load(), entry.profile, false);
+      profSel.addEventListener('change', () => { const m = loadAppMap(); if (m.map[i]) { m.map[i].profile = profSel.value; saveAppMap(m); } });
+      const del = document.createElement('button'); del.textContent = '✕'; del.title = 'remove this mapping';
+      del.addEventListener('click', () => { const m = loadAppMap(); m.map.splice(i, 1); saveAppMap(m); renderAppProfiles(); });
+      row.append(appSel, arrow, profSel, del);
+      return row;
+    }
+    function renderAppProfiles() {
+      const host = $('appProfList'); if (!host) return;
+      const m = loadAppMap();
+      loadOpenApps(() => {
+        host.textContent = '';
+        if (!m.map.length) { const p = document.createElement('span'); p.className = 'hint'; p.style.opacity = '.7'; p.textContent = 'No app rules yet — click “+ Add app”.'; host.appendChild(p); }
+        else m.map.forEach((entry, i) => host.appendChild(appRow(entry, i)));
+        const def = $('appProfDefault'); if (def) fillProfileSelect(def, load(), m.default, true);
+      });
+    }
+
     function snapshot(name, type, color) {
       flushSave();   // flush the live layer state to localStorage first, same as Toolbox Export
       const t = type || 'lighting';
@@ -133,6 +183,7 @@
       $('profCount').textContent = list.length + ' / ' + MAX_PROFILES;
       $('profSave').disabled = !canAdd(list);
       $('profImport').disabled = !canAdd(list);
+      renderAppProfiles();   // keep the app-rule profile dropdowns in sync with renames/adds/deletes
       if (!list.length) {
         const p = document.createElement('p'); p.className = 'hint'; p.style.margin = '0';
         p.textContent = 'No profiles yet — set up your layers on the Lighting tab, then Save Current as Profile.';
@@ -270,8 +321,31 @@
       $('profIndKeys').addEventListener('change', () => { const v = loadIndicator(); v.keys = $('profIndKeys').value; saveIndicator(v); });
     })();
 
+    (function buildAppProfilesSection() {
+      const anchor = $('profList'); if (!anchor || !anchor.parentNode || $('appProfSection')) return;
+      const sec = document.createElement('div'); sec.id = 'appProfSection';
+      sec.style.cssText = 'margin:16px 0 0;padding:14px 0 0;border-top:1px solid var(--border)';
+      sec.innerHTML =
+        '<div style="font-weight:600;margin:0 0 4px">App-specific lighting</div>' +
+        '<div class="hint" style="margin:0 0 10px;opacity:.75">Auto-switch to a profile when an app takes focus — e.g. Blender → a dim look, a game → its own. Needs the daemon running; uses the same live switch as the cycle key.</div>' +
+        '<div id="appProfList" style="display:flex;flex-direction:column;gap:8px;margin:0 0 10px"></div>' +
+        '<div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">' +
+          '<button id="appProfAdd" type="button">+ Add app</button>' +
+          '<label style="display:flex;align-items:center;gap:6px;margin:0">When no app matches <select id="appProfDefault"></select></label>' +
+        '</div>';
+      anchor.parentNode.appendChild(sec);
+      $('appProfAdd').addEventListener('click', () => {
+        const profs = load(); if (!profs.length) { log('save a profile first, then add an app rule', 'err'); return; }
+        const m = loadAppMap(); const first = (_openApps && _openApps[0] && _openApps[0].name || '').toLowerCase();
+        m.map.push({ exe: first, profile: profs[0].name }); saveAppMap(m); renderAppProfiles();
+      });
+      $('appProfDefault').addEventListener('change', () => { const m = loadAppMap(); m.default = $('appProfDefault').value; saveAppMap(m); });
+      renderAppProfiles();
+    })();
+
     render();
     pushToDaemon();   // initial sync so the daemon has the current profiles even with no edit this session
+    pushAppMap();     // and the current app→profile map (so a saved rule survives a page-closed daemon restart)
     return { render };
   }
 

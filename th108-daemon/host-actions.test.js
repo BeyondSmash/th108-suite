@@ -84,3 +84,14 @@ test('toggleBrightness flips between the on-value and 0 (off)', () => {
   assert.equal(HA.toggleBrightness(50, 80), 0);     // any >0 -> off
   assert.equal(HA.toggleBrightness(0, 150), 100);   // on-value clamped to 100
 });
+
+test('wantedAppProfile: exe match (case-insensitive) wins, else default, else no-switch', () => {
+  const maps = [{ exe: 'blender', profile: 'Dim' }, { exe: 'Code', profile: 'Work' }];
+  assert.equal(HA.wantedAppProfile(maps, 'Blender', 'Home'), 'Dim');   // case-insensitive match
+  assert.equal(HA.wantedAppProfile(maps, 'code', 'Home'), 'Work');
+  assert.equal(HA.wantedAppProfile(maps, 'chrome', 'Home'), 'Home');   // unmapped → default
+  assert.equal(HA.wantedAppProfile(maps, 'chrome', ''), null);         // unmapped + no default → leave as-is
+  assert.equal(HA.wantedAppProfile(maps, 'chrome', null), null);
+  assert.equal(HA.wantedAppProfile([], 'blender', 'Home'), 'Home');    // empty map still honors a default
+  assert.equal(HA.wantedAppProfile(null, 'blender', 'Home'), null);    // no map → nothing
+});
