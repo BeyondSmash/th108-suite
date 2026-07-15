@@ -157,9 +157,10 @@
     }
     function fillProfileSelect(sel, profs, selected, includeLeave) {
       sel.textContent = '';
-      if (includeLeave) { const op = document.createElement('option'); op.value = ''; op.textContent = '— leave as-is —'; sel.appendChild(op); }
+      const has = !!(selected && profs.some(p => p.name === selected));
+      if (includeLeave) { const op = document.createElement('option'); op.value = ''; op.textContent = '— leave as-is —'; if (!has) op.selected = true; sel.appendChild(op); }
+      else if (!has) { const op = document.createElement('option'); op.value = ''; op.textContent = '— choose a profile —'; op.selected = true; sel.appendChild(op); }   // unset/stale rule → a placeholder prompt, not a "(missing)" clutter option
       profs.forEach(p => { const op = document.createElement('option'); op.value = p.name; op.textContent = p.name; if (p.name === selected) op.selected = true; sel.appendChild(op); });
-      if (selected && !profs.some(p => p.name === selected)) { const op = document.createElement('option'); op.value = selected; op.textContent = selected + ' (missing)'; op.selected = true; sel.appendChild(op); }   // stale mapping → still show it so the user can see + fix
     }
     function appRow(entry, i) {
       const row = document.createElement('div'); row.className = 'profrow'; row.style.gap = '6px';
@@ -181,7 +182,13 @@
     }
     function renderAppProfiles() {
       const host = $('appProfList'); if (!host) return;
-      const m = loadAppMap();
+      const profs = load();
+      let m = loadAppMap();
+      // scrub refs to profiles that no longer exist (legacy stale data from before rename/delete followed refs)
+      let scrubbed = false;
+      m.map.forEach(r => { if (r.profile && !profs.some(p => p.name === r.profile)) { r.profile = ''; scrubbed = true; } });
+      if (m.default && !profs.some(p => p.name === m.default)) { m.default = ''; scrubbed = true; }
+      if (scrubbed) { saveAppMap(m); m = loadAppMap(); }
       loadOpenApps(() => {
         host.textContent = '';
         if (!m.map.length) { const p = document.createElement('span'); p.className = 'hint'; p.style.opacity = '.7'; p.textContent = 'No app rules yet — click “+ Add app”.'; host.appendChild(p); }
