@@ -58,20 +58,25 @@
     // the profile last selected via the row checkbox (by name) — reflected on render as a radio-style tick
     function loadActive() { try { return localStorage.getItem('th108_activeProfile') || ''; } catch (_) { return ''; } }
     function saveActive(name) { try { localStorage.setItem('th108_activeProfile', name || ''); } catch (_) {} }
-    // profiles are referenced by NAME (app-rules, the default, the selected tick), so a rename/delete must follow through
+    // the primary/base profile (a GLOBAL profile) — the baseline app-overlays sit on top of. Name handle.
+    function loadPrimary() { try { return localStorage.getItem('th108_primaryProfile') || ''; } catch (_) { return ''; } }
+    function savePrimary(name) { try { localStorage.setItem('th108_primaryProfile', name || ''); } catch (_) {} }
+    // profiles are referenced by NAME (app-rules, the default, the selected tick, the primary), so a rename/delete must follow through
     function renameProfileRefs(oldName, newName) {
       const m = loadAppMap(); let changed = false;
       m.map.forEach(r => { if (r.profile === oldName) { r.profile = newName; changed = true; } });
       if (m.default === oldName) { m.default = newName; changed = true; }
       if (changed) saveAppMap(m);
       if (loadActive() === oldName) saveActive(newName);
+      if (loadPrimary() === oldName) savePrimary(newName);
     }
     function removeProfileRefs(name) {
       const m = loadAppMap(); const before = m.map.length;
       m.map = m.map.filter(r => r.profile !== name);
       let changed = m.map.length !== before;
       if (m.default === name) { m.default = ''; changed = true; }
-      if (changed) saveAppMap(m);   // the selected tick falls back to the top card on the next render
+      if (changed) saveAppMap(m);   // the selected tick + primary fall back automatically on the next render
+      if (loadPrimary() === name) savePrimary('');
     }
     const PALETTE = ['#ff3b30', '#ff9500', '#ffcc00', '#34c759', '#00c7be', '#0a84ff', '#5e5ce6', '#bf5af2', '#ff2d55', '#a2845e'];
     const defaultColor = i => PALETTE[((i % PALETTE.length) + PALETTE.length) % PALETTE.length];
@@ -197,6 +202,8 @@
     function render() {
       const list = load(), host = $('profList');
       let _bf = false; list.forEach((p, i) => { if (!p.color) { p.color = defaultColor(i); _bf = true; } }); if (_bf) store(list);   // backfill distinct default colors onto any profile saved before colors existed
+      // auto-designate the base: keep the stored primary if it's still a GLOBAL profile, else fall back to the first global (single global → auto-primary)
+      (function ensurePrimary() { const globals = list.filter(p => (p.type || 'lighting') === 'global'); const cur = loadPrimary(); if (globals.some(p => p.name === cur)) return; const next = globals.length ? globals[0].name : ''; if (next !== cur) savePrimary(next); })();
       host.textContent = '';
       $('profCount').textContent = list.length + ' / ' + MAX_PROFILES;
       $('profSave').disabled = !canAdd(list);
@@ -240,6 +247,15 @@
         });
         typeSel.addEventListener('change', () => { const l = load(); l[i].type = typeSel.value; store(l); render(); });
         row.appendChild(typeSel);
+        if ((prof.type || 'lighting') === 'global') {   // only a global profile can be the base — it defines both layers + hotkeys
+          const isPrim = (loadPrimary() === prof.name);
+          const primBtn = document.createElement('button');
+          primBtn.textContent = isPrim ? '★ Primary' : '☆ Primary';
+          primBtn.title = isPrim ? 'the base profile — app overlays sit on top of this one' : 'set as the primary/base profile';
+          if (isPrim) primBtn.className = 'go';
+          primBtn.addEventListener('click', () => { savePrimary(prof.name); render(); });
+          row.appendChild(primBtn);
+        }
         const btn = (label, title, fn, cls) => {
           const b = document.createElement('button'); b.textContent = label; b.title = title;
           if (cls) b.className = cls;
