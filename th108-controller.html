@@ -359,6 +359,9 @@ try{ var _tk = /[?&]defaults=1(?:&|$)/.test(location.search) ? 'th108_DEFAULTS_t
           padding:2px 9px; border-radius:999px; }
   .faqcard code{ background:var(--inset); border:1px solid var(--border); border-radius:5px; padding:1px 5px;
                  font-family:ui-monospace,Consolas,monospace; font-size:12px; }
+  .faqcard pre.faqpre{ background:var(--inset); border:1px solid var(--border); border-radius:8px; padding:10px 12px;
+                 margin:7px 0; font-family:ui-monospace,Consolas,monospace; font-size:12.5px; line-height:1.5;
+                 color:var(--text); white-space:pre; overflow-x:auto; overscroll-behavior:contain; }   /* copyable code block; scrolls inside itself */
 
   /* docs tab */
   .doccard h3{ font-family:"Fraunces",Georgia,serif; font-weight:700; font-size:16px; margin:14px 0 5px; letter-spacing:-.2px; }
@@ -861,6 +864,41 @@ try{ var _tk = /[?&]defaults=1(?:&|$)/.test(location.search) ? 'th108_DEFAULTS_t
        shared by both tools. Normal key remaps and the light-function binds on the Hotkeys tab work fine — only these
        four advanced <i>types</i> are affected. If a firmware update ever adds support, the feature can be switched back
        on and the existing encoding will just work.</p>
+  </div>
+  <div class="card s2 faqcard" id="faqNumpadApp" data-pages="faq">
+    <div class="cardbar"><span class="grip">⠿</span></div>
+    <h3>Keep the numpad working in Blender/CAD while still killing the NumLock LED (power-user)</h3>
+    <p>The one-click <b>Numpad → Digits</b> fix on the Hotkeys tab kills the white NumLock LED by remapping the numpad
+       to top-row digits in <i>firmware</i> — but that's global, so apps that read the <i>real</i> numpad (Blender's
+       camera on Numpad&nbsp;1/3/7, some CAD/DAW shortcuts) stop working. Firmware can't be per-app; a small host-side
+       script can. It keeps the numpad <b>native</b> and turns it into digits everywhere <i>except</i> the apps you list.</p>
+    <p>You'll need <a href="https://www.autohotkey.com/" target="_blank" rel="noopener">AutoHotkey&nbsp;v1.1</a> (free).
+       Then: <b>1)</b> on the Hotkeys tab click <b>Revert Numpad</b> (back to native). <b>2)</b> Turn <b>NumLock off</b>
+       (LED off). <b>3)</b> Save the script below as <code>numpad-apps.ahk</code> and double-click it — a green
+       <b>H</b> appears in your tray (check the hidden-icons <b>^</b> arrow). To run it every login, drop a shortcut to
+       it in your <code>shell:startup</code> folder.</p>
+    <pre class="faqpre">#NoEnv
+#SingleInstance Force
+; Numpad types DIGITS everywhere EXCEPT the apps listed below, where it passes
+; through native (so Blender camera / CAD numpad shortcuts still work).
+#If !(WinActive("ahk_exe blender.exe"))
+NumpadEnd::SendInput 1
+NumpadDown::SendInput 2
+NumpadPgDn::SendInput 3
+NumpadLeft::SendInput 4
+NumpadClear::SendInput 5
+NumpadRight::SendInput 6
+NumpadHome::SendInput 7
+NumpadUp::SendInput 8
+NumpadPgUp::SendInput 9
+NumpadIns::SendInput 0
+NumpadDel::SendInput {.}
+#If</pre>
+    <p>To cover more apps, extend the <code>WinActive(...)</code> line, e.g.
+       <code>#If !(WinActive("ahk_exe blender.exe") or WinActive("ahk_exe Fusion360.exe"))</code>. It assumes the app
+       reads the numpad with NumLock off (Blender does by default; if a key misbehaves, turn on that app's own
+       "emulate numpad" option). It's a normal AutoHotkey process — <b>kill it anytime from its tray icon</b>, and it's
+       fully independent of the lighting daemon.</p>
   </div>
   <div class="card s2 faqcard" id="faq3" data-pages="faq">
     <div class="cardbar"><span class="grip">⠿</span></div>
