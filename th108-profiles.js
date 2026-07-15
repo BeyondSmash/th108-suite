@@ -58,6 +58,21 @@
     // the profile last selected via the row checkbox (by name) — reflected on render as a radio-style tick
     function loadActive() { try { return localStorage.getItem('th108_activeProfile') || ''; } catch (_) { return ''; } }
     function saveActive(name) { try { localStorage.setItem('th108_activeProfile', name || ''); } catch (_) {} }
+    // profiles are referenced by NAME (app-rules, the default, the selected tick), so a rename/delete must follow through
+    function renameProfileRefs(oldName, newName) {
+      const m = loadAppMap(); let changed = false;
+      m.map.forEach(r => { if (r.profile === oldName) { r.profile = newName; changed = true; } });
+      if (m.default === oldName) { m.default = newName; changed = true; }
+      if (changed) saveAppMap(m);
+      if (loadActive() === oldName) saveActive(newName);
+    }
+    function removeProfileRefs(name) {
+      const m = loadAppMap(); const before = m.map.length;
+      m.map = m.map.filter(r => r.profile !== name);
+      let changed = m.map.length !== before;
+      if (m.default === name) { m.default = ''; changed = true; }
+      if (changed) saveAppMap(m);   // the selected tick falls back to the top card on the next render
+    }
     const PALETTE = ['#ff3b30', '#ff9500', '#ffcc00', '#34c759', '#00c7be', '#0a84ff', '#5e5ce6', '#bf5af2', '#ff2d55', '#a2845e'];
     const defaultColor = i => PALETTE[((i % PALETTE.length) + PALETTE.length) % PALETTE.length];
     function loadIndicator() { try { return Object.assign({ on: true, keys: 'numberRow' }, JSON.parse(localStorage.getItem('th108_profileIndicator') || '{}')); } catch (_) { return { on: true, keys: 'numberRow' }; } }
@@ -201,9 +216,10 @@
         name.type = 'text'; name.value = prof.name; name.maxLength = NAME_MAX; name.spellcheck = false;
         name.title = 'rename — saved when you click away';
         name.addEventListener('change', () => {
-          const l = load(); l[i].name = sanitizeName(name.value, l[i].name); store(l);
-          name.value = l[i].name;
-          log('profile renamed → "' + l[i].name + '"', 'dim');
+          const l = load(); const oldName = l[i].name, newName = sanitizeName(name.value, oldName);
+          l[i].name = newName; store(l); name.value = newName;
+          if (newName !== oldName) renameProfileRefs(oldName, newName);   // keep app-rules, the default, and the selected tick pointing at the renamed profile (names are the only handle)
+          log('profile renamed → "' + newName + '"', 'dim');
         });
         const sel = document.createElement('input');
         sel.type = 'checkbox'; sel.className = 'profSel'; sel.checked = (prof.name === activeName);
@@ -279,6 +295,7 @@
         btn('✕', 'delete this profile', () => {
           if (!confirm('Delete profile "' + prof.name + '"?')) return;
           const l = load(); l.splice(i, 1); store(l);
+          removeProfileRefs(prof.name);   // drop any app-rule / default pointing at the now-deleted profile
           log('profile "' + prof.name + '" deleted', 'dim');
           render();
         });
