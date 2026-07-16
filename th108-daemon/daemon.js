@@ -567,6 +567,7 @@ let usbFiredAt = 0, lastTickAt = 0;   // USB-restart escalation state + sleep-ga
 let lastKeyAt = Date.now();           // last physical keypress (from the global hook) — drives the idle-aware USB-restart threshold
 let offCleared = false;               // lights-off / display-off: a black frame was sent
 let offSentAt = 0;                     // when — so the blank re-asserts every ~5s (a re-enumerated/reclaimed board goes black again)
+let onboardMaskApplied = false, onboardMaskBusy = false, lastUsbFired = 0;   // black-onboard mask re-asserted once per physical connection; reset on any re-enumeration so restarts/mutes/wake fall back to black, not the firmware rainbow
 let displayOff = false;               // monitor is off on the idle timeout (from display-watch.ps1) → blank the board
 let sendingFrame = false;             // a 0x32 frame is mid-flight — closing the device NOW leaves the board's chunk parser desynced
 let fastReopen = false;               // set on a clean lease reclaim → the next reopen uses a SHORT probe + immediate repaint (kills the ~1.5s post-handoff dark: the lease already guarantees single ownership, so the full 1.5s foreign-writer probe is overkill here)
@@ -643,6 +644,18 @@ async function runTick() {
   if (lastTickAt && nowWall - lastTickAt > 30_000 && muteLogged) muteAt = nowWall;
   lastTickAt = nowWall;
   await openIfPossible();
+  // A USB-restart from ANY source (mute escalation, recovery hotkey, page request) bumps usbFiredAt and
+  // re-enumerates the board → its firmware onboard effect resets to the rainbow default. Drop the flag so the
+  // black mask gets re-asserted on the fresh handle below.
+  if (usbFiredAt !== lastUsbFired) { lastUsbFired = usbFiredAt; onboardMaskApplied = false; }
+  // Re-assert the black onboard effect once per connection (mask enabled + we own a healthy board). Without it a
+  // restart / mute / wake would fall back to the firmware rainbow, not black. Reuses the proven 0x23 sequence.
+  if (settings.npOnboardMask && !onboardMaskApplied && !onboardMaskBusy && device && !paused && !muteLogged) {
+    onboardMaskBusy = true;
+    const okMask = await sendOnboard(OBP.packAllled({ effect: 1, primary: [0, 0, 0], secondary: [0, 0, 0], colorful: false, brightness: 1, speed: 1 }));
+    onboardMaskBusy = false;
+    if (okMask) { onboardMaskApplied = true; return; }   // sendOnboard cycled the handle → let the next tick reopen + paint
+  }
   // board goes dark when the master switch is off OR (opt-in) while the monitor is off on the idle timeout:
   // clear it once, then stay quiet until it should light again.
   if (!settings.lightsOn || displayOff) {
@@ -926,7 +939,7 @@ function syncDisplayWatch() {
       dwProc.stdout.on('data', d => { carry += d.toString('utf8'); let i;
         while ((i = carry.indexOf('\n')) >= 0) { const s = carry.slice(0, i).trim(); carry = carry.slice(i + 1);
           if (s === 'off' && !displayOff) { displayOff = true; log('🌒 monitor off (idle) — blanking the board'); }
-          else if ((s === 'on' || s === 'dim') && displayOff) { displayOff = false; offCleared = false; if (state) state.lastFlat = null; nextOpenAt = 0; log('🌞 monitor on — restoring lighting'); }
+          else if ((s === 'on' || s === 'dim') && displayOff) { displayOff = false; offCleared = false; onboardMaskApplied = false; if (state) state.lastFlat = null; nextOpenAt = 0; log('🌞 monitor on — restoring lighting'); }   // wake may have re-enumerated the board (USB resume) → re-assert the black onboard mask
         } });
       dwProc.on('exit', () => { dwProc = null; if (settings.dimOnDisplayOff) setTimeout(() => { if (settings.dimOnDisplayOff) start(); }, 3000); });
     };
@@ -1153,6 +1166,7 @@ const control = {
       ? OBP.packAllled({ effect: 1, primary: [0, 0, 0], secondary: [0, 0, 0], colorful: false, brightness: 1, speed: 1 })       // Static Bright + black = off
       : OBP.packAllled({ effect: 11, primary: [255, 0, 0], secondary: [0, 0, 255], colorful: true, brightness: 4, speed: 3 });  // restore a visible flowing-rainbow default
     const ok = await sendOnboard(allled);
+    if (ok) onboardMaskApplied = !!on;   // sync the tick's per-connection flag with a manual toggle (no redundant re-assert right after)
     log(ok ? ('♪ onboard mask ' + (on ? 'ON — onboard set to BLACK (LCD flash now a dark blink)' : 'OFF — onboard restored to a colorful default'))
            : '♪ onboard mask could not apply — the daemon must be driving a healthy board (not yielded/muted)');
     return { ok, reason: ok ? undefined : 'daemon not driving the board' };
