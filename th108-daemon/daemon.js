@@ -565,7 +565,8 @@ let probing = false, nextOpenAt = Date.now() + 5000;   // startup grace: a live 
 let lastOkAt = 0, streakStart = 0, muteLogged = false, muteAt = 0;   // mute-episode tracking (transition logging)
 let usbFiredAt = 0, lastTickAt = 0;   // USB-restart escalation state + sleep-gap detection
 let lastKeyAt = Date.now();           // last physical keypress (from the global hook) — drives the idle-aware USB-restart threshold
-let offCleared = false;               // lights-off / display-off: the one black frame was sent
+let offCleared = false;               // lights-off / display-off: a black frame was sent
+let offSentAt = 0;                     // when — so the blank re-asserts every ~5s (a re-enumerated/reclaimed board goes black again)
 let displayOff = false;               // monitor is off on the idle timeout (from display-watch.ps1) → blank the board
 let sendingFrame = false;             // a 0x32 frame is mid-flight — closing the device NOW leaves the board's chunk parser desynced
 let fastReopen = false;               // set on a clean lease reclaim → the next reopen uses a SHORT probe + immediate repaint (kills the ~1.5s post-handoff dark: the lease already guarantees single ownership, so the full 1.5s foreign-writer probe is overkill here)
@@ -645,9 +646,15 @@ async function runTick() {
   // board goes dark when the master switch is off OR (opt-in) while the monitor is off on the idle timeout:
   // clear it once, then stay quiet until it should light again.
   if (!settings.lightsOn || displayOff) {
-    if (device && send && !offCleared) {
-      const off = []; INDICES.forEach(i => off.push(i, 0, 0, 0));
-      if (await send(off)) offCleared = true;
+    if (device && send) {
+      const nowB = Date.now();
+      // re-blank every ~5s (not just once): if the board re-enumerated on a USB idle-suspend or reclaimed to its
+      // onboard rainbow during a long monitors-off stretch, this repaints it black again — and the keepalive keeps
+      // the USB awake, dodging the suspend that's itself a mute trigger. offCleared reset → repaints on the next tick.
+      if (!offCleared || nowB - offSentAt >= 5000) {
+        const off = []; INDICES.forEach(i => off.push(i, 0, 0, 0));
+        if (await send(off)) { offCleared = true; offSentAt = nowB; }
+      }
     }
     return;
   }
