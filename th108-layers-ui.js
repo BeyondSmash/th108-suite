@@ -1096,6 +1096,9 @@
             row('Reminder Delay','<span class="srange" style="width:100%"><input type="range" class="s-reminderAfterMs" min="1000" max="60000" step="1000" value="'+(s.reminderAfterMs!=null?s.reminderAfterMs:8000)+'"><i class="tick" style="left:calc(7px + (100% - 14px)*0.122)"></i></span><span class="val s-reminderAfterMsV"></span>') : '')+
           (s.reminderEnabled ?
             row('Blinks','<select class="s-reminderBlinks"><option value="2"'+(s.reminderBlinks===2?' selected':'')+'>2 blinks</option><option value="3"'+(s.reminderBlinks===3?' selected':'')+'>3 blinks</option></select><span></span>') : '');
+        // Checkmark (✓) — how long the green "done" glyph holds before it subsides (it always blinks 3× on arrival)
+        const checkRows=
+          row('Timeout','<span class="srange" style="width:100%"><input type="range" class="s-checkMs" min="1000" max="30000" step="500" value="'+(s.checkMs!=null?s.checkMs:3000)+'"><i class="tick" style="left:calc(7px + (100% - 14px)*0.069)"></i></span><span class="val s-checkMsV"></span>');
         // Preview toggle (page-side synthetic feed)
         const previewRow=full('<div style="text-align:center"><label class="sl" style="margin:0;text-align:center" title="Loops a fake agent session (busy spinner → subagent twinkles → green ✓ → red ! attention) so you can dial in the colors and animation without a real Claude Code session running. Turn off for live use."><input type="checkbox" class="s-agPreview"'+(s.preview?' checked':'')+'> <span>Demo the animations (loop a fake session)<br>so you can tune colors without a live agent</span></label></div>'
           +'<div style="text-align:center;margin-top:6px"><span style="opacity:.6;font-size:11px;margin-right:6px">Trigger once:</span>'
@@ -1117,6 +1120,7 @@
           sec('Twinkle Region')+regionRow+
           sec('Emphasis')+emphRows+
           sub('Exclamation Animation')+bangRows+
+          sub('Checkmark Animation')+checkRows+
           sec('Preview')+previewRow+
         '</div>';
         const c=q=>body.querySelector(q);
@@ -1127,7 +1131,7 @@
         const selActive=c('.s-agSessionActive'), selIdle=c('.s-agSessionIdle'), sessNote=c('.s-agSessionNote'), noteTxt=c('.s-agNoteTxt'), agSymbol=c('.s-agSymbol'), follow=c('.s-agFollowFocus'), winPick=c('.s-agWinPick');
         let _lastSessions=[], _lastFocus=null, _lastFollowId=null, _lastAgg=null, _lastFcfg=null, _projColors={};   // _lastFocus = focusedSession {id,fresh,following}; _lastFollowId = last note session (pulse on a SWITCH); _lastAgg = live agent aggregate (drives the phase symbol); _lastFcfg = window-focus config (color + toggles); _projColors = per-project outline overrides (project → hex)
         // Derive the current agent PHASE from the daemon's aggregate — the same priority the keyboard renders.
-        function agPhase(a){ if(!a) return null; if(a.attention) return 'bang'; if(a.busy) return 'busy'; if(a.checkmarkAt && Date.now()-a.checkmarkAt < 4000) return 'check'; if(a.subagentCount>0) return 'subs'; return null; }   // priority attention > busy > checkmark > subs. Check window 4s (NOT the keyboard's 1s): the site only sees the aggregate on the ~2.5s /status poll, so a 1s window is usually MISSED between polls — a wider one lets a poll reliably catch the checkmark (the keyboard renders every frame so it keeps the real 1s).
+        function agPhase(a){ if(!a) return null; if(a.attention) return 'bang'; if(a.busy) return 'busy'; if(a.checkmarkAt && Date.now()-a.checkmarkAt < Math.max(s.checkMs!=null?s.checkMs:3000, 4000)) return 'check'; if(a.subagentCount>0) return 'subs'; return null; }   // priority attention > busy > checkmark > subs. Check window 4s (NOT the keyboard's 1s): the site only sees the aggregate on the ~2.5s /status poll, so a 1s window is usually MISSED between polls — a wider one lets a poll reliably catch the checkmark (the keyboard renders every frame so it keeps the real 1s).
         let _symSig=null;
         function setAgSymbol(a){ if(!agSymbol) return; const ph=agPhase(a);
           const sig = ph==='subs' ? ('subs:'+((a&&a.subagentCount)||0)) : (ph||'none');
@@ -1326,6 +1330,7 @@
         { const el=c('.s-dimBelowAmt'), v=c('.s-dimBelowAmtV'); if(el&&v){ const up=()=>v.textContent=Math.round(+el.value)+'%'; el.addEventListener('input',e=>{ s.dimBelowAmt=Math.round(+e.target.value)/100; up(); }); up(); } }
         // Exclamation animation
         { const el=c('.s-holdMs'), v=c('.s-holdMsV'); if(el&&v){ const up=()=>v.textContent=(+el.value/1000).toFixed(1)+'s'; el.addEventListener('input',e=>{ s.holdMs=+e.target.value; up(); }); up(); } }
+        { const el=c('.s-checkMs'), v=c('.s-checkMsV'); if(el&&v){ const up=()=>v.textContent=(+el.value/1000).toFixed(1)+'s'; el.addEventListener('input',e=>{ s.checkMs=+e.target.value; up(); scheduleSaveLayers(); }); up(); } }
         { const el=c('.s-reminderEnabled'); if(el) el.addEventListener('change',e=>{ s.reminderEnabled=e.target.checked; buildLayerBody(card,L); scheduleSaveLayers(); }); }
         { const el=c('.s-reminderAfterMs'), v=c('.s-reminderAfterMsV'); if(el&&v){ const up=()=>v.textContent=(+el.value/1000).toFixed(0)+'s'; el.addEventListener('input',e=>{ s.reminderAfterMs=+e.target.value; up(); }); up(); } }
         { const el=c('.s-reminderBlinks'); if(el) el.addEventListener('change',e=>s.reminderBlinks=+e.target.value); }

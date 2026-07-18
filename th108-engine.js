@@ -1072,9 +1072,12 @@
       const speed = s.spinMs || 340, tail = s.spinTail == null ? 4 : s.spinTail;
       const N = AGENT_SPIN_K.length, lead = Math.floor(now / speed) % N, cap = Math.min(tail, N - 1);
       for (let t = 0; t <= cap; t++) { const k = AGENT_SPIN_K[(lead - t + N) % N]; const f = 1 - t / (cap + 1); put(k, pr * f, pg * f, pb * f); }
-    } else if (A.checkmarkAt && now - A.checkmarkAt < (s.checkMs || 1000)) {
+    } else if (A.checkmarkAt && now - A.checkmarkAt < (s.checkMs != null ? s.checkMs : 3000)) {
       const [cr, cg, cb] = hexToRgb(s.checkColor || '#22cc44');
-      for (const k of AGENT_CHECK_K) put(k, cr, cg, cb);
+      // 3 quick blinks on arrival to catch the eye, then hold solid until the timeout subsides it
+      const el = now - A.checkmarkAt, HALF = 110, BLINK_END = HALF * 6;   // 6 half-cycles = 3 on/off blinks (~660ms)
+      const f = el < BLINK_END ? (Math.floor(el / HALF) % 2 === 0 ? 1 : 0) : 1;
+      for (const k of AGENT_CHECK_K) put(k, cr * f, cg * f, cb * f);
     }
     // boot sweep (own region, coexists)
     if (A.bootAt && now - A.bootAt < (s.bootMs || 1000)) {
@@ -1088,7 +1091,7 @@
     L._alpha = null;   // agent layer does not use per-key opacity
     // emphasis fires only while a NUMPAD glyph is showing (spinner / checkmark / "!") — twinkles live on the
     // letter cluster and the boot sweep is board-wide, so neither should darken/carve the numpad.
-    const numpadActive = A.busy || A.attention || (A.checkmarkAt && now - A.checkmarkAt < 1200);
+    const numpadActive = A.busy || A.attention || (A.checkmarkAt && now - A.checkmarkAt < (s.checkMs != null ? s.checkMs : 3000));
     if (numpadActive && (s.silhouetteNumpad || s.dimBelow)) {
       const cb = L._carveBuf || (L._carveBuf = new Float32Array(NLED)); cb.fill(0);
       const dimAmt = s.dimBelowAmt == null ? 0.9 : s.dimBelowAmt;
@@ -1205,7 +1208,7 @@
       if(s.map===undefined) s.map='physical'; if(s.sampleMode===undefined) s.sampleMode='average'; if(s.bars===undefined) s.bars='black'; if(s.barColor===undefined) s.barColor='#000000';   // sampling: per-key mapping/strategy + out-of-bounds fill
       if(s.sat==null) s.sat=170; if(s.gam==null) s.gam=180; }   // color via the shared sat/con/gam/bri Adjust; default to the GIF-tool's Vivid look (raw sRGB reads dull on LEDs) — adjustable in the Adjust block. hideStatic = make unchanging keys transparent
     else if(L.type==='agent'){ const ag={ twinkleColor:'#ff8c00', spinColor:'#ffffff', checkColor:'#22cc44', bangColor:'#ff3b30',
-        session:'all', twinkleKeys:null, holdMs:1000, breatheMs:1600, reminderEnabled:true, reminderAfterMs:8000,
+        session:'all', twinkleKeys:null, holdMs:1000, checkMs:3000, breatheMs:1600, reminderEnabled:true, reminderAfterMs:8000,
         reminderBlinks:2, silhouetteNumpad:false, dimBelow:false, dimBelowAmt:0.9, twinkleSpectrum:false };
       Object.keys(ag).forEach(k=>{ if(s[k]===undefined)s[k]=ag[k]; }); }
     else if(L.type==='audio'){
