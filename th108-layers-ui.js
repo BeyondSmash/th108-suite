@@ -1103,7 +1103,7 @@
           row('Timeout','<span class="srange" style="width:100%"><input type="range" class="s-checkMs" min="1000" max="30000" step="500" value="'+(s.checkMs!=null?s.checkMs:3000)+'"><i class="tick" style="left:calc(7px + (100% - 14px)*0.069)"></i></span><span class="val s-checkMsV"></span>');
         // Preview toggle (page-side synthetic feed)
         const previewRow=full('<div style="text-align:center"><label class="sl" style="margin:0;text-align:center" title="Loops a fake agent session (busy spinner → subagent twinkles → green ✓ → red ! attention) so you can dial in the colors and animation without a real Claude Code session running. Turn off for live use."><input type="checkbox" class="s-agPreview"'+(s.preview?' checked':'')+'> <span>Demo the animations (loop a fake session)<br>so you can tune colors without a live agent</span></label></div>'
-          +'<div style="text-align:center;margin-top:6px"><span style="opacity:.6;font-size:11px;margin-right:6px">Trigger once:</span>'
+          +'<div style="text-align:center;margin-top:6px" title="Also fires on the REAL keyboard: posts a throwaway session through the daemon, then ends it. Needs the daemon running, and the Session filter above on All Sessions."><span style="opacity:.6;font-size:11px;margin-right:6px">Trigger once:</span>'
           +'<button type="button" class="s-agTrig" data-trig="twinkle">Twinkle</button> '
           +'<button type="button" class="s-agTrig" data-trig="spinner">Spinner</button> '
           +'<button type="button" class="s-agTrig" data-trig="check">Checkmark</button> '
@@ -1357,9 +1357,24 @@
           // overriding the Preview cycle while active (no daemon needed, works with Preview off).
           let _trig=null;   // {kind, at, until}
           const TRIG_MS={ twinkle:4000, spinner:4000, check:1500, bang:5000 };
+          // The page-side preview only reaches THIS tab's engine — while the daemon holds the keyboard it
+          // renders from its OWN agent-state, so a synthetic feed here can't light the board. Post a throwaway
+          // session through the real /agent/event path instead, then SessionEnd it, so the trigger looks
+          // exactly like a live agent on the actual keys. No-ops (page preview only) when no daemon is up.
+          const PREVIEW_SID='th108-preview';
+          let _trigEnd=null;
+          const postAgent=(ev,extra)=>{ try{ fetch('/agent/event',{method:'POST',headers:{'content-type':'application/json'},
+            body:JSON.stringify(Object.assign({hook_event_name:ev,session_id:PREVIEW_SID,cwd:'TH108 Preview'},extra||{}))}).catch(()=>{}); }catch(_){ } };
           body.querySelectorAll('.s-agTrig').forEach(b=>b.addEventListener('click',()=>{
-            const now=performance.now();
-            _trig={ kind:b.dataset.trig, at:now, until:now+TRIG_MS[b.dataset.trig] };
+            const kind=b.dataset.trig, now=performance.now();
+            // the ✓ lives for checkMs, so hold the trigger at least that long or we'd cut it off early
+            const dur = kind==='check' ? Math.max(TRIG_MS.check,(s.checkMs!=null?s.checkMs:3000)+300) : TRIG_MS[kind];
+            _trig={ kind, at:now, until:now+dur };
+            if(kind==='twinkle'){ postAgent('SubagentStart',{agent_id:'p1'}); postAgent('SubagentStart',{agent_id:'p2'}); postAgent('SubagentStart',{agent_id:'p3'}); }
+            else if(kind==='spinner') postAgent('UserPromptSubmit');
+            else if(kind==='check') postAgent('Stop');            // Stop = busy off + checkmarkAt now, exactly what a finished turn does
+            else postAgent('Notification');                       // attention / "!"
+            clearTimeout(_trigEnd); _trigEnd=setTimeout(()=>postAgent('SessionEnd'), dur);   // remove the throwaway session so nothing lingers
           }));
           function triggerAgent(){
             const at=_trig.at;
