@@ -2,6 +2,20 @@ const { test } = require('node:test');
 const assert = require('node:assert');
 const { createAgentState, isSystemCwd } = require('./agent-state.js');
 
+test('Elicitation / PermissionRequest raise attention; ElicitationResult clears it (busy stays)', () => {
+  const A = createAgentState();
+  A.ingest(ev('UserPromptSubmit'), 1000);
+  assert.equal(A.aggregate('all', 1000).attention, false);          // just busy = spinner
+  A.ingest(ev('Elicitation'), 1500);                                // AskUserQuestion prompt
+  let a = A.aggregate('all', 1500);
+  assert.equal(a.attention, true, 'a prompt raises the ! attention glyph');
+  assert.equal(a.busy, true, 'still busy underneath');
+  A.ingest(ev('ElicitationResult'), 2000);                          // answered
+  assert.equal(A.aggregate('all', 2000).attention, false);          // back to spinner
+  A.ingest(ev('PermissionRequest'), 2500);
+  assert.equal(A.aggregate('all', 2500).attention, true);           // a permission prompt also raises it
+});
+
 test('isSystemCwd flags Windows system dirs, not real projects', () => {
   assert.ok(isSystemCwd('C:\\Windows\\System32'));
   assert.ok(isSystemCwd('C:/Windows/System32'));

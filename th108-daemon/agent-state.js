@@ -78,7 +78,10 @@ function createAgentState(opts = {}) {
         else { const first = e.subs.values().next().value; if (first !== undefined) e.subs.delete(first); }
         e.attention = false; break;
       }
-      case 'Notification': e.notifyAt = now; e.attention = true; break;
+      // Claude is waiting on YOU → the "!" attention glyph. Notification = idle/permission nudge; Elicitation =
+      // an AskUserQuestion prompt; PermissionRequest = a tool awaiting approval. All three block the turn on your input.
+      case 'Notification': case 'Elicitation': case 'PermissionRequest': e.notifyAt = now; e.attention = true; break;
+      case 'ElicitationResult': e.attention = false; break;   // you answered → back to working (busy stays; the turn resumes)
       case 'SessionStart': e.bootAt = now; break;
       default: break;   // unhooked event types ignored
     }
