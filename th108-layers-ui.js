@@ -1368,10 +1368,14 @@
             if(_trig.kind==='check')   return { busy:false, subagentCount:0, checkmarkAt:at, notifyAt:null, attention:false, bootAt:null };
             return { busy:false, subagentCount:0, checkmarkAt:null, notifyAt:at, attention:true, bootAt:null };
           }
+          // __agPreviewHold tells the page's live daemon feed (feedAgent) to stand off while the preview or a
+          // one-shot trigger owns state.agent — it runs every frame and would otherwise clobber them instantly.
+          // Always released when nothing is active, and on card teardown, so the live feed can never get stuck off.
           function frame(now){
-            if(!document.body.contains(body) || L.type!=='agent') return;   // card rebuilt/removed → stop loop
-            if(_trig){ if(now<_trig.until) state.agent=triggerAgent(); else { _trig=null; if(!s.preview) state.agent=null; } }
-            else if(s.preview) state.agent = syntheticAgent(now);
+            if(!document.body.contains(body) || L.type!=='agent'){ window.__agPreviewHold=false; return; }   // card rebuilt/removed → stop loop + release the hold
+            if(_trig){ if(now<_trig.until){ state.agent=triggerAgent(); window.__agPreviewHold=true; } else { _trig=null; window.__agPreviewHold=false; if(!s.preview) state.agent=null; } }
+            else if(s.preview){ state.agent = syntheticAgent(now); window.__agPreviewHold=true; }
+            else window.__agPreviewHold=false;
             requestAnimationFrame(frame);
           }
           requestAnimationFrame(frame);

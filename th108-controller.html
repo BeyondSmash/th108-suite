@@ -1769,6 +1769,9 @@ setInterval(async ()=>{
 }, 1500);
 function feedAgent(){
   const agL=state.layers.find(L=>L.enabled && L.type==='agent'); if(!agL) return;
+  // The agent card's Preview loop / one-shot trigger buttons write state.agent themselves. This live feed
+  // runs every frame, so without this guard it overwrote them instantly and those buttons looked dead.
+  if(window.__agPreviewHold) return;
   TH108Engine.applyAgentFeed(state, (_dmnAgent && performance.now()-_dmnAgentAt<6000) ? _dmnAgent : null);
 }
 
