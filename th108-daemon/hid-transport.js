@@ -28,6 +28,7 @@ function openDevice(path) {
 // Returns async sendFrame(flat) -> true on success, false on stall (never throws, so the loop survives).
 function makeSender(device, { packLen = 64, cmd = 0x32, ackTimeoutMs = 800 } = {}) {
   let ackWaiter = null, ackOff = -1, noise = 0, falseHits = 0, ackSigLogged = false;
+  let odd18 = 0, odd18LogAt = 0; const odd18Tag = {};   // baseline probe for the `55 32 18` ACK variant (see the mute investigation note below)
   // Flight recorder: a small ring of the most recent input reports + writes, dumped to daemon.log the
   // instant a mute is detected — so we capture the moments BEFORE the board goes silent (the data the
   // mute investigation has always lacked: was there a false hit, a timing gap, a broadcast?), not just
@@ -43,7 +44,22 @@ function makeSender(device, { packLen = 64, cmd = 0x32, ackTimeoutMs = 800 } = {
     // over-send → FIFO wedge. Requiring the echoed offset to match the chunk we're awaiting rejects
     // those stale broadcasts. (Mirrors the page gate in th108-hid.js.)
     const pending = !!ackWaiter, isAck = pending && buf[1] === cmd && buf[3] === (ackOff & 0xFF) && buf[4] === ((ackOff >> 8) & 0xFF);
-    rec({ t: Date.now(), dir: 'in', tag: isAck ? 'ACK' : pending ? 'FALSE-HIT' : 'bcast', s: hex8(buf) });
+    const tag = isAck ? 'ACK' : pending ? 'FALSE-HIT' : 'bcast';
+    rec({ t: Date.now(), dir: 'in', tag, s: hex8(buf) });
+    // BASELINE PROBE (2026-07-19, mute investigation): the `55 32 18` variant (byte[2]=0x18 instead of the
+    // usual 0x38) appears in every mute flight recorder — but the recorder ONLY dumps at a mute, so there's
+    // no control group and we can't tell whether it's a wedge precursor or ordinary traffic. Count it during
+    // NORMAL streaming and summarise at most once a minute: a count that climbs steadily while the board is
+    // healthy ⇒ benign, discard the theory; a count that only moves in the seconds before a mute ⇒ a real
+    // early-warning signal worth acting on. Pure observation — the gate above is untouched.
+    if (buf[1] === cmd && buf[2] === 0x18) {
+      odd18++; odd18Tag[tag] = (odd18Tag[tag] || 0) + 1;
+      const nowMs = Date.now();
+      if (odd18 === 1 || nowMs - odd18LogAt >= 60_000) {
+        odd18LogAt = nowMs;
+        console.log(ts() + ` … [probe] 0x55 ${cmd.toString(16)} 18 variant #${odd18} (ACK:${odd18Tag.ACK || 0} false:${odd18Tag['FALSE-HIT'] || 0} bcast:${odd18Tag.bcast || 0}) — baseline while healthy; compare against the next mute`);
+      }
+    }
     if (isAck) {
       if (!ackSigLogged) {   // capture the real ACK's full byte signature ONCE per device — the only way to later tell a true 0x32 ACK from a spurious 0x55 32 broadcast (identical in the bytes we gate on) is to diff their payloads
         ackSigLogged = true;
