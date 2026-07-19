@@ -68,5 +68,7 @@ th108-daemon/wake-audio-recovery-test.ps1
 # --- one-off dev helper (app-capture build swap) ---
 th108-daemon/apply-capture-fix.cmd
 
-# --- personal machine helper (per-app numpad remap via AutoHotkey; not a suite feature) ---
+# --- personal machine helpers (not suite features) ---
 numpad-blender.ahk
+claude-runaway-watch.ps1
+claude-runaway-watch.vbs
