@@ -563,7 +563,7 @@ async function sendOnboard(allled) {
 // but it's still there); writing too would wedge the board. Back off and re-probe on a later tick.
 let probing = false, nextOpenAt = Date.now() + 5000;   // startup grace: a live page's heartbeat needs a beat (≤3s) to park us before we first touch the device
 let lastOkAt = 0, streakStart = 0, muteLogged = false, muteAt = 0;   // mute-episode tracking (transition logging)
-let usbFiredAt = 0, lastTickAt = 0;   // USB-restart escalation state + sleep-gap detection
+let usbFiredAt = 0, lastTickAt = 0, wokeAt = 0;   // USB-restart escalation state + sleep-gap detection (wokeAt = last resume-from-sleep, for the fast wake-recovery threshold)
 let lastKeyAt = Date.now();           // last physical keypress (from the global hook) — drives the idle-aware USB-restart threshold
 let offCleared = false;               // lights-off / display-off: a black frame was sent
 let offSentAt = 0;                     // when — so the blank re-asserts every ~5s (a re-enumerated/reclaimed board goes black again)
@@ -641,7 +641,10 @@ async function runTick() {
   // Sleep-gap re-baseline: after a suspend, the pre-sleep muteAt is hours stale — without this the USB
   // restart would insta-fire on the first failed send at wake, even though wake mutes recover on their own.
   const nowWall = Date.now();
-  if (lastTickAt && nowWall - lastTickAt > 30_000 && muteLogged) muteAt = nowWall;
+  if (lastTickAt && nowWall - lastTickAt > 30_000) {   // tick stalled >30s ⇒ the machine just resumed from sleep/hibernate
+    wokeAt = nowWall;                                   // arm the fast wake-recovery threshold below
+    if (muteLogged) muteAt = nowWall;                  // re-baseline: the pre-sleep muteAt is hours stale, or the restart would insta-fire
+  }
   lastTickAt = nowWall;
   await openIfPossible();
   // A USB-restart from ANY source (mute escalation, recovery hotkey, page request) bumps usbFiredAt and
@@ -774,7 +777,10 @@ async function runTick() {
         // actively typing — but if you've been AFK (no keypress for IDLE_AFTER_MS) the dropout is free, so
         // recover the lighting much sooner (IDLE_THRESHOLD_MS). lastKeyAt comes from the global key hook.
         const afk = Date.now() - lastKeyAt > U.IDLE_AFTER_MS;
-        const thresholdMs = afk ? U.IDLE_THRESHOLD_MS : U.THRESHOLD_MS;
+        // Fast wake recovery: for ~90s after a resume, the board is reliably USB-suspended and won't self-heal,
+        // so re-enumerate after just 4s instead of the full AFK wait — lights return seconds after wake, not ~40s.
+        const freshWake = wokeAt && Date.now() - wokeAt < 90_000;
+        const thresholdMs = freshWake ? 4000 : (afk ? U.IDLE_THRESHOLD_MS : U.THRESHOLD_MS);
         if (settings.usbReset && U.shouldFire({ muteAt, now: Date.now(), lastFireAt: usbFiredAt, thresholdMs })) {
           usbFiredAt = Date.now();
           log('⚡ ESCALATING: mute has lasted ' + Math.round((usbFiredAt - muteAt) / 1000) + 's (' + (afk ? 'AFK — recovering early' : 'actively typing') + ') — PnP-restarting the keyboard USB device (task "' + U.TASK_NAME + '"); typing drops ~1-2s');
