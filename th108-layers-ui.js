@@ -1060,12 +1060,14 @@
         // ---- AI/LLM agent-activity lighting layer card ----
         // Colors — each picker gets a ↺ that restores just that glyph's default color
         const AG_COLOR_DEF={ twinkleColor:'#ff8c00', spinColor:'#ffffff', checkColor:'#22cc44', bangColor:'#ff3b30' };
-        const colorRow=(label,key)=>row(label,'<span style="display:inline-flex;align-items:center;gap:6px"><input type="color" class="s-'+key+'" value="'+s[key]+'"><button type="button" class="sreset s-agColReset" data-key="'+key+'" title="Reset to the default '+label.toLowerCase()+' color">↺</button></span><span></span>');
+        // each glyph row: [show toggle] [color] [reset]. The toggle hides just that status on the keyboard
+        // (the layer stays on), so you can e.g. keep the spinner but drop the ✓.
+        const colorRow=(label,key,showKey)=>row(label,'<span style="display:inline-flex;align-items:center;gap:6px"><input type="checkbox" class="s-'+showKey+'"'+(s[showKey]!==false?' checked':'')+' title="Show the '+label.toLowerCase()+' status on the keyboard — uncheck to hide just this one"><input type="color" class="s-'+key+'" value="'+s[key]+'"><button type="button" class="sreset s-agColReset" data-key="'+key+'" title="Reset to the default '+label.toLowerCase()+' color">↺</button></span><span></span>');
         const colorRows=
-          colorRow('Twinkle','twinkleColor')+
-          colorRow('Spinner','spinColor')+
-          colorRow('Checkmark','checkColor')+
-          colorRow('Exclamation','bangColor');
+          colorRow('Twinkle','twinkleColor','showTwinkles')+
+          colorRow('Spinner','spinColor','showSpinner')+
+          colorRow('Checkmark','checkColor','showCheck')+
+          colorRow('Exclamation','bangColor','showBang');
         // Session filter — TWO labeled dropdowns side by side (Active | Idle) instead of one wide grouped select.
         // Both carry "All Sessions" as their neutral top option; picking a session in one shows it there and the
         // other rests on "All Sessions". Options filled async after mount.
@@ -1126,6 +1128,7 @@
         const c=q=>body.querySelector(q);
         // Color pickers + per-color ↺ reset to default
         ['twinkleColor','spinColor','checkColor','bangColor'].forEach(key=>{ const el=c('.s-'+key); if(el) el.addEventListener('input',e=>{ s[key]=e.target.value; scheduleSaveLayers(); }); });
+        ['showTwinkles','showSpinner','showCheck','showBang'].forEach(key=>{ const el=c('.s-'+key); if(el) el.addEventListener('change',e=>{ s[key]=e.target.checked; scheduleSaveLayers(); }); });   // per-status visibility
         body.querySelectorAll('.s-agColReset').forEach(b=>b.addEventListener('click',()=>{ const key=b.dataset.key, def=AG_COLOR_DEF[key]; if(!def) return; s[key]=def; const el=c('.s-'+key); if(el){ el.value=def; el.dispatchEvent(new Event('input',{bubbles:true})); } scheduleSaveLayers(); }));   // dispatch input so attachHex syncs the hex TEXT box (was stale until a refresh)
         // Session filter — follow-focus checkbox + two selects (Active | Idle)
         const selActive=c('.s-agSessionActive'), selIdle=c('.s-agSessionIdle'), sessNote=c('.s-agSessionNote'), noteTxt=c('.s-agNoteTxt'), agSymbol=c('.s-agSymbol'), follow=c('.s-agFollowFocus'), winPick=c('.s-agWinPick');

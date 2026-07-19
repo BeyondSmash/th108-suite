@@ -852,6 +852,33 @@ test('renderAgent idle → all keys dark', () => {
   assert.ok(L.rgb.every(v => v === 0));
 });
 
+const _agLit = (L) => { let n = 0; for (let o = 0; o + 2 < L.rgb.length; o += 3) if (L.rgb[o] || L.rgb[o + 1] || L.rgb[o + 2]) n++; return n; };
+const _agState = (over) => ({ agent: Object.assign({ busy: false, subagentCount: 0, checkmarkAt: 0, notifyAt: 0, attention: false, bootAt: 0 }, over) });
+
+test('renderAgent ages events on the WALL clock (epoch checkmarkAt vs performance.now-style now)', () => {
+  // `now` is a small performance.now()-style value while checkmarkAt is epoch ms. Subtracting them made the
+  // age hugely NEGATIVE, so the checkmark never expired — it blinked forever. Ages must come off Date.now().
+  const shown = { type: 'agent', settings: { checkMs: 3000 }, rgb: [] };
+  E.renderAgent(shown, 5000, _agState({ checkmarkAt: Date.now() - 1500 }));   // 1.5s old: past the blink window, still inside checkMs -> solid
+  assert.ok(_agLit(shown) > 0, 'a fresh-ish checkmark is shown');
+  const expired = { type: 'agent', settings: { checkMs: 3000 }, rgb: [] };
+  E.renderAgent(expired, 5000, _agState({ checkmarkAt: Date.now() - 10000 }));   // 10s old vs 3s timeout
+  assert.equal(_agLit(expired), 0, 'checkmark subsides once older than checkMs');
+});
+
+test('renderAgent per-status toggles hide just that glyph', () => {
+  const st = _agState({ checkmarkAt: Date.now() - 1500 });
+  const on = { type: 'agent', settings: { checkMs: 3000 }, rgb: [] };
+  E.renderAgent(on, 5000, st);
+  assert.ok(_agLit(on) > 0, 'checkmark shows by default');
+  const off = { type: 'agent', settings: { checkMs: 3000, showCheck: false }, rgb: [] };
+  E.renderAgent(off, 5000, st);
+  assert.equal(_agLit(off), 0, 'showCheck:false hides the checkmark');
+  const spinOff = { type: 'agent', settings: { showSpinner: false }, rgb: [] };
+  E.renderAgent(spinOff, 5000, _agState({ busy: true }));
+  assert.equal(_agLit(spinOff), 0, 'showSpinner:false hides the spinner');
+});
+
 test('renderAgent with subagents lights at least one key orange-ish', () => {
   const L = { type: 'agent', settings: { twinkleColor: '#ff8c00' }, rgb: [] };
   const state = { agent: { busy: true, subagentCount: 2, checkmarkAt: 0, notifyAt: 0, attention: false, bootAt: 0 } };

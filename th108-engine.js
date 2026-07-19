@@ -1044,8 +1044,15 @@
     if (!A) return;
     // put(k, r, g, b): write to the NLED*3 flat buffer (k = slot index, 3 bytes per key)
     const put = (k, r, g, b) => { if (k < 0) return; const o = k * 3; out[o] = r | 0; out[o + 1] = g | 0; out[o + 2] = b | 0; };
+    // TIMEBASE: checkmarkAt/notifyAt/bootAt arrive from the daemon's agent-state in EPOCH ms (Date.now), but
+    // `now` here is a performance.now()-style clock. Subtracting them gave a hugely NEGATIVE age, so the
+    // checkmark never expired (it blinked forever), "!" never left its hold, and the boot sweep never drew.
+    // Measure event ages on the wall clock; fall back to `now` for a feed already on the render clock
+    // (synthetic preview / tests). Free-running animations (spinner, twinkles) keep using `now`.
+    const wall = Date.now();
+    const ageOf = (t) => { if (!t) return Infinity; const w = wall - t; return (w >= 0 && w < 864e5) ? w : now - t; };
     // subagent twinkles: light the first N region keys, one per running subagent.
-    if (A.subagentCount > 0) {
+    if (s.showTwinkles !== false && A.subagentCount > 0) {
       const region = (Array.isArray(s.twinkleKeys) && s.twinkleKeys.length) ? s.twinkleKeys.map(led => INDICES.indexOf(led)).filter(k => k >= 0) : AGENT_LETTER_K;
       const n = Math.min(A.subagentCount, region.length);
       const spectrum = !!s.twinkleSpectrum, span = Math.max(1, region.length - 1);   // spectrum: color each lit key by its position so the count reads as a red→violet progression
@@ -1058,31 +1065,31 @@
       }
     }
     // numpad: ! (attention) > ✓ (flash) > spinner
-    if (A.attention) {
+    if (A.attention && s.showBang !== false) {
       const [br, bg, bb] = hexToRgb(s.bangColor || '#ff3b30');
-      const ph = agentPhase(A.notifyAt, now, s);
+      const ph = agentPhase(0, A.notifyAt ? ageOf(A.notifyAt) : 0, s);   // pass the AGE as `now` (notifyAt 0) so the lifecycle is timebase-correct
       // reminder blink span: alternate full-bright (1) and dark (0) so the "!" truly blinks off (not a pulse).
       // outside the reminder span it breathes normally via ph.level.
       const f = ph.reminder ? (ph.blink ? 1 : 0) : ph.level;
       for (const k of AGENT_BANG_K) put(k, br * f, bg * f, bb * f);
-    } else if (A.busy && AGENT_SPIN_K.length) {   // busy BEFORE checkmark: an active turn shows the spinner, never a leftover ✓ (matches the on-screen symbol)
+    } else if (A.busy && s.showSpinner !== false && AGENT_SPIN_K.length) {   // busy BEFORE checkmark: an active turn shows the spinner, never a leftover ✓ (matches the on-screen symbol)
       const [pr, pg, pb] = hexToRgb(s.spinColor || '#ffffff');
       // comet: a bright head + a descending-brightness trail behind it. tail 4 over the 8-key ring lights ~half
       // the ring, so the head always has a visible gradient wake. faster step (340ms) since the ring is longer now.
       const speed = s.spinMs || 340, tail = s.spinTail == null ? 4 : s.spinTail;
       const N = AGENT_SPIN_K.length, lead = Math.floor(now / speed) % N, cap = Math.min(tail, N - 1);
       for (let t = 0; t <= cap; t++) { const k = AGENT_SPIN_K[(lead - t + N) % N]; const f = 1 - t / (cap + 1); put(k, pr * f, pg * f, pb * f); }
-    } else if (A.checkmarkAt && now - A.checkmarkAt < (s.checkMs != null ? s.checkMs : 3000)) {
+    } else if (s.showCheck !== false && ageOf(A.checkmarkAt) < (s.checkMs != null ? s.checkMs : 3000)) {
       const [cr, cg, cb] = hexToRgb(s.checkColor || '#22cc44');
       // 3 quick blinks on arrival to catch the eye, then hold solid until the timeout subsides it
-      const el = now - A.checkmarkAt, HALF = 165, BLINK_END = HALF * 6;   // 6 half-cycles = 3 on/off blinks (~1s)
+      const el = ageOf(A.checkmarkAt), HALF = 165, BLINK_END = HALF * 6;   // 6 half-cycles = 3 on/off blinks (~1s)
       const f = el < BLINK_END ? (Math.floor(el / HALF) % 2 === 0 ? 1 : 0) : 1;
       for (const k of AGENT_CHECK_K) put(k, cr * f, cg * f, cb * f);
     }
     // boot sweep (own region, coexists)
-    if (A.bootAt && now - A.bootAt < (s.bootMs || 1000)) {
+    if (ageOf(A.bootAt) < (s.bootMs || 1000)) {
       const [sr, sg, sb] = hexToRgb(s.twinkleColor || '#ff8c00');
-      const p = (now - A.bootAt) / (s.bootMs || 1000);
+      const p = ageOf(A.bootAt) / (s.bootMs || 1000);
       for (let k = 0; k < INDICES.length; k++) { const kp = k / INDICES.length; const d = 1 - Math.min(1, Math.abs(kp - p) * 6); if (d > 0) { const o = k * 3; out[o] = Math.max(out[o], sr * d); out[o + 1] = Math.max(out[o + 1], sg * d); out[o + 2] = Math.max(out[o + 2], sb * d); } }
     }
     // emphasis: silhouette numpad / dim below → carve the layers BELOW this agent layer.
@@ -1091,7 +1098,7 @@
     L._alpha = null;   // agent layer does not use per-key opacity
     // emphasis fires only while a NUMPAD glyph is showing (spinner / checkmark / "!") — twinkles live on the
     // letter cluster and the boot sweep is board-wide, so neither should darken/carve the numpad.
-    const numpadActive = A.busy || A.attention || (A.checkmarkAt && now - A.checkmarkAt < (s.checkMs != null ? s.checkMs : 3000));
+    const numpadActive = A.busy || A.attention || (ageOf(A.checkmarkAt) < (s.checkMs != null ? s.checkMs : 3000));
     if (numpadActive && (s.silhouetteNumpad || s.dimBelow)) {
       const cb = L._carveBuf || (L._carveBuf = new Float32Array(NLED)); cb.fill(0);
       const dimAmt = s.dimBelowAmt == null ? 0.9 : s.dimBelowAmt;
@@ -1209,7 +1216,8 @@
       if(s.sat==null) s.sat=170; if(s.gam==null) s.gam=180; }   // color via the shared sat/con/gam/bri Adjust; default to the GIF-tool's Vivid look (raw sRGB reads dull on LEDs) — adjustable in the Adjust block. hideStatic = make unchanging keys transparent
     else if(L.type==='agent'){ const ag={ twinkleColor:'#ff8c00', spinColor:'#ffffff', checkColor:'#22cc44', bangColor:'#ff3b30',
         session:'all', twinkleKeys:null, holdMs:1000, checkMs:3000, breatheMs:1600, reminderEnabled:true, reminderAfterMs:8000,
-        reminderBlinks:2, silhouetteNumpad:false, dimBelow:false, dimBelowAmt:0.9, twinkleSpectrum:false };
+        reminderBlinks:2, silhouetteNumpad:false, dimBelow:false, dimBelowAmt:0.9, twinkleSpectrum:false,
+        showTwinkles:true, showSpinner:true, showCheck:true, showBang:true };   // per-status visibility — turn any glyph off without disabling the whole layer
       Object.keys(ag).forEach(k=>{ if(s[k]===undefined)s[k]=ag[k]; }); }
     else if(L.type==='audio'){
       const ad={ style:'bars', source:'system', appId:'', deviceId:'', pauseStyle:'linear',
