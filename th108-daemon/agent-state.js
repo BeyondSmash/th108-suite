@@ -5,6 +5,15 @@
 
 function basename(p) { const s = String(p || '').replace(/[\\/]+$/, ''); const i = Math.max(s.lastIndexOf('/'), s.lastIndexOf('\\')); return i >= 0 ? s.slice(i + 1) : s; }
 
+// A session whose cwd is a Windows system dir (System32 / Windows / SysWOW64) isn't a real coding session —
+// it's a background/SDK agent (e.g. a memory tool spawning Claude agents). Those pile up as phantom "busy"
+// sessions and keep the agent layer spinning / the checkmark re-blinking, so we drop them everywhere. Pure.
+function isSystemCwd(cwd) {
+  const c = String(cwd || '').toLowerCase().replace(/\//g, '\\');
+  if (!c) return false;   // unknown cwd → can't classify → keep (never drop a real session)
+  return c === 'system32' || c.includes('\\system32') || c.includes('\\syswow64') || c.includes('\\windows\\') || c.endsWith('\\windows');
+}
+
 // Map a foreground VSCode window TITLE to a session id — the daemon's claude-view-free focus detector.
 // A VSCode title carries its workspace folder (e.g. "game.js - ChemTetris - Visual Studio Code"), which
 // equals a session's project (basename of its cwd). Match sessions whose project appears in the title;
@@ -55,6 +64,7 @@ function createAgentState(opts = {}) {
     if (!hook || !hook.session_id) return;
     const name = hook.hook_event_name;
     const id = hook.session_id;
+    if (isSystemCwd(hook.cwd)) { map.delete(id); return; }   // background/SDK agent (memory tool etc.) — never let it into the map (and evict one that slipped in before its cwd was known)
     if (name === 'SessionEnd') { map.delete(id); return; }
     const e = ensure(id, hook.cwd, now);
     if (hook.claude_pid) { const p = +hook.claude_pid; if (p > 0) e.pid = p; }   // the hook forwards $PPID (a process in the session's tree) so window-focus can walk up to the VSCode window
@@ -74,7 +84,7 @@ function createAgentState(opts = {}) {
     }
   }
 
-  function pick(filter) { return filter && filter !== 'all' ? (map.has(filter) ? [map.get(filter)] : []) : [...map.values()]; }
+  function pick(filter) { const es = filter && filter !== 'all' ? (map.has(filter) ? [map.get(filter)] : []) : [...map.values()]; return es.filter(e => !isSystemCwd(e.cwd)); }   // defensive: never aggregate a system-dir/SDK session even if one slipped in
 
   // Set / clear the externally-signalled focused session (claude-view). id null/'' clears it.
   function setFocus(id, now) { focusId = (id != null && id !== '') ? String(id) : null; focusAt = now; }
@@ -104,7 +114,7 @@ function createAgentState(opts = {}) {
   function fmtClock(ms) { try { const d = new Date(ms); let h = d.getHours(); const m = d.getMinutes(); const ap = h < 12 ? 'AM' : 'PM'; h = h % 12 || 12; return h + ':' + (m < 10 ? '0' + m : m) + ' ' + ap; } catch (_) { return ''; } }
   function sessions(now) {
     sweep(now);
-    return [...map.entries()].map(([id, e]) => {
+    return [...map.entries()].filter(([, e]) => !isSystemCwd(e.cwd)).map(([id, e]) => {
       const proj = basename(e.cwd) || 'session', clock = e.firstSeen ? fmtClock(e.firstSeen) : '';
       const active = e.busy || e.subs.size > 0 || e.attention;   // working (mid-turn / subagents) or waiting on the user = "active"; otherwise idle-but-open
       return { id, project: proj, startedAt: e.firstSeen || 0, label: clock ? proj + ' · ' + clock : proj + ' ' + id.slice(0, 6), active, busy: e.busy, subagentCount: e.subs.size, attention: e.attention, lastSeen: e.lastSeen };
@@ -115,4 +125,4 @@ function createAgentState(opts = {}) {
   return { ingest, aggregate, sessions, setFocus, focus, pidFor };
 }
 
-module.exports = { createAgentState, pickSessionForTitle };
+module.exports = { createAgentState, pickSessionForTitle, isSystemCwd };

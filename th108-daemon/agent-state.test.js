@@ -1,6 +1,26 @@
 const { test } = require('node:test');
 const assert = require('node:assert');
-const { createAgentState } = require('./agent-state.js');
+const { createAgentState, isSystemCwd } = require('./agent-state.js');
+
+test('isSystemCwd flags Windows system dirs, not real projects', () => {
+  assert.ok(isSystemCwd('C:\\Windows\\System32'));
+  assert.ok(isSystemCwd('C:/Windows/System32'));
+  assert.ok(isSystemCwd('System32'));
+  assert.ok(isSystemCwd('C:\\Windows\\SysWOW64'));
+  assert.ok(!isSystemCwd('path\\to\\th108-suite'));
+  assert.ok(!isSystemCwd('/home/u/proj'));
+  assert.ok(!isSystemCwd(''));   // unknown cwd → keep
+});
+
+test('system-cwd (SDK/background) sessions never count as busy or list', () => {
+  const A = createAgentState();
+  A.ingest({ hook_event_name: 'UserPromptSubmit', session_id: 'sdk1', cwd: 'C:\\Windows\\System32' }, 1000);
+  A.ingest({ hook_event_name: 'PreToolUse', session_id: 'sdk2', cwd: 'C:\\Windows\\System32' }, 1000);
+  A.ingest({ hook_event_name: 'UserPromptSubmit', session_id: 'real', cwd: '/home/u/proj' }, 1000);
+  assert.equal(A.aggregate('all', 1000).busy, true);              // the real session drives busy
+  assert.equal(A.sessions(1000).length, 1);                       // only the real one lists
+  assert.equal(A.sessions(1000)[0].id, 'real');
+});
 
 const ev = (name, extra = {}) => Object.assign({ hook_event_name: name, session_id: 's1', cwd: '/home/u/proj' }, extra);
 

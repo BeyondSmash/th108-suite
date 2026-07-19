@@ -1075,7 +1075,7 @@
     } else if (A.checkmarkAt && now - A.checkmarkAt < (s.checkMs != null ? s.checkMs : 3000)) {
       const [cr, cg, cb] = hexToRgb(s.checkColor || '#22cc44');
       // 3 quick blinks on arrival to catch the eye, then hold solid until the timeout subsides it
-      const el = now - A.checkmarkAt, HALF = 110, BLINK_END = HALF * 6;   // 6 half-cycles = 3 on/off blinks (~660ms)
+      const el = now - A.checkmarkAt, HALF = 165, BLINK_END = HALF * 6;   // 6 half-cycles = 3 on/off blinks (~1s)
       const f = el < BLINK_END ? (Math.floor(el / HALF) % 2 === 0 ? 1 : 0) : 1;
       for (const k of AGENT_CHECK_K) put(k, cr * f, cg * f, cb * f);
     }
