@@ -290,6 +290,18 @@ const _seenUnmapped = new Set();
 uIOhook.on('keydown', e => { if (UIO2IDX[e.keycode] === undefined && !_seenUnmapped.has(e.keycode)) { _seenUnmapped.add(e.keycode); log('🔍 unmapped key: uiohook keycode ' + e.keycode + ' — add to UIO2IDX to bind it (reactive/host actions)'); } });
 uIOhook.on('keydown', e => { lastKeyAt = Date.now(); if (state) { const i = UIO2IDX[e.keycode]; if (i !== undefined) E.stampKey(state, i); } });
 uIOhook.on('keyup',   e => { if (state) { const i = UIO2IDX[e.keycode]; if (i !== undefined) E.releaseKey(state, i); } });
+// PROBE (2026-07-20, caps-lock-mute hypothesis): lock keys drive firmware-owned LEDs (below the 0x32 paint),
+// so toggling one MIGHT collide with the write stream and desync the FIFO → mute. Record the last lock-key
+// press so the MUTE line can say whether one landed just before the silence. Confirms or clears the theory.
+const LOCK_KEYS = {};
+[['CapsLock', UiohookKey.CapsLock], ['ScrollLock', UiohookKey.ScrollLock], ['NumLock', UiohookKey.NumLock]]
+  .forEach(([n, k]) => { if (k !== undefined) LOCK_KEYS[k] = n; });
+LOCK_KEYS[57378] = 'NumLock';   // this board's NumLock code (UiohookKey.NumLock doesn't match it)
+uIOhook.on('keydown', e => {
+  const lk = LOCK_KEYS[e.keycode]; if (!lk) return;
+  lastLockKeyAt = Date.now(); lastLockKey = lk;
+  log('🔒 [probe] ' + lk + ' pressed — watching for a mute in the next few seconds');
+});
 // Global recovery hotkey: Ctrl+Alt+End in ANY app = "my lighting broke — fix it" (user request
 // 2026-06-11). Typing keeps flowing through an ACK-mute wedge, so the chord always arrives.
 // Action = the proven PnP software replug + a reopen window; ownership then sorts itself out
@@ -565,6 +577,7 @@ let probing = false, nextOpenAt = Date.now() + 5000;   // startup grace: a live 
 let lastOkAt = 0, streakStart = 0, muteLogged = false, muteAt = 0;   // mute-episode tracking (transition logging)
 let usbFiredAt = 0, lastTickAt = 0, wokeAt = 0;   // USB-restart escalation state + sleep-gap detection (wokeAt = last resume-from-sleep, for the fast wake-recovery threshold)
 let lastKeyAt = Date.now();           // last physical keypress (from the global hook) — drives the idle-aware USB-restart threshold
+let lastLockKeyAt = 0, lastLockKey = '';   // last Caps/Num/Scroll-lock press (probe: correlate lock-key toggles with mutes)
 let offCleared = false;               // lights-off / display-off: a black frame was sent
 let offSentAt = 0;                     // when — so the blank re-asserts every ~5s (a re-enumerated/reclaimed board goes black again)
 let onboardMaskApplied = false, onboardMaskBusy = false, lastUsbFired = 0;   // black-onboard mask re-asserted once per physical connection; reset on any re-enumeration so restarts/mutes/wake fall back to black, not the firmware rainbow
@@ -766,9 +779,11 @@ async function runTick() {
         if (paused) return;                                // the "stall" was our own yield closing the device mid-frame — not a board event, don't log MUTE
         if (!muteLogged) {                                 // one transition line per mute episode (the 5s retries stay silent)
           muteLogged = true; muteAt = Date.now();
+          const lockNote = (lastLockKeyAt && muteAt - lastLockKeyAt < 3000)   // probe: did a lock-key toggle land right before the silence?
+            ? ' · 🔒 ' + lastLockKey + ' pressed ' + (muteAt - lastLockKeyAt) + 'ms before' : '';
           log('⚠ board went MUTE — no ACKs (' + (lastOkAt
             ? 'was streaming ' + Math.round((muteAt - streakStart) / 60000) + ' min, last ACK ' + Math.round((muteAt - lastOkAt) / 1000) + 's ago'
-            : 'never ACKed since open') + ') — retrying every 5s; USB restart fires at ' + Math.round(U.IDLE_THRESHOLD_MS / 1000) + 's if AFK, ' + Math.round(U.THRESHOLD_MS / 1000) + 's while typing');
+            : 'never ACKed since open') + ') — retrying every 5s; USB restart fires at ' + Math.round(U.IDLE_THRESHOLD_MS / 1000) + 's if AFK, ' + Math.round(U.THRESHOLD_MS / 1000) + 's while typing' + lockNote);
           if (trace) log('   ↳ flight recorder (last input reports + writes before silence):\n' + trace);
         }
         // Escalation: a PnP restart of the keyboard's USB node = software replug (proven to clear a true
