@@ -572,6 +572,7 @@ try{ var _tk = /[?&]defaults=1(?:&|$)/.test(location.search) ? 'th108_DEFAULTS_t
   <button id="connectHdr" class="hdrconnect" hidden title="this page takes over the keyboard (WebHID) — needed for key binding and for editing while the daemon is off">⌨ Connect</button>
   <span id="dmnOnline" class="dmnTag" hidden><i></i><span id="dmnTagTxt">Online</span></span>
   <button id="layoutBtn" title="Card layout — Grid: even rows · Fill: pack cards up into the empty gaps below shorter cards"><span id="layoutBtnTxt">Grid</span><span class="gi"></span></button>
+  <span id="langMount" style="display:inline-flex;align-items:center"></span>
   <button id="themeBtn" title="toggle light / dark (crossfades)" aria-label="Toggle light or dark theme">
     <span class="knob"><svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true">
       <mask id="kmask"><rect width="24" height="24" fill="#fff"/><circle class="kcut" cx="32" cy="2" r="7" fill="#000"/></mask>
@@ -1320,6 +1321,7 @@ NumpadDel::SendInput {.}
 </div>
 
 <script src="th108-media-lib.js"></script>
+<script src="th108-i18n.js"></script>
 <script src="th108-engine.js"></script>
 <script src="profile-cycle.js"></script>
 <script src="th108-audio-synth.js"></script>
