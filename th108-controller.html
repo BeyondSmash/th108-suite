@@ -391,7 +391,7 @@ try{ var _tk = /[?&]defaults=1(?:&|$)/.test(location.search) ? 'th108_DEFAULTS_t
   .doctable th, .doctable td{ text-align:left; padding:6px 9px; border-bottom:1px solid var(--border); vertical-align:top; }
   .doctable th{ color:var(--text); font-weight:600; }
   .doctable td:first-child{ color:var(--text); font-weight:600; width:30%; }
-  .doctable .yes{ color:#3fb950; } .doctable .no{ color:#8b949e; }
+  .doctable .yes{ color:#3fb950; } .doctable .no{ color:#8b949e; } .doctable .part{ color:#d29922; }  /* part = the competitor has a limited form of it — honest, not a blanket "No" */
   .doctable tr:nth-child(even) td{ background:var(--zebra); }   /* zebra rows */
   .chglog{ list-style:none; margin:0; padding:0; }
   .chglog li{ margin:0; padding:8px 11px; border-radius:10px; }   /* padded so the zebra band has room */
@@ -1079,9 +1079,9 @@ NumpadDel::SendInput {.}
       <tr><th>Capability</th><th>Epomaker WebHID</th><th>th108</th></tr>
       <tr><td>Where effects run</td><td>On the keyboard (onboard)</td><td>On your PC, streamed live</td></tr>
       <tr><td>Works after the tab closes</td><td class="yes">Yes (onboard)</td><td class="yes">Yes — via the background daemon</td></tr>
-      <tr><td>Multi-layer live compositing</td><td class="no">One effect at a time</td><td class="yes">Up to 7 blended layers</td></tr>
+      <tr><td>Multi-layer live compositing</td><td class="part">One onboard effect (Musical Rhythm layers 2, fixed)</td><td class="yes">Up to 7 freely-blended layers</td></tr>
       <tr><td>Reactive typing in <em>every</em> app</td><td class="no">Onboard reactive only</td><td class="yes">Yes (daemon sees system-wide keys)</td></tr>
-      <tr><td>Audio-reactive lighting</td><td class="no">No</td><td class="yes">System / app / tab / mic</td></tr>
+      <tr><td>Audio-reactive lighting</td><td class="part">Onboard “Musical Rhythm” only</td><td class="yes">System / app / tab / mic — as a blendable layer</td></tr>
       <tr><td>GIF → keys</td><td class="no">No</td><td class="yes">Yes</td></tr>
       <tr><td>Bind keys to PC actions</td><td class="no">No</td><td class="yes">Host Actions (apps, windows, macros…)</td></tr>
       <tr><td>LCD image / GIF upload</td><td class="yes">Yes</td><td class="yes">Yes + Now Playing</td></tr>
@@ -1089,9 +1089,9 @@ NumpadDel::SendInput {.}
       <tr><td>Profiles / export-import</td><td>Onboard slots</td><td class="yes">Host profiles + JSON</td></tr>
       <tr><td>Always-on PC background app</td><td class="no">Not needed / none</td><td class="yes">Yes (optional, auto-start)</td></tr>
     </table>
-    <p style="font-size:11.5px">Comparison is based on the official tool's per-key lighting configurator; Epomaker may
-       add features over time. Use whichever fits — onboard effects from either tool survive a reboot; host-driven
-       effects need th108 running.</p>
+    <p style="font-size:11.5px">Comparison covers the official tool's per-key lighting configurator and its onboard
+       “Musical Rhythm” audio effect; Epomaker may add features over time. Use whichever fits — onboard effects from
+       either tool survive a reboot; host-driven effects need th108 running.</p>
   </div>
 
   <div class="card s3 doccard" id="docDaemon" data-pages="docs">
