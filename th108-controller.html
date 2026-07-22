@@ -555,7 +555,7 @@ try{ var _tk = /[?&]defaults=1(?:&|$)/.test(location.search) ? 'th108_DEFAULTS_t
 
 <!-- Daemon-install prompt: shown only on the hosted (non-localhost) web build. Dismiss-forever. Wired in JS. -->
 <div id="daemonInstallBanner" hidden style="background:#0e3a4c;color:#dbeef7;text-align:center;padding:9px 14px;font-size:13px;line-height:1.5;border-bottom:1px solid #17546b">
-  You’re on the web version — lighting runs only while this tab is open. Install the companion daemon for <b>always-on lighting</b> plus the <b>Audio</b> &amp; <b>Agent</b> layers.
+  <span data-i18n="intro.webbanner">You’re on the web version — lighting runs only while this tab is open. Install the companion daemon for <b>always-on lighting</b> plus the <b>Audio</b> &amp; <b>Agent</b> layers.</span>
   <a id="daemonInstallHow" href="#docs" style="color:#7fd1ef;text-decoration:underline;margin-left:8px;font-weight:600">Get the daemon →</a>
   <a id="daemonInstallDismiss" href="#" style="color:#9fb8c4;text-decoration:underline;margin-left:10px">Dismiss</a>
 </div>
@@ -637,15 +637,15 @@ try{ var _tk = /[?&]defaults=1(?:&|$)/.test(location.search) ? 'th108_DEFAULTS_t
       </span>
     </div>
     <div class="avatar">⌨️</div>
-    <p style="margin:0 0 10px;font-size:15px">I'm <span class="bigtype">th108</span> — a free companion app for the
+    <p data-i18n="home.about" style="margin:0 0 10px;font-size:15px">I'm <span class="bigtype">th108</span> — a free companion app for the
        <b>Epomaker TH108 V2 PRO</b> keyboard. I run on your PC and drive its per-key RGB and LCD screen with
        effects the keyboard's own firmware can't do on its own:</p>
-    <ul style="margin:0 0 10px;padding-left:18px;font-size:13.5px;color:var(--muted);line-height:1.6">
+    <ul data-i18n="home.features" style="margin:0 0 10px;padding-left:18px;font-size:13.5px;color:var(--muted);line-height:1.6">
       <li><b style="color:var(--text)">Layered lighting</b> — stack up to seven effects (gradients, reactive, audio-reactive, GIF…) and blend them live.</li>
       <li><b style="color:var(--text)">Reactive in any app</b> — keys light up as you type, system-wide, via a small always-on background app.</li>
       <li><b style="color:var(--text)">LCD &amp; onboard</b> — upload images/GIFs to the little screen and configure the keyboard's onboard effects.</li>
     </ul>
-    <p style="margin:0;font-size:12px;color:var(--muted)">Unofficial &amp; not affiliated with Epomaker. See the <a href="#docs" style="color:var(--blue,#58a6ff);font-weight:600;text-decoration:none">Docs</a> tab for a full feature guide, comparisons and legal notes.</p>
+    <p data-i18n="home.disclaimer" style="margin:0;font-size:12px;color:var(--muted)">Unofficial &amp; not affiliated with Epomaker. See the <a href="#docs" style="color:var(--blue,#58a6ff);font-weight:600;text-decoration:none">Docs</a> tab for a full feature guide, comparisons and legal notes.</p>
   </div>
 
   <div class="card s3" id="connectCard" data-pages="home">
