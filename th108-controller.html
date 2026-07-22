@@ -1117,13 +1117,13 @@ NumpadDel::SendInput {.}
 
   <div class="card s3 doccard" id="docDaemon" data-pages="docs">
     <div class="cardbar"><span class="grip">⠿</span><h2>Get the daemon</h2></div>
-    <p style="font-size:12px">The web page alone drives your keyboard over WebHID while this tab is open — great for a quick try. The optional <b>companion daemon</b> unlocks the rest: <b>always-on lighting</b> (keeps running with the page closed), the <b>Audio</b> and <b>Agent</b> layers, Now-Playing on the LCD, and Host Actions.</p>
-    <ol style="font-size:12px;line-height:1.7;padding-left:18px;margin:6px 0">
+    <p data-i18n="docs.daemon.intro" style="font-size:12px">The web page alone drives your keyboard over WebHID while this tab is open — great for a quick try. The optional <b>companion daemon</b> unlocks the rest: <b>always-on lighting</b> (keeps running with the page closed), the <b>Audio</b> and <b>Agent</b> layers, Now-Playing on the LCD, and Host Actions.</p>
+    <ol data-i18n="docs.daemon.steps" style="font-size:12px;line-height:1.7;padding-left:18px;margin:6px 0">
       <li>Install <a href="https://nodejs.org" target="_blank" rel="noopener" style="color:var(--blue,#58a6ff)">Node.js LTS</a> — one-time; the daemon runs on it.</li>
       <li>Download the th108 suite (project folder / release zip).</li>
       <li>Run <code>setup.cmd</code> — it installs dependencies, enables start-at-login, and opens the controller at <code>http://localhost:8123/</code>.</li>
     </ol>
-    <p class="hint">Windows only for now. The daemon is a small local Node process — nothing is uploaded anywhere. Once it’s running you open <code>http://localhost:8123/</code> and this prompt no longer appears.</p>
+    <p class="hint" data-i18n="docs.daemon.hint">Windows only for now. The daemon is a small local Node process — nothing is uploaded anywhere. Once it’s running you open <code>http://localhost:8123/</code> and this prompt no longer appears.</p>
   </div>
 
   <div class="card s3 doccard" id="docChangelog" data-pages="docs">
