@@ -62,16 +62,20 @@ try{ var _tk = /[?&]defaults=1(?:&|$)/.test(location.search) ? 'th108_DEFAULTS_t
      pill highlight visibly SLIDES between tabs — inside the snapshot crossfade it would just fade */
   /* absolutely center the tab bar to the header (≈ screen) so it stays optically centered no matter how wide
      the left (logo+brightness) or right (Connect) groups get — flex margin:auto only centers leftover space. */
-  nav.tabs{ position:absolute; left:50%; transform:translateX(-50%); display:flex; gap:2px; padding:5px; border-radius:999px; background:var(--tabbg);
-            view-transition-name:tabbar; }
+  /* one centered row by default; wraps to centered rows ONLY when the labels can't fit the space between the header
+     clusters (a language longer than English) — fitTabs() sets --tw (every tab = widest, uniform) and max-width (the fit cap). */
+  nav.tabs{ position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); box-sizing:border-box; display:flex; flex-wrap:wrap; justify-content:center; gap:2px; padding:4px; border-radius:20px; background:var(--tabbg);
+            view-transition-name:tabbar; }   /* 20px = half a single-row's height → a pill on one row, a rounded rect (not a circle) when wrapped */
   ::view-transition-image-pair(tabbar){ animation:none; }
   ::view-transition-old(tabbar){ display:none; }
   ::view-transition-new(tabbar){ animation:none; }
-  nav.tabs .hl{ position:absolute; top:5px; bottom:5px; left:0; width:0; border-radius:999px; background:var(--tabhl);
-                box-shadow:var(--shadow); transition:left .3s cubic-bezier(.22,1,.36,1), width .3s cubic-bezier(.22,1,.36,1); }
-  nav.tabs .tab{ position:relative; z-index:1; padding:7px 15px; border-radius:999px; cursor:pointer;
-                 font-size:13.5px; font-weight:600; color:var(--muted); user-select:none; white-space:nowrap; transition:color .25s; }
+  /* left/top/width/height are all driven by JS (moveHl) so the pill slides to any tab on either row */
+  nav.tabs .hl{ position:absolute; top:0; left:0; width:0; height:0; border-radius:999px; background:var(--tabhl);
+                box-shadow:var(--shadow); transition:left .3s cubic-bezier(.22,1,.36,1), top .3s cubic-bezier(.22,1,.36,1), width .3s cubic-bezier(.22,1,.36,1), height .3s cubic-bezier(.22,1,.36,1); }
+  nav.tabs .tab{ position:relative; z-index:1; padding:7px 11px; border-radius:999px; cursor:pointer; text-align:center;
+                 font-size:13.5px; font-weight:600; color:var(--muted); user-select:none; white-space:nowrap; transition:color .25s, background .2s; }
   nav.tabs .tab.on{ color:var(--text); }
+  nav.tabs .tab:not(.on):hover{ color:var(--text); background:color-mix(in srgb, var(--text) 12%, transparent); }   /* hover affordance */
   /* theme pill (sun/moon slider). The knob must visibly SLIDE during the page crossfade, so the whole
      button is lifted out of the root view transition and shown live (no snapshot fade) — standard
      exclude-an-element recipe: own name + all its VT animations off, old image hidden. */
@@ -132,7 +136,7 @@ try{ var _tk = /[?&]defaults=1(?:&|$)/.test(location.search) ? 'th108_DEFAULTS_t
   .cardbar h2{ font-family:"Fraunces",Georgia,serif; font-weight:700; font-size:19.5px; margin:0; letter-spacing:-.2px; }
   /* status chips in card headers (connection state, now-playing on/off): read as a real status, not faint
      body text — a subtle pill, bold, sentence-capitalized. Semantic .ok/.err/.in override the color. */
-  .cardbar .aux{ margin-left:auto; font-size:11.5px; font-weight:700; letter-spacing:.2px; text-transform:capitalize;
+  .cardbar .aux{ margin-left:auto; font-size:11.5px; font-weight:700; letter-spacing:.2px; text-transform:none;   /* was capitalize — it title-cased articles ("Pick A Key"); strings are now authored in the correct case */
                  color:var(--muted); background:var(--inset); border:1px solid var(--border); padding:2px 10px; border-radius:999px; }
   .cardbar .aux.ok{ color:var(--ok); background:color-mix(in srgb, var(--ok) 12%, var(--inset)); border-color:color-mix(in srgb, var(--ok) 30%, var(--border)); }
   .cardbar .aux.err{ color:var(--err); background:color-mix(in srgb, var(--err) 12%, var(--inset)); border-color:color-mix(in srgb, var(--err) 30%, var(--border)); }
@@ -173,8 +177,22 @@ try{ var _tk = /[?&]defaults=1(?:&|$)/.test(location.search) ? 'th108_DEFAULTS_t
   .ic{ width:15px; height:15px; vertical-align:-2px; fill:none; stroke:currentColor; stroke-width:2;
        stroke-linecap:round; stroke-linejoin:round; flex:none; }
   /* header lighting master switch + global brightness */
-  #lightCtl{ display:flex; align-items:center; gap:10px; margin-right:auto; }   /* tabs are absolute-centered; this auto margin pushes the right group (Connect/Online/theme) to the edge */
-  #lightBtn{ margin:0; padding:6px 14px; font-weight:800; min-width:52px; }
+  #lightCtl{ display:flex; align-items:center; gap:10px; margin-inline-end:auto; position:relative; z-index:1; }   /* tabs are absolute-centered; this auto margin pushes the other group to the far edge — logical (not margin-right) so it mirrors correctly in RTL */
+  /* the absolute tab bar's rectangular box would otherwise paint OVER these static controls and swallow their clicks
+     (wide non-English tab labels reach far enough to bury the 🌐 button) — lift every interactive cluster above it */
+  #connectHdr, #dmnOnline, #layoutBtn, #themeBtn{ position:relative; z-index:1; }
+  /* | + 🌐 float in the right GUTTER, past the card column. The header and #grid are both max-width:1240 centered, so their
+     right edges coincide; absolute-positioning lifts this cluster out of that 1240 box. left:100% is the header's right edge
+     (== the cards' right edge); the +24px drops it into the gutter. top/bottom:0 + flex centers it vertically on the row. */
+  #langExt{ position:absolute; left:calc(100% + 24px); top:0; bottom:0; display:inline-flex; align-items:center; gap:8px; z-index:1; }
+  @media (max-width:1300px){ #langExt{ position:static; } }   /* window too narrow to have a gutter — tuck back into the header flow */
+  .hdrsep{ color:var(--muted); opacity:.5; user-select:none; font-size:16px; }   /* thin divider between the theme toggle and 🌐 */
+  html[dir="rtl"] .hdrsep{ order:1; }   /* RTL: default source order puts the divider on the OUTER edge (separating nothing) — bump its order so it sits on the cluster's inner side, dividing the language cluster from the title like it does in LTR */
+  #th108LangBtn{ transition:box-shadow .2s, border-color .2s; }
+  /* the dropdown panel's outer glow: dark halo on the light theme, white halo in dark (added on top of its drop shadow) */
+  #th108LangPanel{ box-shadow:0 6px 22px rgba(0,0,0,.28), 0 0 16px rgba(0,0,0,.28); }
+  [data-theme="dark"] #th108LangPanel{ box-shadow:0 8px 26px rgba(0,0,0,.5), 0 0 18px rgba(255,255,255,.38); }
+  #lightBtn{ margin:0; padding:5px 10px; font-weight:800; min-width:42px; }   /* was 6px 14px / min-width:52px — trimmed empty space, sits nearer the title→slider midpoint */
   #lightBtn.on{ color:var(--mint); }
   #lightBtn.off{ color:var(--err, #e5534b); }
   #lightCtl .srange{ width:120px; }   /* slimmer so the left group leaves room for the centered tab bar */
@@ -206,7 +224,7 @@ try{ var _tk = /[?&]defaults=1(?:&|$)/.test(location.search) ? 'th108_DEFAULTS_t
   @keyframes dglow{ 0%,100%{ box-shadow:0 0 5px 1px color-mix(in srgb, var(--mint) 45%, transparent); } 50%{ box-shadow:0 0 11px 3px color-mix(in srgb, var(--mint) 75%, transparent); } }
   @keyframes dglowA{ 0%,100%{ box-shadow:0 0 5px 1px color-mix(in srgb, var(--warn) 45%, transparent); } 50%{ box-shadow:0 0 11px 3px color-mix(in srgb, var(--warn) 75%, transparent); } }
   /* header Connect — on every tab while this page doesn't hold the keyboard; flashes yellow on connect, then leaves */
-  .hdrconnect{ margin:0; padding:7px 14px; font-size:12.5px; transition:opacity .3s ease; }
+  .hdrconnect{ margin:0; padding:7px 11px; font-size:12.5px; transition:opacity .3s ease; }
   .hdrconnect[hidden]{ display:none !important; }
   .hdrconnect.cfade{ opacity:0; pointer-events:none; }   /* fade the header Connect out (e.g. on the Home tab, where the Keyboard card has its own) before it collapses */
   .hdrconnect.flash{ background:var(--yellow); color:#0d1117; box-shadow:0 0 0 2px var(--yellow); transition:none; }   /* instant — a .1s ease would eat most of the 250ms flash */
@@ -572,7 +590,6 @@ try{ var _tk = /[?&]defaults=1(?:&|$)/.test(location.search) ? 'th108_DEFAULTS_t
   <button id="connectHdr" class="hdrconnect" hidden title="this page takes over the keyboard (WebHID) — needed for key binding and for editing while the daemon is off">⌨ Connect</button>
   <span id="dmnOnline" class="dmnTag" hidden><i></i><span id="dmnTagTxt">Online</span></span>
   <button id="layoutBtn" title="Card layout — Grid: even rows · Fill: pack cards up into the empty gaps below shorter cards"><span id="layoutBtnTxt">Grid</span><span class="gi"></span></button>
-  <span id="langMount" style="display:inline-flex;align-items:center"></span>
   <button id="themeBtn" title="toggle light / dark (crossfades)" aria-label="Toggle light or dark theme">
     <span class="knob"><svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true">
       <mask id="kmask"><rect width="24" height="24" fill="#fff"/><circle class="kcut" cx="32" cy="2" r="7" fill="#000"/></mask>
@@ -585,6 +602,10 @@ try{ var _tk = /[?&]defaults=1(?:&|$)/.test(location.search) ? 'th108_DEFAULTS_t
       </g>
     </svg></span>
   </button>
+  <span id="langExt" aria-hidden="false">   <!-- | + 🌐 travel together; position nudged via the tuner (?langtune=1), baked as a transform below -->
+    <span class="hdrsep" aria-hidden="true">|</span>
+    <span id="langMount" style="display:inline-flex;align-items:center"></span>
+  </span>
 </header>
 
 <!-- lease banner: an in-flow collapsible row placed DIRECTLY UNDER the sticky header — it drops in beneath
@@ -701,7 +722,7 @@ try{ var _tk = /[?&]defaults=1(?:&|$)/.test(location.search) ? 'th108_DEFAULTS_t
   </div>
 
   <div class="card s4" id="bindCard" data-pages="hotkeys">
-    <div class="cardbar"><span class="grip">⠿</span><h2>Assign to Key</h2><span class="aux" id="bdState">Connect to use all hotkey features.</span></div>
+    <div class="cardbar"><span class="grip">⠿</span><h2>Assign to Key</h2><span class="aux" id="bdState">Connect to use all hotkey features</span></div>
     <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:0 0 10px">
       <span class="hint" id="bdKey" style="font-weight:600">No key is selected.</span>
       <button id="bdRevert" disabled title="put the selected key back to its factory character"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg> Restore Default</button>
@@ -1207,7 +1228,7 @@ NumpadDel::SendInput {.}
 
   <!-- ========== LCD SCREEN ========== -->
   <div class="card s6" id="npCard" data-pages="lcd">
-    <div class="cardbar"><span class="grip">⠿</span><h2>♪ Now Playing</h2><span class="aux" id="npState">daemon off</span></div>
+    <div class="cardbar"><span class="grip">⠿</span><h2>♪ Now Playing</h2><span class="aux" id="npState">Daemon off</span></div>
     <div class="npCols">
       <div>
         <section class="npsec">
@@ -1946,7 +1967,7 @@ function hdrConnSync(){
   // button — fade this one out (then collapse so it leaves no gap), and fade back in when leaving Home.
   if(curPage==='home'){
     b.classList.add('cfade');
-    setTimeout(()=>{ if(curPage==='home') b.hidden=true; },320);   // collapse after the fade (home always hides it)
+    setTimeout(()=>{ if(curPage==='home'){ b.hidden=true; fitTabsSoon(); } },320);   // collapse after the fade (home always hides it) → re-fit so tabs reclaim the freed room
   } else {
     b.classList.remove('flash'); b.hidden=false;
     requestAnimationFrame(()=>b.classList.remove('cfade'));   // UNGUARDED: always reach visible when shown — a guard here got stuck invisible when HID.device flipped during reconnect
@@ -2051,14 +2072,46 @@ const tabsEl=document.getElementById('tabs'), tabHl=document.getElementById('tab
 function cardsAll(){ return [...document.querySelectorAll('#grid .card')]; }
 function moveHl(){
   const on=tabsEl.querySelector('.tab.on'); if(!on) return;
-  tabHl.style.left=on.offsetLeft+'px'; tabHl.style.width=on.offsetWidth+'px';
+  tabHl.style.left=on.offsetLeft+'px'; tabHl.style.top=on.offsetTop+'px';
+  tabHl.style.width=on.offsetWidth+'px'; tabHl.style.height=on.offsetHeight+'px';
 }
+// Uniform-width tabs on one centered row; wrap to centered rows only when they can't fit between the header clusters.
+const headerEl=document.querySelector('header');
+function fitTabs(){
+  if(!tabsEl.querySelector('.tab')) return;
+  tabsEl.style.maxWidth=''; tabsEl.style.width=''; headerEl.style.minHeight='';                 // reset → natural single-row
+  const hr=headerEl.getBoundingClientRect(), center=hr.left+hr.width/2;
+  // physical room between whatever sits left of center and whatever sits right of it — direction-agnostic, so RTL works (clusters mirror)
+  let leftB=hr.left, rightB=hr.right;
+  for(const el of headerEl.children){
+    if(el===tabsEl || el.id==='langExt' || el.offsetParent===null) continue;                   // skip the bar itself + the out-of-flow language cluster
+    const r=el.getBoundingClientRect(); if(!r.width) continue;
+    if((r.left+r.right)/2 < center) leftB=Math.max(leftB, r.right); else rightB=Math.min(rightB, r.left);
+  }
+  const avail=2*Math.max(0, Math.min(center-leftB, rightB-center)-12);                           // symmetric room around the centered bar, 12px gutter each side — no floor (a floor wider than the real gap makes the bar overlap the nearest cluster, e.g. Connect in Arabic)
+  tabsEl.style.maxWidth=avail+'px';                                                             // wraps (centered) only when the row exceeds this — i.e. a language longer than English
+  if(tabsEl.offsetHeight>50){                                                                   // grew to ≥2 rows
+    headerEl.style.minHeight=tabsEl.offsetHeight+'px';                                          // make the header tall enough (no spill onto cards)
+    // hug the widest actual row: when there's slack (e.g. Connect hidden on Home) maxWidth is loose, so
+    // the centered rows leave big empty side gaps. Shrink the bar to the real content so it stays snug.
+    let minL=Infinity,maxR=-Infinity;
+    for(const t of tabsEl.querySelectorAll('.tab')){ const r=t.getBoundingClientRect(); if(!r.width) continue; minL=Math.min(minL,r.left); maxR=Math.max(maxR,r.right); }
+    if(maxR>minL) tabsEl.style.width=(maxR-minL+8.5)+'px';                                       // +8 = 4px bar padding each side (border-box) +0.5 epsilon so the widest row can't re-wrap
+  }
+  moveHl();
+}
+let _fitRaf=0; function fitTabsSoon(){ cancelAnimationFrame(_fitRaf); _fitRaf=requestAnimationFrame(fitTabs); }
+window.addEventListener('resize', fitTabsSoon);
+document.addEventListener('th108:langapplied', fitTabsSoon);   // translated labels change widths → re-fit + re-seat highlight
+if(document.fonts&&document.fonts.ready) document.fonts.ready.then(fitTabs);
+fitTabs();
 function applyPage(p){
   curPage=p;
   tabsEl.querySelectorAll('.tab').forEach(t=>t.classList.toggle('on',t.dataset.page===p));
   cardsAll().forEach(c=>{ c.hidden = !(c.dataset.pages||'').split(/\s+/).includes(p); });
   moveHl();
   try{ hdrConnSync(); }catch(_){ }   // fade the header Connect out on Home (Keyboard card has its own), in elsewhere
+  fitTabsSoon();                      // Connect's visibility just changed → re-fit so the bar reserves room for it (else a wide language's top row overlaps Connect)
   try{ localStorage.setItem(PAGE_KEY,p); }catch(_){ }
   try{ if(location.hash.slice(1).toLowerCase()!==p) history.replaceState(null,'','#'+p); }catch(_){ }   // reflect the tab in the URL (deep-linkable, e.g. #docs) without adding history entries / firing hashchange
 }

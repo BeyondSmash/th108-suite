@@ -190,7 +190,7 @@ window.TH108DaemonClient = (function () {
             if (!knowsNp) np.parentElement.title = 'the running daemon predates this setting — restart it (Quit, then the tray) to enable';
             if (knowsNp && document.activeElement !== np) np.checked = !!s.nowPlaying;
             const stEl = document.getElementById('npState'), trEl = document.getElementById('npTrack');
-            if (stEl) stEl.textContent = !knowsNp ? 'daemon needs a restart' : (s.nowPlaying ? 'on' : 'off');
+            if (stEl) stEl.textContent = !knowsNp ? 'Daemon needs a restart' : (s.nowPlaying ? 'On' : 'Off');
             if (trEl) trEl.textContent = !s.nowPlaying ? '' :
               (s.npTrack ? 'Showing: ' + s.npTrack.title + ' — ' + s.npTrack.artist + (s.npTrack.status === 'paused' ? '  ⏸' : '')
                          : (s.npQueued && s.paused ? 'queued — waiting for this page to release the keyboard' : 'waiting for music…'));

@@ -811,7 +811,7 @@
     function refresh() {
       const sel = selKey(), ok = bindable(sel);
       $('bdKey').textContent = sel ? 'Key: ' + (sel.label || 'Space') + ' (value ' + sel.idx + ')' : 'No key is selected.';
-      $('bdState').textContent = !connected ? 'Connect to use all hotkey features.' : (ok ? 'ready' : 'pick a key');
+      $('bdState').textContent = !connected ? 'Connect to use all hotkey features' : (ok ? 'Ready' : 'Pick a key');
       const en = connected && !busy;
       $('bdRevert').disabled = !(en && ok);
       document.querySelectorAll('#spaceBtns [data-space]').forEach(b => { b.disabled = !en; });

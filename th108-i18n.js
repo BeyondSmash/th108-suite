@@ -71,7 +71,24 @@
   };
 
   var LS_KEY = 'th108_lang';
-  var cur = 'en';
+  var cur = 'en';    // the RESOLVED code actually rendered (never 'system')
+  var sel = 'system';  // the user's SELECTION — may be the 'system' sentinel, which re-resolves from the OS each load
+
+  // Map the OS/browser locale(s) to the closest supported language; English if nothing matches.
+  function resolveSystem() {
+    var prefs = (navigator.languages && navigator.languages.length) ? navigator.languages : [navigator.language || 'en'];
+    for (var i = 0; i < prefs.length; i++) {
+      var p = prefs[i]; if (!p) continue; var lp = p.toLowerCase();
+      var exact = LANGS.filter(function (l) { return l.code.toLowerCase() === lp; })[0];
+      if (exact) return exact.code;
+      var base = lp.split('-')[0];
+      if (base === 'zh') return /(tw|hk|mo|hant)/.test(lp) ? 'zh-TW' : 'zh-CN';   // Traditional vs Simplified
+      if (base === 'pt') return /br/.test(lp) ? 'pt-BR' : 'pt';
+      var bm = LANGS.filter(function (l) { return l.code.toLowerCase() === base; })[0];
+      if (bm) return bm.code;
+    }
+    return 'en';
+  }
   var norm = function (s) { return String(s == null ? '' : s).replace(/\s+/g, ' ').trim(); };
   // translation for a normalized English key in `code`, with pt-BR→pt fallback; '' English or none.
   function tr(key, code) {
@@ -125,34 +142,159 @@
   }
 
   function apply(code) {
-    if (!LANGS.some(function (l) { return l.code === code; })) code = 'en';
-    cur = code;
-    var lang = LANGS.filter(function (l) { return l.code === code; })[0];
-    document.documentElement.lang = code;
+    sel = (code === 'system' || LANGS.some(function (l) { return l.code === code; })) ? code : 'system';
+    cur = (sel === 'system') ? resolveSystem() : sel;   // 'system' re-resolves from the OS; a specific pick is used as-is
+    var lang = LANGS.filter(function (l) { return l.code === cur; })[0];
+    document.documentElement.lang = cur;
     document.documentElement.dir = (lang && lang.rtl) ? 'rtl' : 'ltr';
-    translateTree(document.body, code);
-    try { localStorage.setItem(LS_KEY, code); } catch (_) {}
-    var sel = document.getElementById('th108LangSel'); if (sel && sel.value !== code) sel.value = code;
+    translateTree(document.body, cur);
+    try { localStorage.setItem(LS_KEY, sel); } catch (_) {}   // persist the SELECTION (may be 'system'), not the resolved code
+    applyAllOffsets();   // dir may have flipped → re-seat the cluster/separator/label with this direction's offsets
+    syncActive(sel);
+    try { document.dispatchEvent(new CustomEvent('th108:langapplied', { detail: { code: cur } })); } catch (_) {}   // tab widths changed → let the controller re-seat the tab highlight
   }
 
+  // highlight the active language in the popup (also called from apply() so localStorage-init stays in sync)
+  function syncActive(code) {
+    var lbl = document.getElementById('th108LangLabel');
+    if (lbl) lbl.textContent = (LANGS.filter(function (l) { return l.code === cur; })[0] || {}).name || '';
+    var panel = document.getElementById('th108LangPanel'); if (!panel) return;
+    var opts = panel.querySelectorAll('[role="option"]');
+    for (var i = 0; i < opts.length; i++) {
+      var on = opts[i].getAttribute('data-code') === code;
+      opts[i].setAttribute('aria-selected', on ? 'true' : 'false');
+      opts[i].style.background = on ? 'var(--border)' : 'none';
+      opts[i].style.fontWeight = on ? '600' : 'normal';
+    }
+  }
+
+  // Baked-in positions (dialed in via ?langtune=1). localStorage overrides these when a nudge was saved.
+  // The transforms are PHYSICAL (translate x/y), so RTL needs its own values — each key has an _rtl twin,
+  // resolved by keyFor() from the live document direction. Tuning in Arabic edits the _rtl set only.
+  var OFFDEFS = {
+    th108_langoff: { x: -15, y: 3 }, th108_langoff_rtl: { x: -1.5, y: 3 },
+    th108_sepoff:  { x: -2, y: -5 }, th108_sepoff_rtl:  { x: -12.5, y: -5 },
+    th108_lbloff:  { x: 0, y: 0 },   th108_lbloff_rtl:  { x: -16, y: -4 }
+  };
+  function keyFor(base) { return (document.documentElement.dir === 'rtl') ? base + '_rtl' : base; }
+  // Apply a subpixel nudge to an element (baked default for the current direction, or the persisted override if tuned).
+  function applyOffset(el, base) {
+    var key = keyFor(base);
+    var d = OFFDEFS[key] || OFFDEFS[base] || { x: 0, y: 0 };
+    var o = { x: d.x, y: d.y };
+    try { var s = JSON.parse(localStorage.getItem(key)); if (s) o = s; } catch (_) {}
+    if (el) el.style.transform = 'translate(' + o.x + 'px,' + o.y + 'px)';
+    return o;
+  }
+  // Re-apply all three nudges — called on every language switch so a direction flip picks up the right (LTR vs RTL) set.
+  function applyAllOffsets() {
+    applyOffset(document.getElementById('langExt'), 'th108_langoff');
+    applyOffset(document.querySelector('.hdrsep'), 'th108_sepoff');
+    applyOffset(document.getElementById('th108LangLabel'), 'th108_lbloff');
+  }
+  // Dev-only position tuner (open with ?langtune=1): three independent groups — the whole | + 🌐 cluster,
+  // the | separator, and the language label. Each axis has a typeable box (fine) + a slider (coarse), kept in sync;
+  // live + persisted. Copy writes all transforms to the clipboard to bake in.
+  function buildLangTuner(host, sep, lbl) {
+    var box = document.createElement('div');
+    box.style.cssText = 'position:fixed;top:60px;right:12px;z-index:99999;background:var(--card,#161b22);color:var(--text,#e6edf3);border:1px solid var(--border,#30363d);border-radius:10px;padding:10px 12px;font:12px system-ui;box-shadow:0 8px 30px rgba(0,0,0,.4);width:250px';
+    var head = document.createElement('div'); head.textContent = '🌐 position tuner'; head.style.cssText = 'font-weight:700;margin-bottom:4px';
+    box.appendChild(head);
+
+    var groups = [];  // { base, o } — for Log
+    function group(title, el, base) {
+      var o = applyOffset(el, base); groups.push({ base: base, o: o });
+      var h = document.createElement('div'); h.textContent = title; h.style.cssText = 'font-weight:600;opacity:.85;margin:8px 0 2px'; box.appendChild(h);
+      function row(axis) {
+        var wrap = document.createElement('div'); wrap.style.cssText = 'display:flex;align-items:center;gap:8px;margin:4px 0';
+        var lab = document.createElement('span'); lab.textContent = axis.toUpperCase(); lab.style.cssText = 'width:12px;opacity:.7';
+        var num = document.createElement('input'); num.type = 'number'; num.step = '0.1'; num.value = o[axis];
+        num.style.cssText = 'width:60px;background:var(--inset,#0d1117);color:inherit;border:1px solid var(--border,#30363d);border-radius:6px;padding:3px 5px;font:inherit';
+        var r = document.createElement('input'); r.type = 'range'; r.min = '-400'; r.max = '400'; r.step = '0.5'; r.value = o[axis]; r.style.cssText = 'flex:1;min-width:0';
+        function apply() { el.style.transform = 'translate(' + o.x + 'px,' + o.y + 'px)'; try { localStorage.setItem(keyFor(base), JSON.stringify(o)); } catch (_) {} }   // keyFor → writes the LTR or _rtl key per live direction
+        // Typing drives the slider; dragging drives the box. Never write back into the field being edited (lets you type "-", "1.").
+        num.addEventListener('input', function () { var v = parseFloat(num.value); if (isNaN(v)) return; o[axis] = v; r.value = v; apply(); });
+        r.addEventListener('input', function () { o[axis] = parseFloat(r.value); num.value = o[axis]; apply(); });
+        wrap.appendChild(lab); wrap.appendChild(num); wrap.appendChild(r); box.appendChild(wrap);
+      }
+      row('x'); row('y');
+    }
+    group('Cluster ( | 🌐 )', host, 'th108_langoff');
+    group('Separator ( | )', sep, 'th108_sepoff');
+    group('Label', lbl, 'th108_lbloff');
+
+    var log = document.createElement('button'); log.textContent = 'Copy values';
+    log.style.cssText = 'margin-top:10px;width:100%;padding:5px;cursor:pointer;background:var(--inset,#21262d);color:inherit;border:1px solid var(--border,#30363d);border-radius:7px';
+    log.addEventListener('click', function () {
+      var text = groups.map(function (g) { return keyFor(g.base) + ': { x: ' + g.o.x + ', y: ' + g.o.y + ' }'; }).join('\n');   // resolved key (LTR or _rtl) → paste straight into OFFDEFS
+      console.log('[🌐 tuner]\n' + text);
+      try {
+        navigator.clipboard.writeText(text).then(
+          function () { var t = log.textContent; log.textContent = 'Copied ✓'; setTimeout(function () { log.textContent = t; }, 1200); },
+          function () { log.textContent = 'Copy failed — see console'; }
+        );
+      } catch (_) { log.textContent = 'Copy failed — see console'; }
+    });
+    box.appendChild(log);
+    document.body.appendChild(box);
+  }
+
+  // Compact 🌐 button; clicking drops the language list below it (keeps the header tight). Emoji is unselectable.
   function buildDropdown() {
     var mount = document.getElementById('langMount'); if (!mount || mount.__built) return;
     mount.__built = true;
-    var sel = document.createElement('select');
-    sel.id = 'th108LangSel';
-    sel.title = 'Language';
-    sel.setAttribute('aria-label', 'Language');
-    sel.style.cssText = 'font:inherit;font-size:13px;background:var(--card);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:5px 8px;cursor:pointer;max-width:150px';
-    for (var i = 0; i < LANGS.length; i++) {
-      var o = document.createElement('option'); o.value = LANGS[i].code; o.textContent = LANGS[i].name; sel.appendChild(o);
-    }
-    sel.value = cur;
-    sel.addEventListener('change', function () { apply(sel.value); });
+
     var wrap = document.createElement('span');
-    wrap.style.cssText = 'display:inline-flex;align-items:center;gap:5px';
-    var globe = document.createElement('span'); globe.textContent = '🌐'; globe.style.fontSize = '14px';
-    wrap.appendChild(globe); wrap.appendChild(sel);
+    wrap.style.cssText = 'position:relative;display:inline-flex;align-items:center;user-select:none;-webkit-user-select:none';
+
+    var btn = document.createElement('button');
+    btn.type = 'button'; btn.id = 'th108LangBtn'; btn.title = 'Language';
+    btn.setAttribute('aria-label', 'Language'); btn.setAttribute('aria-haspopup', 'listbox'); btn.setAttribute('aria-expanded', 'false');
+    btn.textContent = '🌐';
+    // inline-flex centering (not padding/line-height) optically centers the emoji glyph; height matches the On button / slider row
+    btn.style.cssText = 'display:inline-flex;align-items:center;justify-content:center;height:26px;width:30px;padding:0;font-size:14px;line-height:1;background:var(--card);color:var(--text);border:1px solid var(--border);border-radius:999px;cursor:pointer;user-select:none;-webkit-user-select:none';
+
+    var panel = document.createElement('div');
+    panel.id = 'th108LangPanel'; panel.setAttribute('role', 'listbox'); panel.hidden = true;
+    // left:0 → opens rightward from the button (into the empty right gutter, not over the cards). overflow-x:hidden + border-box options = no horizontal scrollbar.
+    panel.style.cssText = 'position:absolute;top:calc(100% + 4px);left:0;z-index:1000;min-width:150px;max-height:60vh;overflow-x:hidden;overflow-y:auto;overscroll-behavior:contain;background:var(--card);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:4px';   // box-shadow (theme-aware glow) lives in CSS on #th108LangPanel
+
+    function onOver() { if (this.getAttribute('aria-selected') !== 'true') this.style.background = 'var(--border)'; }
+    function onOut()  { if (this.getAttribute('aria-selected') !== 'true') this.style.background = 'none'; }
+    function onPick() { apply(this.getAttribute('data-code')); close(); btn.focus(); }
+    function addOpt(code, label) {
+      var opt = document.createElement('button');
+      opt.type = 'button'; opt.setAttribute('role', 'option'); opt.setAttribute('data-code', code); opt.textContent = label;
+      opt.style.cssText = 'display:block;width:100%;box-sizing:border-box;text-align:start;background:none;border:0;color:inherit;font:inherit;font-size:13px;padding:6px 9px;border-radius:6px;cursor:pointer;white-space:nowrap';
+      opt.addEventListener('mouseenter', onOver); opt.addEventListener('mouseleave', onOut); opt.addEventListener('click', onPick);
+      panel.appendChild(opt);
+    }
+    // "System" first — the default — with the OS-resolved language shown so the mapping is visible, not hidden
+    var sysName = (LANGS.filter(function (l) { return l.code === resolveSystem(); })[0] || {}).name || 'English';
+    addOpt('system', 'System · ' + sysName);
+    for (var i = 0; i < LANGS.length; i++) addOpt(LANGS[i].code, LANGS[i].name);
+
+    function onDoc(e) { if (!wrap.contains(e.target)) close(); }
+    function onKey(e) { if (e.key === 'Escape') { close(); btn.focus(); } }
+    function open()  { panel.hidden = false; btn.setAttribute('aria-expanded', 'true'); btn.style.borderColor = 'var(--blue,#58a6ff)'; btn.style.boxShadow = '0 0 0 2px rgba(88,166,255,.35)'; document.addEventListener('mousedown', onDoc, true); document.addEventListener('keydown', onKey, true); }
+    function close() { panel.hidden = true; btn.setAttribute('aria-expanded', 'false'); btn.style.borderColor = 'var(--border)'; btn.style.boxShadow = 'none'; document.removeEventListener('mousedown', onDoc, true); document.removeEventListener('keydown', onKey, true); }
+    btn.addEventListener('click', function () { panel.hidden ? open() : close(); });
+
+    var lbl = document.createElement('span');   // current language name, shown to the right of the 🌐 button
+    lbl.id = 'th108LangLabel'; lbl.style.cssText = 'margin-left:7px;font-size:13px;font-weight:600;color:var(--muted);user-select:none;white-space:nowrap';
+    lbl.addEventListener('click', function () { panel.hidden ? open() : close(); });   // click the label too
+    lbl.style.cursor = 'pointer';
+
+    wrap.appendChild(btn); wrap.appendChild(lbl); wrap.appendChild(panel);
     mount.appendChild(wrap);
+    syncActive(sel);
+    var host = document.getElementById('langExt') || btn;   // move the whole | + 🌐 cluster, not just the button
+    var sep = document.querySelector('.hdrsep');             // the | on its own, nudged relative to the cluster
+    var lblEl = document.getElementById('th108LangLabel');   // the current-language text, nudged on its own
+    applyOffset(host, 'th108_langoff');   // baked default, or a saved nudge
+    applyOffset(sep, 'th108_sepoff');
+    applyOffset(lblEl, 'th108_lbloff');
+    if (/[?&]langtune=1/.test(location.search)) buildLangTuner(host, sep, lblEl);
   }
 
   // Re-translate freshly-rendered DOM (layers/profiles/binder build in JS after load). Debounced; skips English.
@@ -173,10 +315,11 @@
   }
 
   function init() {
-    try { cur = localStorage.getItem(LS_KEY) || 'en'; } catch (_) { cur = 'en'; }
-    if (!LANGS.some(function (l) { return l.code === cur; })) cur = 'en';
+    var saved = null; try { saved = localStorage.getItem(LS_KEY); } catch (_) {}
+    // First visit (no saved choice) defaults to 'system' — follow the OS locale. A saved specific code wins.
+    sel = (saved && (saved === 'system' || LANGS.some(function (l) { return l.code === saved; }))) ? saved : 'system';
     buildDropdown();
-    apply(cur);
+    apply(sel);
     observe();
   }
 
