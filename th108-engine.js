@@ -841,7 +841,11 @@
   }
   // per-layer clock: scales by speed and freezes when static. Returns accumulated ms.
   function layerNow(L, now){
-    const dt = now - (L._lastNow ?? now); L._lastNow = now;
+    // clamp dt (sleep/monitor-off safe, like the audio/aurora clocks): while the board is blanked the render
+    // loop is idle so L._lastNow freezes; on resume the first frame's raw dt = the whole gap (minutes→hours),
+    // which would LEAP _clk into a random phase — snapping time-based base layers (background/gradient/pattern)
+    // dark on wake while reactive (real-now, unaffected) kept working. Cap = a few dropped frames, not a resume.
+    const dt = Math.min(200, now - (L._lastNow ?? now)); L._lastNow = now;
     if(L._clk===undefined) L._clk=0;
     if(!L.settings.frozen) L._clk += dt * (L.settings.spd/100);
     return L._clk;
