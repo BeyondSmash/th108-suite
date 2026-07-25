@@ -1188,7 +1188,7 @@ NumpadDel::SendInput {.}
        Kept in the DOM with data-pages="" so TH108Onboard's bindings stay intact — just never shown. -->
   <div class="card s3" id="onboardPanel" data-pages="lighting">   <!-- un-parked 2026-06-13: lets the user write a fresh onboard effect to overwrite a possibly-corrupt lighting config after the softbrick -->
     <div class="cardbar"><span class="grip">⠿</span><h2>Onboard Effects</h2></div>
-    <p class="hint" style="margin:4px 0 10px;text-align:center">Firmware effects — run on the keyboard itself, persist without a PC. Setting one stops the live layers/GIF.</p>
+    <p class="hint" data-i18n="onboard.hint" style="margin:4px 0 10px;text-align:center">Firmware effects — run on the keyboard itself, persist without a PC. Setting one stops the live layers/GIF.</p>
     <div style="display:flex;align-items:center;justify-content:center;gap:10px;flex-wrap:wrap">
       <label class="sl">effect
         <select id="obEffect">
@@ -1232,23 +1232,23 @@ NumpadDel::SendInput {.}
     <div class="npCols">
       <div>
         <section class="npsec">
-        <p class="hint" style="margin:4px 0 10px">The background daemon shows the current song on the LCD with album art (Spotify
+        <p class="hint" data-i18n="np.lcdIntro" style="margin:4px 0 10px">The background daemon shows the current song on the LCD with album art (Spotify
            only by default). <b>⚠ Each update writes the LCD flash, which can occasionally softbrick this board.</b> To minimize that:
            it updates <b>only on a track change</b> (never play/pause/resume), waits ≥20&nbsp;s between writes, and caps at 30/hour.
            Still a real risk — leave it off if you can't afford a possible factory reset. While this page holds the keyboard, a new
            song queues and lands when the daemon takes over.</p>
-        <p class="hint" style="margin:0"><b>⌨ Heads-up:</b> during each LCD upload the key lighting pauses and the board can briefly drop input (a fraction of a second) — <b>not recommended during gaming or competitive play</b>.</p>
+        <p class="hint" data-i18n="np.headsUp" style="margin:0"><b>⌨ Heads-up:</b> during each LCD upload the key lighting pauses and the board can briefly drop input (a fraction of a second) — <b>not recommended during gaming or competitive play</b>.</p>
         </section>
         <section class="npsec">
         <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
           <label class="sl" style="margin:0;cursor:pointer"><input type="checkbox" id="lcdNowPlaying" disabled> Show now-playing on the LCD</label>
           <button id="npRefreshLcd" disabled title="force-repaint the current song to the LCD now (debug — bypasses the dedupe/gap when the display looks stuck)" style="margin:0;padding:4px 10px">↻ Refresh LCD</button>
         </div>
-        <p class="hint" style="margin:4px 0 0;font-style:italic">⚠ More impact than the bar alone: each song update flashes the keyboard and briefly drops input. The bar below is lighting-only and has no such cost.</p>
+        <p class="hint" data-i18n="np.barVsLcd" style="margin:4px 0 0;font-style:italic">⚠ More impact than the bar alone: each song update flashes the keyboard and briefly drops input. The bar below is lighting-only and has no such cost.</p>
         </section>
         <section class="npsec">
         <label class="sl" style="margin:0;cursor:pointer"><input type="checkbox" id="npOnboardMask" disabled> Mask the onboard flash to black</label>
-        <p class="hint" style="margin:4px 0 0">Sets the keyboard's <b>onboard</b> effect to black, so when the board briefly falls back during an update it shows a <b>dark blink</b> instead of the rainbow startup. <i>Best-effort — a true hardware re-init can still flash; A/B it on vs off.</i> Writes a firmware setting + cycles the keyboard once when toggled.</p>
+        <p class="hint" data-i18n="np.maskHint" style="margin:4px 0 0">Sets the keyboard's <b>onboard</b> effect to black, so when the board briefly falls back during an update it shows a <b>dark blink</b> instead of the rainbow startup. <i>Best-effort — a true hardware re-init can still flash; A/B it on vs off.</i> Writes a firmware setting + cycles the keyboard once when toggled.</p>
         </section>
         <section class="npsec">
         <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
@@ -1265,7 +1265,7 @@ NumpadDel::SendInput {.}
       <div>
         <section class="npsec">
         <label class="sl" style="margin:0;cursor:pointer"><input type="checkbox" id="npBar"> Song Progress on keys 1-0 (light-bar)</label>
-        <p class="hint" style="margin:4px 0 0">Keys&nbsp;1-0 light up to show how far through the song you are — <b>lighting only, no LCD writes, so it can't softbrick</b>.
+        <p class="hint" data-i18n="np.barHint" style="margin:4px 0 0">Keys&nbsp;1-0 light up to show how far through the song you are — <b>lighting only, no LCD writes, so it can't softbrick</b>.
            Needs the background daemon running (it reads Spotify's playback position). Works whether or not the LCD now-playing on the left is on.</p>
         </section>
         <section class="npsec">
