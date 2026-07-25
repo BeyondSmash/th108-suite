@@ -657,6 +657,7 @@ async function runTick() {
   if (lastTickAt && nowWall - lastTickAt > 30_000) {   // tick stalled >30s ⇒ the machine just resumed from sleep/hibernate
     wokeAt = nowWall;                                   // arm the fast wake-recovery threshold below
     if (muteLogged) muteAt = nowWall;                  // re-baseline: the pre-sleep muteAt is hours stale, or the restart would insta-fire
+    releaseHeldKeys();                                  // a key can't be physically held through a suspend, so any reactive key still "down" after a resume is a keyup we missed at the pre-login secure desktop (uiohook is blind there) — clear it so it doesn't stick lit
     log('☀ resume — render loop idle ' + Math.round((nowWall - lastTickAt) / 1000) + 's (sleep/monitor-off gap); base-layer clocks re-baselined this frame, fast wake-recovery armed');   // observability: this class of glitch (base layers snap odd on wake, reactive fine) is invisible to the ACK probe
   }
   lastTickAt = nowWall;
