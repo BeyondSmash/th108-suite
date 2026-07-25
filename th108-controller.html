@@ -750,7 +750,7 @@ try{ var _tk = /[?&]defaults=1(?:&|$)/.test(location.search) ? 'th108_DEFAULTS_t
           <button id="bdNumpadExplain" type="button" aria-expanded="false" aria-controls="bdNumpadDetail" style="margin:0;border:none;background:transparent;display:inline-flex;align-items:center;gap:6px;font-weight:600;padding:6px 13px"><span id="bdNumpadCaret" aria-hidden="true">▸</span>Explanation</button>
         </div>
       </div>
-      <div class="hint" id="bdNumpadDetail" hidden style="margin:0;padding:12px 14px;line-height:1.55;border:1px solid var(--border);border-radius:8px">
+      <div class="hint" id="bdNumpadDetail" data-i18n="hk.numpadDetail" hidden style="margin:0;padding:12px 14px;line-height:1.55;border:1px solid var(--border);border-radius:8px">
           <p style="margin:0 0 9px">That white NumLock LED is forced on by the firmware whenever NumLock is <b>ON</b> — it can't be painted over (proven at 30&nbsp;fps) and Epomaker's own software has no setting to disable it. The only fix is to keep NumLock <b>off</b>, so this makes the numpad still type numbers in that state:</p>
           <ul style="margin:0;padding-left:18px;display:flex;flex-direction:column;gap:7px">
             <li>Remaps <b>0–9</b> and the decimal to the top-row number scancodes, which don't depend on NumLock — leave NumLock <b>off</b> and the numpad still types numbers, with no white light.</li>
@@ -765,7 +765,7 @@ try{ var _tk = /[?&]defaults=1(?:&|$)/.test(location.search) ? 'th108_DEFAULTS_t
 
   <div class="card s2" id="decoTogglesCard" data-pages="hotkeys">
     <div class="cardbar"><span class="grip">⠿</span><h2>Decorative Light Toggles</h2></div>
-    <p class="hint" style="margin:4px 0 10px">Click a light — your <b>Spacebar</b> becomes its cycle key and a
+    <p class="hint" data-i18n="hk.decoHint" style="margin:4px 0 10px">Click a light — your <b>Spacebar</b> becomes its cycle key and a
        focus overlay opens; <kbd>Esc</kbd> or ✕ restores the Spacebar.</p>
     <div id="spaceBtns" style="display:flex;flex-wrap:wrap;gap:6px"></div>
   </div>
@@ -800,7 +800,7 @@ try{ var _tk = /[?&]defaults=1(?:&|$)/.test(location.search) ? 'th108_DEFAULTS_t
   <!-- ========== PROFILES ========== -->
   <div class="card s4" id="profilesCard" data-pages="profiles">
     <div class="cardbar"><span class="grip">⠿</span><h2>Profiles</h2><span class="aux" id="profCount"></span></div>
-    <p class="hint" style="margin:4px 0 10px">Snapshot your whole lighting setup — layers, pattern settings, stacking
+    <p class="hint" data-i18n="prof.snapshotHint" style="margin:4px 0 10px">Snapshot your whole lighting setup — layers, pattern settings, stacking
        order — as a named profile. Apply, rename, export, or import them; up to 10. Click a name to rename it.</p>
     <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px">
       <button id="profSave" class="go"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/><path d="M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7"/><path d="M7 3v4a1 1 0 0 0 1 1h7"/></svg> Save Current as Profile</button>
@@ -814,7 +814,7 @@ try{ var _tk = /[?&]defaults=1(?:&|$)/.test(location.search) ? 'th108_DEFAULTS_t
   <div class="card s2 faqcard" id="profHelpCard" data-pages="profiles">
     <div class="cardbar"><span class="grip">⠿</span></div>
     <h3>What's saved in a profile</h3>
-    <p>The full Lighting-tab setup: all your layers with their pattern settings, plus the stacking order — the same
+    <p data-i18n="prof.savedHint">The full Lighting-tab setup: all your layers with their pattern settings, plus the stacking order — the same
        data the background daemon runs. Key bindings live in the keyboard's own flash, so they stay put across
        profile switches. Exported files are daemon-compatible JSON.</p>
   </div>
