@@ -1012,13 +1012,13 @@ NumpadDel::SendInput {.}
   <!-- ========== DOCS ========== -->
   <div class="card s6 doccard" id="docFeatures" data-pages="docs">
     <div class="cardbar"><span class="grip">⠿</span><h2>Feature Guide</h2></div>
-    <p>Everything th108 adds on top of your TH108 V2 PRO, by area. Most of it is <b>host-driven</b> — your PC computes
+    <p data-i18n="docs.features.intro">Everything th108 adds on top of your TH108 V2 PRO, by area. Most of it is <b>host-driven</b> — your PC computes
        the lighting frame-by-frame and streams it to the board, so effects can react to things the keyboard can't see
        on its own (what you type, what's playing, what's on screen).</p>
 
     <section class="fgsec">
     <h3>Layer Compositor (Lighting tab)</h3>
-    <ul>
+    <ul data-i18n="docs.features.compositor">
       <li>Stack up to <b>seven lighting layers</b> (one per effect type) and blend them top-to-bottom — each with its own <b>opacity</b>,
           <b>blend mode</b> (Normal, Multiply, Screen, Add, etc.) and <b>frame rate</b>.</li>
       <li>Layer <b>types</b>: <b>Static</b> (solid/per-key paint), <b>Gradient</b> (two-colour, angled, animatable),
@@ -1032,14 +1032,14 @@ NumpadDel::SendInput {.}
 
     <section class="fgsec">
     <h3>Reactive typing in any app</h3>
-    <p>A <b>Reactive</b> layer lights each key as you press it — system-wide, in any program — because the always-on
+    <p data-i18n="docs.features.reactive">A <b>Reactive</b> layer lights each key as you press it — system-wide, in any program — because the always-on
        background app sees your keystrokes. (A browser tab can only see keys typed into itself, so this comes from the
        daemon, not the page.)</p>
     </section>
 
     <section class="fgsec">
     <h3>Audio-reactive lighting</h3>
-    <ul>
+    <ul data-i18n="docs.features.audio">
       <li><b>System / App audio</b> — the background app captures your output device and drives spectrum bars with the
           page closed.</li>
       <li><b>Specific browser tab / microphone</b> — captured inside this page (browser privacy limits it to here), so
@@ -1049,25 +1049,25 @@ NumpadDel::SendInput {.}
 
     <section class="fgsec">
     <h3>GIF → Keys (Lighting tab)</h3>
-    <p>Map any GIF onto the per-key grid and play it across the keyboard. Requires <b>Connect</b> (this page drives the
+    <p data-i18n="docs.features.gif">Map any GIF onto the per-key grid and play it across the keyboard. Requires <b>Connect</b> (this page drives the
        board for the GIF player).</p>
     </section>
 
     <section class="fgsec">
     <h3>Onboard effects</h3>
-    <p>Write the keyboard's <b>built-in firmware effects</b> from the page — useful as a clean baseline, or to overwrite
+    <p data-i18n="docs.features.onboard">Write the keyboard's <b>built-in firmware effects</b> from the page — useful as a clean baseline, or to overwrite
        a corrupt onboard config.</p>
     </section>
 
     <section class="fgsec">
     <h3>LCD Screen (LCD Screen tab)</h3>
-    <p>Upload <b>images and GIFs</b> to the keyboard's little display, plus a <b>Now Playing</b> readout. (Uploads are
+    <p data-i18n="docs.features.lcd">Upload <b>images and GIFs</b> to the keyboard's little display, plus a <b>Now Playing</b> readout. (Uploads are
        chunked and rate-limited for hardware safety.)</p>
     </section>
 
     <section class="fgsec">
     <h3>Hotkeys &amp; Host Actions (Hotkeys tab)</h3>
-    <ul>
+    <ul data-i18n="docs.features.hotkeys">
       <li><b>Remap keys</b> to other keys or to light functions, written to the keyboard's keymap.</li>
       <li><b>Host Actions</b> — bind a key (or chord / multi-tap / hold) to a <b>PC action</b>: toggle mic or music
           lighting, cycle profiles, launch or switch to a program, minimise/maximise/restore a window, or run a macro.
@@ -1078,13 +1078,13 @@ NumpadDel::SendInput {.}
 
     <section class="fgsec">
     <h3>Profiles (Profiles tab)</h3>
-    <p>Save and switch whole setups (layers + lighting + binds). Export/Import to JSON to back up or move between
+    <p data-i18n="docs.features.profiles">Save and switch whole setups (layers + lighting + binds). Export/Import to JSON to back up or move between
        machines.</p>
     </section>
 
     <section class="fgsec">
     <h3>Background Daemon (Home tab)</h3>
-    <p>The always-on engine: keeps your layers and reactive typing running in every app and takes over whenever this
+    <p data-i18n="docs.features.daemon">The always-on engine: keeps your layers and reactive typing running in every app and takes over whenever this
        page is closed. Options: <b>auto-start at login</b>, <b>auto-fix lighting wedge</b> (USB restart), and
        <b>lights-off when the monitor is off</b>.</p>
     </section>
