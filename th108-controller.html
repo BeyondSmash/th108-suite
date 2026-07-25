@@ -833,15 +833,15 @@ try{ var _tk = /[?&]defaults=1(?:&|$)/.test(location.search) ? 'th108_DEFAULTS_t
   </div>
   <div class="card s2 faqcard" id="faq1" data-pages="faq">
     <div class="cardbar"><span class="grip">⠿</span></div>
-    <h3>What Connect actually does</h3>
-    <p>It hands the keyboard from the background daemon to this page and starts your layers automatically — one
+    <h3 data-i18n="faq1.h">What Connect actually does</h3>
+    <p data-i18n="faq1.p">It hands the keyboard from the background daemon to this page and starts your layers automatically — one
        click, no second step. You only need it for the GIF→keys player and the LCD uploader; plain layer editing
        pushes to the daemon live without ever connecting.</p>
   </div>
   <div class="card s2 faqcard" id="faq2" data-pages="faq">
     <div class="cardbar"><span class="grip">⠿</span></div>
-    <h3>Reactive only sees this tab's keys after Connect</h3>
-    <p>This only concerns layers whose type is <b>Reactive</b> (whichever level they sit at — other layer types
+    <h3 data-i18n="faq2.h">Reactive only sees this tab's keys after Connect</h3>
+    <p data-i18n="faq2.p">This only concerns layers whose type is <b>Reactive</b> (whichever level they sit at — other layer types
        aren't affected). Once this page owns the keyboard (after Connect), it can only see keystrokes typed into
        this tab — a browser limit. Reactive-in-every-app comes from the background daemon: close this tab (or never
        Connect) and it takes over within a second.</p>
@@ -928,8 +928,8 @@ NumpadDel::SendInput {.}
   </div>
   <div class="card s2 faqcard" id="faq3" data-pages="faq">
     <div class="cardbar"><span class="grip">⠿</span></div>
-    <h3>You don't need Connect to edit layers.</h3>
-    <p>With the daemon running, every layer edit pushes to it live (~½&nbsp;s) and reactive keeps working everywhere.
+    <h3 data-i18n="faq3.h">You don't need Connect to edit layers.</h3>
+    <p data-i18n="faq3.p">With the daemon running, every layer edit pushes to it live (~½&nbsp;s) and reactive keeps working everywhere.
        Connect is only for the GIF→keys player, onboard effects, and the LCD uploader.</p>
   </div>
   <div class="card s2 faqcard" id="faq4" data-pages="faq">
@@ -1002,8 +1002,8 @@ NumpadDel::SendInput {.}
   </div>
   <div class="card s2 faqcard" id="faq5" data-pages="faq">
     <div class="cardbar"><span class="grip">⠿</span></div>
-    <h3>Why the "Media" layer type does nothing (for now)</h3>
-    <p>In the Layer Compositor, one of the choices in a layer's type dropdown is <b>Media</b>. It's reserved for
+    <h3 data-i18n="faq5.h">Why the "Media" layer type does nothing (for now)</h3>
+    <p data-i18n="faq5.p">In the Layer Compositor, one of the choices in a layer's type dropdown is <b>Media</b>. It's reserved for
        playing a GIF or video <i>inside</i> the layer stack (so it could blend with the other layers), but that part
        of the engine isn't built yet — a Media layer currently renders nothing. To put a GIF on your keys today, use
        the GIF → Keyboard Lighting card on the Lighting tab; it plays in place of the layers.</p>
