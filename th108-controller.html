@@ -662,14 +662,14 @@ try{ var _tk = /[?&]defaults=1(?:&|$)/.test(location.search) ? 'th108_DEFAULTS_t
       </div>
     </div>
     <hr style="border:none;border-top:1px solid var(--border);margin:14px 0">
-    <p class="hint" style="margin:0">While connected, click this page once so it has keyboard focus, then type — pressed keys flash orange.</p>
-    <p class="hint" style="margin:12px 0 0">⚠ <b>Browser keydown only fires while this tab is focused.</b> Reactive-in-any-app comes from the background daemon instead.</p>
-    <p class="hint" style="margin:12px 0 0">💡 <b>Daemon running? Skip Connect for layer editing</b> — edits push to it live and reactive keeps working in every app. Connect is only for the GIF→keys, onboard-effect, and LCD tools (it takes the keyboard from the daemon until you close this tab).</p>
+    <p class="hint" data-i18n="home.kbFocus" style="margin:0">While connected, click this page once so it has keyboard focus, then type — pressed keys flash orange.</p>
+    <p class="hint" data-i18n="home.kbBrowserOnly" style="margin:12px 0 0">⚠ <b>Browser keydown only fires while this tab is focused.</b> Reactive-in-any-app comes from the background daemon instead.</p>
+    <p class="hint" data-i18n="home.kbSkipConnect" style="margin:12px 0 0">💡 <b>Daemon running? Skip Connect for layer editing</b> — edits push to it live and reactive keeps working in every app. Connect is only for the GIF→keys, onboard-effect, and LCD tools (it takes the keyboard from the daemon until you close this tab).</p>
   </div>
 
   <div class="card s3" id="daemonPanel" data-pages="home">
     <div class="cardbar"><span class="grip">⠿</span><h2>Background Daemon</h2></div>
-    <p class="hint" style="margin:4px 0 8px">Runs your layers always-on — reactive typing in any app — and takes over whenever this page is closed.</p>
+    <p class="hint" data-i18n="home.daemonIntro" style="margin:4px 0 8px">Runs your layers always-on — reactive typing in any app — and takes over whenever this page is closed.</p>
     <!-- status on its OWN line, controls in their own rows, so a longer status string can't reflow the
          checkboxes/buttons between daemon states (seamless layout) -->
     <div id="dmnStatus" class="hint" style="margin:0 0 8px">checking…</div>
@@ -693,7 +693,7 @@ try{ var _tk = /[?&]defaults=1(?:&|$)/.test(location.search) ? 'th108_DEFAULTS_t
     <button id="resetKbBtn" title="Factory-reset the keyboard HARDWARE (recovers a wedged board; clears the keyboard's onboard config/keymap — NOT this page's settings)">⟳ Factory Reset Keyboard</button>
     <button id="resetSiteBtn" title="Reset THIS page's settings (layers, per-pattern values, LCD calibration, layout) to defaults — keeps your media Library; does NOT touch the keyboard">↺ Reset All Settings</button>
     <button id="resetLayoutBtn" title="put cards back to their default arrangement, per tab — settings and content untouched">⇲ Reset Layout(s)</button>
-    <p class="hint" style="margin:6px 0 0">Drag any card by its title bar to rearrange the grid — the layout is saved.</p>
+    <p class="hint" data-i18n="home.dragCards" style="margin:6px 0 0">Drag any card by its title bar to rearrange the grid — the layout is saved.</p>
   </div>
 
   <div class="card s6" id="logCard" data-pages="home">
@@ -705,7 +705,7 @@ try{ var _tk = /[?&]defaults=1(?:&|$)/.test(location.search) ? 'th108_DEFAULTS_t
   <div id="rlOvl" class="rlovl" hidden>
     <div class="rlbox">
       <h3>Reset layouts</h3>
-      <p class="hint" style="margin:0 0 10px">Tick the tabs whose card arrangement should go back to default.
+      <p class="hint" data-i18n="home.resetLayoutsHint" style="margin:0 0 10px">Tick the tabs whose card arrangement should go back to default.
          Settings and content are untouched — this only moves cards.</p>
       <div id="rlPages"></div>
       <div style="margin-top:14px">
