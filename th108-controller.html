@@ -934,14 +934,14 @@ NumpadDel::SendInput {.}
   </div>
   <div class="card s2 faqcard" id="faq4" data-pages="faq">
     <div class="cardbar"><span class="grip">⠿</span><span class="tbtag">Troubleshooting</span></div>
-    <h3>Lighting froze or went static on its own</h3>
-    <p>The board sometimes goes <b>mute</b> — it silently stops accepting host lighting (typing still works) and
+    <h3 data-i18n="faq4.h">Lighting froze or went static on its own</h3>
+    <p data-i18n="faq4.p1">The board sometimes goes <b>mute</b> — it silently stops accepting host lighting (typing still works) and
        falls back to its saved firmware effect, which usually looks static. USB power events are the main trigger:
        sleep, or other devices power-cycling on the same bus. <b>Rapidly handing the board back and forth</b>
        between this tab and the background daemon — lots of Connect/Disconnect, replug, or tab-switching in quick
        succession — can also wedge it: every handoff briefly risks two writers on the same board, and its firmware
        doesn't love the churn. If you're toggling a lot, give it a second to settle between switches.</p>
-    <p>Cure ladder: wait ~30&nbsp;s (automatic USB restart; some mutes self-recover) → press
+    <p data-i18n="faq4.p2">Cure ladder: wait ~30&nbsp;s (automatic USB restart; some mutes self-recover) → press
        <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>End</kbd> anywhere (the manual recovery hotkey, same restart) →
        <b>flip the mode switch to BT and back to wired</b> → <b>⟳ Factory Reset Keyboard</b> (Home tab; the
        reset command gets through even when lighting is dead — then Restore Keymap on Hotkeys brings your
@@ -951,18 +951,18 @@ NumpadDel::SendInput {.}
   </div>
   <div class="card s2 faqcard" id="faq7" data-pages="faq">
     <div class="cardbar"><span class="grip">⠿</span><span class="tbtag">Troubleshooting</span></div>
-    <h3>Stop Windows from suspending the keyboard</h3>
-    <p>Out of the box, Windows is allowed to power-manage the keyboard's USB interfaces — and a USB suspend is
+    <h3 data-i18n="faq7.h">Stop Windows from suspending the keyboard</h3>
+    <p data-i18n="faq7.p1">Out of the box, Windows is allowed to power-manage the keyboard's USB interfaces — and a USB suspend is
        exactly what puts the board into its mute state. A one-time fix removes that permission.</p>
-    <p>Right-click <code>th108-daemon\disable-usb-powersave.ps1</code> → <b>Run with PowerShell</b> (it asks for
+    <p data-i18n="faq7.p2">Right-click <code>th108-daemon\disable-usb-powersave.ps1</code> → <b>Run with PowerShell</b> (it asks for
        admin), then replug the keyboard once. It clears the per-interface "allow the computer to turn off this
        device" flags and turns off USB selective suspend in your power plan. Run it again with <code>-Enable</code>
        to undo both.</p>
   </div>
   <div class="card s2 faqcard" id="faq8" data-pages="faq">
     <div class="cardbar"><span class="grip">⠿</span><span class="tbtag">Troubleshooting</span></div>
-    <h3>"Online" but the keyboard shows not connected</h3>
-    <p>Three indicators, three different things. The header <b>Online</b> tag = the background daemon
+    <h3 data-i18n="faq8.h">"Online" but the keyboard shows not connected</h3>
+    <p data-i18n="faq8.p">Three indicators, three different things. The header <b>Online</b> tag = the background daemon
        <i>process</i> is running. The Background Daemon card says whether <i>it</i> currently holds the keyboard.
        The Keyboard card's status is whether <i>this page</i> holds it (Connect). They can legitimately disagree —
        e.g. daemon Online and driving the keyboard while the page shows "not connected" is the normal resting
