@@ -1090,12 +1090,9 @@
       const f = el < BLINK_END ? (Math.floor(el / HALF) % 2 === 0 ? 1 : 0) : 1;
       for (const k of AGENT_CHECK_K) put(k, cr * f, cg * f, cb * f);
     }
-    // boot sweep (own region, coexists)
-    if (ageOf(A.bootAt) < (s.bootMs || 1000)) {
-      const [sr, sg, sb] = hexToRgb(s.twinkleColor || '#ff8c00');
-      const p = ageOf(A.bootAt) / (s.bootMs || 1000);
-      for (let k = 0; k < INDICES.length; k++) { const kp = k / INDICES.length; const d = 1 - Math.min(1, Math.abs(kp - p) * 6); if (d > 0) { const o = k * 3; out[o] = Math.max(out[o], sr * d); out[o + 1] = Math.max(out[o + 1], sg * d); out[o + 2] = Math.max(out[o + 2], sb * d); } }
-    }
+    // boot sweep removed: it was the only board-wide agent cue and carried no actionable info
+    // (SessionStart fires on resume/compact too), so it read as a distracting orange wave. The
+    // spinner/✓/!/twinkles cover every actionable state. bootAt is still fed but unused here.
     // emphasis: silhouette numpad / dim below → carve the layers BELOW this agent layer.
     // _carve[k] is applied by composite() as: acc[k] *= 1 - carve[k], so 1 = fully black, 0 = untouched.
     // _alpha controls only THIS layer's own opacity under the 'add' blend — it cannot darken layers below.
