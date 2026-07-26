@@ -15,12 +15,21 @@ const THRESHOLD_MS = 30_000;        // mute must persist this long before we tou
 const IDLE_THRESHOLD_MS = 12_000;   // …but if you've been AFK (see IDLE_AFTER_MS), a dropout costs nothing, so recover the lighting ~18s sooner
 const IDLE_AFTER_MS = 20_000;       // "AFK" = no keypress for this long; under it we assume you're mid-task and hold the conservative threshold
 const COOLDOWN_MS = 10 * 60_000;
+// Key-hold-off: a USB re-enumeration mid-keystroke drops the held key's key-UP event, so Windows sees the
+// key as still down (stuck Shift → '/' types '?', WASD stuck in-game) plus a ~1-2s input freeze. Confirmed
+// 2026-07-25 in a live Palworld session (daemon.log: 20:04:12 fired "actively typing"). So once past the
+// mute threshold, wait for a keypress LULL — nothing held AND a brief quiet gap — before re-enumerating.
+const LULL_MS = 1_500;              // no key held + no keydown for this long = a genuine gap between keystrokes/actions (not mid-burst, no keyup in flight)
+const HARD_CEILING_MS = 90_000;    // …but never defer the lighting recovery past this — a missed keyup (alt-tab, focus loss) can leave a key stuck in `held` forever, which would otherwise block recovery indefinitely
 
-// Pure decision: fire only for a real, aged mute, outside the cooldown window.
-function shouldFire({ muteAt, now, lastFireAt, thresholdMs = THRESHOLD_MS, cooldownMs = COOLDOWN_MS }) {
+// Pure decision: fire only for a real, aged mute, outside the cooldown window, and (until the hard ceiling)
+// only during a keypress lull so a re-enumeration can't strand a held key.
+function shouldFire({ muteAt, now, lastFireAt, thresholdMs = THRESHOLD_MS, cooldownMs = COOLDOWN_MS,
+                      keysHeld = 0, sinceKeydownMs = Infinity, lullMs = LULL_MS, hardCeilingMs = HARD_CEILING_MS }) {
   if (!muteAt) return false;
   if (now - muteAt < thresholdMs) return false;
   if (lastFireAt && now - lastFireAt < cooldownMs) return false;
+  if (now - muteAt < hardCeilingMs && (keysHeld > 0 || sinceKeydownMs < lullMs)) return false;
   return true;
 }
 
@@ -32,4 +41,4 @@ function fire(log) {
   });
 }
 
-module.exports = { shouldFire, fire, TASK_NAME, THRESHOLD_MS, IDLE_THRESHOLD_MS, IDLE_AFTER_MS, COOLDOWN_MS };
+module.exports = { shouldFire, fire, TASK_NAME, THRESHOLD_MS, IDLE_THRESHOLD_MS, IDLE_AFTER_MS, COOLDOWN_MS, LULL_MS, HARD_CEILING_MS };

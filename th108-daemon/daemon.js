@@ -288,8 +288,8 @@ for (const [kc, code] of Object.entries(RAW_UIO)) { const idx = KEYMAP[code]; if
 // sends something unexpected (e.g. Menu on a different code than 3677). Cheap; only fires on a genuinely unmapped key.
 const _seenUnmapped = new Set();
 uIOhook.on('keydown', e => { if (UIO2IDX[e.keycode] === undefined && !_seenUnmapped.has(e.keycode)) { _seenUnmapped.add(e.keycode); log('🔍 unmapped key: uiohook keycode ' + e.keycode + ' — add to UIO2IDX to bind it (reactive/host actions)'); } });
-uIOhook.on('keydown', e => { lastKeyAt = Date.now(); if (state) { const i = UIO2IDX[e.keycode]; if (i !== undefined) E.stampKey(state, i); } });
-uIOhook.on('keyup',   e => { if (state) { const i = UIO2IDX[e.keycode]; if (i !== undefined) E.releaseKey(state, i); } });
+uIOhook.on('keydown', e => { lastKeyAt = Date.now(); lastKeydownAt = lastKeyAt; heldKeys.add(e.keycode); if (state) { const i = UIO2IDX[e.keycode]; if (i !== undefined) E.stampKey(state, i); } });
+uIOhook.on('keyup',   e => { heldKeys.delete(e.keycode); if (state) { const i = UIO2IDX[e.keycode]; if (i !== undefined) E.releaseKey(state, i); } });
 // PROBE (2026-07-20, caps-lock-mute hypothesis): lock keys drive firmware-owned LEDs (below the 0x32 paint),
 // so toggling one MIGHT collide with the write stream and desync the FIFO → mute. Record the last lock-key
 // press so the MUTE line can say whether one landed just before the silence. Confirms or clears the theory.
@@ -577,6 +577,8 @@ let probing = false, nextOpenAt = Date.now() + 5000;   // startup grace: a live 
 let lastOkAt = 0, streakStart = 0, muteLogged = false, muteAt = 0;   // mute-episode tracking (transition logging)
 let usbFiredAt = 0, lastTickAt = 0, wokeAt = 0;   // USB-restart escalation state + sleep-gap detection (wokeAt = last resume-from-sleep, for the fast wake-recovery threshold)
 let lastKeyAt = Date.now();           // last physical keypress (from the global hook) — drives the idle-aware USB-restart threshold
+const heldKeys = new Set();           // keycodes physically down right now (Set, so OS key-repeat can't double-count) — gate the USB restart so it can't re-enumerate mid-keystroke and strand a held key
+let lastKeydownAt = 0;                // last keydown moment — the USB restart waits for a lull (LULL_MS) after this before re-enumerating
 let lastLockKeyAt = 0, lastLockKey = '';   // last Caps/Num/Scroll-lock press (probe: correlate lock-key toggles with mutes)
 let offCleared = false;               // lights-off / display-off: a black frame was sent
 let offSentAt = 0;                     // when — so the blank re-asserts every ~5s (a re-enumerated/reclaimed board goes black again)
@@ -798,9 +800,13 @@ async function runTick() {
         // so re-enumerate after just 4s instead of the full AFK wait — lights return seconds after wake, not ~40s.
         const freshWake = wokeAt && Date.now() - wokeAt < 90_000;
         const thresholdMs = freshWake ? 4000 : (afk ? U.IDLE_THRESHOLD_MS : U.THRESHOLD_MS);
-        if (settings.usbReset && U.shouldFire({ muteAt, now: Date.now(), lastFireAt: usbFiredAt, thresholdMs })) {
+        // Key-hold-off: don't re-enumerate mid-keystroke (drops the held key's keyup → stuck key + input freeze).
+        // Wait for a keypress lull; the hard ceiling inside shouldFire still guarantees eventual recovery.
+        const sinceKeydownMs = lastKeydownAt ? Date.now() - lastKeydownAt : Infinity;
+        if (settings.usbReset && U.shouldFire({ muteAt, now: Date.now(), lastFireAt: usbFiredAt, thresholdMs, keysHeld: heldKeys.size, sinceKeydownMs })) {
           usbFiredAt = Date.now();
-          log('⚡ ESCALATING: mute has lasted ' + Math.round((usbFiredAt - muteAt) / 1000) + 's (' + (afk ? 'AFK — recovering early' : 'actively typing') + ') — PnP-restarting the keyboard USB device (task "' + U.TASK_NAME + '"); typing drops ~1-2s');
+          const forced = usbFiredAt - muteAt >= U.HARD_CEILING_MS;
+          log('⚡ ESCALATING: mute has lasted ' + Math.round((usbFiredAt - muteAt) / 1000) + 's (' + (afk ? 'AFK — recovering early' : (forced ? 'hard ceiling — no lull found, recovering anyway' : 'keypress lull')) + ') — PnP-restarting the keyboard USB device (task "' + U.TASK_NAME + '"); typing drops ~1-2s');
           U.fire(log);
         }
       }
