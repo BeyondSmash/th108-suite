@@ -125,15 +125,16 @@ $miQuit.Add_Click({ [void](Invoke-Daemon '/quit' 'POST') })
 $miExit.Add_Click({ $script:icon.Visible = $false; [System.Windows.Forms.Application]::Exit() })
 $icon.Add_DoubleClick({ Start-Process 'http://localhost:8123/' })
 
-$script:wasUp = $false
 $script:misses = 0
+$script:nagged = $false                       # balloon at most once per down-episode
+$script:lastAutoStart = [DateTime]::MinValue
 $timer = New-Object System.Windows.Forms.Timer
 $timer.Interval = 5000
 $timer.Add_Tick({
   $s = Get-DaemonStatus
   if ($s) {
-    $script:wasUp = $true
     $script:misses = 0
+    $script:nagged = $false
     $icon.Icon = $iconUp
     if ($s.paused) { $icon.Text = 'TH108: running - page holds the keyboard' }
     elseif ($s.deviceConnected) { $icon.Text = 'TH108: running - driving the keyboard' }
@@ -143,10 +144,21 @@ $timer.Add_Tick({
     # the old single-miss balloon cried wolf on every planned restart (2026-06-12, twice)
     $script:misses++
     if ($script:misses -ge 2) { $icon.Icon = $iconDown; $icon.Text = 'TH108: daemon not answering...' }
-    if ($script:misses -ge 3 -and $script:wasUp) {
-      $script:wasUp = $false
-      $icon.Text = 'TH108: daemon NOT running (right-click > Start Daemon)'
-      $icon.ShowBalloonTip(4000, 'TH108 Lighting', 'The daemon stopped and did not come back. Right-click the tray icon and pick Start Daemon.', [System.Windows.Forms.ToolTipIcon]::Warning)
+    if ($script:misses -ge 3) {
+      # AUTO-REVIVE: 3 silent polls (~15s) = a genuine outage the supervisor didn't fix - either the daemon
+      # AND its supervisor both died (e.g. a manual kill), or start-hidden.vbs hit its 5-crash circuit-breaker.
+      # "I always want the daemon on", so bring it back instead of just nagging. Start-Daemon is a no-op if it's
+      # actually healthy and refuses to fight a foreign port squatter. Cooldown = 60s to match the supervisor's
+      # own 5-crashes/60s window: on a genuinely broken build we retry at most once a minute, never a hot loop.
+      if (([DateTime]::UtcNow - $script:lastAutoStart).TotalSeconds -ge 60) {
+        $script:lastAutoStart = [DateTime]::UtcNow
+        $icon.Text = 'TH108: daemon stopped - auto-restarting...'
+        Start-Daemon
+      } elseif (-not $script:nagged) {
+        $script:nagged = $true   # the last auto-restart hasn't taken yet - tell the user once, then keep retrying quietly
+        $icon.Text = 'TH108: daemon NOT running (right-click > Start Daemon)'
+        $icon.ShowBalloonTip(4000, 'TH108 Lighting', 'The daemon stopped and an auto-restart did not bring it back. Right-click the tray icon and pick Start Daemon.', [System.Windows.Forms.ToolTipIcon]::Warning)
+      }
     }
   }
 })
