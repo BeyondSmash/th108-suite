@@ -873,7 +873,7 @@
   var OFFDEFS = {
     th108_langoff: { x: -15, y: 3 }, th108_langoff_rtl: { x: -1.5, y: 3 },
     th108_sepoff:  { x: -2, y: -5 }, th108_sepoff_rtl:  { x: -12.5, y: -5 },
-    th108_lbloff:  { x: 0, y: 0 },   th108_lbloff_rtl:  { x: -16, y: -4 }
+    th108_lbloff:  { x: 0, y: 0 },   th108_lbloff_rtl:  { x: 0, y: 0 }   // label now lives INSIDE the button → no independent nudge (an offset here would shift the text within the pill)
   };
   function keyFor(base) { return (document.documentElement.dir === 'rtl') ? base + '_rtl' : base; }
   // Apply a subpixel nudge to an element (baked default for the current direction, or the persisted override if tuned).
@@ -949,9 +949,11 @@
     var btn = document.createElement('button');
     btn.type = 'button'; btn.id = 'th108LangBtn'; btn.title = 'Language';
     btn.setAttribute('aria-label', 'Language'); btn.setAttribute('aria-haspopup', 'listbox'); btn.setAttribute('aria-expanded', 'false');
-    btn.textContent = '🌐';
-    // inline-flex centering (not padding/line-height) optically centers the emoji glyph; height matches the On button / slider row
-    btn.style.cssText = 'display:inline-flex;align-items:center;justify-content:center;height:26px;width:30px;padding:0;font-size:14px;line-height:1;background:var(--card);color:var(--text);border:1px solid var(--border);border-radius:999px;cursor:pointer;user-select:none;-webkit-user-select:none';
+    var globe = document.createElement('span'); globe.textContent = '🌐';
+    globe.setAttribute('aria-hidden', 'true'); globe.style.cssText = 'font-size:14px;line-height:1';
+    btn.appendChild(globe);   // globe + language label live INSIDE the one pill (see lbl below), so the button reads as a single control
+    // auto-width pill: globe and label sit side-by-side (gap), padding gives the enclosing border room; height matches the On button / slider row
+    btn.style.cssText = 'display:inline-flex;align-items:center;gap:7px;height:26px;width:auto;padding:0 11px;font-size:14px;line-height:1;background:var(--card);color:var(--text);border:1px solid var(--border);border-radius:999px;cursor:pointer;white-space:nowrap;user-select:none;-webkit-user-select:none';
 
     var panel = document.createElement('div');
     panel.id = 'th108LangPanel'; panel.setAttribute('role', 'listbox'); panel.hidden = true;
@@ -979,12 +981,11 @@
     function close() { panel.hidden = true; btn.setAttribute('aria-expanded', 'false'); btn.style.borderColor = 'var(--border)'; btn.style.boxShadow = 'none'; document.removeEventListener('mousedown', onDoc, true); document.removeEventListener('keydown', onKey, true); }
     btn.addEventListener('click', function () { panel.hidden ? open() : close(); });
 
-    var lbl = document.createElement('span');   // current language name, shown to the right of the 🌐 button
-    lbl.id = 'th108LangLabel'; lbl.style.cssText = 'margin-left:7px;font-size:13px;font-weight:600;color:var(--muted);user-select:none;white-space:nowrap';
-    lbl.addEventListener('click', function () { panel.hidden ? open() : close(); });   // click the label too
-    lbl.style.cursor = 'pointer';
+    var lbl = document.createElement('span');   // current language name, now INSIDE the button beside the globe (no own click handler — clicks bubble to btn; a second handler here would toggle twice = no-op)
+    lbl.id = 'th108LangLabel'; lbl.style.cssText = 'font-size:13px;font-weight:600;color:var(--text);user-select:none;white-space:nowrap';
+    btn.appendChild(lbl);
 
-    wrap.appendChild(btn); wrap.appendChild(lbl); wrap.appendChild(panel);
+    wrap.appendChild(btn); wrap.appendChild(panel);
     mount.appendChild(wrap);
     syncActive(sel);
     var host = document.getElementById('langExt') || btn;   // move the whole | + 🌐 cluster, not just the button
