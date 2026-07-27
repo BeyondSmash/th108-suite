@@ -454,12 +454,16 @@
   function translateTree(root, code) {
     if (!root || root.nodeType !== 1) return;
     // 1) rich prose blocks: data-i18n → full translated HTML (cache original once)
-    var blocks = root.querySelectorAll ? root.querySelectorAll('[data-i18n]') : [];
+    // querySelectorAll excludes root itself, so add it — the observer often hands us the very element whose
+    // attribute/data-i18n changed (an in-place update), not an ancestor.
+    var blocks = root.querySelectorAll ? Array.prototype.slice.call(root.querySelectorAll('[data-i18n]')) : [];
+    if (root.hasAttribute && root.hasAttribute('data-i18n')) blocks.push(root);
     for (var i = 0; i < blocks.length; i++) {
       var el = blocks[i], key = el.getAttribute('data-i18n');
       if (el.__i18nEn == null) el.__i18nEn = el.innerHTML;
       var t = tr(key, code);
-      el.innerHTML = (t != null) ? t : el.__i18nEn;
+      var htmlNv = (t != null) ? t : el.__i18nEn;
+      if (el.innerHTML !== htmlNv) el.innerHTML = htmlNv;   // only write on change — an unconditional re-assign would refire the observer (150ms spin)
     }
     // 2) simple text nodes matched by their English source
     var walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null, false);
@@ -470,23 +474,26 @@
       if (node.parentNode && node.parentNode.closest && node.parentNode.closest('[data-i18n]')) continue;   // handled as a block
       var en = (node.__i18nEn != null) ? node.__i18nEn : node.nodeValue;
       var key2 = norm(en); if (!key2) continue;
-      if (!CATALOG[key2]) { if (node.__i18nEn != null && code === 'en') node.nodeValue = node.__i18nEn; continue; }
+      if (!CATALOG[key2]) { if (node.__i18nEn != null && code === 'en' && node.nodeValue !== node.__i18nEn) node.nodeValue = node.__i18nEn; continue; }
       if (node.__i18nEn == null) node.__i18nEn = en;
       var t2 = tr(key2, code);
-      node.nodeValue = (t2 != null) ? reWs(en, t2) : node.__i18nEn;
+      var txtNv = (t2 != null) ? reWs(en, t2) : node.__i18nEn;
+      if (node.nodeValue !== txtNv) node.nodeValue = txtNv;   // change-only: avoids refiring the characterData observer
     }
     // 3) translatable attributes
     var attrs = ['title', 'placeholder', 'aria-label'];
     for (var a = 0; a < attrs.length; a++) {
       var attr = attrs[a], cacheK = '__i18n_' + attr;
-      var els = root.querySelectorAll ? root.querySelectorAll('[' + attr + ']') : [];
+      var els = root.querySelectorAll ? Array.prototype.slice.call(root.querySelectorAll('[' + attr + ']')) : [];
+      if (root.hasAttribute && root.hasAttribute(attr)) els.push(root);   // include root: an in-place setAttribute hands us the element itself
       for (var k = 0; k < els.length; k++) {
         var e2 = els[k];
         var orig = (e2[cacheK] != null) ? e2[cacheK] : e2.getAttribute(attr);
         var kk = norm(orig); if (!kk || !CATALOG[kk]) continue;
         if (e2[cacheK] == null) e2[cacheK] = orig;
         var t3 = tr(kk, code);
-        e2.setAttribute(attr, (t3 != null) ? t3 : e2[cacheK]);
+        var attrNv = (t3 != null) ? t3 : e2[cacheK];
+        if (e2.getAttribute(attr) !== attrNv) e2.setAttribute(attr, attrNv);   // change-only: avoids refiring the attributes observer
       }
     }
   }
@@ -651,17 +658,32 @@
   var pending = [], timer = null;
   function observe() {
     if (!window.MutationObserver) return;
+    // JS updates labels/pills/titles three ways after the initial pass, each a different mutation type:
+    //   el.textContent = '…'  → childList: an added TEXT node (nodeType 3), NOT an element  → translate its parent
+    //   el.firstChild.data='…'→ characterData on a text node                                 → translate its parent
+    //   el.setAttribute('title',…) → attributes                                              → translate the element
+    // The old observer only queued added ELEMENTS (nodeType 1), so all three rendered untranslated (e.g. the
+    // 'Online'/'Connect Keyboard' state pills, the connect-button title). translateTree is now change-only, so
+    // re-running it on our own writes is a no-op — no feedback loop.
+    function queue(el) { if (el && el.nodeType === 1) pending.push(el); }
     var mo = new MutationObserver(function (muts) {
       if (cur === 'en') return;
-      for (var i = 0; i < muts.length; i++) for (var j = 0; j < muts[i].addedNodes.length; j++) {
-        var n = muts[i].addedNodes[j]; if (n.nodeType === 1) pending.push(n);
+      for (var i = 0; i < muts.length; i++) {
+        var m = muts[i];
+        if (m.type === 'attributes') { queue(m.target); continue; }
+        if (m.type === 'characterData') { queue(m.target.parentNode); continue; }
+        for (var j = 0; j < m.addedNodes.length; j++) {
+          var n = m.addedNodes[j];
+          if (n.nodeType === 1) pending.push(n);
+          else if (n.nodeType === 3) queue(n.parentNode);   // textContent/appendChild of a text node
+        }
       }
       if (pending.length && !timer) timer = setTimeout(function () {
         timer = null; var batch = pending; pending = [];
         for (var k = 0; k < batch.length; k++) { try { translateTree(batch[k], cur); } catch (_) {} }
       }, 150);
     });
-    mo.observe(document.body, { childList: true, subtree: true });
+    mo.observe(document.body, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ['title', 'placeholder', 'aria-label'] });
   }
 
   function init() {
