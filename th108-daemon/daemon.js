@@ -196,12 +196,12 @@ console.log(ts() + ' ───── daemon start ─────');
 process.on('uncaughtException', (err) => {
   console.log(ts() + ' ✗ UNCAUGHT: ' + (err && err.stack || err));
   try { closeDevice(); } catch {}
-  nextOpenAt = Date.now() + 5000;
+  nextOpenAt = Date.now() + 5000; reopenReason = 'recover after uncaught exception';
 });
 process.on('unhandledRejection', (err) => {
   console.log(ts() + ' ✗ UNHANDLED REJECTION: ' + (err && err.stack || err));
   try { closeDevice(); } catch {}
-  nextOpenAt = Date.now() + 5000;
+  nextOpenAt = Date.now() + 5000; reopenReason = 'recover after unhandled rejection';
 });
 
 // ----- config -----
@@ -315,7 +315,7 @@ uIOhook.on('keydown', e => {
   log('🔧 recovery hotkey (Ctrl+Alt+End) — PnP-restarting the keyboard; typing drops ~1-2s, lighting returns by itself');
   usbFiredAt = Date.now();
   U.fire(log);
-  closeDevice(); nextOpenAt = Date.now() + 3000;   // let the re-enumeration settle, then the tick reopens (when not yielded)
+  closeDevice(); nextOpenAt = Date.now() + 3000; reopenReason = 'after PnP re-enumerate (recovery hotkey)';   // let the re-enumeration settle, then the tick reopens (when not yielded)
 });
 // ----- HOST ACTIONS: a user-chosen TRIGGER fires a host-side action (NOT a firmware remap — the key still types
 // whatever it types; the daemon just WATCHES it). Bound in the page's "Host Actions" binder tab, which pushes the
@@ -562,7 +562,7 @@ async function sendOnboard(allled) {
     device.write([0x00, ...pkt]);                                // leading reportId 0 (Windows)
     await new Promise(r => setTimeout(r, 350));                  // let the 0x23 ACK land (mirrors the page)
   } catch { lcdBusy = prevBusy; return false; }
-  closeDevice(); nextOpenAt = 0;                                 // cure: fresh handle so 0x32 paints again
+  closeDevice(); nextOpenAt = 0; reopenReason = 'fresh handle after 0x23 onboard write';   // cure: fresh handle so 0x32 paints again
   if (state) state.lastFlat = null;                             // force a repaint on the reopened handle
   lcdBusy = prevBusy;
   return true;
@@ -586,6 +586,7 @@ let onboardMaskApplied = false, onboardMaskBusy = false, lastUsbFired = 0;   // 
 let displayOff = false;               // monitor is off on the idle timeout (from display-watch.ps1) → blank the board
 let sendingFrame = false;             // a 0x32 frame is mid-flight — closing the device NOW leaves the board's chunk parser desynced
 let fastReopen = false;               // set on a clean lease reclaim → the next reopen uses a SHORT probe + immediate repaint (kills the ~1.5s post-handoff dark: the lease already guarantees single ownership, so the full 1.5s foreign-writer probe is overkill here)
+let reopenReason = '';                // WHY the next open is happening (set wherever we drop/re-arm the handle) — logged with '✓ device open' so a healthy-stream reopen isn't a causeless mystery. A cluster of reopens right before a MUTE is the open-churn wedge signature (2026-07-26 incident: 3 reopens in 50s → mute); without this we can only guess which path fired.
 async function openIfPossible() {
   if (device || paused || probing) return;
   if (Date.now() < nextOpenAt) return;   // backoff after a mute/failed device — no 2s open/close churn against a wedged board
@@ -608,7 +609,8 @@ async function openIfPossible() {
     send = T.makeSender(device, { ackTimeoutMs: 800 });
     if (fast && state) state.lastFlat = null;   // fresh handle after a fast reclaim → force an immediate repaint so the board doesn't sit dark
     releaseHeldKeys();   // fresh handle = a recovery point: drop any key a missed keyup left stuck
-    if (!muteLogged) log('✓ device open');   // stay quiet during a mute-retry loop — the MUTE/recovered transition lines tell the story
+    if (!muteLogged) log('✓ device open' + (reopenReason ? ' (' + reopenReason + ')' : ''));   // stay quiet during a mute-retry loop — the MUTE/recovered transition lines tell the story
+    reopenReason = '';   // one-shot: don't let a stale cause label the next unrelated reopen
   } catch { try { if (d) d.close(); } catch {} nextOpenAt = Date.now() + 5000; }
   finally { probing = false; }
 }
@@ -633,6 +635,7 @@ async function runTick() {
     rebuildState(); unpausedAt = Date.now();   // mirrors the old resume(): reload the page's saved config + reset the flash-upload stability window
     syncPaused();   // owner is 'daemon' again → clear derived paused NOW so openIfPossible() reopens this same tick
     fastReopen = true;   // the page released cleanly (lease says daemon owns) → short-probe + repaint at once, so the board doesn't sit dark ~1.5s after the handoff
+    reopenReason = 'lease reclaim — page released ownership';   // repeated reclaims mid-stream = a live controller page flapping ownership (open-churn wedge risk)
   } else if (act && act.action === 'probe') {
     // revoked page never released — probe on a throwaway handle; quiet ⇒ grant, else escalate to re-enumerate.
     // NOTE: 'reenumerate' is decided HERE, inside probeResult()'s return — lease.tick() itself never emits
@@ -968,7 +971,7 @@ function syncDisplayWatch() {
       dwProc.stdout.on('data', d => { carry += d.toString('utf8'); let i;
         while ((i = carry.indexOf('\n')) >= 0) { const s = carry.slice(0, i).trim(); carry = carry.slice(i + 1);
           if (s === 'off' && !displayOff) { displayOff = true; log('🌒 monitor off (idle) — blanking the board'); }
-          else if ((s === 'on' || s === 'dim') && displayOff) { displayOff = false; offCleared = false; onboardMaskApplied = false; if (state) state.lastFlat = null; nextOpenAt = 0; log('🌞 monitor on — restoring lighting'); }   // wake may have re-enumerated the board (USB resume) → re-assert the black onboard mask
+          else if ((s === 'on' || s === 'dim') && displayOff) { displayOff = false; offCleared = false; onboardMaskApplied = false; if (state) state.lastFlat = null; nextOpenAt = 0; reopenReason = 'monitor on (reopen only if handle gone)'; log('🌞 monitor on — restoring lighting'); }   // wake may have re-enumerated the board (USB resume) → re-assert the black onboard mask
         } });
       dwProc.on('exit', () => { dwProc = null; if (settings.dimOnDisplayOff) setTimeout(() => { if (settings.dimOnDisplayOff) start(); }, 3000); });
     };
@@ -1148,7 +1151,7 @@ const control = {
       settings.lightsOn = !!o.on; offCleared = false;
       if (settings.lightsOn) {
         if (state) state.lastFlat = null;            // force a repaint
-        nextOpenAt = 0;                              // reopen ONLY if the handle is actually gone — do NOT closeDevice a healthy one. Reopening a long-lived handle on a quick off→on muted the board (2026-06-27, was streaming 981 min). Mirrors the monitor-wake path (which resumes from the same silence with no reopen and never mutes).
+        nextOpenAt = 0; reopenReason = 'lights master ON (reopen only if handle gone)';   // reopen ONLY if the handle is actually gone — do NOT closeDevice a healthy one. Reopening a long-lived handle on a quick off→on muted the board (2026-06-27, was streaming 981 min). Mirrors the monitor-wake path (which resumes from the same silence with no reopen and never mutes).
       }
     }
     if (o && o.brightness != null) {
