@@ -9,8 +9,11 @@
 // re-baselines the mute clock after a sleep gap, so a stale pre-sleep muteAt can't insta-fire on wake),
 // and at most one shot per COOLDOWN_MS — a restart loop would be worse than the wedge.
 const { execFile } = require('child_process');
+const fs = require('fs');
+const path = require('path');
 
 const TASK_NAME = 'TH108 USB Restart';
+const LOG_PATH = path.join(__dirname, 'restart-usb.log');   // restart-usb.bat appends "restart exit=N" here
 const THRESHOLD_MS = 30_000;        // mute must persist this long before we touch USB *while you're typing* — a 1-2s dropout mid-sentence is worse than a few more dark seconds
 const IDLE_THRESHOLD_MS = 12_000;   // …but if you've been AFK (see IDLE_AFTER_MS), a dropout costs nothing, so recover the lighting ~18s sooner
 const IDLE_AFTER_MS = 20_000;       // "AFK" = no keypress for this long; under it we assume you're mid-task and hold the conservative threshold
@@ -33,12 +36,54 @@ function shouldFire({ muteAt, now, lastFireAt, thresholdMs = THRESHOLD_MS, coold
   return true;
 }
 
+// After schtasks kicks off the task, pnputil runs over the next few seconds and restart-usb.bat appends
+// a "restart exit=N" line. schtasks /run reports only that the task STARTED, never pnputil's result — so we
+// poll the log for the new line and surface the TRUTH. 3010 = Windows queued a reboot-pending reconfig; 50 =
+// a later restart was refused because that reconfig is still pending. In both cases the software replug is
+// DEAD until a reboot, and only a physical wired↔BT toggle (a real USB re-enumeration below the PnP layer)
+// recovers the board. Without this the daemon logs a false "should re-enumerate" and the user gets no signal.
+// Pure: map an appended restart-usb.log chunk → a log line (or null if no "restart exit=N" line yet).
+function classify(chunk) {
+  const m = /restart exit=(\d+)/.exec(chunk || '');
+  if (!m) return null;
+  const code = +m[1];
+  if (code === 0) return '… USB-restart done — board should re-enumerate in a few seconds';
+  if (code === 3010 || code === 50 || /pending|reboot/i.test(chunk))
+    return '✗ Windows REFUSED the USB-restart (exit ' + code + ' — device pending a reboot from an earlier restart). The software replug is dead until you REBOOT; recover the board now with a physical wired↔BT toggle. (Auto-restarts will keep being refused until then.)';
+  return '✗ USB-restart returned exit ' + code + ' — board may not have re-enumerated; if lighting stays dark, toggle wired↔BT';
+}
+
+function reportOutcome(log, sizeBefore, tries) {
+  let st; try { st = fs.statSync(LOG_PATH); } catch (_) { st = null; }
+  if (!st || st.size <= sizeBefore) {                       // no new line yet
+    if (tries > 0) return void setTimeout(() => reportOutcome(log, sizeBefore, tries - 1), 1500);
+    return;                                                  // gave up quietly — task may just be slow; the mute clock still guards recovery
+  }
+  let chunk = ''; try { chunk = fs.readFileSync(LOG_PATH).slice(sizeBefore).toString('utf8'); } catch (_) { return; }
+  const msg = classify(chunk);
+  if (msg) return void log(msg);
+  if (tries > 0) setTimeout(() => reportOutcome(log, sizeBefore, tries - 1), 1500);
+}
+
 // Trigger the elevated task (schtasks /run works unelevated for a task the user owns).
 function fire(log) {
+  let sizeBefore = 0; try { sizeBefore = fs.statSync(LOG_PATH).size; } catch (_) {}   // baseline: only read lines appended after THIS fire
   execFile('schtasks', ['/run', '/tn', TASK_NAME], { windowsHide: true }, (err, _so, se) => {
-    if (err) log('✗ USB-restart task failed to start: ' + (((se || '').trim()) || err.message) + ' — register it once via install-usb-restart-task.ps1 (run as admin)');
-    else log('… USB-restart task triggered — board should re-enumerate in a few seconds');
+    if (err) return log('✗ USB-restart task failed to start: ' + (((se || '').trim()) || err.message) + ' — register it once via install-usb-restart-task.ps1 (run as admin)');
+    log('… USB-restart task triggered — checking result…');
+    reportOutcome(log, sizeBefore, 5);   // poll ~7.5s (5×1.5s) for the pnputil exit code
   });
 }
 
-module.exports = { shouldFire, fire, TASK_NAME, THRESHOLD_MS, IDLE_THRESHOLD_MS, IDLE_AFTER_MS, COOLDOWN_MS, LULL_MS, HARD_CEILING_MS };
+module.exports = { shouldFire, fire, classify, TASK_NAME, THRESHOLD_MS, IDLE_THRESHOLD_MS, IDLE_AFTER_MS, COOLDOWN_MS, LULL_MS, HARD_CEILING_MS };
+
+// self-check: node usb-reset.js
+if (require.main === module) {
+  const A = require('assert');
+  A.strictEqual(classify('foo bar'), null);                                   // no exit line → wait longer
+  A.ok(/re-enumerate/.test(classify('Device restarted successfully.\nrestart exit=0')));
+  A.ok(/REBOOT/.test(classify('restart exit=3010')));                         // reboot-pending
+  A.ok(/REBOOT/.test(classify('Failed to restart device: pending\nrestart exit=50')));   // refused
+  A.ok(/wired↔BT/.test(classify('restart exit=259')));                        // other non-zero → generic toggle advice
+  console.log('usb-reset self-check OK');
+}
