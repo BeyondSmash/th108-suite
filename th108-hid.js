@@ -105,7 +105,7 @@
     function onInputReport(e) {                          // the board replies with a 0x55 ACK per write on this iface — read it AND gate the next write on it
       _inRpts++;
       const b = new Uint8Array(e.data.buffer);
-      if (_inRpts === 1) log('board input reports: id=' + e.reportId + ' first=[' + Array.from(b.slice(0, 8)).map(x => x.toString(16).padStart(2, '0')).join(' ') + '…]', 'dim');
+      if (_inRpts === 1) log(TH108i18n.tf('board input reports: id={0} first=[{1}…]', e.reportId, Array.from(b.slice(0, 8)).map(x => x.toString(16).padStart(2, '0')).join(' ')), 'dim');
       // A genuine 0x32 ACK ECHOES the offset of the write it answers (b[3]=off&0xFF, b[4]=off>>8) — confirmed
       // in the daemon flight recorder (off=56→b[3]=0x38, off=392→b[3]=0x88 b[4]=0x01). The board ALSO emits
       // unsolicited 0x55 32 reports carrying a STALE offset; gating on bare 0x55 let those false-satisfy a
@@ -182,14 +182,14 @@
       if (!device.opened) await device.open();
       if (!device._inHooked) { device._inHooked = true; device.addEventListener('inputreport', onInputReport); }   // read the board's ACK/status reports + gate sends on them
       // user-facing status; the wire jargon rides the hover tooltip (3rd arg) and the log keeps the full line
-      setStatus('Keyboard Connected: ' + String(device.productName || 'unknown').replace(/_/g, ' '), 'ok',
+      setStatus(TH108i18n.tf('Keyboard Connected: {0}', String(device.productName || 'unknown').replace(/_/g, ' ')), 'ok',
         'iface 0x' + (w.usagePage || 0).toString(16) + '/0x' + (w.usage || 0).toString(16) + ' · reportId=' + reportId + ' · packLen=' + packLen + ' · ' + opts.ledCount + ' LEDs');
-      log('connected: ' + device.productName + ' · iface 0x' + (w.usagePage || 0).toString(16) + '/0x' + (w.usage || 0).toString(16) + ' · reportId=' + reportId + ' · packLen=' + packLen + ' · ' + opts.ledCount + ' LEDs', 'ok');
+      log(TH108i18n.tf('connected: {0} · iface 0x{1}/0x{2} · reportId={3} · packLen={4} · {5} LEDs', device.productName, (w.usagePage || 0).toString(16), (w.usage || 0).toString(16), reportId, packLen, opts.ledCount), 'ok');
       let screenDev = null, screenRid = 0;
       const sc = findScreen(devs);
       if (sc && sc.bytes >= 4096) {
         screenDev = sc.d; screenRid = sc.reportId; if (!screenDev.opened) await screenDev.open();
-        log('screen interface bound (report ' + sc.bytes + 'B) — LCD upload available', 'ok');
+        log(TH108i18n.tf('screen interface bound (report {0}B) — LCD upload available', sc.bytes), 'ok');
       }
       else log('screen interface not in this grant — LCD upload disabled until you re-pick the keyboard', 'dim');
       onBound({ screen: screenDev, screenReportId: screenRid, control: device, controlReportId: reportId });
@@ -217,7 +217,7 @@
         const ok = await bindDevice(picked, false);
         if (ok) onConnected();   // tell the daemon's watchdog we're alive & holding the device
       } catch (e) {
-        setStatus('connect failed: ' + e.message, 'err'); log('connect error: ' + e.message, 'err');
+        setStatus(TH108i18n.tf('connect failed: {0}', e.message), 'err'); log(TH108i18n.tf('connect error: {0}', e.message), 'err');
         try { console.error('[th108 connect] threw AFTER opening the device — full stack:', e); } catch (_) { }   // expandable, source-linked stack in DevTools
         try { if (e && e.stack) log('  ↳ ' + String(e.stack).split('\n').slice(1, 4).map(s => s.trim()).join('  ◂  '), 'dim'); } catch (_) { }   // and the top frames straight into the on-page Log
         // A connect that threw mid-setup (e.g. a UI callback in onBound) leaves the control handle OPEN but
@@ -307,7 +307,7 @@
           if (ok) onReconnected();
         } catch (err) {
           device = null; reportId = 0;                          // bind failed mid-enumeration (e.g. open() too early) — release so a later event/poll retries cleanly
-          log('reconnect attempt failed: ' + (err && err.message || err) + ' — retrying shortly', 'dim');
+          log(TH108i18n.tf('reconnect attempt failed: {0} — retrying shortly', (err && err.message || err)), 'dim');
           setTimeout(() => { if (!device && !_binding) startRebindPoll(); }, 1000);   // single guarded retry via the poll instead of a racing direct bind
         } finally {
           _binding = false;

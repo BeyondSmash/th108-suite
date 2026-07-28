@@ -30,7 +30,7 @@
       try {
         if (sourceKind === 'mic') stream = await navigator.mediaDevices.getUserMedia({ audio: true });
         else stream = await navigator.mediaDevices.getDisplayMedia({ audio: true, video: true });   // Chrome needs video requested; we use only the audio track
-      } catch (e) { log('audio capture cancelled / denied: ' + (e && e.message || e), 'dim'); return false; }
+      } catch (e) { log(TH108i18n.tf('audio capture cancelled / denied: {0}', (e && e.message || e)), 'dim'); return false; }
       const at = stream.getAudioTracks();
       if (!at.length) { await stop(); log('no audio track — when sharing, tick "Share tab audio" / "Share system audio"', 'err'); return false; }
       ctx = new (window.AudioContext || window.webkitAudioContext)();
@@ -55,7 +55,7 @@
       }
       peakLvl = 1e-4; avgFlux = 1e-6; levelAvg = 1e-4; active = true; kind = sourceKind;
       at[0].addEventListener('ended', () => { stop(); });   // user clicked "Stop sharing"
-      log('in-tab audio capture started (' + sourceKind + ')', 'ok');
+      log(TH108i18n.tf('in-tab audio capture started ({0})', sourceKind), 'ok');
       return true;
     }
 

@@ -288,7 +288,7 @@
     const lbl = $('#lcdCropLbl');
     if (isFit()) {                                  // FIT: whole image kept (letterboxed) — no crop
       c.strokeStyle = '#3fb950'; c.lineWidth = 2; c.strokeRect(1, 1, dispW - 2, dispH - 2);
-      if (lbl) lbl.textContent = `source ${srcW}×${srcH} → whole GIF kept, letterboxed to 160×96 (black bars)`;
+      if (lbl) lbl.textContent = TH108i18n.tf('source {0}×{1} → whole GIF kept, letterboxed to 160×96 (black bars)', srcW, srcH);
     } else {                                       // COVER: dim cropped-out area, dash the kept (adjustable) region
       const cr = cropRect(srcW, srcH);
       const rx = cr.cx * s, ry = cr.cy * s, rw = cr.cw * s, rh = cr.ch * s;
@@ -297,7 +297,7 @@
       c.fillRect(0, ry, rx, rh); c.fillRect(rx + rw, ry, dispW - (rx + rw), rh);
       c.strokeStyle = '#58a6ff'; c.lineWidth = 2; c.setLineDash([6, 4]);
       c.strokeRect(rx + 1, ry + 1, rw - 2, rh - 2); c.setLineDash([]);
-      if (lbl) lbl.textContent = `${(currentFile && currentFile.name) || 'image'}: ${frames.length} frame(s), source ${srcW}×${srcH} → 160×96 LCD`;   // same shape as the GIF→Keyboard panel's info line
+      if (lbl) lbl.textContent = TH108i18n.tf('{0}: {1} frame(s), source {2}×{3} → 160×96 LCD', (currentFile && currentFile.name) || 'image', frames.length, srcW, srcH);   // same shape as the GIF→Keyboard panel's info line
     }
     const ctls = $('#lcdCropCtls'); if (ctls) ctls.style.display = (srcCanvas && !isFit()) ? 'flex' : 'none';
   }
@@ -323,10 +323,10 @@
     const st = $('#lcdStats'); if (!st) return;
     if (!frames.length) { st.textContent = 'load an image or GIF to see stats'; return; }
     const size = (currentFile && currentFile.size) ? fmtBytes(currentFile.size) : '—';
-    if (frames.length === 1) { st.textContent = `${size} · static image · ${srcW}×${srcH} source`; return; }
+    if (frames.length === 1) { st.textContent = TH108i18n.tf('{0} · static image · {1}×{2} source', size, srcW, srcH); return; }
     const totalMs = frames.reduce((a, f) => a + (f.delayMs || 100), 0), sp = speedVal();
-    let s = `${size} · ${frames.length} frames · ${(totalMs / 1000).toFixed(1)}s`;
-    if (Math.abs(sp - 1) > 0.001) s += ` (${(totalMs / 1000 / sp).toFixed(1)}s at ${sp.toFixed(1)}×)`;   // speed-adjusted play time
+    let s = TH108i18n.tf('{0} · {1} frames · {2}s', size, frames.length, (totalMs / 1000).toFixed(1));
+    if (Math.abs(sp - 1) > 0.001) s += ' ' + TH108i18n.tf('({0}s at {1}×)', (totalMs / 1000 / sp).toFixed(1), sp.toFixed(1));   // speed-adjusted play time
     st.textContent = s;
   }
 
@@ -358,7 +358,7 @@
   // ---------------------------------------------------------------------------
   async function processFile(f) {
     stopPreview(); frames = []; previewIdx = 0;
-    log('decoding ' + f.name + ' (' + (isFit() ? 'fit' : 'crop') + ')…', 'in');
+    log(TH108i18n.tf('decoding {0} ({1})…', f.name, (isFit() ? 'fit' : 'crop')), 'in');
     try {
       if (window.ImageDecoder) {            // decodes animated GIF/WebP/APNG frame-by-frame with durations
         const dec = new ImageDecoder({ data: await f.arrayBuffer(), type: f.type || 'image/gif' });
@@ -374,11 +374,11 @@
         }
       }
       if (!frames.length) { const bmp = await createImageBitmap(f); captureSource(bmp, bmp.width, bmp.height); frames.push({ rgba: coverDraw(bmp.width, bmp.height, bmp), delayMs: 100 }); bmp.close && bmp.close(); }
-      log('decoded ' + frames.length + ' frame(s)' + (frames.length > 1 ? ' (animated)' : ''), 'ok');
+      log(TH108i18n.tf('decoded {0} frame(s){1}', frames.length, (frames.length > 1 ? ' (animated)' : '')), 'ok');
       drawCropGuide();
       updateStats();
       tickPreview();
-    } catch (err) { log('decode failed: ' + err.message, 'err'); }
+    } catch (err) { log(TH108i18n.tf('decode failed: {0}', err.message), 'err'); }
   }
 
   // load a blob (from URL / clipboard / library) — set as the current file and decode like a picked file
@@ -540,21 +540,21 @@
     const REGION_FRAMES = 33;                               // HARD cap = the official's max (33×30720 ≈ 1.01MB, 248 chunks). More overflows past the screen-flash region into config flash → corrupts the keyboard. The official samples long GIFs down to this.
     const want = Math.max(1, +$('#lcdMaxFrames').value || 20);
     const maxN = Math.min(REGION_FRAMES, want);
-    if (want > REGION_FRAMES) log(`capping ${want}→${REGION_FRAMES} frames to fit the LCD flash region (overflow would corrupt the keyboard)`, 'dim');
+    if (want > REGION_FRAMES) log(TH108i18n.tf('capping {0}→{1} frames to fit the LCD flash region (overflow would corrupt the keyboard)', want, REGION_FRAMES), 'dim');
     let up = sampleFrames(maxN);                            // evenly sample down to the frame cap (preserves whole animation)
-    if (up.length < frames.length) log(`sampling ${frames.length} → ${up.length} frames to fit the screen`, 'in');
+    if (up.length < frames.length) log(TH108i18n.tf('sampling {0} → {1} frames to fit the screen', frames.length, up.length), 'in');
     // Each frame = 30720B = 7.5 chunks; an EVEN frame count lands on a 4096B boundary so the 256B header
     // offset drops the last 128px (bottom row) and under-erases it → stale-flash glitch. Duplicating the
     // last frame makes the count ODD, which sends every byte and erases the full region. (Protocol-safe:
     // keeps the official's totalChunks formula intact.)
     if (up.length % 2 === 0) { up = up.concat([up[up.length - 1]]); log('even frame count → duplicating last frame to avoid the bottom-row glitch', 'dim'); }
     const sp = speedVal();
-    if (Math.abs(sp - 1) > 0.001) log(`speed ${sp.toFixed(1)}× → scaling baked frame delays (floored at 20ms, the firmware caps each at ~510ms)`, 'dim');
+    if (Math.abs(sp - 1) > 0.001) log(TH108i18n.tf('speed {0}× → scaling baked frame delays (floored at 20ms, the firmware caps each at ~510ms)', sp.toFixed(1)), 'dim');
     // calibrated RGB565 per frame; Speed scales the baked delay (floor 20ms so we never write a 0ms frame; buildHeader caps at 255 → ~510ms)
     const encFrames = up.map(fr => ({ bytes: encodeFrame(fr.rgba), delayMs: Math.max(20, Math.round((fr.delayMs || 100) / sp)) }));
     const plan = TH108LcdUpload.planUpload(encFrames);                                        // shared engine builds header/chunks
     const frameCount = plan.frameCount, totalSize = plan.totalSize, S = plan.chunkCount;
-    log(`uploading ${frameCount} frame(s): ${totalSize} bytes (${S} chunks)`, 'in');
+    log(TH108i18n.tf('uploading {0} frame(s): {1} bytes ({2} chunks)', frameCount, totalSize, S), 'in');
 
     // diagnostic timeline (captured for the crash report)
     const t0d = Date.now(), diag = []; const D = o => { if (diag.length < 3000) diag.push(Object.assign({ t: Date.now() - t0d }, o)); };
@@ -583,7 +583,7 @@
     } catch (err) {
       result = 'FAILED: ' + err.message; D({ ev: 'FAIL', err: err.message });
       setOverlay(null, 'Upload failed', 'if the screen is frozen, replug → wait → reconnect → retry');
-      log('✗ upload failed: ' + err.message + ' — click "📋 Copy last upload report" and paste it to me. If the screen is frozen, replug → wait → reconnect → retry.', 'err');
+      log(TH108i18n.tf('✗ upload failed: {0} — click "📋 Copy last upload report" and paste it to me. If the screen is frozen, replug → wait → reconnect → retry.', err.message), 'err');
       await new Promise(r2 => setTimeout(r2, 1400));
     }
     finally {
@@ -603,7 +603,7 @@
   async function uploadBlack() {
     if (uploading) { log('⚠ an upload is already running — let it finish first.', 'err'); return; }
     if (!scrDev) { log('connect first', 'err'); return; }
-    if (!confirm('Blank the LCD?\n\nThis uploads a single all-black frame (writes the screen flash, like any LCD upload). The BACKLIGHT stays on, so the screen goes lit-black, not truly off — add a light-blocking sticker for full dark.')) return;
+    if (!confirm(TH108i18n.t('Blank the LCD? This uploads a single all-black frame (writes the screen flash, like any LCD upload). The BACKLIGHT stays on, so the screen goes lit-black, not truly off — add a light-blocking sticker for full dark.'))) return;
     uploading = true;
     const upBtn = $('#lcdUpload'), offBtn = $('#lcdOff'), fileInput = $('#lcdFile');
     if (upBtn) upBtn.disabled = true; if (offBtn) offBtn.disabled = true; if (fileInput) fileInput.disabled = true;
@@ -613,7 +613,7 @@
     const black = new Uint8Array(160 * 96 * 2);          // all zero = black; raw (no calibration) so it's the darkest possible
     const encFrames = [{ bytes: black, delayMs: 100 }];
     const plan = TH108LcdUpload.planUpload(encFrames);
-    log(`LCD off: uploading 1 black frame — ${plan.totalSize} bytes (${plan.chunkCount} chunks)`, 'in');
+    log(TH108i18n.tf('LCD off: uploading 1 black frame — {0} bytes ({1} chunks)', plan.totalSize, plan.chunkCount), 'in');
     const t0d = Date.now(), diag = []; const D = o => { if (diag.length < 3000) diag.push(Object.assign({ t: Date.now() - t0d }, o)); };
     D({ ev: 'start', frames: plan.frameCount, bytes: plan.totalSize, chunks: plan.chunkCount, reportId: scrId, reportLen: scrLen, mode: 'black' });
     let result = 'ok';
@@ -636,7 +636,7 @@
     } catch (err) {
       result = 'FAILED: ' + err.message; D({ ev: 'FAIL', err: err.message });
       setOverlay(null, 'Blanking failed', 'if the screen is frozen, replug → wait → reconnect → retry');
-      log('✗ LCD off failed: ' + err.message + ' — if the screen is frozen, replug → wait → reconnect → retry.', 'err');
+      log(TH108i18n.tf('✗ LCD off failed: {0} — if the screen is frozen, replug → wait → reconnect → retry.', err.message), 'err');
       await new Promise(r2 => setTimeout(r2, 1400));
     } finally {
       lastReport = buildReport(diag, { result, device: scrDev && scrDev.productName, reportId: scrId, reportLen: scrLen });
@@ -679,9 +679,9 @@
     if (uploading) { log('⚠ wait for the upload to finish before syncing the clock.', 'err'); return; }
     if (!ctlDev) { log('✗ clock: no control interface available — connect on the main page first.', 'err'); return; }
     const d = new Date(), ts = d.toLocaleString(), pkt = buildTimePkt(d, ctlLen);
-    log('clock → ' + hex(pkt.slice(0, 17)) + '… (' + ts + ')', 'dim');
-    try { await sendAwaitAck(ctlDev, ctlId, pkt, 0x34); log('✓ clock synced to ' + ts + ' — view it with FN+knob → scroll right → click.', 'ok'); }
-    catch (e) { log('✗ clock sync: ' + e.message, 'err'); }
+    log(TH108i18n.tf('clock → {0}… ({1})', hex(pkt.slice(0, 17)), ts), 'dim');
+    try { await sendAwaitAck(ctlDev, ctlId, pkt, 0x34); log(TH108i18n.tf('✓ clock synced to {0} — view it with FN+knob → scroll right → click.', ts), 'ok'); }
+    catch (e) { log(TH108i18n.tf('✗ clock sync: {0}', e.message), 'err'); }
   }
 
   // ---------------------------------------------------------------------------
@@ -718,7 +718,7 @@
         const items = await navigator.clipboard.read();
         for (const it of items) { const ty = it.types.find(t => t.startsWith('image/')); if (ty) return loadBlob(await it.getType(ty), 'pasted-image'); }
         log('no image on the clipboard', 'dim');
-      } catch (e) { log('clipboard read failed: ' + e.message + ' — copy the image again, or just press Ctrl+V on the page', 'err'); }
+      } catch (e) { log(TH108i18n.tf('clipboard read failed: {0} — copy the image again, or just press Ctrl+V on the page', e.message), 'err'); }
     });
     pasteHandler = e => {
       if (!shown) return;                 // ignore paste unless the LCD overlay is open (don't hijack the host page)
@@ -731,7 +731,7 @@
       if (!currentFile) { log('load an image first', 'dim'); return; }
       if (!(window.TH108Media && TH108Media.available)) { log('library unavailable — serve via http://localhost (not file://)', 'err'); return; }
       try { await TH108Media.add(currentFile, (currentFile && currentFile.name) || 'lcd-image'); log('added to library', 'ok'); refreshLib(); }
-      catch (e) { log('add to library failed: ' + e.message, 'err'); }
+      catch (e) { log(TH108i18n.tf('add to library failed: {0}', e.message), 'err'); }
     });
 
     // ---- crop reposition / scale, undo·redo·reset ----
@@ -824,7 +824,7 @@
         .catch(() => { log('clipboard blocked — report dumped below:', 'dim'); lastReport.split('\n').forEach(l => log(l, 'dim')); });
     });
 
-    clockTimer = setInterval(() => { const e = $('#lcdClockNow'); if (e) e.textContent = 'PC time: ' + new Date().toLocaleTimeString(); }, 250);
+    clockTimer = setInterval(() => { const e = $('#lcdClockNow'); if (e) e.textContent = TH108i18n.tf('PC time: {0}', new Date().toLocaleTimeString()); }, 250);
   }
 
   // window-level listeners we attach in wire() (tracked so they could be detached if ever needed)
@@ -846,10 +846,10 @@
   // load by URL (CORS-permitting)
   async function loadFromUrl(url) {
     if (!url) return;
-    log('fetching ' + url + '…', 'dim');
+    log(TH108i18n.tf('fetching {0}…', url), 'dim');
     try {
       const r = await fetch(url, { mode: 'cors' }); if (!r.ok) throw new Error('HTTP ' + r.status);
-      const blob = await r.blob(); if (!/^image\//.test(blob.type)) throw new Error('not an image (' + (blob.type || 'unknown type') + ')');
+      const blob = await r.blob(); if (!/^image\//.test(blob.type)) throw new Error(TH108i18n.tf('not an image ({0})', (blob.type || 'unknown type')));
       loadBlob(blob, (url.split('/').pop() || 'url-image').split('?')[0]);
     } catch (e) { log('URL load failed: ' + e.message + ' — the host may block cross-origin fetch (CORS)', 'err'); }
   }

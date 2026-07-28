@@ -1426,7 +1426,7 @@ const {KEYMAP, INDICES, NLED, BOARDW, BOARDH, hexToRgb} = TH108Engine;
 // ===== WebHID transport — extracted to th108-hid.js (binds 0xFF68/0x61 + ACK-gated 0x32 streaming) =====
 const out=document.getElementById('log');
 function log(m,c=''){ const d=document.createElement('div'); if(c)d.className=c;
-  d.textContent='['+new Date().toISOString().substr(11,12)+'] '+m; out.appendChild(d);
+  d.textContent='['+new Date().toISOString().substr(11,12)+'] '+(window.TH108i18n?TH108i18n.t(m):m); out.appendChild(d);   // t(): translate static log lines (observer can't — timestamp is concatenated into the same text node). Interpolated lines are pre-wrapped with tf() at their call sites.
   while(out.childNodes.length>200) out.removeChild(out.firstChild); out.scrollTop=out.scrollHeight; }
 function setStatus(s,c='',tip=''){ const e=document.getElementById('status'); e.textContent=s; e.className='aux '+(c||'dim'); e.title=tip; }   // tip = hover tooltip for the jargon behind a friendly status
 // deprecated-controller banner (Task 5) — plain hoisted function declarations so callbacks defined

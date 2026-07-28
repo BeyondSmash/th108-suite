@@ -152,7 +152,7 @@ window.TH108DaemonClient = (function () {
           const c = document.createElement('input'); c.type = 'checkbox'; c.checked = !!src.allowed;
           c.addEventListener('change', async () => {
             try { await fetch('/nowplaying', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ source: { id: src.id, allow: c.checked } }) });
-              log('♪ media source ' + (c.checked ? 'allowed' : 'blocked') + ': ' + srcLabel(src.id), 'ok'); } catch (_) { log('source toggle failed', 'err'); }
+              log(TH108i18n.tf('♪ media source {0}: {1}', (c.checked ? 'allowed' : 'blocked'), srcLabel(src.id)), 'ok'); } catch (_) { log('source toggle failed', 'err'); }
           });
           const t = document.createElement('span'); t.textContent = srcLabel(src.id); t.title = src.id;
           l.appendChild(c); l.appendChild(t); host.appendChild(l);
@@ -167,7 +167,7 @@ window.TH108DaemonClient = (function () {
           const spTxt = document.getElementById('setupPathTxt'), spWrap = document.getElementById('setupPathWrap'), trTxt = document.getElementById('trayPathTxt');
           if (spTxt && spWrap && s.setupPath) { if (spTxt.textContent !== s.setupPath) spTxt.textContent = s.setupPath; spWrap.style.display = 'inline-flex'; }
           if (trTxt && s.setupPath) { const t = s.setupPath.replace(/setup\.cmd$/i, 'th108-daemon\\start-tray.vbs'); if (trTxt.textContent !== t) trTxt.textContent = t; }   // start-tray.vbs sits in th108-daemon/ next to setup.cmd
-          const _stTxt = 'daemon: running · ' + (s.paused ? 'yielded to this page' : (s.deviceConnected ? 'driving the keyboard — layer edits here apply LIVE, no Connect needed' : 'waiting for the keyboard'));
+          const _stTxt = TH108i18n.tf('daemon: running · {0}', TH108i18n.t(s.paused ? 'yielded to this page' : (s.deviceConnected ? 'driving the keyboard — layer edits here apply LIVE, no Connect needed' : 'waiting for the keyboard')));
           if (st.textContent !== _stTxt) st.textContent = _stTxt;   // only rewrite on change — a stable status must not churn the DOM every 2.5s (was resetting scroll anchoring → page snapped to top)
           auto.disabled = false; quit.disabled = false; if (restart) restart.disabled = false;
           // state rides /status; don't fight a click in progress. A daemon built before this setting
@@ -192,7 +192,7 @@ window.TH108DaemonClient = (function () {
             const stEl = document.getElementById('npState'), trEl = document.getElementById('npTrack');
             if (stEl) stEl.textContent = !knowsNp ? 'Daemon needs a restart' : (s.nowPlaying ? 'On' : 'Off');
             if (trEl) trEl.textContent = !s.nowPlaying ? '' :
-              (s.npTrack ? 'Showing: ' + s.npTrack.title + ' — ' + s.npTrack.artist + (s.npTrack.status === 'paused' ? '  ⏸' : '')
+              (s.npTrack ? TH108i18n.tf('Showing: {0} — {1}', s.npTrack.title, s.npTrack.artist) + (s.npTrack.status === 'paused' ? '  ⏸' : '')
                          : (s.npQueued && s.paused ? 'queued — waiting for this page to release the keyboard' : 'waiting for music…'));
             for (const [id, key] of [['npTitleColor', 'npTitle'], ['npArtistColor', 'npArtist']]) {
               const el = document.getElementById(id);
@@ -241,7 +241,7 @@ window.TH108DaemonClient = (function () {
               if (lg.length && (s.nowPlaying || s.npBar)) {
                 feedWrap.style.display = '';
                 const now = Date.now();
-                const ago = ms => { const sec = Math.max(0, Math.round(ms / 1000)); return sec < 3 ? 'just now' : sec < 60 ? sec + 's ago' : Math.round(sec / 60) + 'm ago'; };
+                const ago = ms => { const sec = Math.max(0, Math.round(ms / 1000)); return sec < 3 ? 'just now' : sec < 60 ? TH108i18n.tf('{0}s ago', sec) : TH108i18n.tf('{0}m ago', Math.round(sec / 60)); };
                 const esc = t => String(t).replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
                 feed.innerHTML = lg.slice().reverse().map(e => '<div><span style="opacity:.55">' + ago(now - e.t) + '</span> · ' + esc(e.msg) + '</div>').join('');
               } else { feedWrap.style.display = 'none'; }
@@ -253,26 +253,26 @@ window.TH108DaemonClient = (function () {
       auto.addEventListener('change', async () => {
         try {
           await fetch('/autostart', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ on: auto.checked }) });
-          log('daemon auto-start on login ' + (auto.checked ? 'enabled' : 'disabled'), 'ok');
+          log(TH108i18n.tf('daemon auto-start on login {0}', (auto.checked ? 'enabled' : 'disabled')), 'ok');
         } catch (_) { log('auto-start toggle failed', 'err'); refreshAuto(); }
       });
       if (usb) usb.addEventListener('change', async () => {
         try {
           await fetch('/usbreset', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ on: usb.checked }) });
-          log('auto USB-restart wedge fix ' + (usb.checked ? 'enabled' : 'disabled'), 'ok');
+          log(TH108i18n.tf('auto USB-restart wedge fix {0}', (usb.checked ? 'enabled' : 'disabled')), 'ok');
         } catch (_) { log('USB-restart toggle failed', 'err'); refresh(); }
       });
       if (disp) disp.addEventListener('change', async () => {
         try {
           await fetch('/displayoff', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ on: disp.checked }) });
-          log('lights-off-when-monitor-off ' + (disp.checked ? 'enabled' : 'disabled'), 'ok');
+          log(TH108i18n.tf('lights-off-when-monitor-off {0}', (disp.checked ? 'enabled' : 'disabled')), 'ok');
         } catch (_) { log('monitor-off toggle failed', 'err'); refresh(); }
       });
       if (np) np.addEventListener('change', async () => {
         // BRICK WARNING: every media change writes the LCD FLASH (cmd 0x50). On this board a flash
         // write occasionally wedges the firmware — a softbrick that kills typing until a factory
         // reset (happened repeatedly 2026-06-12/13). So enabling is an explicit, warned opt-in.
-        if (np.checked && !confirm('⚠ Enable now-playing on the LCD?\n\nThis writes the keyboard\'s LCD flash on each TRACK CHANGE (not on play/pause), waits 20s between writes, and caps at 30/hour — to minimize risk. But a flash write can still occasionally WEDGE the firmware (a softbrick that stops typing until you factory-reset on Epomaker\'s site).\n\nIt has bricked the keyboard before. Only enable if you can afford a possible factory reset. Continue?')) {
+        if (np.checked && !confirm(TH108i18n.t('⚠ Enable now-playing on the LCD? This writes the keyboard\'s LCD flash on each TRACK CHANGE (not on play/pause), waits 20s between writes, and caps at 30/hour — to minimize risk. But a flash write can still occasionally WEDGE the firmware (a softbrick that stops typing until you factory-reset on Epomaker\'s site). It has bricked the keyboard before. Only enable if you can afford a possible factory reset. Continue?'))) {
           np.checked = false; return;
         }
         try {
@@ -282,7 +282,7 @@ window.TH108DaemonClient = (function () {
             const rv = r && r.revert;
             if (rv && rv.skipped) log('♪ now-playing off — that GIF is already on the LCD, no reload needed', 'ok');
             else if (rv && rv.ok) log('♪ now-playing off — reverting the LCD to your GIF (the 33-frame reload takes a bit)', 'ok');
-            else log('♪ now-playing off — couldn\'t revert to your GIF: ' + ((rv && rv.reason) || 'unknown') + '. It\'ll revert once the daemon owns the keyboard.', 'err');
+            else log(TH108i18n.tf('♪ now-playing off — couldn\'t revert to your GIF: {0}. It\'ll revert once the daemon owns the keyboard.', ((rv && rv.reason) || 'unknown')), 'err');
           }
         } catch (_) { log('now-playing toggle failed', 'err'); refresh(); }
       });
@@ -291,7 +291,7 @@ window.TH108DaemonClient = (function () {
         if (el) el.addEventListener('change', async () => {   // 'change' = picker closed — one flash re-paint per pick, not per drag
           try {
             await fetch('/nowplaying', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ [key]: el.value }) });
-            log('♪ now-playing ' + (key === 'titleColor' ? 'title' : 'artist') + ' color → ' + el.value + ' (the current song re-paints)', 'ok');
+            log(TH108i18n.tf('♪ now-playing {0} color → {1} (the current song re-paints)', (key === 'titleColor' ? 'title' : 'artist'), el.value), 'ok');
           } catch (_) { log('color change failed', 'err'); }
         });
       }
@@ -299,7 +299,7 @@ window.TH108DaemonClient = (function () {
       if (npFitEl) npFitEl.addEventListener('change', async () => {
         try {
           await fetch('/nowplaying', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ artFit: npFitEl.value === 'fit' }) });
-          log('♪ album art → ' + (npFitEl.value === 'fit' ? 'Fit (whole cover, letterboxed)' : 'Crop (fill + crop)') + ' (the current song re-paints)', 'ok');
+          log(TH108i18n.tf('♪ album art → {0} (the current song re-paints)', (npFitEl.value === 'fit' ? 'Fit (whole cover, letterboxed)' : 'Crop (fill + crop)')), 'ok');
         } catch (_) { log('album-art style change failed', 'err'); }
       });
       // song-progress light-bar (keys 1-0) — SAFE, lighting only; all of it rides /nowplaying {bar:{…}}
@@ -310,13 +310,13 @@ window.TH108DaemonClient = (function () {
       const npBarEl = document.getElementById('npBar'), npBarColorEl = document.getElementById('npBarColor'),
             npBarBrightEl = document.getElementById('npBarBright'), npBarBrightLblEl = document.getElementById('npBarBrightLbl'),
             npFlashEl = document.getElementById('npFlash'), npFlashColorEl = document.getElementById('npFlashColor');
-      if (npBarEl) npBarEl.addEventListener('change', () => postBar({ on: npBarEl.checked }, '♪ song-progress bar (keys 1-0) ' + (npBarEl.checked ? 'on — lighting only, safe; needs the daemon running' : 'off')));
+      if (npBarEl) npBarEl.addEventListener('change', () => postBar({ on: npBarEl.checked }, TH108i18n.tf('♪ song-progress bar (keys 1-0) {0}', (npBarEl.checked ? 'on — lighting only, safe; needs the daemon running' : 'off'))));
       if (npBarColorEl) {
         let _colAt = 0;
         npBarColorEl.addEventListener('input', () => {   // LIVE on the keyboard while dragging the picker (throttled ~10/s, no log per tick)
           const now = Date.now(); if (now - _colAt >= 100) { _colAt = now; postBar({ color: npBarColorEl.value }); }
         });
-        npBarColorEl.addEventListener('change', () => postBar({ color: npBarColorEl.value }, '♪ progress-bar color → ' + npBarColorEl.value));   // final value + one log line on close
+        npBarColorEl.addEventListener('change', () => postBar({ color: npBarColorEl.value }, TH108i18n.tf('♪ progress-bar color → {0}', npBarColorEl.value)));   // final value + one log line on close
       }
       if (npBarBrightEl) {
         let _briAt = 0;
@@ -325,27 +325,27 @@ window.TH108DaemonClient = (function () {
           const now = Date.now();
           if (now - _briAt >= 100) { _briAt = now; postBar({ bright: +npBarBrightEl.value }); }   // LIVE on the keyboard (the bar is daemon-rendered), throttled ~10/s; no log per tick
         });
-        npBarBrightEl.addEventListener('change', () => postBar({ bright: +npBarBrightEl.value }, '♪ progress-bar brightness → ' + npBarBrightEl.value + '%'));   // final value + one log line on release
+        npBarBrightEl.addEventListener('change', () => postBar({ bright: +npBarBrightEl.value }, TH108i18n.tf('♪ progress-bar brightness → {0}%', npBarBrightEl.value)));   // final value + one log line on release
       }
-      if (npFlashEl) npFlashEl.addEventListener('change', () => postBar({ flash: npFlashEl.checked }, '♪ track-change flash ' + (npFlashEl.checked ? 'on' : 'off')));
-      if (npFlashColorEl) npFlashColorEl.addEventListener('change', () => postBar({ flashColor: npFlashColorEl.value }, '♪ track-change flash color → ' + npFlashColorEl.value));
+      if (npFlashEl) npFlashEl.addEventListener('change', () => postBar({ flash: npFlashEl.checked }, TH108i18n.tf('♪ track-change flash {0}', (npFlashEl.checked ? 'on' : 'off'))));
+      if (npFlashColorEl) npFlashColorEl.addEventListener('change', () => postBar({ flashColor: npFlashColorEl.value }, TH108i18n.tf('♪ track-change flash color → {0}', npFlashColorEl.value)));
       const npGradEl = document.getElementById('npBarGrad'), npGradFitEl = document.getElementById('npBarGradFit'), npKeysEl = document.getElementById('npBarKeys');
-      if (npGradEl) npGradEl.addEventListener('change', () => postBar({ grad: npGradEl.value }, '♪ progress-bar style → ' + npGradEl.options[npGradEl.selectedIndex].text));
-      if (npGradFitEl) npGradFitEl.addEventListener('change', () => postBar({ gradFit: npGradFitEl.checked }, '♪ progress-bar gradient ' + (npGradFitEl.checked ? 'stretches to the filled part' : 'fixed across all keys')));
-      if (npKeysEl) npKeysEl.addEventListener('change', () => postBar({ keys: npKeysEl.value }, '♪ progress-bar on the ' + npKeysEl.options[npKeysEl.selectedIndex].text));
+      if (npGradEl) npGradEl.addEventListener('change', () => postBar({ grad: npGradEl.value }, TH108i18n.tf('♪ progress-bar style → {0}', npGradEl.options[npGradEl.selectedIndex].text)));
+      if (npGradFitEl) npGradFitEl.addEventListener('change', () => postBar({ gradFit: npGradFitEl.checked }, TH108i18n.tf('♪ progress-bar gradient {0}', (npGradFitEl.checked ? 'stretches to the filled part' : 'fixed across all keys'))));
+      if (npKeysEl) npKeysEl.addEventListener('change', () => postBar({ keys: npKeysEl.value }, TH108i18n.tf('♪ progress-bar on the {0}', npKeysEl.options[npKeysEl.selectedIndex].text)));
       const npAgentTopEl = document.getElementById('npBarAgentTop');
-      if (npAgentTopEl) npAgentTopEl.addEventListener('change', () => postBar({ agentTop: npAgentTopEl.checked }, '♪ agent glyphs ' + (npAgentTopEl.checked ? 'above' : 'under') + ' the progress bar'));
+      if (npAgentTopEl) npAgentTopEl.addEventListener('change', () => postBar({ agentTop: npAgentTopEl.checked }, TH108i18n.tf('♪ agent glyphs {0} the progress bar', (npAgentTopEl.checked ? 'above' : 'under'))));
       const npIdleEl = document.getElementById('npBarIdle'), npIdleLblEl = document.getElementById('npBarIdleLbl');
       if (npIdleEl) {
         npIdleEl.addEventListener('input', () => { if (npIdleLblEl) npIdleLblEl.textContent = (+npIdleEl.value) + 's'; });
-        npIdleEl.addEventListener('change', () => postBar({ idleSec: +npIdleEl.value }, '♪ progress-bar fades out after ' + npIdleEl.value + 's idle'));
+        npIdleEl.addEventListener('change', () => postBar({ idleSec: +npIdleEl.value }, TH108i18n.tf('♪ progress-bar fades out after {0}s idle', npIdleEl.value)));
       }
       const npRefreshBtn = document.getElementById('npRefreshLcd');
       if (npRefreshBtn) npRefreshBtn.addEventListener('click', async () => {
         npRefreshBtn.disabled = true;
         try {
           const r = await (await fetch('/nowplaying', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ refresh: true }) })).json();
-          log(r && r.ok ? '↻ LCD refreshed — repainted the current song' : '↻ LCD refresh skipped: ' + ((r && r.reason) || 'unknown'), r && r.ok ? 'ok' : 'err');
+          log(r && r.ok ? '↻ LCD refreshed — repainted the current song' : TH108i18n.tf('↻ LCD refresh skipped: {0}', ((r && r.reason) || 'unknown')), r && r.ok ? 'ok' : 'err');
         } catch (_) { log('↻ LCD refresh failed', 'err'); }
         setTimeout(() => { npRefreshBtn.disabled = false; }, 1200);
       });
@@ -354,8 +354,8 @@ window.TH108DaemonClient = (function () {
         npMaskEl.disabled = true;
         try {
           const r = await (await fetch('/nowplaying', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ mask: npMaskEl.checked }) })).json();
-          if (r && r.ok) log('♪ onboard mask ' + (npMaskEl.checked ? 'on — onboard set to black; the update-flash is a dark blink now (A/B vs off)' : 'off — onboard restored to a colorful default'), 'ok');
-          else { log('♪ onboard mask didn\'t apply: ' + ((r && r.reason) || 'the daemon must be driving the board'), 'err'); npMaskEl.checked = !npMaskEl.checked; }
+          if (r && r.ok) log(TH108i18n.tf('♪ onboard mask {0}', (npMaskEl.checked ? 'on — onboard set to black; the update-flash is a dark blink now (A/B vs off)' : 'off — onboard restored to a colorful default')), 'ok');
+          else { log(TH108i18n.tf('♪ onboard mask didn\'t apply: {0}', ((r && r.reason) || 'the daemon must be driving the board')), 'err'); npMaskEl.checked = !npMaskEl.checked; }
         } catch (_) { log('onboard mask change failed', 'err'); npMaskEl.checked = !npMaskEl.checked; }
         setTimeout(() => { npMaskEl.disabled = false; }, 1500);   // it cycles the keyboard once — brief settle
       });
@@ -366,7 +366,7 @@ window.TH108DaemonClient = (function () {
       copyPath('setupPathCopy', 'setupPathTxt');
       copyPath('trayPathCopy', 'trayPathTxt');
       quit.addEventListener('click', async () => {
-        if (!confirm('Quit the background daemon?\n\nAlways-on lighting and reactive-anywhere stop until setup.cmd or your next login starts it again. This page keeps working as-is.')) return;
+        if (!confirm(TH108i18n.t('Quit the background daemon? Always-on lighting and reactive-anywhere stop until setup.cmd or your next login starts it again. This page keeps working as-is.'))) return;
         try { await fetch('/quit', { method: 'POST' }); log('daemon quit', 'dim'); } catch (_) {}
         try { window.dispatchEvent(new Event('th108-daemon-transition')); } catch (_) {}   // flip the header Online→Offline tag now
         setTimeout(refresh, 600);

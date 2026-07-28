@@ -122,9 +122,9 @@
       if (aspect === 'lighting') { tgt.layers = JSON.parse(JSON.stringify(src.layers || [])); tgt.order = src.order ? JSON.parse(JSON.stringify(src.order)) : null; }
       else { tgt.hostActions = JSON.parse(JSON.stringify(stripCyc(src.hostActions))); }
       store(l); render();
-      log('✓ copied ' + aspect + ' from "' + src.name + '" into "' + tgt.name + '"', 'ok');
-      showUndoToast('Copied ' + aspect + ' from "' + src.name + '" into "' + tgt.name + '"', () => {
-        const l2 = load(); if (l2[targetIdx]) { l2[targetIdx] = before; store(l2); render(); log('↩ copy undone', 'dim'); }
+      log(TH108i18n.tf('✓ copied {0} from "{1}" into "{2}"', TH108i18n.t(aspect), src.name, tgt.name), 'ok');
+      showUndoToast(TH108i18n.tf('Copied {0} from "{1}" into "{2}"', TH108i18n.t(aspect), src.name, tgt.name), () => {
+        const l2 = load(); if (l2[targetIdx]) { l2[targetIdx] = before; store(l2); render(); log(TH108i18n.t('↩ copy undone'), 'dim'); }
       });
     }
     // Mirror the profile list to the daemon so the Host Actions "Profile → Next/Prev" key can cycle them with
@@ -168,7 +168,7 @@
       const opts = new Map();   // exe(lower) → display label (matching is by process, so the label is the app's file description, not the per-window title)
       (_openApps || []).forEach(a => { if (a.name) opts.set(a.name.toLowerCase(), (a.desc && a.desc.trim()) || a.title || a.name); });
       const cur = (entry.exe || '').toLowerCase();
-      if (cur && !opts.has(cur)) opts.set(cur, entry.exe + ' (not running)');
+      if (cur && !opts.has(cur)) opts.set(cur, TH108i18n.tf('{0} (not running)', entry.exe));
       opts.forEach((label, exe) => { const op = document.createElement('option'); op.value = exe; op.textContent = label; if (exe === cur) op.selected = true; appSel.appendChild(op); });
       appSel.addEventListener('change', () => { const m = loadAppMap(); if (m.map[i]) { m.map[i].exe = appSel.value; saveAppMap(m); } });
       const arrow = document.createElement('span'); arrow.textContent = '→'; arrow.style.opacity = '.55';
@@ -234,7 +234,7 @@
           const l = load(); const oldName = l[i].name, newName = sanitizeName(name.value, oldName);
           l[i].name = newName; store(l); name.value = newName;
           if (newName !== oldName) renameProfileRefs(oldName, newName);   // keep app-rules, the default, and the selected tick pointing at the renamed profile (names are the only handle)
-          log('profile renamed → "' + newName + '"', 'dim');
+          log(TH108i18n.tf('profile renamed → "{0}"', newName), 'dim');
         });
         const sel = document.createElement('input');
         sel.type = 'checkbox'; sel.className = 'profSel'; sel.checked = (prof.name === activeName);
@@ -270,15 +270,15 @@
           b.addEventListener('click', fn); row.appendChild(b); return b;
         };
         btn('Apply', 'apply this profile live (no reload)', () => {
-          if (!confirm('Apply "' + prof.name + '"?\n\nThis replaces your current setup live (save it as a profile first to keep it).')) return;
+          if (!confirm(TH108i18n.tf('Apply "{0}"? This replaces your current setup live (save it as a profile first to keep it).', prof.name))) return;
           applyData(prof, i);
-          showToast('✓ applied profile “' + prof.name + '”');
+          showToast(TH108i18n.tf('✓ applied profile “{0}”', prof.name));
         }, 'go');
         btn('Update', 'overwrite this profile from the current setup (per its type)', () => {
-          if (!confirm('Overwrite “' + prof.name + '” with your current on-screen settings?')) return;
+          if (!confirm(TH108i18n.tf('Overwrite “{0}” with your current on-screen settings?', prof.name))) return;
           const l = load(); l[i] = snapshot(l[i].name, l[i].type, l[i].color); store(l);
-          log('✓ profile "' + l[i].name + '" updated', 'ok');
-          showToast('✓ profile “' + l[i].name + '” updated');
+          log(TH108i18n.tf('✓ profile "{0}" updated', l[i].name), 'ok');
+          showToast(TH108i18n.tf('✓ profile “{0}” updated', l[i].name));
           render();
         });
         btn('Export', 'download this profile as JSON', () => {
@@ -286,17 +286,17 @@
           a.href = URL.createObjectURL(new Blob([JSON.stringify({ name: prof.name, type: prof.type || 'lighting', color: prof.color || '', layers: prof.layers || [], order: prof.order || null, hostActions: prof.hostActions || [] })], { type: 'application/json' }));
           a.download = 'th108-profile-' + fileSlug(prof.name) + '.json'; a.click();
           setTimeout(() => URL.revokeObjectURL(a.href), 1000);
-          log('✓ exported profile "' + prof.name + '"', 'ok');
-          showToast('✓ exported “' + prof.name + '”');
+          log(TH108i18n.tf('✓ exported profile "{0}"', prof.name), 'ok');
+          showToast(TH108i18n.tf('✓ exported “{0}”', prof.name));
         });
         btn('Duplicate', 'clone this profile as a starting point', () => {
           const l = load();
-          if (!canAdd(l)) { log('profile limit reached (' + MAX_PROFILES + ') — delete one first', 'err'); return; }
+          if (!canAdd(l)) { log(TH108i18n.tf('profile limit reached ({0}) — delete one first', MAX_PROFILES), 'err'); return; }
           const src = l[i], clone = JSON.parse(JSON.stringify(src));
           clone.name = sanitizeName(src.name + ' (cloned from #' + (i + 1) + ' ' + src.name + ')', src.name);
           clone.savedAt = Date.now();
           l.push(clone); store(l);
-          log('✓ duplicated "' + src.name + '" → "' + clone.name + '"', 'ok');
+          log(TH108i18n.tf('✓ duplicated "{0}" → "{1}"', src.name, clone.name), 'ok');
           render();
         });
         const copyBtn = btn('Copy from…', list.length < 2 ? 'Needs another profile to copy from — add or duplicate a profile first' : 'copy Lighting or Hotkeys from another profile into this one', () => {
@@ -317,10 +317,10 @@
         });
         if (list.length < 2) { copyBtn.style.opacity = '.45'; copyBtn.style.cursor = 'not-allowed'; }   // only this profile → nothing to copy from; grayed + not-allowed cursor, tooltip explains (kept hoverable so the tooltip shows)
         btn('✕', 'delete this profile', () => {
-          if (!confirm('Delete profile "' + prof.name + '"?')) return;
+          if (!confirm(TH108i18n.tf('Delete profile "{0}"?', prof.name))) return;
           const l = load(); l.splice(i, 1); store(l);
           removeProfileRefs(prof.name);   // drop any app-rule / default pointing at the now-deleted profile
-          log('profile "' + prof.name + '" deleted', 'dim');
+          log(TH108i18n.tf('profile "{0}" deleted', prof.name), 'dim');
           render();
         });
         host.appendChild(row);
@@ -329,18 +329,18 @@
 
     $('profSave').addEventListener('click', () => {
       const list = load();
-      if (!canAdd(list)) { log('profile limit reached (' + MAX_PROFILES + ') — delete one first', 'err'); return; }
+      if (!canAdd(list)) { log(TH108i18n.tf('profile limit reached ({0}) — delete one first', MAX_PROFILES), 'err'); return; }
       const prof = snapshot(defaultName(list), 'lighting', defaultColor(list.length));
       list.push(prof); store(list);
-      log('✓ saved current setup as "' + prof.name + '" (' + prof.layers.length + ' layers) — click its name to rename', 'ok');
+      log(TH108i18n.tf('✓ saved current setup as "{0}" ({1} layers) — click its name to rename', prof.name, prof.layers.length), 'ok');
       render();
     });
     $('profAddNew').addEventListener('click', () => {
       const list = load();
-      if (!canAdd(list)) { log('profile limit reached (' + MAX_PROFILES + ') — delete one first', 'err'); return; }
+      if (!canAdd(list)) { log(TH108i18n.tf('profile limit reached ({0}) — delete one first', MAX_PROFILES), 'err'); return; }
       const p = { name: defaultName(list), type: 'lighting', color: defaultColor(list.length), layers: defaultLayersConf(), order: null, savedAt: Date.now() };
       list.push(p); store(list);
-      log('✓ added new profile "' + p.name + '" with default settings — click its name to rename', 'ok');
+      log(TH108i18n.tf('✓ added new profile "{0}" with default settings — click its name to rename', p.name), 'ok');
       render();
     });
     $('profImport').addEventListener('click', () => $('profFile').click());
@@ -350,13 +350,13 @@
       try {
         const imp = normalizeImport(JSON.parse(await f.text()));
         const list = load();
-        if (!canAdd(list)) { log('profile limit reached (' + MAX_PROFILES + ') — delete one first', 'err'); return; }
+        if (!canAdd(list)) { log(TH108i18n.tf('profile limit reached ({0}) — delete one first', MAX_PROFILES), 'err'); return; }
         const name = sanitizeName(imp.name, defaultName(list));
         list.push({ name, type: imp.type, color: imp.color || defaultColor(list.length), layers: imp.layers, order: imp.order, hostActions: imp.hostActions, savedAt: Date.now() }); store(list);
-        log('✓ imported profile "' + name + '" (' + imp.layers.length + ' layers)', 'ok');
-        showToast('✓ imported “' + name + '” (' + imp.layers.length + ' layers)');
+        log(TH108i18n.tf('✓ imported profile "{0}" ({1} layers)', name, imp.layers.length), 'ok');
+        showToast(TH108i18n.tf('✓ imported “{0}” ({1} layers)', name, imp.layers.length));
         render();
-      } catch (err) { log('profile import failed: ' + (err && err.message || err), 'err'); }
+      } catch (err) { log(TH108i18n.tf('profile import failed: {0}', (err && err.message || err)), 'err'); }
     });
 
     (function buildIndicatorRow() {
@@ -367,7 +367,7 @@
       row.innerHTML =
         '<label style="display:flex;align-items:center;gap:6px;margin:0"><input type="checkbox" id="profIndOn"' + (ind.on ? ' checked' : '') + '> Flash the profile number on switch</label>' +
         '<label id="profIndKeysBox" style="display:flex;align-items:center;gap:6px;margin:0;border:1px solid var(--border);border-radius:8px;padding:4px 10px;transition:opacity .15s;opacity:' + (ind.on ? '1' : '.45') + '">Keys <select id="profIndKeys"><option value="numberRow"' + (ind.keys !== 'numpad' ? ' selected' : '') + '>Number row</option><option value="numpad"' + (ind.keys === 'numpad' ? ' selected' : '') + '>Numpad</option></select></label>' +
-        '<span style="opacity:.65">Bind the cycle key on the <b>Host Actions</b> tab (Profile → Next / Previous / Jump).</span>';
+        '<span style="opacity:.65">' + TH108i18n.t('Bind the cycle key on the <b>Host Actions</b> tab (Profile → Next / Previous / Jump).') + '</span>';
       host.parentNode.insertBefore(row, host);
       $('profIndOn').addEventListener('change', () => { const v = loadIndicator(); v.on = $('profIndOn').checked; saveIndicator(v); const box = $('profIndKeysBox'); if (box) box.style.opacity = v.on ? '1' : '.45'; });   // dim the Keys box when the flash is off (it only applies when flashing)
       $('profIndKeys').addEventListener('change', () => { const v = loadIndicator(); v.keys = $('profIndKeys').value; saveIndicator(v); });
@@ -387,7 +387,7 @@
         '</div>';
       anchor.parentNode.appendChild(sec);
       $('appProfAdd').addEventListener('click', () => {
-        const profs = load(); if (!profs.length) { log('save a profile first, then add an app rule', 'err'); return; }
+        const profs = load(); if (!profs.length) { log(TH108i18n.t('save a profile first, then add an app rule'), 'err'); return; }
         const m = loadAppMap(); const first = (_openApps && _openApps[0] && _openApps[0].name || '').toLowerCase();
         m.map.push({ exe: first, profile: profs[0].name }); saveAppMap(m); renderAppProfiles();
       });
