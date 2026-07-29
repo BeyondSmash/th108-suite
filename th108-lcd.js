@@ -851,7 +851,7 @@
       const r = await fetch(url, { mode: 'cors' }); if (!r.ok) throw new Error('HTTP ' + r.status);
       const blob = await r.blob(); if (!/^image\//.test(blob.type)) throw new Error(TH108i18n.tf('not an image ({0})', (blob.type || 'unknown type')));
       loadBlob(blob, (url.split('/').pop() || 'url-image').split('?')[0]);
-    } catch (e) { log('URL load failed: ' + e.message + ' — the host may block cross-origin fetch (CORS)', 'err'); }
+    } catch (e) { log(TH108i18n.tf('URL load failed: {0} — the host may block cross-origin fetch (CORS)', e.message), 'err'); }
   }
 
   // ---------------------------------------------------------------------------
