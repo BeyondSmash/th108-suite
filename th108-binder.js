@@ -352,7 +352,7 @@
         setKm(100); await sleep(140);
         return true;
       } catch (e) {
-        log(TH108i18n.tf('keymap update failed: {0}', (e && e.message || e)), 'err');
+        log(TH108i18n.tfLog('keymap update failed: {0}', (e && e.message || e)), 'err');
         return false;
       } finally { kmHide(); resumeLighting(); busy = false; refresh(); }
     }
@@ -607,13 +607,13 @@
       const conflict = findKeyConflict(list, b.trigger);
       if (conflict) { btn.textContent = orig; showBindConflict(btn, conflict); return; }   // don't bind a second action onto an already-assigned key
       list.push(b); saveHostActions(list);
-      log(TH108i18n.tf('✓ {0} → {1} (works page-closed)', describeTrigger(b.trigger), describeAction(b.action)), 'ok');
+      log(TH108i18n.tfLog('✓ {0} → {1} (works page-closed)', describeTrigger(b.trigger), describeAction(b.action)), 'ok');
       // Firmware-remapped/neutralized keys emit a DIFFERENT code — or nothing (Numpad→Digits neutralizes NumLock
       // to a no-event key) — so the daemon never sees this key's own LED when it's pressed, and the action won't
       // fire. Bindings by physical PRESS can't hit this (you'd be pressing the emitted code), but a Pick-a-Key
       // CLICK binds the key's position regardless of what it emits — flag it so it isn't a silent dud.
       const rm = loadMods()[b.trigger.led];
-      if (rm && !rm.off) log(TH108i18n.tf('⚠ “{0}” is firmware-remapped (e.g. Numpad→Digits neutralizes NumLock), so pressing it sends a different code — or nothing — and this action may not fire. Revert Numpad / Restore Default that key to make it trigger.', keyLabel(b.trigger.led)), 'err');
+      if (rm && !rm.off) log(TH108i18n.tfLog('⚠ “{0}” is firmware-remapped (e.g. Numpad→Digits neutralizes NumLock), so pressing it sends a different code — or nothing — and this action may not fire. Revert Numpad / Restore Default that key to make it trigger.', keyLabel(b.trigger.led)), 'err');
       _hb = newBuilder(); renderGrid();
     }
     function flashHint(msg) { const el = $('bdHint'); if (!el) return; el.textContent = msg; el.classList.remove('haFlash'); void el.offsetWidth; el.classList.add('haFlash'); setTimeout(() => { if (el.isConnected) el.classList.remove('haFlash'); }, 1000); }
@@ -694,7 +694,7 @@
         if (a.type === 'brightnessCycle') a.flashMax = _hb.briFlashMax;
         if (a.type === 'brightnessToggle') a.value = _hb.briToggleVal;
         list.push({ trigger: t, action: a }); saveHostActions(list);
-        log(TH108i18n.tf('✓ {0} → {1} (works page-closed)', describeTrigger(t), describeAction(a)), 'ok');
+        log(TH108i18n.tfLog('✓ {0} → {1} (works page-closed)', describeTrigger(t), describeAction(a)), 'ok');
         _hb = newBuilder(); renderGrid(); };
       function cleanup() { document.removeEventListener('keydown', onDown, true); document.removeEventListener('keyup', onUp, true);
         Object.keys(clearT).forEach(k => clearT[k] && clearTimeout(clearT[k]));
@@ -855,7 +855,7 @@
       if (!ok) return;
       const isDefault = four[0] === 0x02 && four[2] === DEFAULT_HID[sel.idx];   // re-assigning the key's own character = back to stock, no mark
       setMod(sel.idx, isDefault ? null : (item.face || item.label), four);   // item.face = short key-face glyph (e.g. '—' for No Event) so a long palette label doesn't clutter the key
-      log(TH108i18n.tf('✓ {0} now does "{1}" — Restore Default to undo', (sel.label || 'Space'), item.label), 'ok');
+      log(TH108i18n.tfLog('✓ {0} now does "{1}" — Restore Default to undo', (sel.label || 'Space'), item.label), 'ok');
     }
     // restore one key (and its SOCD partner — half a pair is undefined firmware behavior) to the
     // factory character. Shared by the Restore Default button and the board's right-click Reset.
@@ -917,8 +917,8 @@
         await writeFullKeymap(validateBackup(o), 0, 100);
         setKm(100); await sleep(140);
         clearMods();   // the backup is the healthy baseline — board marks from later binds no longer apply
-        log(TH108i18n.tf('✓ keymap restored from the {0} backup', when), 'ok');
-      } catch (e) { log(TH108i18n.tf('keymap restore failed: {0}', (e && e.message || e)), 'err'); }
+        log(TH108i18n.tfLog('✓ keymap restored from the {0} backup', when), 'ok');
+      } catch (e) { log(TH108i18n.tfLog('keymap restore failed: {0}', (e && e.message || e)), 'err'); }
       finally { kmHide(); resumeLighting(); busy = false; refresh(); }
     }
     $('bdBackup').addEventListener('click', backup);
@@ -1072,7 +1072,7 @@
         if (!ok) return;
         setMods({ [sel.idx]: { label: 'SOCD ' + keyShort(a), bytes: four.slice(), pair: pv },
                   [pv]:      { label: 'SOCD ' + keyShort(b), bytes: four.slice(), pair: sel.idx } });
-        log(TH108i18n.tf('✓ SOCD pair: {0} ⟷ {1} — last pressed wins. Restore Default on either key removes both.', keyShort(a), keyShort(b)), 'ok');
+        log(TH108i18n.tfLog('✓ SOCD pair: {0} ⟷ {1} — last pressed wins. Restore Default on either key removes both.', keyShort(a), keyShort(b)), 'ok');
         return;
       }
       let four, label;
@@ -1092,7 +1092,7 @@
       const ok = await keymapRMW(km => setEntry(km, sel.idx, four), TH108i18n.tf('Assigning {0} → {1}…', own, label));
       if (!ok) return;
       setMod(sel.idx, label, four);
-      log(TH108i18n.tf('✓ {0} is now an advanced key: {1} — Restore Default to undo', own, label), 'ok');
+      log(TH108i18n.tfLog('✓ {0} is now an advanced key: {1} — Restore Default to undo', own, label), 'ok');
     }
     $('akApply').addEventListener('click', akApply);
     if (board) board.onChange(akRenderForm);   // selection change re-renders (MT tap default, SOCD partner list)
@@ -1179,7 +1179,7 @@
       setSpaceDesc(f); setSpaceNote(f, backTo);
       $('spaceOverlay').classList.add('open');
       spaceActive = true; window.addEventListener('keydown', spaceEsc);   // double-add on a swap-over is safe — same listener ref dedupes
-      log(TH108i18n.tf('⎵ Spacebar → {0} (overlay open)', f.name), 'in');
+      log(TH108i18n.tfLog('⎵ Spacebar → {0} (overlay open)', f.name), 'in');
     }
     async function exitSpace() {
       if (!spaceActive) return;

@@ -214,7 +214,7 @@
       refresh();
       document.getElementById('gifInfo').textContent=TH108i18n.tf('{0}: {1} frame(s), source {2}×{3} → 104 keys', label, frames.length, frames[0].w, frames[0].h);
       document.getElementById('gifPlay').disabled=!hasDevice();
-      log(TH108i18n.tf('loaded {0} frame(s): {1}', frames.length, label),'ok');
+      log(TH108i18n.tfLog('loaded {0} frame(s): {1}', frames.length, label),'ok');
       updateConnectHint(); startPreviewAnim();   // animate the on-page preview immediately — even with no device (Connect is only needed to drive the real keys)
     }
     // ----- local PREVIEW animation: cycle the on-page previews with NO device (never sendFrame). The real
@@ -236,18 +236,18 @@
     function updateConnectHint(){ const h=document.getElementById('gifConnectHint'); if(h) h.style.display=(gifFrames.length && !hasDevice() && !gifPlaying)?'inline':'none'; }
     async function loadMedia(blob, name, save){           // save (default true) → persist to the library
       if(save===undefined) save=true;
-      document.getElementById('gifPlay').disabled=true; log(TH108i18n.tf('decoding {0}…', name),'dim');
+      document.getElementById('gifPlay').disabled=true; log(TH108i18n.tfLog('decoding {0}…', name),'dim');
       try{
         const frames = /^video\//.test(blob.type) ? await decodeVideo(blob) : await decodeImage(blob);
         if(!frames.length) throw new Error('no frames decoded');
         installFrames(frames, name);
         currentSource={kind:'single', blob, name};               // ★ Add to Library saves this
-      }catch(e){ log(TH108i18n.tf('media load failed: {0}', e.message),'err'); }
+      }catch(e){ log(TH108i18n.tfLog('media load failed: {0}', e.message),'err'); }
     }
     async function loadSequence(files){                    // a folder/selection of images → one frame each, in filename order
       const arr=[...files].filter(f=>/^image\//.test(f.type)).sort((a,b)=>a.name.localeCompare(b.name,undefined,{numeric:true}));
       if(!arr.length){ log('no image files selected','err'); return; }
-      log(TH108i18n.tf('decoding {0} frame files…', arr.length),'dim');
+      log(TH108i18n.tfLog('decoding {0} frame files…', arr.length),'dim');
       const tmp=document.createElement('canvas'), tctx=tmp.getContext('2d',{willReadFrequently:true}), frames=[];
       for(const f of arr){ const bmp=await createImageBitmap(f).catch(()=>null); if(!bmp) continue;
         const s=Math.min(1,MAXDIM/Math.max(bmp.width,bmp.height)), dw=Math.max(1,bmp.width*s|0), dh=Math.max(1,bmp.height*s|0);
@@ -275,7 +275,7 @@
       gifPlaying=true; gifIdx=0; stopPreviewAnim(); updateConnectHint();   // device playback takes over the canvases
       document.getElementById('gifPlay').disabled=true; document.getElementById('gifStop').disabled=false;
       refreshButtons();   // GIF now owns the board → drive toggle disables, pill shows WebHID
-      log(TH108i18n.tf('GIF playback started ({0} frames)', gifFrames.length),'ok'); gifTick();
+      log(TH108i18n.tfLog('GIF playback started ({0} frames)', gifFrames.length),'ok'); gifTick();
     }
     async function gifStopFn(){
       if(!gifPlaying) return;
@@ -307,8 +307,8 @@
     document.getElementById('gifSave').addEventListener('click',async()=>{
       if(!currentSource){ log('nothing loaded to save','dim'); return; }
       if(!(window.TH108Media&&TH108Media.available)){ log('library unavailable — open via http://localhost:8123','err'); return; }
-      try{ if(currentSource.kind==='seq') await TH108Media.addSequence(currentSource.blobs,currentSource.name); else await TH108Media.add(currentSource.blob,currentSource.name); refreshLib(); log(TH108i18n.tf('★ added “{0}” to library', currentSource.name),'ok'); }
-      catch(e){ log(TH108i18n.tf('add to library failed: {0}', e.message),'err'); }
+      try{ if(currentSource.kind==='seq') await TH108Media.addSequence(currentSource.blobs,currentSource.name); else await TH108Media.add(currentSource.blob,currentSource.name); refreshLib(); log(TH108i18n.tfLog('★ added “{0}” to library', currentSource.name),'ok'); }
+      catch(e){ log(TH108i18n.tfLog('add to library failed: {0}', e.message),'err'); }
     });
     document.getElementById('gifPlay').addEventListener('click',gifPlay);
     document.getElementById('gifStop').addEventListener('click',async()=>{   // Stop GIF returns to whatever it replaced: layers if they were running, else dark
@@ -348,11 +348,11 @@
     // load by URL (CORS-permitting) and from the clipboard (paste button + Ctrl+V anywhere on the page)
     async function loadFromUrl(url){
       if(!url) return;
-      log(TH108i18n.tf('fetching {0}…', url),'dim');
+      log(TH108i18n.tfLog('fetching {0}…', url),'dim');
       try{ const r=await fetch(url,{mode:'cors'}); if(!r.ok) throw new Error(TH108i18n.tf('HTTP {0}', r.status));
         const blob=await r.blob(); if(!/^image\//.test(blob.type)) throw new Error(TH108i18n.tf('not an image ({0})', blob.type||'unknown type'));
         await loadMedia(blob,(url.split('/').pop()||'url-image').split('?')[0]);
-      }catch(e){ log(TH108i18n.tf('URL load failed: {0} — the host may block cross-origin fetch (CORS)', e.message),'err'); }
+      }catch(e){ log(TH108i18n.tfLog('URL load failed: {0} — the host may block cross-origin fetch (CORS)', e.message),'err'); }
     }
     document.getElementById('gifUrlLoad').addEventListener('click',()=>loadFromUrl(document.getElementById('gifUrl').value.trim()));
     document.getElementById('gifUrl').addEventListener('keydown',e=>{ if(e.key==='Enter') loadFromUrl(e.target.value.trim()); });
@@ -360,7 +360,7 @@
       try{ const items=await navigator.clipboard.read();
         for(const it of items){ const ty=it.types.find(t=>t.startsWith('image/')); if(ty) return loadMedia(await it.getType(ty),'pasted-image'); }
         log('no image on the clipboard','dim');
-      }catch(e){ log(TH108i18n.tf('clipboard read failed: {0} — copy the image again, or just press Ctrl+V on the page', e.message),'err'); }
+      }catch(e){ log(TH108i18n.tfLog('clipboard read failed: {0} — copy the image again, or just press Ctrl+V on the page', e.message),'err'); }
     });
     window.addEventListener('paste',e=>{
       const items=e.clipboardData&&e.clipboardData.items; if(!items) return;

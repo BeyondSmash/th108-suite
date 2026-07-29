@@ -38,6 +38,7 @@
     'Lighting':  { 'zh-CN':'灯光','zh-TW':'燈光','ja':'ライティング','ko':'조명','fr':'Éclairage','es':'Iluminación','pt':'Iluminação','ru':'Подсветка','de':'Beleuchtung','it':'Illuminazione','ar':'الإضاءة','vi':'Ánh sáng','id':'Pencahayaan','th':'แสงไฟ','pl':'Podświetlenie','hu':'Világítás' },
     'LCD Screen':{ 'zh-CN':'LCD屏幕','zh-TW':'LCD螢幕','ja':'LCD画面','ko':'LCD 화면','fr':'Écran LCD','es':'Pantalla LCD','pt':'Ecrã LCD','ru':'LCD-экран','de':'LCD-Bildschirm','it':'Schermo LCD','ar':'شاشة LCD','vi':'Màn hình LCD','id':'Layar LCD','th':'หน้าจอ LCD','pt-BR':'Tela LCD','pl':'Ekran LCD','hu':'LCD képernyő' },
     'Profiles':  { 'zh-CN':'配置文件','zh-TW':'設定檔','ja':'プロファイル','ko':'프로필','fr':'Profils','es':'Perfiles','pt':'Perfis','ru':'Профили','de':'Profile','it':'Profili','ar':'الملفات الشخصية','vi':'Hồ sơ','id':'Profil','th':'โปรไฟล์','pl':'Profile','hu':'Profilok' },
+    'Profile Data': { 'zh-CN':'配置文件数据','zh-TW':'設定檔資料','ja':'プロファイルデータ','ko':'프로필 데이터','fr':'Données du profil','es':'Datos del perfil','pt':'Dados do perfil','ru':'Данные профиля','de':'Profildaten','it':'Dati del profilo','ar':'بيانات الملف الشخصي','vi':'Dữ liệu hồ sơ','id':'Data profil','th':'ข้อมูลโปรไฟล์','pl':'Dane profilu','hu':'Profiladatok' },
     'Docs':      { 'zh-CN':'文档','zh-TW':'文件','ja':'ドキュメント','ko':'문서','fr':'Docs','es':'Docs','pt':'Docs','ru':'Документация','de':'Doku','it':'Documentazione','ar':'المستندات','vi':'Tài liệu','id':'Dokumen','th':'เอกสาร','pl':'Dokumentacja','hu':'Dokumentáció' },
     'FAQ':       { 'zh-CN':'常见问题','zh-TW':'常見問題','ja':'よくある質問','ko':'자주 묻는 질문','fr':'FAQ','es':'Preguntas frecuentes','pt':'Perguntas frequentes','ru':'Вопросы и ответы','de':'FAQ','it':'FAQ','ar':'الأسئلة الشائعة','vi':'Câu hỏi thường gặp','id':'Tanya Jawab','th':'คำถามที่พบบ่อย','pt-BR':'Perguntas frequentes','pl':'Częste pytania','hu':'GYIK' },
     'Online':    { 'zh-CN':'在线','zh-TW':'線上','ja':'オンライン','ko':'온라인','fr':'En ligne','es':'En línea','pt':'Online','ru':'В сети','de':'Online','it':'Online','ar':'متصل','vi':'Trực tuyến','id':'Daring','th':'ออนไลน์','pl':'Online','hu':'Online' },
@@ -1310,7 +1311,9 @@
   function applyAllOffsets() {
     applyOffset(document.getElementById('langExt'), 'th108_langoff');
     applyOffset(document.querySelector('.hdrsep'), 'th108_sepoff');
-    applyOffset(document.getElementById('th108LangLabel'), 'th108_lbloff');
+    // NO label offset: the label is a flex child INSIDE the pill, so a transform shifts the text without
+    // moving the pill's border — a non-zero (or stale/RTL) nudge pushes it out and clips (e.g. Arabic).
+    // Leave it flex-centered; see the removed th108_lbloff apply in buildDropdown.
   }
   // Dev-only position tuner (open with ?langtune=1): three independent groups — the whole | + 🌐 cluster,
   // the | separator, and the language label. Each axis has a typeable box (fine) + a slider (coarse), kept in sync;
@@ -1341,7 +1344,8 @@
     }
     group('Cluster ( | 🌐 )', host, 'th108_langoff');
     group('Separator ( | )', sep, 'th108_sepoff');
-    group('Label', lbl, 'th108_lbloff');
+    // Label group removed: the label is flex-centered inside the pill and must not carry a transform
+    // (it would clip the text out of the pill). Cluster/Separator are the only tunable nudges now.
 
     var log = document.createElement('button'); log.textContent = 'Copy values';
     log.style.cssText = 'margin-top:10px;width:100%;padding:5px;cursor:pointer;background:var(--inset,#21262d);color:inherit;border:1px solid var(--border,#30363d);border-radius:7px';
@@ -1414,7 +1418,10 @@
     var lblEl = document.getElementById('th108LangLabel');   // the current-language text, nudged on its own
     applyOffset(host, 'th108_langoff');   // baked default, or a saved nudge
     applyOffset(sep, 'th108_sepoff');
-    applyOffset(lblEl, 'th108_lbloff');
+    // No label offset (see applyAllOffsets). Clear any stale saved label nudge from an earlier tuner drag
+    // so it can't push the text out of the pill on this origin (was the Arabic clip / centering drift).
+    try { localStorage.removeItem('th108_lbloff'); localStorage.removeItem('th108_lbloff_rtl'); } catch (_) {}
+    if (lblEl) lblEl.style.transform = '';
     if (/[?&]langtune=1/.test(location.search)) buildLangTuner(host, sep, lblEl);
   }
 
@@ -1468,5 +1475,9 @@
   // per language; languages that don't inflect plurals use one form). Call at render time so `cur` is live.
   function t(s) { if (s == null) return s; var v = tr(norm(String(s)), cur); return v != null ? v : s; }
   function tf(s) { var args = Array.prototype.slice.call(arguments, 1); return t(s).replace(/\{(\d+)\}/g, function (m, i) { return args[+i] != null ? args[+i] : m; }); }
-  window.TH108i18n = { apply: apply, LANGS: LANGS, CATALOG: CATALOG, retranslate: function () { translateTree(document.body, cur); }, t: t, tf: tf };
+  // Like tf(), but returns a boxed String that also carries its English template + args, so a log line
+  // built from it can be RE-rendered in a new language later (plain tf() bakes one language in and loses the source).
+  // Coerces to the rendered string in every string context (textContent, concat, confirm…), so callers see no difference.
+  function tfLog(s) { var box = new String(tf.apply(null, arguments)); box.__en = s; box.__args = Array.prototype.slice.call(arguments, 1); return box; }
+  window.TH108i18n = { apply: apply, LANGS: LANGS, CATALOG: CATALOG, retranslate: function () { translateTree(document.body, cur); }, t: t, tf: tf, tfLog: tfLog };
 })();

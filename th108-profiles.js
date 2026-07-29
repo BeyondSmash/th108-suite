@@ -122,7 +122,7 @@
       if (aspect === 'lighting') { tgt.layers = JSON.parse(JSON.stringify(src.layers || [])); tgt.order = src.order ? JSON.parse(JSON.stringify(src.order)) : null; }
       else { tgt.hostActions = JSON.parse(JSON.stringify(stripCyc(src.hostActions))); }
       store(l); render();
-      log(TH108i18n.tf('✓ copied {0} from "{1}" into "{2}"', TH108i18n.t(aspect), src.name, tgt.name), 'ok');
+      log(TH108i18n.tfLog('✓ copied {0} from "{1}" into "{2}"', TH108i18n.t(aspect), src.name, tgt.name), 'ok');
       showUndoToast(TH108i18n.tf('Copied {0} from "{1}" into "{2}"', TH108i18n.t(aspect), src.name, tgt.name), () => {
         const l2 = load(); if (l2[targetIdx]) { l2[targetIdx] = before; store(l2); render(); log(TH108i18n.t('↩ copy undone'), 'dim'); }
       });
@@ -234,7 +234,7 @@
           const l = load(); const oldName = l[i].name, newName = sanitizeName(name.value, oldName);
           l[i].name = newName; store(l); name.value = newName;
           if (newName !== oldName) renameProfileRefs(oldName, newName);   // keep app-rules, the default, and the selected tick pointing at the renamed profile (names are the only handle)
-          log(TH108i18n.tf('profile renamed → "{0}"', newName), 'dim');
+          log(TH108i18n.tfLog('profile renamed → "{0}"', newName), 'dim');
         });
         const sel = document.createElement('input');
         sel.type = 'checkbox'; sel.className = 'profSel'; sel.checked = (prof.name === activeName);
@@ -277,7 +277,7 @@
         btn('Update', 'overwrite this profile from the current setup (per its type)', () => {
           if (!confirm(TH108i18n.tf('Overwrite “{0}” with your current on-screen settings?', prof.name))) return;
           const l = load(); l[i] = snapshot(l[i].name, l[i].type, l[i].color); store(l);
-          log(TH108i18n.tf('✓ profile "{0}" updated', l[i].name), 'ok');
+          log(TH108i18n.tfLog('✓ profile "{0}" updated', l[i].name), 'ok');
           showToast(TH108i18n.tf('✓ profile “{0}” updated', l[i].name));
           render();
         });
@@ -286,17 +286,17 @@
           a.href = URL.createObjectURL(new Blob([JSON.stringify({ name: prof.name, type: prof.type || 'lighting', color: prof.color || '', layers: prof.layers || [], order: prof.order || null, hostActions: prof.hostActions || [] })], { type: 'application/json' }));
           a.download = 'th108-profile-' + fileSlug(prof.name) + '.json'; a.click();
           setTimeout(() => URL.revokeObjectURL(a.href), 1000);
-          log(TH108i18n.tf('✓ exported profile "{0}"', prof.name), 'ok');
+          log(TH108i18n.tfLog('✓ exported profile "{0}"', prof.name), 'ok');
           showToast(TH108i18n.tf('✓ exported “{0}”', prof.name));
         });
         btn('Duplicate', 'clone this profile as a starting point', () => {
           const l = load();
-          if (!canAdd(l)) { log(TH108i18n.tf('profile limit reached ({0}) — delete one first', MAX_PROFILES), 'err'); return; }
+          if (!canAdd(l)) { log(TH108i18n.tfLog('profile limit reached ({0}) — delete one first', MAX_PROFILES), 'err'); return; }
           const src = l[i], clone = JSON.parse(JSON.stringify(src));
           clone.name = sanitizeName(src.name + ' (cloned from #' + (i + 1) + ' ' + src.name + ')', src.name);
           clone.savedAt = Date.now();
           l.push(clone); store(l);
-          log(TH108i18n.tf('✓ duplicated "{0}" → "{1}"', src.name, clone.name), 'ok');
+          log(TH108i18n.tfLog('✓ duplicated "{0}" → "{1}"', src.name, clone.name), 'ok');
           render();
         });
         const copyBtn = btn('Copy from…', list.length < 2 ? 'Needs another profile to copy from — add or duplicate a profile first' : 'copy Lighting or Hotkeys from another profile into this one', () => {
@@ -320,7 +320,7 @@
           if (!confirm(TH108i18n.tf('Delete profile "{0}"?', prof.name))) return;
           const l = load(); l.splice(i, 1); store(l);
           removeProfileRefs(prof.name);   // drop any app-rule / default pointing at the now-deleted profile
-          log(TH108i18n.tf('profile "{0}" deleted', prof.name), 'dim');
+          log(TH108i18n.tfLog('profile "{0}" deleted', prof.name), 'dim');
           render();
         });
         host.appendChild(row);
@@ -329,18 +329,18 @@
 
     $('profSave').addEventListener('click', () => {
       const list = load();
-      if (!canAdd(list)) { log(TH108i18n.tf('profile limit reached ({0}) — delete one first', MAX_PROFILES), 'err'); return; }
+      if (!canAdd(list)) { log(TH108i18n.tfLog('profile limit reached ({0}) — delete one first', MAX_PROFILES), 'err'); return; }
       const prof = snapshot(defaultName(list), 'lighting', defaultColor(list.length));
       list.push(prof); store(list);
-      log(TH108i18n.tf('✓ saved current setup as "{0}" ({1} layers) — click its name to rename', prof.name, prof.layers.length), 'ok');
+      log(TH108i18n.tfLog('✓ saved current setup as "{0}" ({1} layers) — click its name to rename', prof.name, prof.layers.length), 'ok');
       render();
     });
     $('profAddNew').addEventListener('click', () => {
       const list = load();
-      if (!canAdd(list)) { log(TH108i18n.tf('profile limit reached ({0}) — delete one first', MAX_PROFILES), 'err'); return; }
+      if (!canAdd(list)) { log(TH108i18n.tfLog('profile limit reached ({0}) — delete one first', MAX_PROFILES), 'err'); return; }
       const p = { name: defaultName(list), type: 'lighting', color: defaultColor(list.length), layers: defaultLayersConf(), order: null, savedAt: Date.now() };
       list.push(p); store(list);
-      log(TH108i18n.tf('✓ added new profile "{0}" with default settings — click its name to rename', p.name), 'ok');
+      log(TH108i18n.tfLog('✓ added new profile "{0}" with default settings — click its name to rename', p.name), 'ok');
       render();
     });
     $('profImport').addEventListener('click', () => $('profFile').click());
@@ -350,13 +350,13 @@
       try {
         const imp = normalizeImport(JSON.parse(await f.text()));
         const list = load();
-        if (!canAdd(list)) { log(TH108i18n.tf('profile limit reached ({0}) — delete one first', MAX_PROFILES), 'err'); return; }
+        if (!canAdd(list)) { log(TH108i18n.tfLog('profile limit reached ({0}) — delete one first', MAX_PROFILES), 'err'); return; }
         const name = sanitizeName(imp.name, defaultName(list));
         list.push({ name, type: imp.type, color: imp.color || defaultColor(list.length), layers: imp.layers, order: imp.order, hostActions: imp.hostActions, savedAt: Date.now() }); store(list);
-        log(TH108i18n.tf('✓ imported profile "{0}" ({1} layers)', name, imp.layers.length), 'ok');
+        log(TH108i18n.tfLog('✓ imported profile "{0}" ({1} layers)', name, imp.layers.length), 'ok');
         showToast(TH108i18n.tf('✓ imported “{0}” ({1} layers)', name, imp.layers.length));
         render();
-      } catch (err) { log(TH108i18n.tf('profile import failed: {0}', (err && err.message || err)), 'err'); }
+      } catch (err) { log(TH108i18n.tfLog('profile import failed: {0}', (err && err.message || err)), 'err'); }
     });
 
     (function buildIndicatorRow() {

@@ -650,12 +650,13 @@ try{ var _tk = /[?&]defaults=1(?:&|$)/.test(location.search) ? 'th108_DEFAULTS_t
 
   <div class="card s3" id="connectCard" data-pages="home">
     <div class="cardbar"><span class="grip">⠿</span><h2>Keyboard</h2><span class="aux dim" id="status">not connected</span><span id="driverPill" class="driverpill" data-driver="" title="which entity is currently driving the keyboard LEDs — WebHID = this browser tab, Daemon = the always-on background app" hidden></span></div>
-    <div class="row" style="display:flex;align-items:flex-start;gap:10px;flex-wrap:wrap">
-      <div id="kbBtns" style="display:flex;gap:10px;align-items:center;transform:translateY(20px)">
+    <div class="row" style="display:flex;align-items:center;gap:10px;flex-wrap:nowrap">
+      <!-- nowrap keeps the checkbox column beside the buttons; the button group wraps INTERNALLY (the two buttons stack) when a translated label is long, so the column never drops below. ponytail: min-content ~470px, so below that (very narrow / mobile) the row can overflow — a non-case for a desktop daemon app. -->
+      <div id="kbBtns" style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;flex:0 1 auto;min-width:0">
         <button id="connect" class="primary" title="hands the keyboard from the daemon to this page and starts your layers automatically">Connect Keyboard</button>
         <button id="driveToggle" class="go" disabled title="switch who drives the keyboard LEDs — this tab (WebHID) or the background daemon">Drive from this Tab ▶</button>
       </div>
-      <div style="display:flex;flex-direction:column;gap:5px">
+      <div style="display:flex;flex-direction:column;gap:5px;flex:0 0 auto">
         <label style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:#9aa0aa;cursor:pointer;white-space:nowrap" title="When this tab gains focus, automatically take the keyboard from the daemon (reuses the lease for a clean handoff). Takes over once you've connected at least once — a cold first connect still needs one click (browser WebHID rule)."><input type="checkbox" id="autoConnectFocus"> Auto-connect on focus</label>
         <label style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:#9aa0aa;cursor:pointer;white-space:nowrap" title="Don't show the “Another controller took over the keyboard” banner when this tab loses the lease"><input type="checkbox" id="hideYieldBanner"> Hide yield banner</label>
         <label style="display:inline-flex;align-items:flex-start;gap:6px;font-size:12px;color:#9aa0aa;cursor:pointer" title="Never hand the keyboard to the daemon when this tab loses focus — this page keeps driving. Trade-off: reactive lighting won't respond to keys typed in OTHER apps (the browser only delivers keys to a focused tab), but the board never swaps owners on focus changes, so it can't churn/wedge. Turn this on if switching between the site and another app has ever dropped your lighting."><input type="checkbox" id="keepDrivingNoYield" style="margin-top:1px"> <span style="line-height:1.2;white-space:nowrap">Keep driving from this tab<br><span style="opacity:.6">(no auto-yield)</span></span></label>
@@ -813,7 +814,7 @@ try{ var _tk = /[?&]defaults=1(?:&|$)/.test(location.search) ? 'th108_DEFAULTS_t
 
   <div class="card s2 faqcard" id="profHelpCard" data-pages="profiles">
     <div class="cardbar"><span class="grip">⠿</span></div>
-    <h3>What's saved in a profile</h3>
+    <h3>Profile Data</h3>
     <p data-i18n="prof.savedHint">The full Lighting-tab setup: all your layers with their pattern settings, plus the stacking order — the same
        data the background daemon runs. Key bindings live in the keyboard's own flash, so they stay put across
        profile switches. Exported files are daemon-compatible JSON.</p>
@@ -1426,8 +1427,20 @@ const {KEYMAP, INDICES, NLED, BOARDW, BOARDH, hexToRgb} = TH108Engine;
 // ===== WebHID transport — extracted to th108-hid.js (binds 0xFF68/0x61 + ACK-gated 0x32 streaming) =====
 const out=document.getElementById('log');
 function log(m,c=''){ const d=document.createElement('div'); if(c)d.className=c;
-  d.textContent='['+new Date().toISOString().substr(11,12)+'] '+(window.TH108i18n?TH108i18n.t(m):m); out.appendChild(d);   // t(): translate static log lines (observer can't — timestamp is concatenated into the same text node). Interpolated lines are pre-wrapped with tf() at their call sites.
+  const ts=new Date().toISOString().substr(11,12); d.__logTs=ts;
+  // Stash the English SOURCE so the line can be re-rendered when the language changes (the observer can't:
+  // the timestamp is concatenated into the same text node). Interpolated lines arrive boxed from tfLog() carrying
+  // their template + args; static lines are plain English strings translated with t().
+  if(m&&m.__en!==undefined){ d.__logEn=m.__en; d.__logArgs=m.__args; d.textContent='['+ts+'] '+String(m); }
+  else { d.__logEn=m; d.__logArgs=null; d.textContent='['+ts+'] '+(window.TH108i18n?TH108i18n.t(m):m); }
+  out.appendChild(d);
   while(out.childNodes.length>200) out.removeChild(out.firstChild); out.scrollTop=out.scrollHeight; }
+// Re-render every already-posted log line into the newly-selected language (fired after i18n.apply()).
+function retranslateLogs(){ if(!window.TH108i18n||!out) return; const kids=out.childNodes;
+  for(let i=0;i<kids.length;i++){ const d=kids[i]; if(!d||d.__logEn===undefined) continue;
+    const msg=(d.__logArgs&&d.__logArgs.length)?TH108i18n.tf.apply(null,[d.__logEn].concat(d.__logArgs)):TH108i18n.t(d.__logEn);
+    d.textContent='['+d.__logTs+'] '+msg; } }
+document.addEventListener('th108:langapplied',retranslateLogs);
 function setStatus(s,c='',tip=''){ const e=document.getElementById('status'); e.textContent=s; e.className='aux '+(c||'dim'); e.title=tip; }   // tip = hover tooltip for the jargon behind a friendly status
 // deprecated-controller banner (Task 5) — plain hoisted function declarations so callbacks defined
 // earlier in this script (beforeConnect/beforeAutoReconnect below) can reference them safely even

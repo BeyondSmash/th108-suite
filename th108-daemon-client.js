@@ -152,7 +152,7 @@ window.TH108DaemonClient = (function () {
           const c = document.createElement('input'); c.type = 'checkbox'; c.checked = !!src.allowed;
           c.addEventListener('change', async () => {
             try { await fetch('/nowplaying', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ source: { id: src.id, allow: c.checked } }) });
-              log(TH108i18n.tf('♪ media source {0}: {1}', (c.checked ? 'allowed' : 'blocked'), srcLabel(src.id)), 'ok'); } catch (_) { log('source toggle failed', 'err'); }
+              log(TH108i18n.tfLog('♪ media source {0}: {1}', (c.checked ? 'allowed' : 'blocked'), srcLabel(src.id)), 'ok'); } catch (_) { log('source toggle failed', 'err'); }
           });
           const t = document.createElement('span'); t.textContent = srcLabel(src.id); t.title = src.id;
           l.appendChild(c); l.appendChild(t); host.appendChild(l);
@@ -253,19 +253,19 @@ window.TH108DaemonClient = (function () {
       auto.addEventListener('change', async () => {
         try {
           await fetch('/autostart', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ on: auto.checked }) });
-          log(TH108i18n.tf('daemon auto-start on login {0}', (auto.checked ? 'enabled' : 'disabled')), 'ok');
+          log(TH108i18n.tfLog('daemon auto-start on login {0}', (auto.checked ? 'enabled' : 'disabled')), 'ok');
         } catch (_) { log('auto-start toggle failed', 'err'); refreshAuto(); }
       });
       if (usb) usb.addEventListener('change', async () => {
         try {
           await fetch('/usbreset', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ on: usb.checked }) });
-          log(TH108i18n.tf('auto USB-restart wedge fix {0}', (usb.checked ? 'enabled' : 'disabled')), 'ok');
+          log(TH108i18n.tfLog('auto USB-restart wedge fix {0}', (usb.checked ? 'enabled' : 'disabled')), 'ok');
         } catch (_) { log('USB-restart toggle failed', 'err'); refresh(); }
       });
       if (disp) disp.addEventListener('change', async () => {
         try {
           await fetch('/displayoff', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ on: disp.checked }) });
-          log(TH108i18n.tf('lights-off-when-monitor-off {0}', (disp.checked ? 'enabled' : 'disabled')), 'ok');
+          log(TH108i18n.tfLog('lights-off-when-monitor-off {0}', (disp.checked ? 'enabled' : 'disabled')), 'ok');
         } catch (_) { log('monitor-off toggle failed', 'err'); refresh(); }
       });
       if (np) np.addEventListener('change', async () => {
@@ -282,7 +282,7 @@ window.TH108DaemonClient = (function () {
             const rv = r && r.revert;
             if (rv && rv.skipped) log('♪ now-playing off — that GIF is already on the LCD, no reload needed', 'ok');
             else if (rv && rv.ok) log('♪ now-playing off — reverting the LCD to your GIF (the 33-frame reload takes a bit)', 'ok');
-            else log(TH108i18n.tf('♪ now-playing off — couldn\'t revert to your GIF: {0}. It\'ll revert once the daemon owns the keyboard.', ((rv && rv.reason) || 'unknown')), 'err');
+            else log(TH108i18n.tfLog('♪ now-playing off — couldn\'t revert to your GIF: {0}. It\'ll revert once the daemon owns the keyboard.', ((rv && rv.reason) || 'unknown')), 'err');
           }
         } catch (_) { log('now-playing toggle failed', 'err'); refresh(); }
       });
@@ -291,7 +291,7 @@ window.TH108DaemonClient = (function () {
         if (el) el.addEventListener('change', async () => {   // 'change' = picker closed — one flash re-paint per pick, not per drag
           try {
             await fetch('/nowplaying', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ [key]: el.value }) });
-            log(TH108i18n.tf('♪ now-playing {0} color → {1} (the current song re-paints)', (key === 'titleColor' ? 'title' : 'artist'), el.value), 'ok');
+            log(TH108i18n.tfLog('♪ now-playing {0} color → {1} (the current song re-paints)', (key === 'titleColor' ? 'title' : 'artist'), el.value), 'ok');
           } catch (_) { log('color change failed', 'err'); }
         });
       }
@@ -299,7 +299,7 @@ window.TH108DaemonClient = (function () {
       if (npFitEl) npFitEl.addEventListener('change', async () => {
         try {
           await fetch('/nowplaying', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ artFit: npFitEl.value === 'fit' }) });
-          log(TH108i18n.tf('♪ album art → {0} (the current song re-paints)', (npFitEl.value === 'fit' ? 'Fit (whole cover, letterboxed)' : 'Crop (fill + crop)')), 'ok');
+          log(TH108i18n.tfLog('♪ album art → {0} (the current song re-paints)', (npFitEl.value === 'fit' ? 'Fit (whole cover, letterboxed)' : 'Crop (fill + crop)')), 'ok');
         } catch (_) { log('album-art style change failed', 'err'); }
       });
       // song-progress light-bar (keys 1-0) — SAFE, lighting only; all of it rides /nowplaying {bar:{…}}
@@ -354,8 +354,8 @@ window.TH108DaemonClient = (function () {
         npMaskEl.disabled = true;
         try {
           const r = await (await fetch('/nowplaying', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ mask: npMaskEl.checked }) })).json();
-          if (r && r.ok) log(TH108i18n.tf('♪ onboard mask {0}', (npMaskEl.checked ? 'on — onboard set to black; the update-flash is a dark blink now (A/B vs off)' : 'off — onboard restored to a colorful default')), 'ok');
-          else { log(TH108i18n.tf('♪ onboard mask didn\'t apply: {0}', ((r && r.reason) || 'the daemon must be driving the board')), 'err'); npMaskEl.checked = !npMaskEl.checked; }
+          if (r && r.ok) log(TH108i18n.tfLog('♪ onboard mask {0}', (npMaskEl.checked ? 'on — onboard set to black; the update-flash is a dark blink now (A/B vs off)' : 'off — onboard restored to a colorful default')), 'ok');
+          else { log(TH108i18n.tfLog('♪ onboard mask didn\'t apply: {0}', ((r && r.reason) || 'the daemon must be driving the board')), 'err'); npMaskEl.checked = !npMaskEl.checked; }
         } catch (_) { log('onboard mask change failed', 'err'); npMaskEl.checked = !npMaskEl.checked; }
         setTimeout(() => { npMaskEl.disabled = false; }, 1500);   // it cycles the keyboard once — brief settle
       });

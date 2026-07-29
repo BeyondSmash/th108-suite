@@ -64,7 +64,7 @@
       try{
         await hid.device.sendReport(hid.reportId, hid.buildPkt(0x23, 16, 0, allled, 0, true));
         const lbl=document.getElementById('obEffect').selectedOptions[0].textContent;
-        log(TH108i18n.tf('onboard effect applied: {0}{1} · bri {2} · spd {3}', lbl, (colorful?' (colorful)':' (solid)'), bright, speed),'ok');
+        log(TH108i18n.tfLog('onboard effect applied: {0}{1} · bri {2} · spd {3}', lbl, (colorful?' (colorful)':' (solid)'), bright, speed),'ok');
         obSetStatus('effect set — runs on the keyboard','ok');
         setObActive();   // a pattern click can now auto-resume layers over this
         // Re-arm: a live 0x23 write can leave the board ACKing-but-IGNORING 0x32 paint, and only a handle
@@ -72,7 +72,7 @@
         await new Promise(r=>setTimeout(r,350));   // let the 0x23 ACK land before cycling the handle
         if(await hid.rebind()) log('control interface re-bound (post-effect re-arm)','dim');
         else log('post-effect re-bind failed — if layers don\'t paint, refresh the page','err');
-      }catch(e){ log(TH108i18n.tf('onboard apply failed: {0}', e.message),'err'); obSetStatus('apply failed','err'); }
+      }catch(e){ log(TH108i18n.tfLog('onboard apply failed: {0}', e.message),'err'); obSetStatus('apply failed','err'); }
     }
     document.getElementById('obApply').addEventListener('click',applyOnboard);
     document.getElementById('obBack').addEventListener('click',()=>{ if(!hid.device){ log('connect first','err'); return; } if(!isRunning()) startLayers(); else log('layers already running — they override the firmware effect','dim'); });   // resume host layers over the firmware effect
