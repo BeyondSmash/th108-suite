@@ -809,7 +809,12 @@ async function runTick() {
         if (settings.usbReset && U.shouldFire({ muteAt, now: Date.now(), lastFireAt: usbFiredAt, thresholdMs, keysHeld: heldKeys.size, sinceKeydownMs })) {
           usbFiredAt = Date.now();
           const forced = usbFiredAt - muteAt >= U.HARD_CEILING_MS;
-          log('⚡ ESCALATING: mute has lasted ' + Math.round((usbFiredAt - muteAt) / 1000) + 's (' + (afk ? 'AFK — recovering early' : (forced ? 'hard ceiling — no lull found, recovering anyway' : 'keypress lull')) + ') — PnP-restarting the keyboard USB device (task "' + U.TASK_NAME + '"); typing drops ~1-2s');
+          const staleHeld = heldKeys.size > 0 && sinceKeydownMs >= U.STALE_HELD_MS;   // a key in `held` but no keydown for staleHeldMs = a missed keyup, not a real hold
+          const why = afk ? 'AFK — recovering early'
+                    : forced ? 'hard ceiling — no lull found, recovering anyway'
+                    : staleHeld ? heldKeys.size + ' stale held key(s) (missed keyup — physically up) — recovering now'
+                    : 'keypress lull';
+          log('⚡ ESCALATING: mute has lasted ' + Math.round((usbFiredAt - muteAt) / 1000) + 's (' + why + ') — PnP-restarting the keyboard USB device (task "' + U.TASK_NAME + '"); typing drops ~1-2s');
           U.fire(log);
         }
       }

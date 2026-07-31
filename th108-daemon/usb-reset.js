@@ -23,16 +23,28 @@ const COOLDOWN_MS = 10 * 60_000;
 // 2026-07-25 in a live Palworld session (daemon.log: 20:04:12 fired "actively typing"). So once past the
 // mute threshold, wait for a keypress LULL — nothing held AND a brief quiet gap — before re-enumerating.
 const LULL_MS = 1_500;              // no key held + no keydown for this long = a genuine gap between keystrokes/actions (not mid-burst, no keyup in flight)
-const HARD_CEILING_MS = 90_000;    // …but never defer the lighting recovery past this — a missed keyup (alt-tab, focus loss) can leave a key stuck in `held` forever, which would otherwise block recovery indefinitely
+const HARD_CEILING_MS = 90_000;    // …but never defer the lighting recovery past this — a *genuinely* held key can only block for this long
+// A key still in `held` with NO keydown for this long is a MISSED KEYUP, not a real hold: a genuinely-held key
+// emits OS key-repeat key-DOWNs every ~30ms (max repeat delay ≤ ~1s; the low-level hook sees them regardless of
+// the focused app/game), so a real hold keeps sinceKeydownMs small. Once it exceeds this, the key is physically
+// UP (alt-tab/focus-loss ate the keyup) — re-enumerating CAN'T strand it — so recover now instead of waiting out
+// the hard ceiling. 3s clears the ~1s max repeat delay with margin. (Both long real-world mutes hit the ceiling
+// for exactly this reason: a phantom held key pinned recovery to 90s+.)
+const STALE_HELD_MS = 3_000;
 
-// Pure decision: fire only for a real, aged mute, outside the cooldown window, and (until the hard ceiling)
-// only during a keypress lull so a re-enumeration can't strand a held key.
+// Pure decision: fire only for a real, aged mute, outside the cooldown window, and (until the hard ceiling) not
+// while a key is *genuinely* in play — a real hold (repeats still arriving) or mid-burst typing (a keyup may be
+// in flight) — so a re-enumeration can't strand a physically-down key. A stale held key (missed keyup) does NOT
+// count as in-play and no longer blocks recovery.
 function shouldFire({ muteAt, now, lastFireAt, thresholdMs = THRESHOLD_MS, cooldownMs = COOLDOWN_MS,
-                      keysHeld = 0, sinceKeydownMs = Infinity, lullMs = LULL_MS, hardCeilingMs = HARD_CEILING_MS }) {
+                      keysHeld = 0, sinceKeydownMs = Infinity, lullMs = LULL_MS, hardCeilingMs = HARD_CEILING_MS,
+                      staleHeldMs = STALE_HELD_MS }) {
   if (!muteAt) return false;
   if (now - muteAt < thresholdMs) return false;
   if (lastFireAt && now - lastFireAt < cooldownMs) return false;
-  if (now - muteAt < hardCeilingMs && (keysHeld > 0 || sinceKeydownMs < lullMs)) return false;
+  const genuinelyHeld = keysHeld > 0 && sinceKeydownMs < staleHeldMs;   // repeats still arriving ⇒ physically down
+  const midBurst      = sinceKeydownMs < lullMs;                        // a keyup may be in flight right now
+  if (now - muteAt < hardCeilingMs && (genuinelyHeld || midBurst)) return false;
   return true;
 }
 
@@ -75,7 +87,7 @@ function fire(log) {
   });
 }
 
-module.exports = { shouldFire, fire, classify, TASK_NAME, THRESHOLD_MS, IDLE_THRESHOLD_MS, IDLE_AFTER_MS, COOLDOWN_MS, LULL_MS, HARD_CEILING_MS };
+module.exports = { shouldFire, fire, classify, TASK_NAME, THRESHOLD_MS, IDLE_THRESHOLD_MS, IDLE_AFTER_MS, COOLDOWN_MS, LULL_MS, HARD_CEILING_MS, STALE_HELD_MS };
 
 // self-check: node usb-reset.js
 if (require.main === module) {
@@ -85,5 +97,8 @@ if (require.main === module) {
   A.ok(/REBOOT/.test(classify('restart exit=3010')));                         // reboot-pending
   A.ok(/REBOOT/.test(classify('Failed to restart device: pending\nrestart exit=50')));   // refused
   A.ok(/wired↔BT/.test(classify('restart exit=259')));                        // other non-zero → generic toggle advice
+  const m = 1_000_000;
+  A.strictEqual(shouldFire({ muteAt: m, now: m + THRESHOLD_MS, lastFireAt: 0, keysHeld: 1, sinceKeydownMs: 0 }), false);        // genuine hold (repeats) → defer
+  A.strictEqual(shouldFire({ muteAt: m, now: m + THRESHOLD_MS, lastFireAt: 0, keysHeld: 1, sinceKeydownMs: STALE_HELD_MS }), true);  // stale held (missed keyup) → recover now
   console.log('usb-reset self-check OK');
 }

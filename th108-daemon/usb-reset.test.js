@@ -32,9 +32,18 @@ test('idle threshold: AFK recovers strictly sooner than the typing threshold', (
   assert.equal(U.shouldFire({ muteAt, now: mid, lastFireAt: 0 }), false);
 });
 
-test('key-hold-off: a held key past the threshold defers the re-enumeration', () => {
+test('key-hold-off: a GENUINELY held key (repeats still arriving) past the threshold defers', () => {
   const muteAt = 1_000_000, now = muteAt + T;   // past threshold, well under the hard ceiling
-  assert.equal(U.shouldFire({ muteAt, now, lastFireAt: 0, keysHeld: 1, sinceKeydownMs: Infinity }), false);
+  assert.equal(U.shouldFire({ muteAt, now, lastFireAt: 0, keysHeld: 1, sinceKeydownMs: 0 }), false);
+});
+
+test('key-hold-off: a STALE held key (missed keyup, no keydown for staleHeldMs) recovers at the threshold', () => {
+  const muteAt = 1_000_000, now = muteAt + T;   // past threshold, far under the hard ceiling
+  // keysHeld>0 but no keydown for staleHeldMs ⇒ physically up (alt-tab ate the keyup) ⇒ safe to re-enumerate now
+  assert.equal(U.shouldFire({ muteAt, now, lastFireAt: 0, keysHeld: 1, sinceKeydownMs: U.STALE_HELD_MS }), true);
+  assert.equal(U.shouldFire({ muteAt, now, lastFireAt: 0, keysHeld: 1, sinceKeydownMs: Infinity }), true);
+  // …but a hold whose repeats are still arriving is NOT stale → still deferred
+  assert.equal(U.shouldFire({ muteAt, now, lastFireAt: 0, keysHeld: 1, sinceKeydownMs: U.STALE_HELD_MS - 1 }), false);
 });
 
 test('key-hold-off: mid-burst (recent keydown, nothing held now) still defers', () => {
@@ -47,11 +56,11 @@ test('key-hold-off: fires once a lull arrives (nothing held + quiet gap)', () =>
   assert.equal(U.shouldFire({ muteAt, now, lastFireAt: 0, keysHeld: 0, sinceKeydownMs: U.LULL_MS }), true);
 });
 
-test('key-hold-off: hard ceiling recovers even with a key stuck held (missed keyup)', () => {
+test('key-hold-off: hard ceiling recovers even with a key GENUINELY held the whole time', () => {
   assert.ok(U.HARD_CEILING_MS > T, 'ceiling must be past the fire threshold to matter');
   const muteAt = 1_000_000;
-  // still under the ceiling with a stuck held key → deferred
-  assert.equal(U.shouldFire({ muteAt, now: muteAt + U.HARD_CEILING_MS - 1, lastFireAt: 0, keysHeld: 1 }), false);
-  // at the ceiling → fires regardless of the stuck held key
-  assert.equal(U.shouldFire({ muteAt, now: muteAt + U.HARD_CEILING_MS, lastFireAt: 0, keysHeld: 1 }), true);
+  // a genuine hold whose repeats keep arriving (sinceKeydownMs small) defers right up to the ceiling…
+  assert.equal(U.shouldFire({ muteAt, now: muteAt + U.HARD_CEILING_MS - 1, lastFireAt: 0, keysHeld: 1, sinceKeydownMs: 0 }), false);
+  // …then fires at the ceiling regardless, so a truly stuck-down key can't block recovery forever
+  assert.equal(U.shouldFire({ muteAt, now: muteAt + U.HARD_CEILING_MS, lastFireAt: 0, keysHeld: 1, sinceKeydownMs: 0 }), true);
 });
