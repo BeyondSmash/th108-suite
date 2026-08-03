@@ -926,6 +926,20 @@ NumpadDel::SendInput {.}
        "emulate numpad" option). It's a normal AutoHotkey process — <b>kill it anytime from its tray icon</b>, and it's
        fully independent of the lighting daemon.</p>
   </div>
+  <div class="card s2 faqcard" id="faqNumpadPS" data-pages="faq">
+    <div class="cardbar"><span class="grip">⠿</span><span class="tbtag">Troubleshooting</span></div>
+    <h3 data-i18n="faqNumpadPS.h">Numpad → Digits doesn't type digits in PowerShell / the terminal</h3>
+    <p data-i18n="faqNumpadPS.p1">After the one-click <b>Numpad → Digits</b> remap, the numpad types numbers in normal apps but in
+       <b>PowerShell, Command Prompt, and Windows Terminal</b> the numpad keys act as if NumLock is <i>off</i> —
+       you get Home / End / PgUp / PgDn / arrows instead of digits. That's a Windows <b>console</b> quirk, not a bug in
+       the remap: the console reads numpad keys by their physical scancode and NumLock state at a lower level than the
+       firmware remap reaches, so it ignores the remap and applies its own NumLock-off navigation.</p>
+    <p data-i18n="faqNumpadPS.p2">Fixes, easiest first: <b>1)</b> use the <b>top number row</b> when you're in a terminal; <b>2)</b> turn
+       <b>NumLock on</b> just for terminal work (the numpad types digits again — but the white NumLock LED comes back
+       while it's on); or <b>3)</b> use the <b>AutoHotkey</b> method in the card above — its <code>SendInput</code>
+       digits <i>are</i> accepted by the console, so with NumLock off the numpad types numbers in PowerShell too, with no
+       white light. (The daemon can't fix this: it paints lighting, it doesn't inject keystrokes.)</p>
+  </div>
   <div class="card s2 faqcard" id="faq3" data-pages="faq">
     <div class="cardbar"><span class="grip">⠿</span></div>
     <h3 data-i18n="faq3.h">You don't need Connect to edit layers.</h3>
@@ -941,6 +955,12 @@ NumpadDel::SendInput {.}
        between this tab and the background daemon — lots of Connect/Disconnect, replug, or tab-switching in quick
        succession — can also wedge it: every handoff briefly risks two writers on the same board, and its firmware
        doesn't love the churn. If you're toggling a lot, give it a second to settle between switches.</p>
+    <p data-i18n="faq4.p1b">It can also go mute <b>on its own during normal use</b> — no sleep, no replug, nothing you did. Streaming
+       per-frame lighting for a long stretch (heavy reactive typing, or an audio/media layer running for hours) can
+       make the firmware occasionally choke on its own write queue and stop acknowledging frames. This is a known
+       <b>hardware quirk of the board</b>, not a fault in the app — which is why the daemon watches for it and
+       <b>recovers automatically</b> (a USB restart), usually within a minute, without you touching anything. If your
+       lighting "fixed itself," that's what happened.</p>
     <p data-i18n="faq4.p2">Cure ladder: wait ~30&nbsp;s (automatic USB restart; some mutes self-recover) → press
        <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>End</kbd> anywhere (the manual recovery hotkey, same restart) →
        <b>flip the mode switch to BT and back to wired</b> → <b>⟳ Factory Reset Keyboard</b> (Home tab; the
