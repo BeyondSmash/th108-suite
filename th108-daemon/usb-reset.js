@@ -48,6 +48,16 @@ function shouldFire({ muteAt, now, lastFireAt, thresholdMs = THRESHOLD_MS, coold
   return true;
 }
 
+// Extra precondition for the daemon's reopen-fail watchdog (the timing decision stays shouldFire above):
+// escalate only when we OWN a board that should be LIT but hold NO handle mid-mute — i.e. the handle
+// dropped (e.g. a foreign USB re-enumeration — G Hub's wake-time updater did exactly this, 2026-08-09) and
+// the reconnect can't get it back, so no failed send ever drives the normal send-stall ladder and the board
+// sits dark until a manual /usbfix. Paused handoffs (a page owns the board) never reach here — the daemon
+// returns early while it isn't the lease owner.
+function reopenStuck({ device, muteLogged, lightsOn, displayOff }) {
+  return !device && !!muteLogged && !!lightsOn && !displayOff;
+}
+
 // After schtasks kicks off the task, pnputil runs over the next few seconds and restart-usb.bat appends
 // a "restart exit=N" line. schtasks /run reports only that the task STARTED, never pnputil's result — so we
 // poll the log for the new line and surface the TRUTH. 3010 = Windows queued a reboot-pending reconfig; 50 =
@@ -87,7 +97,7 @@ function fire(log) {
   });
 }
 
-module.exports = { shouldFire, fire, classify, TASK_NAME, THRESHOLD_MS, IDLE_THRESHOLD_MS, IDLE_AFTER_MS, COOLDOWN_MS, LULL_MS, HARD_CEILING_MS, STALE_HELD_MS };
+module.exports = { shouldFire, reopenStuck, fire, classify, TASK_NAME, THRESHOLD_MS, IDLE_THRESHOLD_MS, IDLE_AFTER_MS, COOLDOWN_MS, LULL_MS, HARD_CEILING_MS, STALE_HELD_MS };
 
 // self-check: node usb-reset.js
 if (require.main === module) {
@@ -100,5 +110,11 @@ if (require.main === module) {
   const m = 1_000_000;
   A.strictEqual(shouldFire({ muteAt: m, now: m + THRESHOLD_MS, lastFireAt: 0, keysHeld: 1, sinceKeydownMs: 0 }), false);        // genuine hold (repeats) → defer
   A.strictEqual(shouldFire({ muteAt: m, now: m + THRESHOLD_MS, lastFireAt: 0, keysHeld: 1, sinceKeydownMs: STALE_HELD_MS }), true);  // stale held (missed keyup) → recover now
+  // reopenStuck: escalate only when we own a lit board but hold no handle (dropped handle, can't reopen)
+  A.strictEqual(reopenStuck({ device: null, muteLogged: true,  lightsOn: true,  displayOff: false }), true);   // handle gone mid-mute, lights should be on → escalate
+  A.strictEqual(reopenStuck({ device: {},   muteLogged: true,  lightsOn: true,  displayOff: false }), false);  // we still hold a handle → send-stall ladder handles it, not this
+  A.strictEqual(reopenStuck({ device: null, muteLogged: false, lightsOn: true,  displayOff: false }), false);  // no mute logged → nothing to recover from
+  A.strictEqual(reopenStuck({ device: null, muteLogged: true,  lightsOn: false, displayOff: false }), false);  // lights off by choice → dark is intended
+  A.strictEqual(reopenStuck({ device: null, muteLogged: true,  lightsOn: true,  displayOff: true  }), false);  // monitor off → dark is intended
   console.log('usb-reset self-check OK');
 }

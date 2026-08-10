@@ -615,6 +615,34 @@ async function openIfPossible() {
   finally { probing = false; }
 }
 
+// Shared USB-restart escalation for a persistent mute — called from BOTH the send-stall branch (a handle we
+// hold stops ACKing) and the reopen-fail watchdog (the handle dropped and openIfPossible can't get it back).
+// `context` names WHICH path fired in the log; the timing decision (threshold, key-hold-off, hard ceiling) is
+// identical for both so the guardrails can't drift apart. Returns true iff it fired.
+function escalateUsbIfDue(context) {
+  if (!settings.usbReset) return false;
+  // Idle-aware threshold: a USB restart costs a ~1-2s typing dropout, so wait the full 30s while you're actively
+  // typing — but if you've been AFK (no keypress for IDLE_AFTER_MS) the dropout is free, so recover much sooner.
+  const afk = Date.now() - lastKeyAt > U.IDLE_AFTER_MS;
+  // Fast wake recovery: for ~90s after a resume the board is reliably USB-suspended and won't self-heal, so
+  // re-enumerate after just 4s instead of the full AFK wait — lights return seconds after wake, not ~40s.
+  const freshWake = wokeAt && Date.now() - wokeAt < 90_000;
+  const thresholdMs = freshWake ? 4000 : (afk ? U.IDLE_THRESHOLD_MS : U.THRESHOLD_MS);
+  // Key-hold-off: don't re-enumerate mid-keystroke (drops the held key's keyup → stuck key + input freeze).
+  const sinceKeydownMs = lastKeydownAt ? Date.now() - lastKeydownAt : Infinity;
+  if (!U.shouldFire({ muteAt, now: Date.now(), lastFireAt: usbFiredAt, thresholdMs, keysHeld: heldKeys.size, sinceKeydownMs })) return false;
+  usbFiredAt = Date.now();
+  const forced = usbFiredAt - muteAt >= U.HARD_CEILING_MS;
+  const staleHeld = heldKeys.size > 0 && sinceKeydownMs >= U.STALE_HELD_MS;   // a key in `held` but no keydown for staleHeldMs = a missed keyup, not a real hold
+  const why = afk ? 'AFK — recovering early'
+            : forced ? 'hard ceiling — no lull found, recovering anyway'
+            : staleHeld ? heldKeys.size + ' stale held key(s) (missed keyup — physically up) — recovering now'
+            : 'keypress lull';
+  log('⚡ ESCALATING: ' + context + ' ' + Math.round((usbFiredAt - muteAt) / 1000) + 's (' + why + ') — PnP-restarting the keyboard USB device (task "' + U.TASK_NAME + '"); typing drops ~1-2s');
+  U.fire(log);
+  return true;
+}
+
 // ----- render loop ~30fps -----
 let tickBusy = false;   // single-flight guard: setInterval keeps firing every ~33ms, but a slow/stalling send
 // (up to the 800ms ACK timeout) must NOT let the next interval re-enter and start a SECOND concurrent send —
@@ -667,6 +695,13 @@ async function runTick() {
   }
   lastTickAt = nowWall;
   await openIfPossible();
+  // Reopen-fail watchdog: if the OS handle dropped (a foreign USB re-enumeration — G Hub's wake-time updater did
+  // exactly this, 2026-08-09) and openIfPossible can't get it back, `device` stays null, so the `device && send`
+  // paint + send-stall branch below never runs again and NOTHING escalates — the board sits dark until a manual
+  // /usbfix. (The first failed send set muteLogged/muteAt then closed the handle; without this the escalation
+  // could never age past its threshold because that branch is unreachable with device===null.) So drive the SAME
+  // escalation here whenever we own a board that should be lit but hold no handle mid-mute.
+  if (U.reopenStuck({ device, muteLogged, lightsOn: settings.lightsOn, displayOff })) escalateUsbIfDue("board disconnected — handle won't reopen for");
   // A USB-restart from ANY source (mute escalation, recovery hotkey, page request) bumps usbFiredAt and
   // re-enumerates the board → its firmware onboard effect resets to the rainbow default. Drop the flag so the
   // black mask gets re-asserted on the fresh handle below.
@@ -793,30 +828,10 @@ async function runTick() {
             : 'never ACKed since open') + ') — retrying every 5s; USB restart fires at ' + Math.round(U.IDLE_THRESHOLD_MS / 1000) + 's if AFK, ' + Math.round(U.THRESHOLD_MS / 1000) + 's while typing' + lockNote);
           if (trace) log('   ↳ flight recorder (last input reports + writes before silence):\n' + trace);
         }
-        // Escalation: a PnP restart of the keyboard's USB node = software replug (proven to clear a true
-        // wedge). Loud by design — it drops typing ~1-2s, so the log must say exactly when and why.
-        // Idle-aware threshold: a USB restart costs a ~1-2s typing dropout, so wait the full 30s while you're
-        // actively typing — but if you've been AFK (no keypress for IDLE_AFTER_MS) the dropout is free, so
-        // recover the lighting much sooner (IDLE_THRESHOLD_MS). lastKeyAt comes from the global key hook.
-        const afk = Date.now() - lastKeyAt > U.IDLE_AFTER_MS;
-        // Fast wake recovery: for ~90s after a resume, the board is reliably USB-suspended and won't self-heal,
-        // so re-enumerate after just 4s instead of the full AFK wait — lights return seconds after wake, not ~40s.
-        const freshWake = wokeAt && Date.now() - wokeAt < 90_000;
-        const thresholdMs = freshWake ? 4000 : (afk ? U.IDLE_THRESHOLD_MS : U.THRESHOLD_MS);
-        // Key-hold-off: don't re-enumerate mid-keystroke (drops the held key's keyup → stuck key + input freeze).
-        // Wait for a keypress lull; the hard ceiling inside shouldFire still guarantees eventual recovery.
-        const sinceKeydownMs = lastKeydownAt ? Date.now() - lastKeydownAt : Infinity;
-        if (settings.usbReset && U.shouldFire({ muteAt, now: Date.now(), lastFireAt: usbFiredAt, thresholdMs, keysHeld: heldKeys.size, sinceKeydownMs })) {
-          usbFiredAt = Date.now();
-          const forced = usbFiredAt - muteAt >= U.HARD_CEILING_MS;
-          const staleHeld = heldKeys.size > 0 && sinceKeydownMs >= U.STALE_HELD_MS;   // a key in `held` but no keydown for staleHeldMs = a missed keyup, not a real hold
-          const why = afk ? 'AFK — recovering early'
-                    : forced ? 'hard ceiling — no lull found, recovering anyway'
-                    : staleHeld ? heldKeys.size + ' stale held key(s) (missed keyup — physically up) — recovering now'
-                    : 'keypress lull';
-          log('⚡ ESCALATING: mute has lasted ' + Math.round((usbFiredAt - muteAt) / 1000) + 's (' + why + ') — PnP-restarting the keyboard USB device (task "' + U.TASK_NAME + '"); typing drops ~1-2s');
-          U.fire(log);
-        }
+        // Escalation: a PnP restart of the keyboard's USB node = software replug (proven to clear a true wedge).
+        // Loud by design — it drops typing ~1-2s. All timing/guardrails live in escalateUsbIfDue (shared with the
+        // reopen-fail watchdog after openIfPossible) so the two recovery paths can't drift apart.
+        escalateUsbIfDue('mute has lasted');
       }
     } else framesDeduped++;   // frame identical to the last + inside the keepalive window → skipped (the dedupe idling static lighting to ~1fps)
   }
