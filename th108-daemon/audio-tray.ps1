@@ -38,8 +38,12 @@ if ($CheckOnce) {
 }
 
 # --- single instance (logon task + a manual launch shouldn't both run) ---
+# AbandonedMutexException = the previous tray was KILLED (not clean-exit) and left the mutex abandoned;
+# that means WE now own it, so treat it as acquired. Without this catch, $ErrorActionPreference='Stop'
+# turns every launch-after-a-kill into an instant crash (the icon then never appears).
 $mutex = New-Object System.Threading.Mutex($false, 'Global\TH108_AudioTrayWatchdog')
-if (-not $mutex.WaitOne(0)) { exit 0 }
+try { $owns = $mutex.WaitOne(0) } catch [System.Threading.AbandonedMutexException] { $owns = $true }
+if (-not $owns) { exit 0 }
 
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
