@@ -156,6 +156,12 @@ try{ var _tk = /[?&]defaults=1(?:&|$)/.test(location.search) ? 'th108_DEFAULTS_t
     41% { box-shadow:0 0 0 1px rgba(var(--glow),.95), 0 0 14px 4px rgba(var(--glow),.8); }   /* hold ~350ms */
     100%{ box-shadow:0 0 0 0 rgba(var(--glow),0),   0 0 0 0 rgba(var(--glow),0);   }          /* fade ~500ms */
   }
+  /* "Get the daemon →" banner deep-link pulses this card's perimeter until you scroll it out of view */
+  .card.cardglow{ animation:cardGlow 1.6s ease-in-out infinite; }
+  @keyframes cardGlow{
+    0%,100%{ box-shadow:0 0 0 1px color-mix(in srgb, var(--mint) 55%, transparent), 0 0 10px 2px color-mix(in srgb, var(--mint) 40%, transparent); }
+    50%    { box-shadow:0 0 0 2px color-mix(in srgb, var(--mint) 80%, transparent), 0 0 22px 6px color-mix(in srgb, var(--mint) 65%, transparent); }
+  }
   /* pointer-drag mechanics (react-grid-layout feel): the grabbed card floats with the cursor at FULL
      opacity with a lift shadow; a faded clone holds its grid slot as the drop shadow and lags behind
      the neighbors' rearrangement (FLIP transitions set inline by the drag code) */
@@ -688,8 +694,8 @@ try{ var _tk = /[?&]defaults=1(?:&|$)/.test(location.search) ? 'th108_DEFAULTS_t
 
   <div class="card s3" id="toolboxCard" data-pages="home">
     <div class="cardbar"><span class="grip">⠿</span><h2>Toolbox</h2></div>
-    <button id="exportCfg" title="Download your layer setup as JSON (same format as the daemon's config.json)"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M12 12v6"/><path d="m15 15-3-3-3 3"/></svg> Export</button>
     <button id="importCfg" title="Load a layer setup from a JSON file (e.g. moved from the file:// page)"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12"/><path d="m8 11 4 4 4-4"/><path d="M8 5H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-4"/></svg> Import</button>
+    <button id="exportCfg" title="Download your layer setup as JSON (same format as the daemon's config.json)"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M12 12v6"/><path d="m15 15-3-3-3 3"/></svg> Export</button>
     <input type="file" id="importFile" accept="application/json,.json" style="display:none">
     <button id="resetKbBtn" title="Factory-reset the keyboard HARDWARE (recovers a wedged board; clears the keyboard's onboard config/keymap — NOT this page's settings)">⟳ Factory Reset Keyboard</button>
     <button id="resetSiteBtn" title="Reset THIS page's settings (layers, per-pattern values, LCD calibration, layout) to defaults — keeps your media Library; does NOT touch the keyboard">↺ Reset All Settings</button>
@@ -1145,8 +1151,8 @@ NumpadDel::SendInput {.}
     <p data-i18n="docs.daemon.intro" style="font-size:12px">The web page alone drives your keyboard over WebHID while this tab is open — great for a quick try. The optional <b>companion daemon</b> unlocks the rest: <b>always-on lighting</b> (keeps running with the page closed), the <b>Audio</b> and <b>Agent</b> layers, Now-Playing on the LCD, and Host Actions.</p>
     <ol data-i18n="docs.daemon.steps" style="font-size:12px;line-height:1.7;padding-left:18px;margin:6px 0">
       <li>Install <a href="https://nodejs.org" target="_blank" rel="noopener" style="color:var(--blue,#58a6ff)">Node.js LTS</a> — one-time; the daemon runs on it.</li>
-      <li>Download the th108 suite (project folder / release zip).</li>
-      <li>Run <code>setup.cmd</code> — it installs dependencies, enables start-at-login, and opens the controller at <code>http://localhost:8123/</code>.</li>
+      <li>Download the <a href="https://github.com/BeyondSmash/th108-suite" target="_blank" rel="noopener" style="color:var(--blue,#58a6ff)">th108 suite</a> (green “Code” ▸ Download ZIP, then unzip anywhere).</li>
+      <li>Run <code>setup.cmd</code> from the top of that unzipped folder — it installs dependencies, enables start-at-login (per-user, no admin), and opens the controller at <code>http://localhost:8123/</code>.</li>
     </ol>
     <p class="hint" data-i18n="docs.daemon.hint">Windows only for now. The daemon is a small local Node process — nothing is uploaded anywhere. Once it’s running you open <code>http://localhost:8123/</code> and this prompt no longer appears.</p>
   </div>
@@ -1442,7 +1448,26 @@ if (window.TH108Defaults && !TH108Defaults.isDefaultsMode() && !localStorage.get
   bn.hidden = false;
   const dm = document.getElementById('daemonInstallDismiss');
   if (dm) dm.addEventListener('click', e => { e.preventDefault(); localStorage.setItem('th108.hideDaemonInstallPrompt', '1'); bn.hidden = true; });
-  // "Get the daemon →" is a plain #docs link — the hash router switches to the Docs tab (docDaemon card).
+  // "Get the daemon →": switch to Docs, scroll the "Get the daemon" card into view, and pulse its
+  // perimeter until you scroll it away (so the deep-link lands you ON the answer, not the top of the tab).
+  const how = document.getElementById('daemonInstallHow');
+  if (how) how.addEventListener('click', e => {
+    e.preventDefault();
+    try { setPage('docs'); } catch(_) { location.hash = '#docs'; }
+    const card = document.getElementById('docDaemon'); if (!card) return;
+    requestAnimationFrame(() => {            // let the Docs cards un-hide before we scroll/measure
+      card.scrollIntoView({ behavior:'smooth', block:'center' });
+      card.classList.add('cardglow');
+      // two-phase: wait until the card is actually on screen, THEN drop the glow when it leaves —
+      // so the pre-scroll off-screen state doesn't cancel it before the user ever sees it.
+      let onscreen = false;
+      const io = new IntersectionObserver(ents => {
+        if (ents[0].isIntersecting) onscreen = true;
+        else if (onscreen) { card.classList.remove('cardglow'); io.disconnect(); }
+      }, { threshold: 0.55 });
+      io.observe(card);
+    });
+  });
 })();
 // shared engine (board map, renderers, compositor, state) — pull the bits we reference by short name
 const {KEYMAP, INDICES, NLED, BOARDW, BOARDH, hexToRgb} = TH108Engine;
@@ -2365,7 +2390,7 @@ document.querySelectorAll('#grid .faqcard[data-pages~="faq"]').forEach((c,i)=>{ 
 // from its rendered height, so short cards stop leaving the gap a row-aligned grid leaves. grid-auto-flow:dense
 // is already on, so spanned cards backfill holes. Grid mode just clears the inline spans → original look.
 const FILL_KEY='th108_cardfill', MROW=8;   // MROW px = the fine row track Fill packs against
-let fillMode=false; try{ fillMode=localStorage.getItem(FILL_KEY)==='1'; }catch(_){ }
+let fillMode=true; try{ const v=localStorage.getItem(FILL_KEY); if(v!==null) fillMode=(v==='1'); }catch(_){ }   // default Fill (pack cards up); an explicit toggle to Grid still sticks
 const layerCardsEl=document.getElementById('layerCards');
 function masonryGrid(g, sel){   // pack one grid's cards into their vertical gaps (Fill), or clear the spans (Grid)
   if(!g) return;
