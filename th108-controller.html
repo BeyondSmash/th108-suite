@@ -1455,7 +1455,12 @@ if (window.TH108Defaults && !TH108Defaults.isDefaultsMode() && !localStorage.get
     e.preventDefault();
     try { setPage('docs'); } catch(_) { location.hash = '#docs'; }
     const card = document.getElementById('docDaemon'); if (!card) return;
-    requestAnimationFrame(() => {            // let the Docs cards un-hide before we scroll/measure
+    // setPage swaps tabs through the async View Transition API, so the Docs cards aren't laid out in
+    // the next frame. Poll until the card is actually visible (offsetParent!=null), THEN scroll —
+    // otherwise the first click scrolls a still-hidden zero-height card (the old "click twice" bug).
+    let tries = 0;
+    (function whenVisible(){
+      if (card.offsetParent === null && ++tries <= 30) { requestAnimationFrame(whenVisible); return; }
       card.scrollIntoView({ behavior:'smooth', block:'center' });
       card.classList.add('cardglow');
       // two-phase: wait until the card is actually on screen, THEN drop the glow when it leaves —
@@ -1466,7 +1471,7 @@ if (window.TH108Defaults && !TH108Defaults.isDefaultsMode() && !localStorage.get
         else if (onscreen) { card.classList.remove('cardglow'); io.disconnect(); }
       }, { threshold: 0.55 });
       io.observe(card);
-    });
+    })();
   });
 })();
 // shared engine (board map, renderers, compositor, state) — pull the bits we reference by short name
