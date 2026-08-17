@@ -399,6 +399,7 @@ try{ var _tk = /[?&]defaults=1(?:&|$)/.test(location.search) ? 'th108_DEFAULTS_t
   .doccard ul{ margin:0 0 8px; padding-left:18px; }
   .doccard li{ margin:2px 0; }
   .doccard li b, .doccard p b{ color:var(--text); }   /* bold: a touch below stark white */
+  .doccard code{ color:var(--text); font-weight:600; }   /* code snippets (setup.cmd, localhost URL) pop to full white so they stand out from prose */
   /* Feature Guide: zebra-blocked sections + color-coded titles for scanability */
   .doccard .fgsec{ padding:9px 14px 6px; border-radius:12px; margin:7px 0; }
   .doccard .fgsec:nth-of-type(even){ background:var(--zebra); }   /* subtle zebra on the dark card */
