@@ -122,11 +122,10 @@ with or endorsed by Epomaker. The name is used only to describe the hardware thi
 
 ## License
 
-Copyright © 2026 Beyon. Licensed under the **GNU General Public License v3.0** — see [`LICENSE`](LICENSE).
+Copyright © 2026 Beyon. Licensed under the **MIT License** — see [`LICENSE`](LICENSE).
 
-In short: you're free to use, study, modify, and share this software, but derivative works must
-also be released under the GPL-3.0 (they can't be taken closed-source). As the copyright holder,
-the author retains the right to offer the software under other terms as well.
+In short: you're free to use, study, modify, share, and build on this software — including in your
+own projects — as long as you keep the copyright notice. It's provided as-is, with no warranty.
 
 ## Requirements
 
