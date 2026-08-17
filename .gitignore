@@ -85,3 +85,9 @@ th108-daemon/audio-tray*.ps1
 th108-daemon/audio-tray-launch.vbs
 th108-daemon/install-audio-tray.ps1
 th108-daemon/restart-audio-now.ps1
+
+_PUBLISHING-AND-DEMO.md
+_keytest.html
+test-environment/
+th108-daemon/_agentverify.out
+th108-daemon/restore-logi-download-assistant.reg
