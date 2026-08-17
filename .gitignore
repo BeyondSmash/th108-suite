@@ -74,3 +74,14 @@ claude-runaway-watch.ps1
 claude-runaway-watch.vbs
 th108-daemon/audio-tray-install-result.txt
 th108-daemon/audio-task-result.txt
+
+Profiles/
+HANDOFF.md
+_parse_sniff.js
+_splice_gif.js
+_splice_layers.js
+docs/superpowers/
+th108-daemon/audio-tray*.ps1
+th108-daemon/audio-tray-launch.vbs
+th108-daemon/install-audio-tray.ps1
+th108-daemon/restart-audio-now.ps1
