@@ -1891,12 +1891,19 @@ setInterval(async ()=>{
     if(_npPos.track && _npPos.track!==_npLastTrack){ if(_npLastTrack!==null && _npPos.playing) _npFlashUntil=performance.now()+450; _npLastTrack=_npPos.track; } } }
   catch(_){ _npPos=null; }
 }, 250);
-function applyNpBar(flat){
-  const on=document.getElementById('npBar'); if(!on||!on.checked) return;
-  const ms=_npPos; if(!ms||!ms.hasMedia || performance.now()-_npPosAt>2000) return;
-  let op=1;   // idle crossfade — mirror the daemon (fade out after npBarIdle seconds paused)
+// Shared visibility/opacity gate for the song-progress bar so the board AND the iso preview agree:
+// returns null when the bar shouldn't show (toggle off / no media / stale position / faded out while
+// paused), else {ms, op}. Before this, the iso preview lit the bar off stale progress while paused. -----
+function npBarState(){
+  const on=document.getElementById('npBar'); if(!on||!on.checked) return null;
+  const ms=_npPos; if(!ms||!ms.hasMedia || performance.now()-_npPosAt>2000) return null;
+  let op=1;   // idle crossfade — fade out after npBarIdle seconds paused (mirrors the daemon)
   if(!ms.playing){ const idleSec=+((document.getElementById('npBarIdle')||{}).value)||3; const over=(ms.idleMs||0)-idleSec*1000; if(over>0) op=Math.max(0,1-over/600); }
-  if(op<=0) return;
+  return op>0 ? {ms, op} : null;
+}
+function applyNpBar(flat){
+  const st=npBarState(); if(!st) return;
+  const ms=st.ms, op=st.op;
   const [br,bg,bb]=TH108Engine.hexToRgb(((document.getElementById('npBarColor')||{}).value)||'#11ff00');
   const f=(Math.max(0,Math.min(100, +((document.getElementById('npBarBright')||{}).value)||60))/100)*op;   // bar ignores global brightness, like the daemon
   const grad=((document.getElementById('npBarGrad')||{}).value)||'solid';
@@ -2089,12 +2096,12 @@ LUI.init();   // restore saved layers → ensureSettings backfill → build card
 // Isometric View — floating draggable overlay of the layer stack as separate live key-planes
 const _npPlaneRgb=new Uint8Array(TH108Engine.NLED*3);
 function isoExtraPlanes(){   // Song-progress bar (keys 1-0 / numpad) as its own plane when enabled, + the track-change flash keys
-  const on=document.getElementById('npBar'); if(!on||!on.checked) return [];
-  const ms=_npPos; if(!ms||!ms.hasMedia) return [];
+  const st=npBarState(); if(!st) return [];   // off / no media / stale / faded-out-while-paused → no plane, exactly like the board
+  const ms=st.ms, op=st.op;
   _npPlaneRgb.fill(0);
   const keys=(((document.getElementById('npBarKeys')||{}).value)==='numpad')?NP_NUMPAD:NP_DIGITS;
   const [br,bg,bb]=TH108Engine.hexToRgb(((document.getElementById('npBarColor')||{}).value)||'#11ff00');
-  const f=Math.max(0,Math.min(100,+((document.getElementById('npBarBright')||{}).value)||60))/100;
+  const f=(Math.max(0,Math.min(100,+((document.getElementById('npBarBright')||{}).value)||60))/100)*op;   // *op = same idle-fade as the board
   const grad=((document.getElementById('npBarGrad')||{}).value)||'solid';
   const fit=!!((document.getElementById('npBarGradFit')||{}).checked);
   const lit=Math.round((ms.progress||0)*keys.length), span=(fit?lit:keys.length)-1;

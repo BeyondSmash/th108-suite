@@ -290,7 +290,7 @@
     // Face-on: snap to a flat front-facing (top-down) view AND lock tilt (so a drag can't knock it off); yaw still spins.
     faceEl.addEventListener('click', ()=>{ faceOn=!faceOn; pitch=faceOn?FACE_PITCH:ISO_PITCH; if(faceOn) yaw=0; faceEl.classList.toggle('on',faceOn); lockEl.hidden=!faceOn; saveSoon(); });
     // Reset Orientation: restore the whole view (zoom / rotation / gap / drawer) to the default and clear focus / Face-on
-    $('.iso-reset').addEventListener('click', ()=>{ yaw=DEF_YAW; pitch=DEF_PITCH; zoom=defZoom(); gap=DEF_GAP; drawer=DEF_DRAWER; focusIdx=null; faceOn=false; backEl.hidden=true; lockEl.hidden=true; faceEl.classList.remove('on'); buildLegend(); syncControls(); saveSoon(); });
+    $('.iso-reset').addEventListener('click', ()=>{ yaw=DEF_YAW; pitch=DEF_PITCH; zoom=defZoom(); _autoZoom=zoom; gap=DEF_GAP; drawer=DEF_DRAWER; focusIdx=null; faceOn=false; backEl.hidden=true; lockEl.hidden=true; faceEl.classList.remove('on'); buildLegend(); syncControls(); saveSoon(); });   // _autoZoom=zoom → auto-fit resumes after a Reset
     loadSettings(); syncControls();
 
     // ---- drag the panel by its header ----
@@ -487,10 +487,15 @@
     }
 
     // ---- main draw ----
-    let _last=0, _fam=null;
+    let _last=0, _fam=null, _autoZoom=null, _lastPlaneN=-1;   // auto-fit: zoom tracks the visible plane count until you drag the zoom slider (Reset resumes it)
     function draw(now){
       const dt=Math.min(80, _last?now-_last:16); _last=now; const tSec=now/1000;
       const P0=planeList(), N=P0.length;
+      if(N!==_lastPlaneN){   // a plane appeared/left (System lock turned on, Song-progress toggled) → re-fit the
+        const dz=defZoom();  // default zoom to the new count, but ONLY while the user is still on the auto zoom
+        if(_autoZoom==null || zoom===_autoZoom){ zoom=dz; zoomEl.value=zoomToSlider(zoom); zvalEl.textContent=zoom+'%'; }   // (a manual zoom drag opts out until Reset)
+        _autoZoom=dz; _lastPlaneN=N;
+      }
       const AMP = (enhanced && fxAnim) ? gap*0.20 : 0;   // wave ripple only when the Animation sub-toggle is on
       // height of plane index within the drawn set, centered
       const byOf = j => (j-(N-1)/2)*gap;
