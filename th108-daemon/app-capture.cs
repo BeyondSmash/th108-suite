@@ -49,7 +49,9 @@ class AppCapture {
   // ---- audio-session enumeration (for --list and name→PID resolution) ----
   [ComImport, Guid("BCDE0395-E52F-467C-8E3D-C4579291692E")] class MMDeviceEnumerator { }
   [Guid("A95664D2-9614-4F35-A746-DE8DB63617E6"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
-  interface IMMDeviceEnumerator { int NotImpl1(); int GetDefaultAudioEndpoint(int dataFlow, int role, out IMMDevice ep); }
+  interface IMMDeviceEnumerator { int EnumAudioEndpoints(int dataFlow, int stateMask, out IMMDeviceCollection devices); int GetDefaultAudioEndpoint(int dataFlow, int role, out IMMDevice ep); }
+  [Guid("0BD7A1BE-7A1A-44DB-8397-CC5392387B5E"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+  interface IMMDeviceCollection { int GetCount(out int count); int Item(int i, out IMMDevice dev); }
   [Guid("D666063F-1587-4E43-81F1-B948E807363F"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
   interface IMMDevice { int Activate(ref Guid iid, int clsctx, IntPtr act, [MarshalAs(UnmanagedType.IUnknown)] out object o); }
   [Guid("77AA99A0-1BD6-484F-8BC7-2C654C9A9B6F"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
@@ -256,19 +258,27 @@ class AppCapture {
     var seen = new System.Collections.Generic.HashSet<uint>();
     try {
       var enumr = (IMMDeviceEnumerator)(new MMDeviceEnumerator());
-      IMMDevice dev; if (enumr.GetDefaultAudioEndpoint(0, 0, out dev) != 0 || dev == null) return list;   // 0=eRender, 0=eConsole
-      object mgrO; if (dev.Activate(ref IID_IAudioSessionManager2, 1, IntPtr.Zero, out mgrO) != 0) return list;
-      var mgr = (IAudioSessionManager2)mgrO;
-      IAudioSessionEnumerator se; if (mgr.GetSessionEnumerator(out se) != 0) return list;
-      int count; if (se.GetCount(out count) != 0) return list;
-      for (int i = 0; i < count; i++) {
-        IAudioSessionControl2 ctl; if (se.GetSession(i, out ctl) != 0 || ctl == null) continue;
-        int state; if (ctl.GetState(out state) != 0) continue;
-        if (activeOnly && state != 1) continue;            // 1 = AudioSessionStateActive (currently producing audio)
-        uint p; if (ctl.GetProcessId(out p) != 0 || p == 0 || seen.Contains(p)) continue;
-        string nm = null; try { nm = System.Diagnostics.Process.GetProcessById((int)p).ProcessName; } catch { }
-        if (string.IsNullOrEmpty(nm)) continue;
-        seen.Add(p); list.Add(new AppSession { pid = p, name = nm });
+      // Scan EVERY active render endpoint, not just the default — an app playing to a non-default output
+      // (e.g. a USB DAC after Windows swaps the default on sleep/wake) has its session on THAT device, so a
+      // default-only scan misses it entirely (the "playing but no bars / not in the app list" bug). Capture
+      // itself is process-loopback (PID-based), so once we find the PID here it works regardless of device.
+      IMMDeviceCollection devs; if (enumr.EnumAudioEndpoints(0, 0x1, out devs) != 0 || devs == null) return list;   // 0=eRender, 0x1=DEVICE_STATE_ACTIVE
+      int dn; if (devs.GetCount(out dn) != 0) return list;
+      for (int di = 0; di < dn; di++) {
+        IMMDevice dev; if (devs.Item(di, out dev) != 0 || dev == null) continue;
+        object mgrO; if (dev.Activate(ref IID_IAudioSessionManager2, 1, IntPtr.Zero, out mgrO) != 0) continue;
+        var mgr = (IAudioSessionManager2)mgrO;
+        IAudioSessionEnumerator se; if (mgr.GetSessionEnumerator(out se) != 0) continue;
+        int count; if (se.GetCount(out count) != 0) continue;
+        for (int i = 0; i < count; i++) {
+          IAudioSessionControl2 ctl; if (se.GetSession(i, out ctl) != 0 || ctl == null) continue;
+          int state; if (ctl.GetState(out state) != 0) continue;
+          if (activeOnly && state != 1) continue;            // 1 = AudioSessionStateActive (currently producing audio)
+          uint p; if (ctl.GetProcessId(out p) != 0 || p == 0 || seen.Contains(p)) continue;
+          string nm = null; try { nm = System.Diagnostics.Process.GetProcessById((int)p).ProcessName; } catch { }
+          if (string.IsNullOrEmpty(nm)) continue;
+          seen.Add(p); list.Add(new AppSession { pid = p, name = nm });
+        }
       }
     } catch { }
     return list;
