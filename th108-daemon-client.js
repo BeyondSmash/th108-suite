@@ -124,6 +124,7 @@ window.TH108DaemonClient = (function () {
       const restart = document.getElementById('dmnRestart');
       const usb = document.getElementById('dmnUsbFix');
       const disp = document.getElementById('dmnDispOff');
+      const grab = document.getElementById('dmnGrabbers');
       const np = document.getElementById('lcdNowPlaying');   // lives on the LCD tab, rides the same /status poll
       if (!st || !auto || !quit) return;
       let alive = false;
@@ -183,6 +184,12 @@ window.TH108DaemonClient = (function () {
             disp.disabled = !knows;
             disp.title = knows ? '' : 'the running daemon predates this setting — restart it to enable';
             if (knows && document.activeElement !== disp) disp.checked = !!s.dimOnDisplayOff;
+          }
+          if (grab) {
+            const knows = 'grabberApps' in s;
+            grab.disabled = !knows;
+            if (!knows && grab.parentElement) grab.parentElement.title = 'the running daemon predates this setting — restart it (Quit, then the tray) to enable';
+            if (knows && document.activeElement !== grab) grab.value = (s.grabberApps || []).join(', ');   // don't clobber while you're typing
           }
           if (np) {
             const knowsNp = 'nowPlaying' in s;
@@ -267,6 +274,13 @@ window.TH108DaemonClient = (function () {
           await fetch('/displayoff', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ on: disp.checked }) });
           log(TH108i18n.tfLog('lights-off-when-monitor-off {0}', (disp.checked ? 'enabled' : 'disabled')), 'ok');
         } catch (_) { log('monitor-off toggle failed', 'err'); refresh(); }
+      });
+      if (grab) grab.addEventListener('change', async () => {   // 'change' = you clicked away / finished editing — one POST, not per keystroke
+        const apps = grab.value.split(/[\n,]/).map(s => s.trim().replace(/\.exe$/i, '')).filter(Boolean);
+        try {
+          await fetch('/grabber-apps', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ apps }) });
+          log(TH108i18n.tfLog('keyboard-grabber list saved ({0} app(s)) — fast wedge-recovery while they\'re in front', apps.length), 'ok');
+        } catch (_) { log('grabber list save failed', 'err'); refresh(); }
       });
       if (np) np.addEventListener('change', async () => {
         // BRICK WARNING: every media change writes the LCD FLASH (cmd 0x50). On this board a flash

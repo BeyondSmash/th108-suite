@@ -23,7 +23,7 @@ const { createFocusPoll } = require('./focus-poll.js');
 let _lastFocusFlashed = null;
 const focusPoll = createFocusPoll({ log: (...a) => log(...a), onLine: (ev) => {   // lazy log: `log` (a const) is declared below — defer the reference to call time to dodge the TDZ
   if (!ev) return;
-  if (ev.exe) applyAppProfile(ev.exe);   // app-specific lighting: foreground app → its mapped profile (independent of agent-follow)
+  if (ev.exe) { applyAppProfile(ev.exe); if (isGrabberApp(ev.exe)) grabberActiveAt = Date.now(); }   // app-specific lighting + note when a flagged board-grabber is foreground (arms fast wedge-recovery below)
   if (!(ev.code && ev.title)) return;
   const sess = agentState.sessions(Date.now());
   const id = pickSessionForTitle(ev.title, sess);
@@ -32,7 +32,16 @@ const focusPoll = createFocusPoll({ log: (...a) => log(...a), onLine: (ev) => { 
   if (settings.focusOutlineOnSwitch && id !== _lastFocusFlashed) { runFocusWindow(id, { color: settings.focusOutlineColor }); }   // confirmation glow on a focus SWITCH (no window-steal — you already focused it)
   _lastFocusFlashed = id;
 } });
+// Match a foreground process name against the known-grabber list (case-insensitive, .exe optional — same shape as appProfiles).
+function isGrabberApp(exe) {
+  const list = settings.grabberApps;
+  if (!Array.isArray(list) || !list.length) return false;
+  const norm = s => String(s || '').toLowerCase().replace(/\.exe$/, '');
+  const k = norm(exe);
+  return !!k && list.some(g => norm(g) === k);
+}
 function wantsFocus() {
+  if (Array.isArray(settings.grabberApps) && settings.grabberApps.length) return true;   // grabber-list needs the foreground watcher too (to know when one is active)
   if (Array.isArray(settings.appProfiles) && settings.appProfiles.length) return true;   // app→profile switching needs the foreground watcher too
   return !!(state && state.layers && state.layers.some(L => L.enabled && L.type === 'agent' && L.settings && L.settings.session === 'focus'));
 }
@@ -256,7 +265,7 @@ function loadSettings() {
   const DEF = { usbReset: true, nowPlaying: false, npTitle: '#ffffff', npArtist: '#ffd98c', lightsOn: true, brightness: 100, npRevertSec: 0, npAllow: {}, npArtFit: false,
                 npBar: false, npBarColor: '#11ff00', npBarBright: 60, npFlash: true, npFlashColor: '#ffd000', npBarIdleSec: 3, npBarGrad: 'solid', npBarGradFit: false, npBarKeys: 'row', npBarAgentTop: false, npOnboardMask: false, dimOnDisplayOff: false,
                 focusOutlineColor: '#f97316', focusProjectColors: {}, focusAutoSwitch: false, focusOutlineOnSwitch: false, focusDryRun: false,
-                appProfiles: [], appProfileDefault: null, primaryProfile: null };   // appProfiles = [{exe, profile}] auto-switch lighting per focused app (profile = a saved profile's NAME); appProfileDefault = profile name to show when no app matches (null → falls back to primaryProfile); primaryProfile = the base GLOBAL profile that non-global overlays compose against   // focusProjectColors = per-project outline overrides { "Portfolio": "#1543f9", … } keyed by workspace name; falls back to focusOutlineColor. focusDryRun default OFF now (window-focus is proven safe + manual-only); the checkbox was removed, but the daemon gate stays as a latent config-only kill-switch (set focusDryRun:true in config.json to make the ⤒ button resolve+log only)   // agent window-focus: outline glow color; focusAutoSwitch = bring a session's VSCode window to front when it needs-you; focusOutlineOnSwitch = flash the outline when focus switches (no window-steal). Both default OFF (opt-in)   // npBarAgentTop = let the agent layer's numpad glyphs render ABOVE the progress bar (z-swap on the shared keys)   // dimOnDisplayOff = blank the board while the monitor is off on the idle timeout   // npOnboardMask = set the keyboard's onboard effect to BLACK so the per-update flash is a dark blink, not rainbow   // npBarIdleSec = fade the bar out after this long with nothing playing   // npRevertSec 0 = never revert; npAllow = per-source override (absent → Spotify-only default); npBar = the 1-0 song-progress light-bar (lighting-only, no flash writes), npFlash = yellow track-change blip
+                appProfiles: [], appProfileDefault: null, primaryProfile: null, grabberApps: [] };   // grabberApps = ["obs64","steam",…] known wedge-causers: while one is the FOREGROUND app, a mute recovers on the fast (AFK) threshold even mid-work — you've flagged it as a board-grabber so a ~1-2s typing blip beats a long dark spell (can't PREVENT the wedge, an outside app poking the keyboard's USB is beyond us — only clears it fast)   // appProfiles = [{exe, profile}] auto-switch lighting per focused app (profile = a saved profile's NAME); appProfileDefault = profile name to show when no app matches (null → falls back to primaryProfile); primaryProfile = the base GLOBAL profile that non-global overlays compose against   // focusProjectColors = per-project outline overrides { "Portfolio": "#1543f9", … } keyed by workspace name; falls back to focusOutlineColor. focusDryRun default OFF now (window-focus is proven safe + manual-only); the checkbox was removed, but the daemon gate stays as a latent config-only kill-switch (set focusDryRun:true in config.json to make the ⤒ button resolve+log only)   // agent window-focus: outline glow color; focusAutoSwitch = bring a session's VSCode window to front when it needs-you; focusOutlineOnSwitch = flash the outline when focus switches (no window-steal). Both default OFF (opt-in)   // npBarAgentTop = let the agent layer's numpad glyphs render ABOVE the progress bar (z-swap on the shared keys)   // dimOnDisplayOff = blank the board while the monitor is off on the idle timeout   // npOnboardMask = set the keyboard's onboard effect to BLACK so the per-update flash is a dark blink, not rainbow   // npBarIdleSec = fade the bar out after this long with nothing playing   // npRevertSec 0 = never revert; npAllow = per-source override (absent → Spotify-only default); npBar = the 1-0 song-progress light-bar (lighting-only, no flash writes), npFlash = yellow track-change blip
   try { return Object.assign({}, DEF, JSON.parse(fs.readFileSync(SETTINGS_PATH, 'utf8'))); }
   catch { return Object.assign({}, DEF); }   // usbReset default ON — the escalation fails gracefully (one log line) if the task isn't registered
 }
@@ -575,7 +584,7 @@ async function sendOnboard(allled) {
 // but it's still there); writing too would wedge the board. Back off and re-probe on a later tick.
 let probing = false, nextOpenAt = Date.now() + 5000;   // startup grace: a live page's heartbeat needs a beat (≤3s) to park us before we first touch the device
 let lastOkAt = 0, streakStart = 0, muteLogged = false, muteAt = 0;   // mute-episode tracking (transition logging)
-let usbFiredAt = 0, lastTickAt = 0, wokeAt = 0;   // USB-restart escalation state + sleep-gap detection (wokeAt = last resume-from-sleep, for the fast wake-recovery threshold)
+let usbFiredAt = 0, lastTickAt = 0, wokeAt = 0, grabberActiveAt = 0;   // grabberActiveAt = last time a flagged board-grabber (settings.grabberApps) was the foreground app — arms the fast wedge-recovery threshold below   // USB-restart escalation state + sleep-gap detection (wokeAt = last resume-from-sleep, for the fast wake-recovery threshold)
 let lastKeyAt = Date.now();           // last physical keypress (from the global hook) — drives the idle-aware USB-restart threshold
 const heldKeys = new Set();           // keycodes physically down right now (Set, so OS key-repeat can't double-count) — gate the USB restart so it can't re-enumerate mid-keystroke and strand a held key
 let lastKeydownAt = 0;                // last keydown moment — the USB restart waits for a lull (LULL_MS) after this before re-enumerating
@@ -627,7 +636,12 @@ function escalateUsbIfDue(context) {
   // Fast wake recovery: for ~90s after a resume the board is reliably USB-suspended and won't self-heal, so
   // re-enumerate after just 4s instead of the full AFK wait — lights return seconds after wake, not ~40s.
   const freshWake = wokeAt && Date.now() - wokeAt < 90_000;
-  const thresholdMs = freshWake ? 4000 : (afk ? U.IDLE_THRESHOLD_MS : U.THRESHOLD_MS);
+  // Known-grabber fast path: a flagged app (OBS/Steam/…) was foreground in the last 60s, so THIS mute is very
+  // likely its doing — recover on the cheap AFK threshold even while you're typing (the mid-keystroke guard in
+  // U.shouldFire still holds, so it never yanks USB mid-key). ponytail: reuses IDLE_THRESHOLD_MS (12s); if you
+  // want grabber recovery snappier still, add a dedicated constant in usb-reset.js.
+  const grabberActive = grabberActiveAt && Date.now() - grabberActiveAt < 60_000;
+  const thresholdMs = freshWake ? 4000 : ((afk || grabberActive) ? U.IDLE_THRESHOLD_MS : U.THRESHOLD_MS);
   // Key-hold-off: don't re-enumerate mid-keystroke (drops the held key's keyup → stuck key + input freeze).
   const sinceKeydownMs = lastKeydownAt ? Date.now() - lastKeydownAt : Infinity;
   if (!U.shouldFire({ muteAt, now: Date.now(), lastFireAt: usbFiredAt, thresholdMs, keysHeld: heldKeys.size, sinceKeydownMs })) return false;
@@ -637,6 +651,7 @@ function escalateUsbIfDue(context) {
   const why = afk ? 'AFK — recovering early'
             : forced ? 'hard ceiling — no lull found, recovering anyway'
             : staleHeld ? heldKeys.size + ' stale held key(s) (missed keyup — physically up) — recovering now'
+            : grabberActive ? 'known board-grabber was foreground — recovering fast (you flagged this app)'
             : 'keypress lull';
   log('⚡ ESCALATING: ' + context + ' ' + Math.round((usbFiredAt - muteAt) / 1000) + 's (' + why + ') — PnP-restarting the keyboard USB device (task "' + U.TASK_NAME + '"); typing drops ~1-2s');
   U.fire(log);
@@ -1151,7 +1166,8 @@ const control = {
                       focusedSession: agentState.focus(Date.now()),
                       agentAggregate: (function(){ const agL = state && state.layers && state.layers.find(L => L.enabled && L.type === 'agent'); return agL ? agentState.aggregate(agL.settings && agL.settings.session || 'all', Date.now()) : null; })(),
                       focusOutlineColor: settings.focusOutlineColor, focusProjectColors: settings.focusProjectColors || {}, focusAutoSwitch: settings.focusAutoSwitch, focusOutlineOnSwitch: settings.focusOutlineOnSwitch, focusDryRun: settings.focusDryRun,
-                      appProfiles: settings.appProfiles || [], appProfileDefault: settings.appProfileDefault || null }; },   // the REAL agent phase the keyboard is showing, so the page can mirror it on-screen (symbol + mini preview)
+                      appProfiles: settings.appProfiles || [], appProfileDefault: settings.appProfileDefault || null,
+                      grabberApps: settings.grabberApps || [] }; },   // the REAL agent phase the keyboard is showing, so the page can mirror it on-screen (symbol + mini preview)
   setNowPlaying(on) {
     const was = settings.nowPlaying;
     settings.nowPlaying = !!on; saveSettings();
@@ -1276,6 +1292,12 @@ const control = {
     };
   },
   setUsbReset(on) { settings.usbReset = !!on; saveSettings(); },
+  // Known board-grabber list (OBS/Steam/…), pushed by the daemon panel. A newline/comma list of process names.
+  setGrabberApps(list) {
+    settings.grabberApps = (Array.isArray(list) ? list : String(list || '').split(/[\n,]/))
+      .map(s => String(s || '').trim().replace(/\.exe$/i, '')).filter(Boolean);
+    saveSettings(); updateFocusPolling();   // start/stop the foreground watcher based on whether the list is now empty
+  },
   setDimOnDisplayOff(on) { settings.dimOnDisplayOff = !!on; saveSettings(); syncDisplayWatch(); },
   quit() { shutdown(0); },
   restart() { shutdown(42); },   // exit non-zero so start-hidden.vbs's supervisor revives us (clean exit 0 would STOP supervision — that's why /quit needs a manual Start)

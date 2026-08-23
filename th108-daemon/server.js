@@ -117,6 +117,12 @@ function createServer({ control, root, port = 8123, watchdogMs = 12000 }) {
         if (control.setAppProfiles) control.setAppProfiles(body);
         return sendJson(res, 200, { ok: true });
       }
+      if (req.method === 'POST' && u === '/grabber-apps') {   // page pushes the known board-grabber list (fast wedge-recovery while one is foreground)
+        const b = await readBody(req); let body;
+        try { body = JSON.parse(b || '{}'); } catch { return sendJson(res, 400, { error: 'bad json' }); }
+        if (control.setGrabberApps) control.setGrabberApps(body.apps);
+        return sendJson(res, 200, { ok: true });
+      }
       if (req.method === 'POST' && u === '/apply-profile') {   // page-side manual Apply → daemon applies live + flashes
         const b = await readBody(req); let body;
         try { body = JSON.parse(b || '{}'); } catch { return sendJson(res, 400, { error: 'bad json' }); }
