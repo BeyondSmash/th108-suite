@@ -280,10 +280,15 @@ class AppCapture {
       sb.Append("{\"pid\":").Append(sessions[i].pid).Append(",\"name\":\"").Append(JsonEsc(sessions[i].name)).Append("\"}"); }
     Console.Out.WriteLine(sb.Append(']').ToString()); Console.Out.Flush(); return 0;
   }
-  // resolve a process NAME (case-insensitive, .exe optional) to a PID with an audio session (any state)
+  // resolve a process NAME (case-insensitive, .exe optional) to a PID with an audio session.
+  // PREFER a session that's actively playing: apps like Spotify run several processes with multiple sessions
+  // (idle/expired children), so grabbing the first match often lands on a SILENT one — the whole "detects the
+  // song but the bars stay dead" bug. Fall back to any-state so a paused / not-yet-started app still resolves
+  // (we emit silence and the caller re-resolves until it plays).
   static uint ResolvePid(string name) {
     string want = name.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) ? name.Substring(0, name.Length - 4) : name;
-    foreach (var s in Sessions(false)) if (string.Equals(s.name, want, StringComparison.OrdinalIgnoreCase)) return s.pid;
+    foreach (var s in Sessions(true))  if (string.Equals(s.name, want, StringComparison.OrdinalIgnoreCase)) return s.pid;   // active first
+    foreach (var s in Sessions(false)) if (string.Equals(s.name, want, StringComparison.OrdinalIgnoreCase)) return s.pid;   // else any
     return 0;
   }
   static void EmitSilence(System.Diagnostics.Stopwatch sw, StringBuilder sb, CultureInfo ci) {
