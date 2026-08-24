@@ -1039,11 +1039,12 @@ NumpadDel::SendInput {.}
   </div>
   <div class="card s2 faqcard" id="faq5" data-pages="faq">
     <div class="cardbar"><span class="grip">⠿</span></div>
-    <h3 data-i18n="faq5.h">Why the "Media" layer type does nothing (for now)</h3>
-    <p data-i18n="faq5.p">In the Layer Compositor, one of the choices in a layer's type dropdown is <b>Media</b>. It's reserved for
-       playing a GIF or video <i>inside</i> the layer stack (so it could blend with the other layers), but that part
-       of the engine isn't built yet — a Media layer currently renders nothing. To put a GIF on your keys today, use
-       the GIF → Keyboard Lighting card on the Lighting tab; it plays in place of the layers.</p>
+    <h3 data-i18n="faq5.h2">The "Media" layer vs. the GIF → Keys card</h3>
+    <p data-i18n="faq5.p2">Both put a GIF on your keys, but they work differently. A <b>Media</b> layer plays the GIF <i>inside</i> the
+       Layer Compositor, so it blends with your other layers — opacity, blend mode and the global Adjust all apply —
+       and it runs through the background app, so it keeps going with this tab closed. The <b>GIF → Keyboard Lighting</b>
+       card on the Lighting tab plays a GIF on its own, taking over the whole board, and needs this page connected. Use
+       the Media layer to mix a GIF into a stack; use the card for a quick full-board GIF.</p>
   </div>
 
   <!-- ========== DOCS ========== -->
@@ -1055,12 +1056,14 @@ NumpadDel::SendInput {.}
 
     <section class="fgsec">
     <h3>Layer Compositor (Lighting tab)</h3>
-    <ul data-i18n="docs.features.compositor">
-      <li>Stack up to <b>seven lighting layers</b> (one per effect type) and blend them top-to-bottom — each with its own <b>opacity</b>,
-          <b>blend mode</b> (Normal, Multiply, Screen, Add, etc.) and <b>frame rate</b>.</li>
-      <li>Layer <b>types</b>: <b>Static</b> (solid/per-key paint), <b>Gradient</b> (two-colour, angled, animatable),
-          <b>Pulse</b> (breathing), <b>Reactive</b> (lights keys as you press them), <b>Audio</b> (spectrum bars from
-          your sound), and <b>Media</b> (reserved for in-stack GIF/video — not built yet).</li>
+    <ul data-i18n="docs.features.compositor2">
+      <li>Stack up to <b>eight lighting layers</b> (one per effect type) and blend them top-to-bottom — each with its own <b>opacity</b>,
+          <b>blend mode</b> (Normal, Add, Screen, Multiply, etc.) and <b>frame rate</b>.</li>
+      <li>Layer <b>types</b>: <b>Background</b> (solid or animated base colour), <b>Reactive</b> (lights keys as you press
+          them), <b>Gradient</b> (two-colour, angled, animatable), <b>Pattern</b> (built-in animations — rainbow,
+          spectrum, fire, ripple and more), <b>Individual</b> (paint each key by hand), <b>Audio</b> (spectrum bars from
+          your sound), <b>Media</b> (play a GIF or video inside the stack so it blends with the rest), and <b>Agent</b>
+          (a status / twinkle overlay).</li>
       <li>Global <b>Adjust</b> across the whole stack: brightness, saturation, contrast, gamma and hue-rotate.</li>
       <li><b>Isometric View</b> button — a draggable 3D visualizer that shows the layer stack as glowing key-planes
           (rotate, zoom, focus a layer, toggle layers) so you can see how the composite is built.</li>
@@ -1125,6 +1128,22 @@ NumpadDel::SendInput {.}
        page is closed. Options: <b>auto-start at login</b>, <b>auto-fix lighting wedge</b> (USB restart), and
        <b>lights-off when the monitor is off</b>.</p>
     </section>
+
+    <section class="fgsec">
+    <h3>Apps that grab the keyboard (Home tab)</h3>
+    <p data-i18n="docs.features.grabber">Some programs — screen recorders and game launchers/overlays like <b>OBS</b> or <b>Steam</b> — probe the keyboard
+       in a way that can briefly freeze the lighting (a "wedge"). List their process names in the <b>Apps that grab the
+       keyboard</b> box on the daemon panel, and while one of them is the active window the background app clears a wedge
+       <b>fast (~12s)</b> instead of waiting out the normal typing-safe delay (~30s). It can't <i>stop</i> the freeze —
+       that's the other app touching the hardware — only recover from it sooner, and it never restarts the USB
+       mid-keystroke. Find process names in Task Manager → Details.</p>
+    </section>
+
+    <section class="fgsec">
+    <h3>Language (top bar)</h3>
+    <p data-i18n="docs.features.i18n">The dropdown in the top bar switches the interface between <b>18 languages</b>, including right-to-left layouts
+       for Arabic. Your choice is remembered on this device.</p>
+    </section>
   </div>
 
   <div class="card s6 doccard" id="docCompare" data-pages="docs">
@@ -1137,7 +1156,7 @@ NumpadDel::SendInput {.}
       <tr><th>Capability</th><th>Epomaker WebHID</th><th>th108</th></tr>
       <tr><td>Where effects run</td><td>On the keyboard (onboard)</td><td>On your PC, streamed live</td></tr>
       <tr><td>Works after the tab closes</td><td class="yes">Yes (onboard)</td><td class="yes">Yes — via the background daemon</td></tr>
-      <tr><td>Multi-layer live compositing</td><td class="part">One onboard effect (Musical Rhythm layers 2, fixed)</td><td class="yes">Up to 7 freely-blended layers</td></tr>
+      <tr><td>Multi-layer live compositing</td><td class="part">One onboard effect (Musical Rhythm layers 2, fixed)</td><td class="yes">Up to 8 freely-blended layers</td></tr>
       <tr><td>Reactive typing in <em>every</em> app</td><td class="no">Onboard reactive only</td><td class="yes">Yes (daemon sees system-wide keys)</td></tr>
       <tr><td>Audio-reactive lighting</td><td class="part">Onboard “Musical Rhythm” only</td><td class="yes">System / app / tab / mic — as a blendable layer</td></tr>
       <tr><td>GIF → keys</td><td class="no">No</td><td class="yes">Yes</td></tr>
