@@ -3,26 +3,42 @@
 Host-driven, per-frame RGB control for the **Epomaker TH108 V2 PRO** straight from a web browser
 over **WebHID** — no firmware mod, no vendor software running.
 
-Its signature trick is something the stock firmware **cannot** do: it composites **two independent
-live layers every frame** —
+Its signature trick is something the stock firmware **cannot** do: it **composites a stack of
+independent live layers every frame** and streams the combined per-key result to the keyboard
+~30–60 times a second. The original headline effect was just two of them —
 
 - a **pulsing cyan background** (animated host-side), and
 - a **keypress-reactive yellow-orange foreground** (each pressed key flashes and fades),
 
-— and pushes the combined per-key frame to the keyboard ~30–60 times a second.
+— but the compositor now takes **up to eight layers, one of each effect type**: background,
+reactive, gradient, pattern, per-key, audio-reactive, media (GIF), and an agent/status layer,
+each with its own blend mode and opacity.
 
-> Status: working on hardware. The signature two-layer controller is the headline, but the
-> repo has since grown into a small **host-side suite** for the board (lighting, the LCD screen,
-> key remapping, and an always-on background service).
+> Status: working on hardware. The two-layer effect is where it started, but the repo has since
+> grown into a full **host-side suite** for the board — a multi-layer lighting compositor,
+> audio-reactive and GIF layers, the LCD screen, key remapping and host-action hotkeys, profiles,
+> now-playing, an always-on background service, and 18-language localization.
 
 ## What's in here
 
 | File | What it does |
 |---|---|
-| **`th108-controller.html`** | The headline effect controller — pulsing-cyan background + keypress-reactive orange, composited per-frame and streamed over WebHID. |
+| **`th108-controller.html`** | The main app — a tabbed suite: the **multi-layer lighting compositor** (up to 8 layers, incl. audio-reactive and GIF), the **LCD screen** tools, **Hotkeys** (key remapping + host-action bindings), **Profiles**, an in-app **Docs/FAQ** tab, and the **Background Daemon** panel. Composites per-frame and streams over WebHID. |
 | **`th108-screen.html`** | LCD uploader for the on-board 160×96 screen — push a custom image/GIF with colour calibration, Crop/Fit framing, and letterbox bar fills. |
 | **`webhid-test.html`** | Bring-up / diagnostic page, plus a **key-binder**: remap a physical key to a lighting function (the only way to reach the decorative LEDs — see below), with a spacebar focus-overlay mode. |
-| **`th108-daemon/`** | Always-on Node service (`node-hid` + `uiohook-napi`) that runs the reactive lighting as a background process so it works in **any** app, no browser tab required. Includes login-autostart scripts. |
+| **`th108-daemon/`** | Always-on Node service (`node-hid` + `uiohook-napi`) that runs your whole layer stack — reactive typing, audio, media, now-playing, host actions — as a background process so it works in **any** app, no browser tab required. Includes login-autostart, USB-wedge auto-recovery, and app-focus profile switching. |
+
+**What it can do:**
+
+- **Multi-layer compositor** — stack up to 8 layers (one per type: background, reactive, gradient, pattern, per-key, audio, media, agent), each with its own blend mode and opacity.
+- **Reactive typing in any app** — the daemon's system-wide key hook lights keys you press anywhere, not just in the browser tab.
+- **Audio-reactive lighting** — spectrum bars / effects driven by system audio, a specific app, a browser tab, or the mic.
+- **GIF → keys** — play a GIF across the keyboard, either as a compositor layer (blends with the stack) or the standalone card.
+- **LCD screen** — upload an image/GIF, or show **now-playing** (title/artist + a song-progress light bar on the number keys).
+- **Hotkeys & host actions** — remap keys to lighting functions, or bind keys/chords to background actions (mic mute, launch an app, switch profile, window management, macros).
+- **Profiles** — lighting/hotkey/global profiles with live switching, cycling, and per-app auto-switch (a focused app pulls up its profile).
+- **Always-on daemon** — login-autostart, tray control, automatic recovery when the board's lighting stalls (a "wedge").
+- **18-language UI** with right-to-left support.
 
 ## Setup (Windows)
 
@@ -101,12 +117,19 @@ of the above provide.
 
 - [x] Reverse-engineer the per-key frame protocol; prove live per-key push over WebHID
 - [x] Pulsing-cyan background + keypress-reactive orange controller
-- [x] **LCD screen**: upload a custom image/GIF (160×96, RGB565) with colour calibration and framing
+- [x] **Multi-layer compositor** — up to 8 layers (background, reactive, gradient, pattern, per-key,
+      audio-reactive, media/GIF, agent), each with its own blend mode + opacity
+- [x] **Audio-reactive lighting** (system / per-app / tab / mic) and **GIF-as-a-layer**
+- [x] **LCD screen**: upload a custom image/GIF (160×96, RGB565) with colour calibration and framing,
+      plus **now-playing** (track info + a song-progress light bar)
 - [x] **Always-on host** (no browser tab): Node daemon with a system-wide keyboard hook so the
-      reactive layer works type-anywhere, plus login-autostart
+      reactive layer works type-anywhere, plus login-autostart and USB-wedge auto-recovery
 - [x] **Key remapping** to lighting functions via a full-keymap read-modify-write (`webhid-test.html`)
+- [x] **Host-action hotkeys** (bind keys/chords → mic mute, launch, profile switch, window mgmt, macros)
+      and **profiles** (lighting/hotkey/global, cycling, per-app auto-switch)
+- [x] **18-language localization** with right-to-left support
 - [ ] **LCD live overlays** (e.g. a clock on top of the uploaded image) and a multi-slot GIF slideshow
-- [ ] Normal-key / macro remapping and broader on-board-feature parity (profiles, advanced keys)
+- [ ] Broader on-board-feature parity (advanced keys — see the FAQ on why these are firmware-gated)
 - [x] ~~Side / edge LED strips and the ring LED~~ — **investigated and sealed: these decorative LEDs
       are firmware-controlled and cannot be set or triggered from software.** The firmware only runs
       them in response to a physical matrix scan, and they expose no host-readable state. The one
