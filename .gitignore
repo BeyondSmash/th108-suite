@@ -31,8 +31,18 @@ dumped_*.txt
 .playwright-mcp/
 
 # Kept on purpose (safe to publish): README.md, LICENSE, th108-controller.html,
-# th108-screen.html, webhid-test.html, th108-keys.json + th108-map.json (factual key map),
-# th108-daemon/ source, TH108_lighting_controller_brief.md
+# th108-keys.json + th108-map.json (factual key map), th108-daemon/ source
+
+# --- not part of a publish-ready download: unit tests, internal notes, dev-only
+#     pages, and one superseded audio sidecar. Kept on disk for development,
+#     never uploaded. ---
+*.test.js
+reference/
+docs/
+webhid-test.html
+make-font.html
+th108-screen.html
+th108-daemon/audio-app-sidecar.ps1
 
 # daemon runtime log (debug instrumentation for board mute events)
 th108-daemon/daemon.log*
