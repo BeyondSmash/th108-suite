@@ -95,7 +95,7 @@ as many 64-byte reports as needed (payload ~56 bytes per report). Each report's 
 command id, this report's payload length, the running byte-offset into the frame, an auxiliary byte,
 and a "last report" flag. The keyboard echoes each report back as an acknowledgement. That's the
 entire mechanism for live per-key color — everything else (the pulse, the reactive decay, layer
-compositing) is ordinary host-side maths before the frame is sent.
+compositing) is ordinary host-side math before the frame is sent.
 
 This repository documents the protocol **in our own words from observed behavior**; it does **not**
 include or redistribute any of the vendor's JavaScript, firmware, or assets.
