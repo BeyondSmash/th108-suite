@@ -294,7 +294,7 @@
         const sv=c('.s-scrollV'), upS=()=>sv.textContent=(s.scroll).toFixed(2);
         c('.s-scroll').addEventListener('input',e=>{ s.scroll=(+e.target.value)/100; upS(); }); upS();
       } else if(L.type==='pattern'){
-        const pp=E.patParams(s);                     // per-pattern params — each pattern remembers its own colours/speed/scale/etc.
+        const pp=E.patParams(s);                     // per-pattern params — each pattern remembers its own colors/speed/scale/etc.
         const pats=['rainbow','spectrum','radial-rainbow','wave','breathing','ripple','scan','twinkle','rain','fire','comet','gradient-flow','static','snowfall','color-fountain','colorful-interchange','turning-peaks','two-birds','layered-mountains','gentle-rain','back-forth','bloom','plasma','aurora'];
         const pbtns=pats.map(p=>'<button type="button" class="patbtn'+(p===s.pattern?' sel':'')+'" data-p="'+p+'">'+p+'</button>').join('');
         const colModes=[['rainbow','Rainbow'],['c1','Color 1'],['c12','Color 1→2'],['palette','Palette']];

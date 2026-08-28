@@ -231,7 +231,7 @@
       q.putImageData(im,0,0); const url=c.toDataURL();
       const svg=doc.createElementNS('http://www.w3.org/2000/svg','svg'); svg.id='iso-glass-svg';
       svg.setAttribute('width','0'); svg.setAttribute('height','0'); svg.style.position='absolute';
-      // chromatic aberration: displace the backdrop's R / G / B by DIFFERENT scales, then recombine → colour fringing
+      // chromatic aberration: displace the backdrop's R / G / B by DIFFERENT scales, then recombine → color fringing
       // where the displacement is strong (the rim). scales are set live from the sliders in applyGlass().
       svg.innerHTML='<filter id="iso-glass-ref" color-interpolation-filters="sRGB" x="-4%" y="-4%" width="108%" height="108%">'
         +'<feImage href="'+url+'" preserveAspectRatio="none" x="0" y="0" width="100%" height="100%" result="m"/>'
@@ -401,7 +401,7 @@
       const cr=(b[0]-a[0])*(py-a[1])-(b[1]-a[1])*(px-a[0]); const sg=cr>0?1:cr<0?-1:0; if(sg){ if(s&&sg!==s) return false; s=sg; } } return true; }
 
     // ---- enhanced FX: rising stardust particles ----
-    const P=[]; let _planes=[]; const _csm=[];   // _csm = per-plane temporally-smoothed colour (anti-twitch for the aura)
+    const P=[]; let _planes=[]; const _csm=[];   // _csm = per-plane temporally-smoothed color (anti-twitch for the aura)
     // Particles live in BOARD space (bx,bz,by) and are re-projected every frame, so they stay rigidly anchored to
     // the scene when you rotate/zoom (no screen-space drift "catching up"). They rise by increasing their board
     // height (by) and sway a little along the board x-axis.
@@ -431,8 +431,8 @@
       ctx.globalCompositeOperation='source-over';
     }
     // ===== AURA: rising textured wisps projected from each layer's lit keys (gobo / spotlight style) =====
-    // Per plane: (1) stamp its lit keys as soft COLOUR blobs into a footprint buffer; (2) smear that footprint
-    // UPWARD along the board-height axis with a fade → a colour column rising off the keys; (3) MULTIPLY by a slowly
+    // Per plane: (1) stamp its lit keys as soft COLOR blobs into a footprint buffer; (2) smear that footprint
+    // UPWARD along the board-height axis with a fade → a color column rising off the keys; (3) MULTIPLY by a slowly
     // UV-scrolling aura texture so the column breaks into organic rising filaments (the reference look). Key-aware:
     // no lit keys → no aura; dark/carved keys emit nothing. Drawn after the plane's keys + before the next plane up
     // → the layer above occludes it (depth). The column rides the same waveFn the keys do, so it still ripples.
@@ -448,7 +448,7 @@
       if(_glow.width!==gw){ _glow.width=gw; _foot.width=gw; } if(_glow.height!==gh){ _glow.height=gh; _foot.height=gh; }
       _fctx.setTransform(1,0,0,1,0,0); _fctx.globalAlpha=1; _fctx.globalCompositeOperation='source-over'; _fctx.clearRect(0,0,gw,gh);
       _gctx.setTransform(1,0,0,1,0,0); _gctx.globalAlpha=1; _gctx.globalCompositeOperation='source-over'; _gctx.clearRect(0,0,gw,gh);
-      // (1) footprint: lit-key soft colour blobs, seated a bit ABOVE the plane so the blob's lower bloom doesn't
+      // (1) footprint: lit-key soft color blobs, seated a bit ABOVE the plane so the blob's lower bloom doesn't
       // spill below the keys (the "clips through the bottom"); the column then rises up from there. Constant height
       // (NOT wave-displaced) so it doesn't breathe.
       const rad=Math.max(2.5, _planes[j].hw*GLOWS*0.13); const riseBase=by + gap*0.22; let any=false;
@@ -462,7 +462,7 @@
       }
       _fctx.globalAlpha=1; _fctx.globalCompositeOperation='source-over';
       if(!any) return;
-      // (2) smear the footprint UP the board-height axis (one gap of rise), fading → a colour column rising off the keys
+      // (2) smear the footprint UP the board-height axis (one gap of rise), fading → a color column rising off the keys
       const o0=proj(0,0,by,cx,cy), o1=proj(0,0,by+1,cx,cy);
       const sx=(o1[0]-o0[0])*gap*0.95/RISE_K*GLOWS, sy=(o1[1]-o0[1])*gap*0.95/RISE_K*GLOWS;
       _gctx.globalCompositeOperation='lighter';
@@ -536,7 +536,7 @@
 
       _planes=[];
       for(let j=0;j<N;j++){ const pl=P0[j], by=byOf(j), dz=dzOf(j), raw=avgColor(pl.rgb);
-        // temporally smooth the per-plane colour the aura uses, so a sudden lit key (e.g. a reactive keypress)
+        // temporally smooth the per-plane color the aura uses, so a sudden lit key (e.g. a reactive keypress)
         // eases in/out over ~150ms instead of twitching the aura.
         let sm=_csm[j];
         if(raw){ if(sm){ sm[0]+=(raw[0]-sm[0])*0.06; sm[1]+=(raw[1]-sm[1])*0.06; sm[2]+=(raw[2]-sm[2])*0.06; } else { sm=raw.slice(); _csm[j]=sm; } }   // slow ease (~350ms) → keypress can't twitch the aura

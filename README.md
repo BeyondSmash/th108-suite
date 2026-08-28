@@ -24,7 +24,7 @@ each with its own blend mode and opacity.
 | File | What it does |
 |---|---|
 | **`app/th108-controller.html`** | The main app — a tabbed suite: the **multi-layer lighting compositor** (up to 8 layers, incl. audio-reactive and GIF), the **LCD screen** tools, **Hotkeys** (key remapping + host-action bindings), **Profiles**, an in-app **Docs/FAQ** tab, and the **Background Daemon** panel. Composites per-frame and streams over WebHID. |
-| **`th108-screen.html`** | LCD uploader for the on-board 160×96 screen — push a custom image/GIF with colour calibration, Crop/Fit framing, and letterbox bar fills. |
+| **`th108-screen.html`** | LCD uploader for the on-board 160×96 screen — push a custom image/GIF with color calibration, Crop/Fit framing, and letterbox bar fills. |
 | **`webhid-test.html`** | Bring-up / diagnostic page, plus a **key-binder**: remap a physical key to a lighting function (the only way to reach the decorative LEDs — see below), with a spacebar focus-overlay mode. |
 | **`th108-daemon/`** | Always-on Node service (`node-hid` + `uiohook-napi`) that runs your whole layer stack — reactive typing, audio, media, now-playing, host actions — as a background process so it works in **any** app, no browser tab required. Includes login-autostart, USB-wedge auto-recovery, and app-focus profile switching. |
 
@@ -68,7 +68,7 @@ That's it. Lighting now runs in the background in every app, survives closing th
 ## Why the stock software can't do this
 
 The TH108's on-board lighting runs **one** effect at a time. A reactive effect can carry a single
-static background colour, but not an *independently animated* one. The vendor's "Musical Rhythm"
+static background color, but not an *independently animated* one. The vendor's "Musical Rhythm"
 plugin does run two layers, but its foreground is **audio**-reactive (not keypress) and it isn't
 persisted. There is no QMK/VIA firmware for this board — it's a proprietary web-driver model.
 
@@ -82,30 +82,30 @@ reactivity, anything, becomes possible.
   **64-byte output report** (report ID 0). This is the control channel; the keyboard/consumer/mouse
   interfaces are read-only and irrelevant here.
 - A **full-frame paint command** carries, for every LED, an `index, R, G, B` tuple. One frame =
-  the whole board's colours. The host rebuilds and resends this frame each animation tick.
+  the whole board's colors. The host rebuilds and resends this frame each animation tick.
 - No "enter custom mode" handshake is required — the board renders the streamed frame immediately
   and acknowledges each report.
 - The controller maps browser `KeyboardEvent.code` → physical LED index (a table captured from the
   device), so a `keydown` lights exactly the key you pressed.
 
-### Protocol summary (clean-room, observed behaviour)
+### Protocol summary (clean-room, observed behavior)
 
 The frame command writes a small header followed by a payload of `index,R,G,B` quads, split across
 as many 64-byte reports as needed (payload ~56 bytes per report). Each report's header carries the
 command id, this report's payload length, the running byte-offset into the frame, an auxiliary byte,
 and a "last report" flag. The keyboard echoes each report back as an acknowledgement. That's the
-entire mechanism for live per-key colour — everything else (the pulse, the reactive decay, layer
+entire mechanism for live per-key color — everything else (the pulse, the reactive decay, layer
 compositing) is ordinary host-side maths before the frame is sent.
 
-This repository documents the protocol **in our own words from observed behaviour**; it does **not**
+This repository documents the protocol **in our own words from observed behavior**; it does **not**
 include or redistribute any of the vendor's JavaScript, firmware, or assets.
 
 ## Closest existing projects (and how this differs)
 
 | Project | Board(s) | Transport | What it does | Gap vs. this project |
 |---|---|---|---|---|
-| [OpenRGB](https://openrgb.org) (`EpomakerController`) | TH80 Pro, Attack Shark K86 (**VID 0x3151**) | native (hidapi) | Selects an **on-board effect mode** + one global colour | Doesn't support the TH108 V2 PRO (**VID 0x0C45**) at all; no per-key, no host compositing, no reactivity |
-| [strodgers/epomaker-controller](https://github.com/strodgers/epomaker-controller) | Epomaker **RT100** (screen model) | Python CLI, USB-HID | Static per-key colours, system-monitor daemon, screen images | Different board; not browser-based; **not keypress-reactive**; no animated 2-layer composite |
+| [OpenRGB](https://openrgb.org) (`EpomakerController`) | TH80 Pro, Attack Shark K86 (**VID 0x3151**) | native (hidapi) | Selects an **on-board effect mode** + one global color | Doesn't support the TH108 V2 PRO (**VID 0x0C45**) at all; no per-key, no host compositing, no reactivity |
+| [strodgers/epomaker-controller](https://github.com/strodgers/epomaker-controller) | Epomaker **RT100** (screen model) | Python CLI, USB-HID | Static per-key colors, system-monitor daemon, screen images | Different board; not browser-based; **not keypress-reactive**; no animated 2-layer composite |
 | [agustinmista/qmk-rgb-live](https://github.com/agustinmista/qmk-rgb-live) | **QMK** keyboards | browser, WebHID | Live RGB-matrix control via QMK raw-HID | TH108 isn't QMK, so it can't drive this board; single-layer |
 | [vinc3m1/kludgeknight](https://github.com/vinc3m1/kludgeknight) | Royal Kludge | browser, WebHID | Remap + select **on-board** lighting modes | Different vendor; mode-selection, not host-composited per-frame reactive lighting |
 
@@ -120,7 +120,7 @@ of the above provide.
 - [x] **Multi-layer compositor** — up to 8 layers (background, reactive, gradient, pattern, per-key,
       audio-reactive, media/GIF, agent), each with its own blend mode + opacity
 - [x] **Audio-reactive lighting** (system / per-app / tab / mic) and **GIF-as-a-layer**
-- [x] **LCD screen**: upload a custom image/GIF (160×96, RGB565) with colour calibration and framing,
+- [x] **LCD screen**: upload a custom image/GIF (160×96, RGB565) with color calibration and framing,
       plus **now-playing** (track info + a song-progress light bar)
 - [x] **Always-on host** (no browser tab): Node daemon with a system-wide keyboard hook so the
       reactive layer works type-anywhere, plus login-autostart and USB-wedge auto-recovery
@@ -139,7 +139,7 @@ of the above provide.
 ## Legal / IP
 
 This is an independent interoperability project. The HID protocol is documented from observed device
-behaviour (clean-room). No vendor firmware, software, or bundled assets are included or redistributed.
+behavior (clean-room). No vendor firmware, software, or bundled assets are included or redistributed.
 "Epomaker" and product names are trademarks of their respective owners; this project is not affiliated
 with or endorsed by Epomaker. The name is used only to describe the hardware this software works with.
 

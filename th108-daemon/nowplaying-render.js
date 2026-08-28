@@ -87,7 +87,7 @@ function render(info, colors, cal, fitArt) {   // fitArt: true = Fit (letterbox)
     }
   } else if (art) {                           // FIT (contain): whole cover visible, letterboxed over a heavily-darkened ambient backdrop of itself
     const bs = Math.max(W / art.w, H / art.h), bx = (art.w - W / bs) / 2, by = (art.h - H / bs) / 2;
-    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {   // ambient backdrop = the cover, ~18% — fills the bars with colour, not dead navy
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {   // ambient backdrop = the cover, ~18% — fills the bars with color, not dead navy
       const sx = Math.min(art.w - 1, Math.floor(bx + x / bs)), sy = Math.min(art.h - 1, Math.floor(by + y / bs));
       const si = (sy * art.w + sx) * 4, di = (y * W + x) * 4;
       buf[di] = art.data[si] * 0.18; buf[di + 1] = art.data[si + 1] * 0.18; buf[di + 2] = art.data[si + 2] * 0.18; buf[di + 3] = 255;

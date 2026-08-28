@@ -1,6 +1,6 @@
 // th108-engine.js — DOM-free TH108 lighting engine, shared by the controller page and the daemon.
 // Pure rendering/compositing logic ported VERBATIM from th108-controller.html.
-// All render math/constants/easing/colour logic is unchanged; module globals are threaded through
+// All render math/constants/easing/color logic is unchanged; module globals are threaded through
 // an explicit `state` object so the same code runs in the browser and in Node.
 (function (root) {
   'use strict';
@@ -33,7 +33,7 @@
     return [0.5+dx*cs-dy*sn, 0.5+dx*sn+dy*cs, c[2], c[3]];
   }
 
-  // ===== pure colour helpers (verbatim from controller) =====
+  // ===== pure color helpers (verbatim from controller) =====
   function hexToRgb(h){ return [parseInt(h.substr(1,2),16),parseInt(h.substr(3,2),16),parseInt(h.substr(5,2),16)]; }
   // HSV (0..1) -> RGB (0..255)
   function hsv2rgb(h,s,v){
@@ -1144,7 +1144,7 @@
       // SUBTRACT (bars 'subtract' fill): carve the layers below dark at the bar-body keys → spectrum silhouette
       if(L._carve){ const cv=L._carve; for(let k=0;k<NLED;k++){ const m=1-(cv[k]>1?1:cv[k]<0?0:cv[k]), t=k*3;
         acc[t]*=m; acc[t+1]*=m; acc[t+2]*=m; } }
-      // REPLACE: per-KEY overlay — where this layer has ANY colour, those keys REPLACE the layers
+      // REPLACE: per-KEY overlay — where this layer has ANY color, those keys REPLACE the layers
       // below (crossfaded by opacity); fully-black keys are transparent and pass the layers through.
       // The "this layer owns these specific keys" mode (e.g. a song-progress bar on the number row).
       if(bl==='replace'){
