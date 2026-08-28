@@ -9,7 +9,7 @@ const { spawn } = require('child_process');
 const path = require('path');
 const T = require('./hid-transport.js');
 const R = require('./nowplaying-render.js');
-const U = require('../th108-lcd-upload.js');
+const U = require('../app/th108-lcd-upload.js');
 
 const SETTLE_MS = 2500, PAUSE_HOLD_MS = 5000, FAIL_BACKOFF_MS = 30000;
 const MIN_GAP_MS = 20000;     // SAFETY: 20s minimum between flash writes (each is a brick risk; was 5s)

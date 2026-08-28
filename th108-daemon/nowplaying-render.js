@@ -4,7 +4,7 @@
 const jpeg = require('jpeg-js');
 const { PNG } = require('pngjs');
 const F = require('./th108-font.js');
-const { packRgb565 } = require('../th108-lcd-upload.js');
+const { packRgb565 } = require('../app/th108-lcd-upload.js');
 const W = 160, H = 96;
 
 function decodeThumb(b64) {

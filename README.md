@@ -23,7 +23,7 @@ each with its own blend mode and opacity.
 
 | File | What it does |
 |---|---|
-| **`th108-controller.html`** | The main app — a tabbed suite: the **multi-layer lighting compositor** (up to 8 layers, incl. audio-reactive and GIF), the **LCD screen** tools, **Hotkeys** (key remapping + host-action bindings), **Profiles**, an in-app **Docs/FAQ** tab, and the **Background Daemon** panel. Composites per-frame and streams over WebHID. |
+| **`app/th108-controller.html`** | The main app — a tabbed suite: the **multi-layer lighting compositor** (up to 8 layers, incl. audio-reactive and GIF), the **LCD screen** tools, **Hotkeys** (key remapping + host-action bindings), **Profiles**, an in-app **Docs/FAQ** tab, and the **Background Daemon** panel. Composites per-frame and streams over WebHID. |
 | **`th108-screen.html`** | LCD uploader for the on-board 160×96 screen — push a custom image/GIF with colour calibration, Crop/Fit framing, and letterbox bar fills. |
 | **`webhid-test.html`** | Bring-up / diagnostic page, plus a **key-binder**: remap a physical key to a lighting function (the only way to reach the decorative LEDs — see below), with a spacebar focus-overlay mode. |
 | **`th108-daemon/`** | Always-on Node service (`node-hid` + `uiohook-napi`) that runs your whole layer stack — reactive typing, audio, media, now-playing, host actions — as a background process so it works in **any** app, no browser tab required. Includes login-autostart, USB-wedge auto-recovery, and app-focus profile switching. |

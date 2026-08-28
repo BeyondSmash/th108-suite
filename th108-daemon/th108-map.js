@@ -2,7 +2,7 @@
 // KEYMAP: KeyboardEvent.code -> LED index.   INDICES: every LED index (for the background).
 // KEYMAP/INDICES are the canonical capture and now live in th108-engine.js (single source);
 // re-export them here so the daemon and engine never drift.
-const { KEYMAP, INDICES } = require('../th108-engine.js');
+const { KEYMAP, INDICES } = require('../app/th108-engine.js');
 
 // uiohook-napi UiohookKey property name -> KeyboardEvent.code.
 // (Property names taken from uiohook-napi's UiohookKey export; values resolved at runtime so

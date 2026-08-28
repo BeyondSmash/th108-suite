@@ -30,8 +30,9 @@ dumped_*.txt
 *_copy_object*.txt
 .playwright-mcp/
 
-# Kept on purpose (safe to publish): README.md, LICENSE, th108-controller.html,
-# th108-keys.json + th108-map.json (factual key map), th108-daemon/ source
+# Kept on purpose (safe to publish): README.md, LICENSE, index.html, setup.cmd,
+# uninstall.cmd, the app/ folder (controller HTML + all runtime JS + assets),
+# th108-daemon/ source
 
 # --- not part of a publish-ready download: unit tests, internal notes, dev-only
 #     pages, and one superseded audio sidecar. Kept on disk for development,
