@@ -52,7 +52,8 @@ each with its own blend mode and opacity.
 
 **Prerequisites:** Windows 10/11 · a Chromium browser (Chrome / Edge / Brave) · [Node.js LTS](https://nodejs.org).
 
-1. **Run `setup.cmd`** (double-click it). It is the one-time installer and does everything:
+1. **Download the suite** — grab the latest **Source code (zip)** from the [Releases page](https://github.com/BeyondSmash/th108-suite/releases), and unzip it anywhere.
+2. **Run `setup.cmd`** (double-click it). It is the one-time installer and does everything:
    1. installs the daemon's dependencies (`npm install`),
    2. enables **auto-start at login** (per-user, no admin),
    3. adds a **Start-menu shortcut** ("TH108 Lighting"),
@@ -61,7 +62,7 @@ each with its own blend mode and opacity.
       - **WebHID pre-grant** — skips the browser's keyboard picker permanently,
    5. starts the **tray app** (which starts and supervises the daemon),
    6. opens the controller at `http://localhost:8123/`.
-2. In the page, click **Connect Keyboard** once and pick your keyboard — the browser requires this click to grant WebHID (unless you accepted the pre-grant helper above and restarted the browser).
+3. In the page, click **Connect Keyboard** once and pick your keyboard — the browser requires this click to grant WebHID (unless you accepted the pre-grant helper above and restarted the browser).
 
 That's it. Lighting now runs in the background in every app, survives closing the tab, and starts at login.
 
