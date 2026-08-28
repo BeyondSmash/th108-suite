@@ -145,7 +145,7 @@ with or endorsed by Epomaker. The name is used only to describe the hardware thi
 
 ## License
 
-Copyright © 2026 Beyon. Licensed under the **MIT License** — see [`LICENSE`](LICENSE).
+Copyright © 2026 BeyondSmash. Licensed under the **MIT License** — see [`LICENSE`](LICENSE).
 
 In short: you're free to use, study, modify, share, and build on this software — including in your
 own projects — as long as you keep the copyright notice. It's provided as-is, with no warranty.
