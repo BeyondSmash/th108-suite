@@ -21,7 +21,7 @@ test('isSystemCwd flags Windows system dirs, not real projects', () => {
   assert.ok(isSystemCwd('C:/Windows/System32'));
   assert.ok(isSystemCwd('System32'));
   assert.ok(isSystemCwd('C:\\Windows\\SysWOW64'));
-  assert.ok(!isSystemCwd('path\\to\\th108-suite'));
+  assert.ok(!isSystemCwd('C:\\Users\\me\\Documents\\th108-suite'));
   assert.ok(!isSystemCwd('/home/u/proj'));
   assert.ok(!isSystemCwd(''));   // unknown cwd → keep
 });

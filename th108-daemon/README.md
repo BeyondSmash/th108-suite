@@ -17,7 +17,7 @@ daemon resumes with whatever you changed.
 
 ## Install & run
 ```powershell
-cd "path\to\th108-suite\th108-daemon"
+cd path\to\th108-suite\th108-daemon
 npm install
 node daemon.js
 ```

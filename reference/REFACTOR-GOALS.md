@@ -37,7 +37,7 @@ Optional tidy-ups (only if low-risk and clearly behavior-neutral): retire the su
 4. **Keep tests green; add tests** for any pure logic you isolate (the engine pattern).
 5. **Never mix refactor with bug-fixes or features** in one commit.
 6. **HARDWARE SAFETY still applies** (`_HANDOFF.md` §1): never re-send an LCD chunk; don't hardware-test LCD uploads without the user present.
-7. Commit author `Beyon <you@example.com>`, no Claude trailer. Syntax-check HTML/JS after each edit.
+7. Keep the existing commit author identity, no Claude trailer. Syntax-check HTML/JS after each edit.
 
 ## Out of scope (do NOT do these as "refactor" — separate work)
 - **Bug fixes:** the daemon auto-yield "fight" (daemon + page both grab the device). *(The sleep/wake reconnect bug is already fixed, commit `b830aa3`.)*
