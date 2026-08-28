@@ -270,7 +270,7 @@ function createServer({ control, root, port = 8123, watchdogMs = 12000 }) {
       }
       // static files
       if (req.method === 'GET') {
-        const rel = u === '/' ? '/app/th108-controller.html' : u;
+        const rel = u === '/' ? '/index.html' : u;   // serve the redirect stub (→ app/th108-controller.html) so the browser's URL becomes /app/ and the page's relative script srcs resolve there — same flow as GitHub Pages
         const safe = path.normalize(rel).replace(/^(\.\.[/\\])+/, '');
         const file = path.join(root, safe);
         if (file.startsWith(path.resolve(root)) && fs.existsSync(file) && fs.statSync(file).isFile()) {
