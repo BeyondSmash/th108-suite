@@ -5,7 +5,7 @@
     <img src="https://img.youtube.com/vi/snTHfVTYpGM/maxresdefault.jpg" alt="TH108 Live Lighting Controller — demo video" width="800">
   </a>
   <br>
-  <em>▶ Watch the demo</em>
+  <a href="https://www.youtube.com/watch?v=snTHfVTYpGM"><b>▶ Watch the demo</b></a>
 </p>
 
 Host-driven, per-frame RGB control for the **Epomaker TH108 V2 PRO** straight from a web browser
