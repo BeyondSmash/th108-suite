@@ -1,5 +1,7 @@
 # TH108 Live Lighting Controller
 
+[![TH108 Live Lighting Controller — demo video](https://img.youtube.com/vi/VIDEO_ID/maxresdefault.jpg)](https://www.youtube.com/watch?v=VIDEO_ID)
+
 Host-driven, per-frame RGB control for the **Epomaker TH108 V2 PRO** straight from a web browser
 over **WebHID** — no firmware mod, no vendor software running.
 
