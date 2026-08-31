@@ -34,6 +34,9 @@ for the seven faults behind those numbers, each traced to root cause: the board 
 itself, the false acknowledgement that jammed its own pipe, and the hand-off that lets two
 programs share one keyboard.
 
+Wondering about the system-wide keyboard hook? → **[Privacy & the keyboard hook](#privacy--the-keyboard-hook)**
+· [live FAQ, no install needed](https://beyondsmash.github.io/th108-suite/app/th108-controller.html#faq)
+
 ## What's in here
 
 | File | What it does |
@@ -137,6 +140,9 @@ same OS mechanism a keylogger uses, so here is exactly what this one does and do
   anything looks off.
 - **It only functions with this specific keyboard connected.** The daemon paints LEDs on the TH108
   V2 PRO; with no board present there's nothing for it to do.
+
+The same answer, plus the rest of the FAQ, is readable in the browser with no install and no
+keyboard: **[open the live FAQ →](https://beyondsmash.github.io/th108-suite/app/th108-controller.html#faq)**
 
 ## Closest existing projects (and how this differs)
 
