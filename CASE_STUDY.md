@@ -98,6 +98,38 @@ turn. The real fault was a Windows audio-stack resume regression, unrelated to t
 **Fix.** A small wake-time service restart — and, more usefully, the evidence that stopped
 the wrong component from being blamed.
 
+## 8. Auditing my own project, and finding real problems
+
+**Symptom.** The suite was publicly accused of being a keylogger. Three of the four specific
+claims did not survive contact with the code — but "we checked and we're fine" is exactly what
+a compromised project would say, so the project was put through two independent adversarial
+security audits with an explicit instruction to assume the previous review had blind spots.
+
+**Root cause.** The audits agreed, and they found things the accusation had missed entirely.
+The worst was not the keyboard hook at all: a recovery task ran with administrator rights, but
+its payload sat in the project folder, which any program running as the logged-in user can
+overwrite. That turns a convenience feature into a way for ordinary software to gain
+administrator access without a prompt. Second was a debug log that recorded window titles —
+and a code-editor window puts the filename you have open, and the sentence you are mid-way
+through typing, in its title. So a project promising it stored nothing you typed was, in one
+narrow path, storing fragments of it. Third, the page loaded its two fonts from Google, which
+contacted a third party on every single page load while the documentation claimed there was no
+remote endpoint.
+
+**Fix.** The elevated task's payload moved to an administrator-only directory — a pattern this
+project already used elsewhere and had failed to apply consistently. Window titles were removed
+from every log, the log was capped, and the leftover debug probe behind it was deleted. The
+fonts were self-hosted, making the "no remote endpoint" claim literally true. The localhost
+server's cross-origin guard was extended from POST-only to every method (a plain image tag on
+any web page could previously pop a native file dialog), and it now serves only the web app
+rather than the whole project folder. The browser device pre-grant was narrowed from an entire
+vendor to this one keyboard. Dependencies were pinned to exact versions. And the documentation
+was corrected where it had been generous with itself.
+
+The interesting part is not that a hobby project had security bugs. It is that the loudest
+public accusation was wrong, and the quiet audit that followed it was right — about entirely
+different things.
+
 ---
 
 ## What this demonstrates
@@ -106,7 +138,8 @@ the wrong component from being blamed.
 - **Low-level debugging** — traced faults across the hardware, USB, OS and browser boundaries to real root causes.
 - **Concurrency** — a single-writer hardware resource shared safely between a web page and a background service.
 - **Test discipline** — 249 unit tests on the standard Node runner, no framework required.
-- **Privacy-first design** — local-only; the hook reads key positions, not typed characters, and nothing leaves the machine. The localhost server is hardened against DNS-rebinding and cross-origin requests. See [Privacy & the keyboard hook](README.md#privacy--the-keyboard-hook).
+- **Privacy-first design** — local-only; the hook reads key positions, not typed characters, and the daemon makes no outbound requests at all. The page loads no third-party resources. The localhost server is hardened against DNS-rebinding and cross-origin requests on every method. See [Privacy & the keyboard hook](README.md#privacy--the-keyboard-hook).
+- **Taking criticism seriously** — commissioned adversarial security audits after a public accusation, then fixed what they found, including a privilege-escalation hole the accusation never spotted (section 8).
 - **Sustained solo delivery** — 927 commits over three months, in public, including a month of pure polish and hardware testing.
 
 ## Stack
