@@ -832,6 +832,15 @@ try{ var _tk = /[?&]defaults=1(?:&|$)/.test(location.search) ? 'th108_DEFAULTS_t
   </div>
 
   <!-- ========== FAQ ========== -->
+  <div class="card s2 faqcard" id="faqPrivacy" data-pages="faq">
+    <div class="cardbar"><span class="grip">⠿</span></div>
+    <h3 data-i18n="faqPrivacy.h">Is this a keylogger? What the keyboard hook does</h3>
+    <p data-i18n="faqPrivacy.why">Reactive typing lights the key you press the moment you press it, and hotkeys/chords have to see your keypresses to fire. Both need a <b>system-wide keyboard hook</b> — the same part of Windows a keylogger uses. So here's exactly what this one does, and doesn't, do.</p>
+    <p data-i18n="faqPrivacy.codes"><b>It reads key numbers, not letters.</b> The hook gets a numeric key code and maps it to a light or a hotkey. It never turns your keypress into the actual character you typed.</p>
+    <p data-i18n="faqPrivacy.local"><b>Nothing leaves your computer.</b> The daemon is a local-only background app — no accounts, no telemetry, no remote server. You can watch it with any network monitor. Its one and only internet request downloads <b>Spotify album art</b> for the keyboard's little screen.</p>
+    <p data-i18n="faqPrivacy.storage"><b>Nothing you type is saved.</b> Keys drive the lighting in the moment and are gone. The only key-related thing ever written to a file is an occasional debug line with a <i>number</i> for a key that isn't in the layout — never characters, never words.</p>
+    <p data-i18n="faqPrivacy.open"><b>It's open source — check it yourself.</b> The whole hook lives in one readable file (<code>th108-daemon/daemon.js</code>). Read it, and open an issue if anything looks off. It also only does anything when this specific keyboard is plugged in.</p>
+  </div>
   <div class="card s2 faqcard" id="faqTerms" data-pages="faq">
     <div class="cardbar"><span class="grip">⠿</span></div>
     <h3 data-i18n="faq.terms.h">Terminology — the jargon in tooltips, decoded</h3>

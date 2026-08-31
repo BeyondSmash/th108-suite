@@ -109,6 +109,28 @@ compositing) is ordinary host-side math before the frame is sent.
 This repository documents the protocol **in our own words from observed behavior**; it does **not**
 include or redistribute any of the vendor's JavaScript, firmware, or assets.
 
+## Privacy & the keyboard hook
+
+Reactive typing lights the key you press *the instant you press it*, and hotkeys/chords have to see
+your keypresses to fire — both need a **system-wide keyboard hook** (via `uiohook-napi`). That's the
+same OS mechanism a keylogger uses, so here is exactly what this one does and doesn't do:
+
+- **It reads key *codes*, not characters.** The hook receives a numeric keycode and maps it to an LED
+  index or a hotkey binding. It never converts a keypress into the letter/text you typed.
+  ([`th108-daemon/daemon.js` keydown/keyup handlers](th108-daemon/daemon.js#L299-L301))
+- **It's local-only.** The daemon is a `localhost`-bound server. **Nothing with key data ever leaves
+  your machine** — no telemetry, no remote endpoint, no account. You can confirm with any network
+  monitor. The *only* outbound request the daemon makes is downloading **Spotify album art** for the
+  LCD screen ([`media-sidecar.ps1`](th108-daemon/media-sidecar.ps1#L97)).
+- **Nothing you type is stored.** Keys drive lighting/actions in memory and are gone. The only
+  key-related thing ever written to disk is an occasional debug line containing a **numeric keycode**
+  for a key that isn't in the layout map — never characters, never typed text.
+- **It's open source.** The entire hook is in one readable file
+  ([`th108-daemon/daemon.js`](th108-daemon/daemon.js)) — audit it yourself, and open an issue if
+  anything looks off.
+- **It only functions with this specific keyboard connected.** The daemon paints LEDs on the TH108
+  V2 PRO; with no board present there's nothing for it to do.
+
 ## Closest existing projects (and how this differs)
 
 | Project | Board(s) | Transport | What it does | Gap vs. this project |
