@@ -27,6 +27,13 @@ each with its own blend mode and opacity.
 > audio-reactive and GIF layers, the LCD screen, key remapping and host-action hotkeys, profiles,
 > now-playing, an always-on background service, and 18-language localization.
 
+**927 commits · 3 months, solo · 249 passing tests · 12,601 lines of JS · zero frameworks.**
+There is no public per-key lighting API for this board — the protocol here was
+reverse-engineered from raw USB traffic. **[Read the engineering case study →](CASE_STUDY.md)**
+for the seven faults behind those numbers, each traced to root cause: the board that mutes
+itself, the false acknowledgement that jammed its own pipe, and the hand-off that lets two
+programs share one keyboard.
+
 ## What's in here
 
 | File | What it does |
@@ -54,7 +61,7 @@ each with its own blend mode and opacity.
 
 1. **Download the suite** — grab the latest **Source code (zip)** from the [Releases page](https://github.com/BeyondSmash/th108-suite/releases), and unzip it anywhere.
 2. **Run `setup.cmd`** (double-click it). It is the one-time installer and does everything:
-   1. installs the daemon's dependencies (`npm install`),
+   1. installs the daemon's dependencies (`npm ci` — exact locked versions, reproducible),
    2. enables **auto-start at login** (per-user, no admin),
    3. adds a **Start-menu shortcut** ("TH108 Lighting"),
    4. installs two **optional admin helpers** behind a *single* UAC prompt — click **Yes** to get them, **No** to skip (the suite works either way):
