@@ -34,10 +34,9 @@ dumped_*.txt
 # uninstall.cmd, the app/ folder (controller HTML + all runtime JS + assets),
 # th108-daemon/ source
 
-# --- not part of a publish-ready download: unit tests, internal notes, dev-only
+# --- not part of a publish-ready download: internal notes, dev-only
 #     pages, and one superseded audio sidecar. Kept on disk for development,
-#     never uploaded. ---
-*.test.js
+#     never uploaded. (Unit tests ARE tracked — they're a credibility signal.) ---
 reference/
 docs/
 webhid-test.html
