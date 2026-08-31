@@ -3,10 +3,24 @@
 # Usage: focus-window.ps1 -ClaudePid <pid> [-ProjectHint <name>] [-Switch] [-FlashColor '#hex'] [-DryRun]
 #   -DryRun: resolve + LOG the target window, but DON'T focus or flash (safe debugging).
 # Every run appends a line to %TEMP%\th108-focuswin.log so we can see what it resolved without side effects.
+# PRIVACY: window TITLES are matched in memory but never written to that log. A VSCode title contains the
+# open filename - and for a Claude Code window, the prompt currently being typed - so logging it would put
+# fragments of what you type on disk. The log records the window HANDLE and the candidate count instead,
+# which is all the debugging actually needs. It is also capped (see Log below) rather than growing forever.
 param([int]$ClaudePid, [string]$ProjectHint = '', [switch]$Switch, [string]$FlashColor = '', [switch]$DryRun)
 $ErrorActionPreference = 'SilentlyContinue'
 $logFile = Join-Path $env:TEMP 'th108-focuswin.log'
-function Log($m) { try { Add-Content -Path $logFile -Value ((Get-Date).ToString('HH:mm:ss') + ' ' + $m) } catch { } }
+# Cap at 64 KB, keeping the newest ~200 lines. This log is a live debugging aid, not a history - an
+# uncapped one silently accumulated ~190 KB of window-resolution records over months.
+function Log($m) {
+  try {
+    if ((Test-Path $logFile) -and ((Get-Item $logFile).Length -gt 65536)) {
+      $keep = Get-Content -Path $logFile -Tail 200
+      Set-Content -Path $logFile -Value $keep
+    }
+    Add-Content -Path $logFile -Value ((Get-Date).ToString('HH:mm:ss') + ' ' + $m)
+  } catch { }
+}
 
 # Walk up from the Claude PID, collecting Code.exe ancestor PIDs (borrowed from focus-vscode.ps1).
 $codeAncestors = @(); $cur = $ClaudePid
@@ -69,7 +83,7 @@ $best = $null
 if ($ProjectHint) { $best = $wins | Where-Object { [WinFocus]::GetTitle($_) -like "*$ProjectHint*" } | Select-Object -First 1 }
 if (-not $best) { $best = $wins | Where-Object { [WinFocus]::GetTitle($_) -like '*Visual Studio Code*' } | Select-Object -First 1 }
 if (-not $best) { $best = $wins[0] }
-Log("  -> target hwnd=$($best.ToInt64()) title='$([WinFocus]::GetTitle($best))'  (of $($wins.Count) window(s))")
+Log("  -> target hwnd=$($best.ToInt64())  (of $($wins.Count) window(s))")   # deliberately NO title - see the privacy note at the top
 
 if ($DryRun) { Log('  -> DRY RUN: not focusing, not flashing'); exit 0 }
 if ($Switch) { [WinFocus]::FocusWindow($best); Log('  -> focused') }

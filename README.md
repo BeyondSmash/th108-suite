@@ -128,13 +128,22 @@ same OS mechanism a keylogger uses, so here is exactly what this one does and do
 - **It reads key *codes*, not characters.** The hook receives a numeric keycode and maps it to an LED
   index or a hotkey binding. It never converts a keypress into the letter/text you typed.
   ([`th108-daemon/daemon.js` keydown/keyup handlers](th108-daemon/daemon.js#L299-L301))
-- **It's local-only.** The daemon is a `localhost`-bound server. **Nothing with key data ever leaves
-  your machine** — no telemetry, no remote endpoint, no account. You can confirm with any network
-  monitor. The *only* outbound request the daemon makes is downloading **Spotify album art** for the
-  LCD screen ([`media-sidecar.ps1`](th108-daemon/media-sidecar.ps1#L97)).
+- **It's local-only.** The daemon is a `localhost`-bound server and makes **no outbound requests at
+  all** — no telemetry, no remote endpoint, no account. Confirm with any network monitor. Even the
+  LCD's album art is read from Windows' own now-playing session, not fetched over HTTP
+  ([`media-sidecar.ps1`](th108-daemon/media-sidecar.ps1#L88-L103)). The web page is equally self-contained:
+  every font and script it loads is a file in this repo, so it makes zero third-party requests.
+- **The install is the one time anything is downloaded.** `setup.cmd` runs `npm ci`, which installs the
+  four runtime packages at the **exact versions recorded in `package-lock.json`** (with checksums) —
+  not "whatever npm resolves that day". `package.json` pins them exactly too, so nothing drifts.
 - **Nothing you type is stored.** Keys drive lighting/actions in memory and are gone. The only
   key-related thing ever written to disk is an occasional debug line containing a **numeric keycode**
-  for a key that isn't in the layout map — never characters, never typed text.
+  for a key that isn't in the layout map — never characters, never typed text. Window titles are never
+  logged either: a title can contain the filename you have open, or the sentence you are mid-way
+  through typing.
+- **If you choose the microphone as an audio source**, the daemon captures that input so sound-reactive
+  lighting keeps working with the page closed. It reads loudness to drive brightness; audio is never
+  recorded, written to disk, or transmitted, and capture stops when you change the source.
 - **It's open source.** The entire hook is in one readable file
   ([`th108-daemon/daemon.js`](th108-daemon/daemon.js)) — audit it yourself, and open an issue if
   anything looks off.

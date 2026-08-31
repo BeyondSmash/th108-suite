@@ -8,10 +8,11 @@
     "start": "node daemon.js",
     "test": "node --test"
   },
+  "_comment_dependencies": "EXACT versions, no ^ ranges. Two of these (node-hid, uiohook-napi) ship native binaries that read your keyboard, so 'whatever npm resolves today' is not an acceptable answer for what lands on someone's disk. setup.cmd runs `npm ci`, which installs strictly from package-lock.json - these pins make the declared versions match the locked ones, so nothing floats even if someone runs plain `npm install`. Bump deliberately, one at a time.",
   "dependencies": {
-    "jpeg-js": "^0.4.4",
-    "node-hid": "^3.1.2",
-    "pngjs": "^7.0.0",
-    "uiohook-napi": "^1.5.4"
+    "jpeg-js": "0.4.4",
+    "node-hid": "3.3.0",
+    "pngjs": "7.0.0",
+    "uiohook-napi": "1.5.5"
   }
 }

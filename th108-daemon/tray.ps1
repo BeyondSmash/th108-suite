@@ -34,7 +34,21 @@ function Invoke-Daemon([string]$path, [string]$method) {
     return ($body | ConvertFrom-Json)
   } catch { return $null }
 }
-function Get-DaemonStatus { return Invoke-Daemon '/status' 'GET' }
+# A REPLY to /status proves nothing about WHO replied: any program can bind 8123 first and answer with the
+# right shape, and the tray would then show a green "daemon running" icon for something that isn't ours.
+# So identity comes from Windows, not from the answer - the process LISTENING on 8123 must be node.exe
+# running daemon.js. Anything else reads as "not running", which routes Start-Daemon into the port-squatter
+# warning below instead of quietly doing nothing.
+function Test-DaemonOwnsPort {
+  $owner = (Get-NetTCPConnection -LocalPort 8123 -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1).OwningProcess
+  if (-not $owner) { return $false }
+  $p = Get-CimInstance Win32_Process -Filter ('ProcessId=' + $owner) -ErrorAction SilentlyContinue
+  return [bool]($p -and $p.Name -eq 'node.exe' -and $p.CommandLine -match 'daemon\.js')
+}
+function Get-DaemonStatus {
+  if (-not (Test-DaemonOwnsPort)) { return $null }
+  return Invoke-Daemon '/status' 'GET'
+}
 # If /status is silent but something still holds 8123, it is a HUNG daemon (real incident 2026-06-16:
 # a corpse from the day before squatted the port, so every Start silently failed to bind). Force-free
 # the port first - but ONLY if the owner is genuinely our node daemon.js, never a random port holder.

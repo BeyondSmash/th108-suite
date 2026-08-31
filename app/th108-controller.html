@@ -9,9 +9,11 @@
    (keeps the sandbox first-paint faithful to the scratch theme it's authoring). */
 try{ var _tk = /[?&]defaults=1(?:&|$)/.test(location.search) ? 'th108_DEFAULTS_th108_theme' : 'th108_theme'; document.documentElement.dataset.theme = localStorage.getItem(_tk)||'light'; }catch(_){ }</script>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect x='4' y='12' width='56' height='40' rx='10' fill='%23949bff'/%3E%3Crect x='14' y='22' width='10' height='8' rx='2' fill='%23fff'/%3E%3Crect x='28' y='22' width='10' height='8' rx='2' fill='%23ffd98c'/%3E%3Crect x='42' y='22' width='10' height='8' rx='2' fill='%2398d0ff'/%3E%3Crect x='14' y='36' width='38' height='8' rx='2' fill='%236ed2b7'/%3E%3C/svg%3E">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500..900&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<!-- Fonts are SELF-HOSTED (app/fonts/) on purpose. Loading them from fonts.googleapis.com handed
+     Google every visitor's IP, browser and referring page on every single page load, with no user
+     action and no opt-out — which made this page's "no remote endpoint" claim untrue. Self-hosting
+     costs 232 KB of woff2 and makes the claim literal: the page now talks to nothing but itself. -->
+<link href="fonts/fonts.css" rel="stylesheet">
 <style>
   /* ===== design tokens — bento light/dark (reference: nevflynn.com) ===== */
   :root{
@@ -837,8 +839,10 @@ try{ var _tk = /[?&]defaults=1(?:&|$)/.test(location.search) ? 'th108_DEFAULTS_t
     <h3 data-i18n="faqPrivacy.h">Is this a keylogger? What the keyboard hook does</h3>
     <p data-i18n="faqPrivacy.why">Reactive typing lights the key you press the moment you press it, and hotkeys/chords have to see your keypresses to fire. Both need a <b>system-wide keyboard hook</b> — the same part of Windows a keylogger uses. So here's exactly what this one does, and doesn't, do.</p>
     <p data-i18n="faqPrivacy.codes"><b>It reads key numbers, not letters.</b> The hook gets a numeric key code and maps it to a light or a hotkey. It never turns your keypress into the actual character you typed.</p>
-    <p data-i18n="faqPrivacy.local"><b>Nothing leaves your computer.</b> The daemon is a local-only background app — no accounts, no telemetry, no remote server. You can watch it with any network monitor. Its one and only internet request downloads <b>Spotify album art</b> for the keyboard's little screen.</p>
-    <p data-i18n="faqPrivacy.storage"><b>Nothing you type is saved.</b> Keys drive the lighting in the moment and are gone. The only key-related thing ever written to a file is an occasional debug line with a <i>number</i> for a key that isn't in the layout — never characters, never words.</p>
+    <p data-i18n="faqPrivacy.local"><b>Nothing leaves your computer.</b> The daemon is a local-only background app — no accounts, no telemetry, no remote server. It makes <b>no internet requests at all</b>, and you can confirm that with any network monitor. Even the album art on the little screen comes from Windows' own now-playing info, not from the web. This page loads only files from your own machine.</p>
+    <p data-i18n="faqPrivacy.storage"><b>Nothing you type is saved.</b> Keys drive the lighting in the moment and are gone. The only key-related thing ever written to a file is an occasional debug line with a <i>number</i> for a key that isn't in the layout — never characters, never words. Window titles aren't written down either, because a title can contain what you're typing.</p>
+    <p data-i18n="faqPrivacy.install"><b>The install does reach the internet — once.</b> <code>setup.cmd</code> downloads this project's four building blocks from npm and builds them. It uses the exact versions recorded in <code>package-lock.json</code>, so you get the same files anyone else gets, not "whatever npm had that day". Nothing is downloaded after that.</p>
+    <p data-i18n="faqPrivacy.mic"><b>Microphone, in plain terms.</b> If you pick <i>Mic</i> as the audio source for a sound-reactive layer, the background app listens to that input so the lights keep dancing with this page closed. It measures loudness to drive brightness — nothing is recorded, saved or sent. Switch the source away from Mic and it stops listening.</p>
     <p data-i18n="faqPrivacy.open"><b>It's open source — check it yourself.</b> The whole hook lives in one readable file (<code>th108-daemon/daemon.js</code>). Read it, and open an issue if anything looks off. It also only does anything when this specific keyboard is plugged in.</p>
   </div>
   <div class="card s2 faqcard" id="faqTerms" data-pages="faq">
@@ -1225,7 +1229,9 @@ NumpadDel::SendInput {.}
     <section class="fgsec">
     <h3>Privacy</h3>
     <p data-i18n="docs.legal.privacy">Everything runs <b>locally on your machine</b>. There is <b>no telemetry and no data collection</b>. Audio, tab,
-       and microphone capture used for reactive effects stay on your PC and are never uploaded.</p>
+       and microphone capture used for reactive effects stay on your PC and are never uploaded. This page loads no third-party
+       resources — fonts and scripts all come from your own copy. The only time the suite touches the internet is the one-time
+       install, which downloads its four building blocks from npm at the exact versions recorded in <code>package-lock.json</code>.</p>
     </section>
     <section class="fgsec">
     <h3>Third-party</h3>

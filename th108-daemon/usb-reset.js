@@ -13,7 +13,13 @@ const fs = require('fs');
 const path = require('path');
 
 const TASK_NAME = 'TH108 USB Restart';
-const LOG_PATH = path.join(__dirname, 'restart-usb.log');   // restart-usb.bat appends "restart exit=N" here
+// The task's payload lives in an ADMIN-ONLY folder (see install-usb-restart-task.ps1: a Highest-RunLevel
+// task pointed at a user-writable file is a UAC bypass), so its log lands there too. Fall back to this
+// folder for installs registered BEFORE that move, which still run the in-repo copy.
+const DEPLOY_DIR = path.join(process.env.ProgramFiles || 'C:\\Program Files', 'TH108 Lighting');
+const LOG_PATH = fs.existsSync(path.join(DEPLOY_DIR, 'restart-usb.bat'))
+  ? path.join(DEPLOY_DIR, 'restart-usb.log')
+  : path.join(__dirname, 'restart-usb.log');   // restart-usb.bat appends "restart exit=N" here
 const THRESHOLD_MS = 30_000;        // mute must persist this long before we touch USB *while you're typing* — a 1-2s dropout mid-sentence is worse than a few more dark seconds
 const IDLE_THRESHOLD_MS = 12_000;   // …but if you've been AFK (see IDLE_AFTER_MS), a dropout costs nothing, so recover the lighting ~18s sooner
 const IDLE_AFTER_MS = 20_000;       // "AFK" = no keypress for this long; under it we assume you're mid-task and hold the conservative threshold

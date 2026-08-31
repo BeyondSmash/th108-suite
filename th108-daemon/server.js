@@ -73,11 +73,21 @@ function createServer({ control, root, port = 8123, watchdogMs = 12000 }) {
     // requires application/json (forces a CORS preflight that fails cross-origin).
     const host = req.headers.host || '';
     if (host !== `127.0.0.1:${boundPort}` && host !== `localhost:${boundPort}`) return sendJson(res, 403, { error: 'forbidden host' });
-    if (req.method === 'POST') {
-      const origin = req.headers.origin;
-      if (origin && origin !== `http://${host}` && origin !== `http://127.0.0.1:${boundPort}` && origin !== `http://localhost:${boundPort}`) return sendJson(res, 403, { error: 'cross-origin denied' });
-      if (u === '/config' && !String(req.headers['content-type'] || '').includes('application/json')) return sendJson(res, 415, { error: 'content-type must be application/json' });
-    }
+    // The cross-origin guard covers EVERY method, not just POST. It used to be POST-only on the assumption
+    // that GETs only read — but /pick-file opens a real, top-most Windows file dialog, so any random web page
+    // could have popped file pickers on your desktop with one <img src="http://localhost:8123/pick-file">.
+    // Two independent checks, because neither alone covers every case:
+    //   Origin        — present on fetch/XHR, absent on a plain <img>/<script> load.
+    //   Sec-Fetch-Site — sent by every modern browser on EVERY request, including those no-cors loads.
+    //                    same-origin = our own page; none = the user typed/clicked the URL themselves;
+    //                    cross-site/same-site = some other page pulled it, which is never legitimate here.
+    // A request with NEITHER header is a non-browser local client (the tray script, curl) and is allowed —
+    // that traffic already requires code running as you, which is a game-over precondition anyway.
+    const origin = req.headers.origin;
+    if (origin && origin !== `http://${host}` && origin !== `http://127.0.0.1:${boundPort}` && origin !== `http://localhost:${boundPort}`) return sendJson(res, 403, { error: 'cross-origin denied' });
+    const site = req.headers['sec-fetch-site'];
+    if (site && site !== 'same-origin' && site !== 'none') return sendJson(res, 403, { error: 'cross-origin denied' });
+    if (req.method === 'POST' && u === '/config' && !String(req.headers['content-type'] || '').includes('application/json')) return sendJson(res, 415, { error: 'content-type must be application/json' });
     try {
       if (req.method === 'GET' && u === '/status') return sendJson(res, 200, control.status());
       if (req.method === 'GET' && u === '/metrics') return sendJson(res, 200, { endpoints: metricsSnapshot(), windowSec: FLOOD_WINDOW_MS / 1000, driver: control.metrics ? control.metrics() : null });
@@ -271,7 +281,12 @@ function createServer({ control, root, port = 8123, watchdogMs = 12000 }) {
       // static files
       if (req.method === 'GET') {
         const rel = u === '/' ? '/index.html' : u;   // serve the redirect stub (→ app/th108-controller.html) so the browser's URL becomes /app/ and the page's relative script srcs resolve there — same flow as GitHub Pages
-        const safe = path.normalize(rel).replace(/^(\.\.[/\\])+/, '');
+        const safe = path.normalize(rel).replace(/^(\.\.[/\\])+/, '').replace(/\\/g, '/');
+        // Serve ONLY the web app, never the whole project folder. This used to hand out any file under the
+        // repo root to anything that asked on 8123 — including the daemon's own scripts, its config, and any
+        // personal file that happened to sit in the folder. The page itself only ever loads /index.html and
+        // /app/..., so that is all this serves; everything else is a 404.
+        if (!(safe === '/index.html' || safe.startsWith('/app/'))) return sendJson(res, 404, { error: 'not found' });
         const file = path.join(root, safe);
         if (file.startsWith(path.resolve(root)) && fs.existsSync(file) && fs.statSync(file).isFile()) {
           // no-store: the page assets (controller HTML + th108-engine.js / th108-layers-ui.js / client) change
