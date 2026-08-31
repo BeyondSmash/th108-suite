@@ -20,9 +20,9 @@ if errorlevel 1 (
 
 echo [1/7] Installing daemon dependencies...
 pushd th108-daemon
-call npm install --no-audit --no-fund
+call npm ci --no-audit --no-fund
 if errorlevel 1 (
-  echo [!] npm install failed - see the output above.
+  echo [!] npm ci failed - see the output above.
   popd
   pause
   exit /b 1
