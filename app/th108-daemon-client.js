@@ -124,6 +124,7 @@ window.TH108DaemonClient = (function () {
       const restart = document.getElementById('dmnRestart');
       const usb = document.getElementById('dmnUsbFix');
       const disp = document.getElementById('dmnDispOff');
+      const hook = document.getElementById('dmnKeyHook');
       const grab = document.getElementById('dmnGrabbers');
       const np = document.getElementById('lcdNowPlaying');   // lives on the LCD tab, rides the same /status poll
       if (!st || !auto || !quit) return;
@@ -178,6 +179,12 @@ window.TH108DaemonClient = (function () {
             usb.disabled = !knows;
             usb.title = knows ? '' : 'the running daemon predates this setting — restart it (Quit, then setup.cmd or next login) to enable';
             if (knows && document.activeElement !== usb) usb.checked = !!s.usbReset;
+          }
+          if (hook) {
+            const knows = 'keyboardHook' in s;
+            hook.disabled = !knows;
+            hook.title = knows ? '' : 'the running daemon predates this setting — restart it (Quit, then setup.cmd or next login) to enable';
+            if (knows && document.activeElement !== hook) hook.checked = !!s.keyboardHook;
           }
           if (disp) {
             const knows = 'dimOnDisplayOff' in s;
@@ -268,6 +275,12 @@ window.TH108DaemonClient = (function () {
           await fetch('/usbreset', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ on: usb.checked }) });
           log(TH108i18n.tfLog('auto USB-restart wedge fix {0}', (usb.checked ? 'enabled' : 'disabled')), 'ok');
         } catch (_) { log('USB-restart toggle failed', 'err'); refresh(); }
+      });
+      if (hook) hook.addEventListener('change', async () => {
+        try {
+          await fetch('/keyboardhook', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ on: hook.checked }) });
+          log(TH108i18n.tfLog('keyboard reading {0}', (hook.checked ? 'ON — reactive lighting and hotkeys work' : 'OFF — nothing reads your keys; reactive lighting and hotkeys are dead')), 'ok');
+        } catch (_) { log('keyboard-reading toggle failed', 'err'); refresh(); }
       });
       if (disp) disp.addEventListener('change', async () => {
         try {

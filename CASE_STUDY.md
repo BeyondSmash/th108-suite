@@ -126,9 +126,21 @@ rather than the whole project folder. The browser device pre-grant was narrowed 
 vendor to this one keyboard. Dependencies were pinned to exact versions. And the documentation
 was corrected where it had been generous with itself.
 
-The interesting part is not that a hobby project had security bugs. It is that the loudest
-public accusation was wrong, and the quiet audit that followed it was right — about entirely
-different things.
+**Then the critic came back, and was right again.** The browser pre-grant that had been "narrowed"
+was still wrong in kind, not just in scope: that kind of grant is given to a web address, not to a
+program, and nothing reserves the address it named. Any ordinary program that got to the port first
+could have claimed it and inherited silent access to the keyboard. It is no longer installed, and
+upgrading removes it from machines that already had it. The same reply pointed out that "it reads key
+codes, not characters" is not the privacy claim it sounds like, since a key code plus your keyboard
+layout is the character. That wording is gone from the documentation, and the hook itself now has an
+off switch: turn it off and nothing in the process sees a key press, at the cost of reactive typing
+effects and hotkeys.
+
+The interesting part is not that a hobby project had security bugs. It is where the real ones came
+from. The original accusation was wrong on its specifics and right that the project deserved a look;
+the audits found three serious problems it had not mentioned; and the sharpest single finding came
+from the accuser, in public, after the project had already declared itself clean. Being audited is
+not a thing you finish.
 
 ---
 
@@ -138,8 +150,8 @@ different things.
 - **Low-level debugging** — traced faults across the hardware, USB, OS and browser boundaries to real root causes.
 - **Concurrency** — a single-writer hardware resource shared safely between a web page and a background service.
 - **Test discipline** — 249 unit tests on the standard Node runner, no framework required.
-- **Privacy-first design** — local-only; the hook reads key positions, not typed characters, and the daemon makes no outbound requests at all. The page loads no third-party resources. The localhost server is hardened against DNS-rebinding and cross-origin requests on every method. See [Privacy & the keyboard hook](README.md#privacy--the-keyboard-hook).
-- **Taking criticism seriously** — commissioned adversarial security audits after a public accusation, then fixed what they found, including a privilege-escalation hole the accusation never spotted (section 8).
+- **Privacy-first design** — local-only; the keyboard hook can be switched off entirely, nothing typed is stored or transmitted, and the daemon makes no outbound requests at all. The page loads no third-party resources. The localhost server is hardened against DNS-rebinding and cross-origin requests on every method. See [Privacy & the keyboard hook](README.md#privacy--the-keyboard-hook).
+- **Taking criticism seriously** — commissioned adversarial security audits after a public accusation, fixed what they found (including a privilege-escalation hole nobody had spotted), then kept fixing when the critic landed a further hit the audits had missed (section 8).
 - **Sustained solo delivery** — 927 commits over three months, in public, including a month of pure polish and hardware testing.
 
 ## Stack

@@ -166,6 +166,13 @@ function createServer({ control, root, port = 8123, watchdogMs = 12000 }) {
         console.log(ts() + ' [api] /usbreset ' + (on ? 'on' : 'off'));
         return sendJson(res, 200, { ok: true, enabled: on });
       }
+      if (req.method === 'POST' && u === '/keyboardhook') {   // turn the global key-reading hook off/on live (state reads back via /status.keyboardHook)
+        const b = await readBody(req); let on;
+        try { on = !!JSON.parse(b || '{}').on; } catch { return sendJson(res, 400, { error: 'bad json' }); }
+        const now = control.setKeyboardHook(on);
+        console.log(ts() + ' [api] /keyboardhook ' + (now ? 'on' : 'off'));
+        return sendJson(res, 200, { ok: true, enabled: now });
+      }
       if (req.method === 'POST' && u === '/displayoff') {   // toggle "blank the board while the monitor is off (idle timeout)"
         const b = await readBody(req); let on;
         try { on = !!JSON.parse(b || '{}').on; } catch { return sendJson(res, 400, { error: 'bad json' }); }

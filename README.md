@@ -125,8 +125,15 @@ Reactive typing lights the key you press *the instant you press it*, and hotkeys
 your keypresses to fire — both need a **system-wide keyboard hook** (via `uiohook-napi`). That's the
 same OS mechanism a keylogger uses, so here is exactly what this one does and doesn't do:
 
-- **It reads key *codes*, not characters.** The hook receives a numeric keycode and maps it to an LED
-  index or a hotkey binding. It never converts a keypress into the letter/text you typed.
+- **You can switch the reading off.** *Settings > Read key presses* stops the hook outright: no key
+  events reach the process at all. Reactive typing effects and every hotkey stop working; backgrounds,
+  audio, media and agent layers keep running. That switch, not a promise, is the actual privacy
+  guarantee here. ([`th108-daemon/daemon.js` `setKeyboardHook`](th108-daemon/daemon.js))
+- **While it is on, it handles key *codes* and never stores or sends them.** The hook receives a
+  numeric keycode and maps it to an LED index or a hotkey binding; it does not build text out of them.
+  Be clear about what that is and isn't worth, though: a keycode plus your keyboard layout *is* the
+  character you typed, so "codes, not characters" is a description of the code path, not a privacy
+  property. The property that matters is the one below, that nothing is written down or transmitted.
   ([`th108-daemon/daemon.js` keydown/keyup handlers](th108-daemon/daemon.js#L299-L301))
 - **It's local-only.** The daemon is a `localhost`-bound server and makes **no outbound requests at
   all** — no telemetry, no remote endpoint, no account. Confirm with any network monitor. Even the
@@ -136,6 +143,9 @@ same OS mechanism a keylogger uses, so here is exactly what this one does and do
 - **The install is the one time anything is downloaded.** `setup.cmd` runs `npm ci`, which installs the
   four runtime packages at the **exact versions recorded in `package-lock.json`** (with checksums) —
   not "whatever npm resolves that day". `package.json` pins them exactly too, so nothing drifts.
+  Worth saying plainly: a lockfile fixes *which* code you get, not whether that code is safe. Two of
+  the four are native modules whose install scripts run at install time to fetch a prebuilt binary, so
+  installing this trusts those four packages the same way installing any Node project does.
 - **Nothing you type is stored.** Keys drive lighting/actions in memory and are gone. The only
   key-related thing ever written to disk is an occasional debug line containing a **numeric keycode**
   for a key that isn't in the layout map — never characters, never typed text. Window titles are never

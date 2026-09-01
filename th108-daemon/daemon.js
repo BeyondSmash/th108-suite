@@ -267,7 +267,7 @@ function loadSettings() {
   const DEF = { usbReset: true, nowPlaying: false, npTitle: '#ffffff', npArtist: '#ffd98c', lightsOn: true, brightness: 100, npRevertSec: 0, npAllow: {}, npArtFit: false,
                 npBar: false, npBarColor: '#11ff00', npBarBright: 60, npFlash: true, npFlashColor: '#ffd000', npBarIdleSec: 3, npBarGrad: 'solid', npBarGradFit: false, npBarKeys: 'row', npBarAgentTop: false, npOnboardMask: false, dimOnDisplayOff: false,
                 focusOutlineColor: '#f97316', focusProjectColors: {}, focusAutoSwitch: false, focusOutlineOnSwitch: false, focusDryRun: false,
-                appProfiles: [], appProfileDefault: null, primaryProfile: null, grabberApps: [] };   // grabberApps = ["obs64","steam",…] known wedge-causers: while one is the FOREGROUND app, a mute recovers on the fast (AFK) threshold even mid-work — you've flagged it as a board-grabber so a ~1-2s typing blip beats a long dark spell (can't PREVENT the wedge, an outside app poking the keyboard's USB is beyond us — only clears it fast)   // appProfiles = [{exe, profile}] auto-switch lighting per focused app (profile = a saved profile's NAME); appProfileDefault = profile name to show when no app matches (null → falls back to primaryProfile); primaryProfile = the base GLOBAL profile that non-global overlays compose against   // focusProjectColors = per-project outline overrides { "Portfolio": "#1543f9", … } keyed by workspace name; falls back to focusOutlineColor. focusDryRun default OFF now (window-focus is proven safe + manual-only); the checkbox was removed, but the daemon gate stays as a latent config-only kill-switch (set focusDryRun:true in config.json to make the ⤒ button resolve+log only)   // agent window-focus: outline glow color; focusAutoSwitch = bring a session's VSCode window to front when it needs-you; focusOutlineOnSwitch = flash the outline when focus switches (no window-steal). Both default OFF (opt-in)   // npBarAgentTop = let the agent layer's numpad glyphs render ABOVE the progress bar (z-swap on the shared keys)   // dimOnDisplayOff = blank the board while the monitor is off on the idle timeout   // npOnboardMask = set the keyboard's onboard effect to BLACK so the per-update flash is a dark blink, not rainbow   // npBarIdleSec = fade the bar out after this long with nothing playing   // npRevertSec 0 = never revert; npAllow = per-source override (absent → Spotify-only default); npBar = the 1-0 song-progress light-bar (lighting-only, no flash writes), npFlash = yellow track-change blip
+                appProfiles: [], appProfileDefault: null, primaryProfile: null, grabberApps: [], keyboardHook: true };   // grabberApps = ["obs64","steam",…] known wedge-causers: while one is the FOREGROUND app, a mute recovers on the fast (AFK) threshold even mid-work — you've flagged it as a board-grabber so a ~1-2s typing blip beats a long dark spell (can't PREVENT the wedge, an outside app poking the keyboard's USB is beyond us — only clears it fast)   // appProfiles = [{exe, profile}] auto-switch lighting per focused app (profile = a saved profile's NAME); appProfileDefault = profile name to show when no app matches (null → falls back to primaryProfile); primaryProfile = the base GLOBAL profile that non-global overlays compose against   // focusProjectColors = per-project outline overrides { "Portfolio": "#1543f9", … } keyed by workspace name; falls back to focusOutlineColor. focusDryRun default OFF now (window-focus is proven safe + manual-only); the checkbox was removed, but the daemon gate stays as a latent config-only kill-switch (set focusDryRun:true in config.json to make the ⤒ button resolve+log only)   // agent window-focus: outline glow color; focusAutoSwitch = bring a session's VSCode window to front when it needs-you; focusOutlineOnSwitch = flash the outline when focus switches (no window-steal). Both default OFF (opt-in)   // npBarAgentTop = let the agent layer's numpad glyphs render ABOVE the progress bar (z-swap on the shared keys)   // dimOnDisplayOff = blank the board while the monitor is off on the idle timeout   // npOnboardMask = set the keyboard's onboard effect to BLACK so the per-update flash is a dark blink, not rainbow   // npBarIdleSec = fade the bar out after this long with nothing playing   // npRevertSec 0 = never revert; npAllow = per-source override (absent → Spotify-only default); npBar = the 1-0 song-progress light-bar (lighting-only, no flash writes), npFlash = yellow track-change blip
   try { return Object.assign({}, DEF, JSON.parse(fs.readFileSync(SETTINGS_PATH, 'utf8'))); }
   catch { return Object.assign({}, DEF); }   // usbReset default ON — the escalation fails gracefully (one log line) if the task isn't registered
 }
@@ -531,7 +531,29 @@ uIOhook.on('keyup', e => {
   const led = UIO2IDX[e.keycode]; if (led === undefined) return;
   for (const b of hostActions) { if (b.trigger.type === 'hold' && b.trigger.led === led) { const st = _haState.get(b); if (st && st.holdTimer) { clearTimeout(st.holdTimer); st.holdTimer = null; } } }
 });
-uIOhook.start();
+// The global keyboard hook is OPTIONAL. Turning it off means no key events reach this process at
+// all: reactive lighting and hotkeys/host actions stop, and every other layer (background, audio,
+// media, agent) keeps running exactly as before. It exists because "trust me, I only read key
+// numbers" is not a privacy property - a key number plus your layout IS the character you typed.
+// The property that matters is that you can switch the reading off and still have a working
+// lighting tool. Raised publicly by a critic (reddit u/sloppykrackers) comparing this to SignalRGB,
+// whose hook is removable; the comparison was fair and this is the answer to it.
+let hookRunning = false;
+function setKeyboardHook(on) {
+  on = !!on;
+  if (on === hookRunning) return hookRunning;
+  if (on) {
+    try { uIOhook.start(); hookRunning = true; log('⌨ keyboard hook ON — reactive lighting and hotkeys are live'); }
+    catch (e) { log('⌨ keyboard hook failed to start: ' + e.message); }
+  } else {
+    try { releaseHeldKeys(); } catch {}   // a key held when you flip it off would otherwise stay lit forever - no keyup is coming
+    try { uIOhook.stop(); hookRunning = false; log('⌨ keyboard hook OFF — nothing in this process can see key presses; reactive lighting and hotkeys are disabled'); }
+    catch (e) { log('⌨ keyboard hook failed to stop: ' + e.message); }
+  }
+  return hookRunning;
+}
+if (settings.keyboardHook === false) log('⌨ keyboard hook OFF (saved setting) — reactive lighting and hotkeys disabled');
+else setKeyboardHook(true);
 
 // ----- device lifecycle -----
 function closeDevice() {
@@ -1141,7 +1163,7 @@ const control = {
   audioFrame() { return acHandle ? AC.freshOr(acHandle.latest(), Date.now(), 300) : null; },
   // Current media position so the open page can draw the song-progress bar itself while it drives the device.
   npPos() { return npHandle ? npHandle.mediaState() : null; },
-  status() { return { running: true, paused, leaseOwner: lease.owner(), leaseEpoch: lease.epoch(), deviceConnected: !!device, fps: FPS, setupPath: path.resolve(__dirname, '..', 'setup.cmd'), usbReset: settings.usbReset, dimOnDisplayOff: settings.dimOnDisplayOff, nowPlaying: settings.nowPlaying,
+  status() { return { running: true, paused, leaseOwner: lease.owner(), leaseEpoch: lease.epoch(), deviceConnected: !!device, fps: FPS, setupPath: path.resolve(__dirname, '..', 'setup.cmd'), usbReset: settings.usbReset, keyboardHook: hookRunning, dimOnDisplayOff: settings.dimOnDisplayOff, nowPlaying: settings.nowPlaying,
                       npTrack: npHandle ? npHandle.current() : null, npQueued: npHandle ? npHandle.queued() : false,
                       npHealth: npHandle ? npHandle.health() : null,
                       npLog: npHandle ? npHandle.recent() : [],
@@ -1283,6 +1305,7 @@ const control = {
     };
   },
   setUsbReset(on) { settings.usbReset = !!on; saveSettings(); },
+  setKeyboardHook(on) { settings.keyboardHook = !!on; saveSettings(); return setKeyboardHook(settings.keyboardHook); },
   // Known board-grabber list (OBS/Steam/…), pushed by the daemon panel. A newline/comma list of process names.
   setGrabberApps(list) {
     settings.grabberApps = (Array.isArray(list) ? list : String(list || '').split(/[\n,]/))
