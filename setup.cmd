@@ -18,9 +18,17 @@ if errorlevel 1 (
   exit /b 1
 )
 
-echo [1/7] Installing daemon dependencies...
+echo [1/7] Installing daemon dependencies (no package install scripts are run)...
 pushd th108-daemon
-call npm ci --no-audit --no-fund
+rem --ignore-scripts: npm normally lets every installed package run arbitrary code on YOUR machine at
+rem install time. Two of the four here (node-hid, uiohook-napi) declare such a script. They do not need
+rem it: both ship their compiled Windows binary inside the npm package itself (node_modules\<pkg>\prebuilds\)
+rem and locate it themselves when the daemon loads them - the install script only exists to compile from
+rem source when no prebuilt binary matches, which on Windows x64/arm64 never happens. Verified 2026-09-02:
+rem `npm ci --ignore-scripts` + both modules load (node-hid enumerated devices, uiohook exposed start()).
+rem So this flag removes install-time code execution at zero cost. It does NOT change that RUNNING the
+rem daemon trusts these four packages' code - see the README's privacy section, which says so plainly.
+call npm ci --ignore-scripts --no-audit --no-fund
 if errorlevel 1 (
   echo [!] npm ci failed - see the output above.
   popd

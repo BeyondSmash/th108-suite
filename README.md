@@ -64,7 +64,7 @@ Wondering about the system-wide keyboard hook? → **[Privacy & the keyboard hoo
 
 1. **Download the suite** — grab the latest **Source code (zip)** from the [Releases page](https://github.com/BeyondSmash/th108-suite/releases), and unzip it anywhere.
 2. **Run `setup.cmd`** (double-click it). It is the one-time installer and does everything:
-   1. installs the daemon's dependencies (`npm ci` — exact locked versions, reproducible),
+   1. installs the daemon's dependencies (`npm ci --ignore-scripts` — exact locked versions, reproducible, and no package gets to run code during the install),
    2. enables **auto-start at login** (per-user, no admin),
    3. adds a **Start-menu shortcut** ("TH108 Lighting"),
    4. installs two **optional admin helpers** behind a *single* UAC prompt — click **Yes** to get them, **No** to skip (the suite works either way):
@@ -143,9 +143,13 @@ same OS mechanism a keylogger uses, so here is exactly what this one does and do
 - **The install is the one time anything is downloaded.** `setup.cmd` runs `npm ci`, which installs the
   four runtime packages at the **exact versions recorded in `package-lock.json`** (with checksums) —
   not "whatever npm resolves that day". `package.json` pins them exactly too, so nothing drifts.
-  Worth saying plainly: a lockfile fixes *which* code you get, not whether that code is safe. Two of
-  the four are native modules whose install scripts run at install time to fetch a prebuilt binary, so
-  installing this trusts those four packages the same way installing any Node project does.
+  Worth saying plainly: a lockfile fixes *which* code you get, not whether that code is safe.
+  **No package runs code during the install.** `npm ci` is run with `--ignore-scripts`, so the install
+  scripts npm would normally execute on your machine — including the two native packages' — never run.
+  They turn out not to be needed: both ship their compiled Windows binary inside the package and find it
+  themselves, and the script only exists to compile from source when no prebuilt binary matches.
+  What remains true is that *running* the daemon executes those four packages' code, so installing this
+  trusts them the way installing any Node project does.
 - **Nothing you type is stored.** Keys drive lighting/actions in memory and are gone. The only
   key-related thing ever written to disk is an occasional debug line containing a **numeric keycode**
   for a key that isn't in the layout map — never characters, never typed text. Window titles are never

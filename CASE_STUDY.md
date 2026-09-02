@@ -136,11 +136,27 @@ layout is the character. That wording is gone from the documentation, and the ho
 off switch: turn it off and nothing in the process sees a key press, at the cost of reactive typing
 effects and hotkeys.
 
+**Third round: the same bug, one level deeper.** Reviewing the project again in the critic's voice —
+assuming the reply would be picked apart in public — turned up that the privilege-escalation fix above
+was incomplete. Moving the elevated task's payload into an administrator-only folder stopped anyone from
+swapping *the file*. It did nothing about what the file calls. That payload asks Windows PowerShell to
+find the keyboard's USB device, and PowerShell looks up a command like that by searching a list of
+folders — the first of which is inside the user's own Documents, writable by any program running as that
+user. So instead of replacing the protected file, ordinary software could leave a fake version of that
+one command where PowerShell looks first, trigger the recovery task (which by design needs no prompt),
+and run its own code as administrator. Demonstrated with a harmless stand-in, which won the lookup on
+the first try. The fix pins the search to Windows' own folder, so only the real command can answer;
+verified by re-running both versions with the stand-in in place — the old one returned the fake, the new
+one returned the actual keyboard. The same review found that the install could stop running package
+install scripts entirely, which had been assumed impossible because two packages declare them: they
+turn out to ship their compiled binary in the package and locate it themselves, so the install now
+skips all package scripts at no cost.
+
 The interesting part is not that a hobby project had security bugs. It is where the real ones came
 from. The original accusation was wrong on its specifics and right that the project deserved a look;
-the audits found three serious problems it had not mentioned; and the sharpest single finding came
-from the accuser, in public, after the project had already declared itself clean. Being audited is
-not a thing you finish.
+the audits found three serious problems it had not mentioned; the sharpest single finding came
+from the accuser, in public, after the project had already declared itself clean; and the round after
+that found the first big fix had only moved the problem. Being audited is not a thing you finish.
 
 ---
 
