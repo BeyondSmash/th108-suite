@@ -158,6 +158,17 @@ the audits found three serious problems it had not mentioned; the sharpest singl
 from the accuser, in public, after the project had already declared itself clean; and the round after
 that found the first big fix had only moved the problem. Being audited is not a thing you finish.
 
+**What changed in the process, not just the code.** Three rounds of "does it work" testing over a month
+never asked the question that found all three holes: *what can somebody else's program on this machine make
+this do?* That is a different question from testing, and nobody had been assigned to ask it. So it is now a
+standing rule for this and every future project: the moment a project gains anything that runs as
+administrator, anything machine-wide or persistent, an open port, code that runs during install, or input
+capture, that fact is stated out loud and an attack-style review runs before the work is called done. The
+elevated batch file also now ships with its own check, a script that mirrors its device lookup line and
+prints what it resolves to, because that one line had silently found nothing twice. It is one check, not a
+test suite for the install glue, which remains untested; the case study says so because the critic was
+right to point it out.
+
 ---
 
 ## What this demonstrates
@@ -165,10 +176,10 @@ that found the first big fix had only moved the problem. Being audited is not a 
 - **Reverse engineering** — recovered an undocumented USB HID protocol from raw traffic, with no SDK or reference.
 - **Low-level debugging** — traced faults across the hardware, USB, OS and browser boundaries to real root causes.
 - **Concurrency** — a single-writer hardware resource shared safely between a web page and a background service.
-- **Test discipline** — 249 unit tests on the standard Node runner, no framework required.
+- **Test discipline** — 252 unit tests on the standard Node runner, no framework required.
 - **Privacy-first design** — local-only; the keyboard hook can be switched off entirely, nothing typed is stored or transmitted, and the daemon makes no outbound requests at all. The page loads no third-party resources. The localhost server is hardened against DNS-rebinding and cross-origin requests on every method. See [Privacy & the keyboard hook](README.md#privacy--the-keyboard-hook).
 - **Taking criticism seriously** — commissioned adversarial security audits after a public accusation, fixed what they found (including a privilege-escalation hole nobody had spotted), then kept fixing when the critic landed a further hit the audits had missed (section 8).
-- **Sustained solo delivery** — 927 commits over three months, in public, including a month of pure polish and hardware testing.
+- **Sustained solo delivery** — 938 commits over three months, in public, including a month of pure polish and hardware testing.
 
 ## Stack
 
