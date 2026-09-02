@@ -34,7 +34,25 @@ window.TH108DaemonClient = (function () {
     // daemon's "a song is waiting for the LCD" flag, answered by the page granting an upload
     // window (pause stream → /npgo → resume) without any device handoff. clientId rides along so
     // the daemon can tie this heartbeat to a lease (the heartbeat IS the lease liveness signal).
+    // LEASE-LIVENESS GUARD (2026-09-01): a heartbeat proves the tab is ALIVE, not that it can DRIVE. A tab that lost
+    // its WebHID handle (BT↔wired toggle, replug, device error) but stayed open kept beating, the daemon read that as
+    // "the page is driving" and stayed paused forever → board dark except the firmware-painted NumLock, and only
+    // closing the tab cleared it. So the beat itself is the choke point: opts.holdsDevice() → true while the page
+    // holds a handle OR a bind is in flight (Connect picker open / rebind attempt). Three straight beats (~9s) with
+    // neither → stop beating and hand the lease back. 9s is deliberately longer than the rebind poll's own 6s
+    // give-up, so a sleep/wake rebind that succeeds never trips this; if the grant comes back later the poll or the
+    // 'connect' event re-claims exactly as after a wake.
+    const holdsDevice = typeof opts.holdsDevice === 'function' ? opts.holdsDevice : null;
+    let deadBeats = 0;
     const beat = () => {
+      if (holdsDevice && !holdsDevice()) {
+        if (++deadBeats >= 3) {
+          deadBeats = 0; heartbeatStop(); release();
+          log('this tab lost the keyboard but still held the lease — handed lighting back to the daemon (Connect Keyboard takes it back)', 'dim');
+          if (opts.onLeaseHandedBack) { try { opts.onLeaseHandedBack(); } catch (_) {} }
+          return;
+        }
+      } else deadBeats = 0;
       fetch('/heartbeat', { method: 'POST', keepalive: true, headers: { 'content-type': 'application/json' }, body: JSON.stringify({ clientId }) })
         .then(r => r.json())
         .then(j => { if (j && j.npWants && opts.onNpWants) opts.onNpWants(); })
@@ -91,7 +109,8 @@ window.TH108DaemonClient = (function () {
     }
     function heartbeatStart() {
       if (!D.present || D.hb) return;
-      beat();                                                       // first beat NOW — the yield→bind gap (device picker open) must be covered too
+      deadBeats = 0;
+      beat();                                                     // first beat NOW — the yield→bind gap (device picker open) must be covered too
       if (hbW) { D.hb = true; hbW.postMessage({ ms: 3000 }); } else D.hb = setInterval(beat, 3000);
     }
     function heartbeatStop() { if (hbW) hbW.postMessage({}); if (D.hb && D.hb !== true) clearInterval(D.hb); D.hb = null; }

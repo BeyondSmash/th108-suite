@@ -339,6 +339,7 @@
       connect, disconnect, autoReconnect, bindDevice, sendFrame, buildPkt, findWritable, findScreen, rebind,
       resetStalls() { _sendStalls = 0; },
       get device() { return device; },
+      get binding() { return _binding; },   // a bind is in flight (Connect picker open / rebind attempt) — the lease-liveness guard must not hand back mid-bind
       get reportId() { return reportId; },
       get packLen() { return packLen; }
     };

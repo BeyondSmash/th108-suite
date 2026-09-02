@@ -1659,6 +1659,8 @@ let _resumeTimes=[];   // auto-resume timestamps for the wedge circuit breaker
 // Before opening WebHID we must ask it to release; while we hold the device we heartbeat + push config; on close we resume.
 // If no daemon is present (/status fails) every DC call is a no-op and the page behaves exactly as before (direct WebHID).
 const DC = TH108DaemonClient.create({ log, getConfig: ()=>localStorage.getItem('th108_layers')||'[]',
+  holdsDevice: ()=>!!(HID.device||HID.binding),   // lease-liveness guard: a tab with no handle and no bind in flight must not keep the lease (see th108-daemon-client.js beat())
+  onLeaseHandedBack: ()=>refreshDriverUI(),        // pill flips to Daemon at once, not on the next presence poll
   // the daemon has a song waiting for the LCD while WE hold the keyboard: freeze our stream
   // (LEDs hold their last frame — no blackout), let it flash the screen, resume. ~2s freeze.
   onNpWants: async ()=>{
