@@ -65,14 +65,14 @@ Wondering about the system-wide keyboard hook? → **[Privacy & the keyboard hoo
 1. **Download the suite** — grab the latest **Source code (zip)** from the [Releases page](https://github.com/BeyondSmash/th108-suite/releases), and unzip it anywhere.
 2. **Run `setup.cmd`** (double-click it). It is the one-time installer and does everything:
    1. installs the daemon's dependencies (`npm ci --ignore-scripts` — exact locked versions, reproducible, and no package gets to run code during the install),
-   2. enables **auto-start at login** (per-user, no admin),
+   2. enables **auto-start at login** (a per-user logon task plus a Run key, no admin — the task because Windows can hold Run-key apps back for minutes after the desktop appears),
    3. adds a **Start-menu shortcut** ("TH108 Lighting"),
-   4. installs two **optional admin helpers** behind a *single* UAC prompt — click **Yes** to get them, **No** to skip (the suite works either way):
-      - **Auto-Fix Lighting Wedge** — a hidden recovery task that software-replugs the keyboard if its lighting ever stalls,
-      - **WebHID pre-grant** — skips the browser's keyboard picker permanently,
+   4. installs one **optional admin helper** behind a *single* UAC prompt — click **Yes** to get it, **No** to skip (the suite works either way):
+      - **Auto-Fix Lighting Wedge** — a hidden recovery task that software-replugs the keyboard if its lighting ever stalls.
+      - (The same prompt also *removes* the WebHID pre-grant that installs before 2026-09-01 left behind. It is no longer offered: it granted the keyboard to the address `localhost:8123`, which any program grabbing that port first could inherit.)
    5. starts the **tray app** (which starts and supervises the daemon),
    6. opens the controller at `http://localhost:8123/`.
-3. In the page, click **Connect Keyboard** once and pick your keyboard — the browser requires this click to grant WebHID (unless you accepted the pre-grant helper above and restarted the browser).
+3. In the page, click **Connect Keyboard** once and pick your keyboard — the browser requires this click to grant WebHID, once per browser.
 
 That's it. Lighting now runs in the background in every app, survives closing the tab, and starts at login.
 

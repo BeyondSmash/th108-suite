@@ -866,20 +866,20 @@ async function runTick() {
 }
 timer = setInterval(() => { tick().catch(() => {}); }, Math.round(1000 / FPS));
 
-// ----- autostart = per-user HKCU Run key (NO admin needed, so the daemon can toggle it itself) -----
+// ----- autostart = per-user logon task + HKCU Run key (NO admin needed, so the daemon can toggle it itself).
+// ONE implementation for every caller (setup.cmd, uninstall.cmd, the page checkbox, the scripts by hand):
+// install-autostart.ps1 writes both entries and explains why two; uninstall-autostart.ps1 removes both. -----
 const RUN_KEY = 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run', RUN_NAME = 'TH108LightingDaemon';
-const RUN_CMD = `wscript.exe "${path.join(__dirname, 'start-tray.vbs')}"`;   // login starts the TRAY, which starts (and supervises via menu) the daemon
 function getAutostart() {
   if (process.platform !== 'win32') return Promise.resolve(false);
   return new Promise((resolve) => execFile('reg', ['query', RUN_KEY, '/v', RUN_NAME], (err) => resolve(!err)));
 }
 function setAutostart(on) {
   if (process.platform !== 'win32') return Promise.reject(new Error('autostart is Windows-only'));
-  const args = on ? ['add', RUN_KEY, '/v', RUN_NAME, '/t', 'REG_SZ', '/d', RUN_CMD, '/f']
-                  : ['delete', RUN_KEY, '/v', RUN_NAME, '/f'];
+  const script = path.join(__dirname, on ? 'install-autostart.ps1' : 'uninstall-autostart.ps1');
   return new Promise((resolve, reject) =>
-    execFile('reg', args, (err) => (err && on) ? reject(new Error('registry write failed')) : resolve()));
-    // deleting an absent value errors — that's "already off", treat as success
+    execFile('powershell', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', script], { windowsHide: true },
+      (err) => err ? reject(new Error('autostart ' + (on ? 'install' : 'removal') + ' failed')) : resolve()));
 }
 
 // ----- th108:// URL protocol (HKCU, no admin) — lets the controller page start/restart us via a link.
