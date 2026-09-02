@@ -93,6 +93,15 @@ test('security guards: foreign Host, cross-Origin POST, and non-JSON /config are
     assert.equal((await raw(server, 'POST', '/yield', { origin: 'http://evil.example' })).code, 403);
     // /config without application/json is refused (forces a CORS preflight cross-origin)
     assert.equal((await raw(server, 'POST', '/config', { 'content-type': 'text/plain' })).code, 415);
+    // a cross-site no-cors load (an <img src> on some web page) is refused for every path, incl. the page
+    assert.equal((await raw(server, 'GET', '/pick-file', { 'sec-fetch-site': 'cross-site', 'sec-fetch-mode': 'no-cors', 'sec-fetch-dest': 'image' })).code, 403);
+    assert.equal((await raw(server, 'GET', '/', { 'sec-fetch-site': 'cross-site', 'sec-fetch-mode': 'no-cors', 'sec-fetch-dest': 'image' })).code, 403);
+    // a cross-site top-level navigation (a link to the page from another site) opens the PAGE only —
+    // the same navigation aimed at an API path is still refused
+    assert.equal((await raw(server, 'GET', '/pick-file', { 'sec-fetch-site': 'cross-site', 'sec-fetch-mode': 'navigate', 'sec-fetch-dest': 'document' })).code, 403);
+    const nav = await raw(server, 'GET', '/', { 'sec-fetch-site': 'cross-site', 'sec-fetch-mode': 'navigate', 'sec-fetch-dest': 'document' });
+    assert.equal(nav.code, 200);
+    assert.ok(nav.body.includes('<'), 'serves the page');
     // none of the above reached the control object
     assert.deepEqual(ctl.calls, []);
     // sanity: a same-origin POST (loopback Host, matching Origin) still works

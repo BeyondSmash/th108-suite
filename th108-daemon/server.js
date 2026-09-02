@@ -86,7 +86,14 @@ function createServer({ control, root, port = 8123, watchdogMs = 12000 }) {
     const origin = req.headers.origin;
     if (origin && origin !== `http://${host}` && origin !== `http://127.0.0.1:${boundPort}` && origin !== `http://localhost:${boundPort}`) return sendJson(res, 403, { error: 'cross-origin denied' });
     const site = req.headers['sec-fetch-site'];
-    if (site && site !== 'same-origin' && site !== 'none') return sendJson(res, 403, { error: 'cross-origin denied' });
+    // One exception: a LINK to the page from another site (the demo site's "open the full controller", a
+    // README link, a chat message) is a cross-site top-level navigation, and it must open. Browsers mark
+    // that exact case (mode=navigate, dest=document) and it can only ever target the page itself here:
+    // / or an .html file. API paths (/pick-file etc.) have no extension, so a hostile page redirecting the
+    // whole tab to one of them is still refused — the 2026-08-31 hole stays closed.
+    const pageNav = req.method === 'GET' && req.headers['sec-fetch-mode'] === 'navigate' && req.headers['sec-fetch-dest'] === 'document'
+                 && (u === '/' || /\.html?$/.test(u));
+    if (site && site !== 'same-origin' && site !== 'none' && !pageNav) return sendJson(res, 403, { error: 'cross-origin denied' });
     if (req.method === 'POST' && u === '/config' && !String(req.headers['content-type'] || '').includes('application/json')) return sendJson(res, 415, { error: 'content-type must be application/json' });
     try {
       if (req.method === 'GET' && u === '/status') return sendJson(res, 200, control.status());
