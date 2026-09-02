@@ -24,12 +24,19 @@ rem folder removes the user-writable folder from the search, so only Windows' ow
 setlocal enabledelayedexpansion
 set "LOG=%~dp0restart-usb.log"
 echo ==== %DATE% %TIME% ==== >> "%LOG%"
-whoami /groups | findstr /C:"S-1-16-12288" >nul && (echo integrity: HIGH ^(elevated^)>> "%LOG%") || (echo integrity: NOT elevated -- restart will fail>> "%LOG%")
+rem Every program below is called by its FULL path for the same reason: this batch runs elevated, and a bare
+rem name is looked up through PATH, part of which the user controls. System32 sits ahead of the user part
+rem today, so bare names would resolve correctly - but "correct because of the current ordering" is not a
+rem property an elevated script should lean on. Full paths make it not matter.
+set "SYS32=%SystemRoot%\System32"
+"%SYS32%\whoami.exe" /groups | "%SYS32%\findstr.exe" /C:"S-1-16-12288" >nul && (echo integrity: HIGH ^(elevated^)>> "%LOG%") || (echo integrity: NOT elevated -- restart will fail>> "%LOG%")
 set "FOUND="
-for /f "usebackq delims=" %%i in (`powershell -NoProfile -Command "$env:PSModulePath='%SystemRoot%\System32\WindowsPowerShell\v1.0\Modules'; (Get-PnpDevice -PresentOnly -InstanceId 'USB\VID_0C45&PID_8006\*').InstanceId"`) do (
+rem (powershell.exe path deliberately UNquoted: a for /f command that starts with a quote gets its outer quotes
+rem stripped by cmd, which mangles the inner ones - caught by the parse check. %SystemRoot% has no spaces.)
+for /f "usebackq delims=" %%i in (`%SYS32%\WindowsPowerShell\v1.0\powershell.exe -NoProfile -Command "$env:PSModulePath='%SYS32%\WindowsPowerShell\v1.0\Modules'; (Get-PnpDevice -PresentOnly -InstanceId 'USB\VID_0C45&PID_8006\*').InstanceId"`) do (
   set "FOUND=%%i"
   echo target: %%i>> "%LOG%"
-  pnputil /restart-device "%%i" >> "%LOG%" 2>&1
+  "%SYS32%\pnputil.exe" /restart-device "%%i" >> "%LOG%" 2>&1
   echo restart exit=!ERRORLEVEL!>> "%LOG%"
 )
 if not defined FOUND echo no USB composite root present ^(Bluetooth mode, or device absent^)>> "%LOG%"

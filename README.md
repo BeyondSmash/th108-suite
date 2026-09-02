@@ -81,6 +81,7 @@ That's it. Lighting now runs in the background in every app, survives closing th
 **Starting it from the page:** the daemon registers a `th108://` protocol on first run, so the page's **Start Daemon** button (shown only when the daemon is down) can relaunch it via a browser prompt — no command line needed.
 
 **Updating:** after pulling new code, restart the daemon to load it — **tray → Restart Daemon**, or the **↻ Restart Daemon** button on the page. (Skipped the admin helpers and want them later? Run, as admin: `powershell -ExecutionPolicy Bypass -File th108-daemon\install-admin-extras.ps1`.)
+**If you installed the admin helpers before 2026-09-02, run that same command once more.** The recovery task runs a *copy* of its script from Program Files, and a security fix to that script (see the privacy section) only reaches your machine when the installer re-copies it.
 
 **Uninstall:** run `uninstall.cmd`. It fully reverses setup in one go — stops the daemon, removes auto-start, the Start-menu shortcut, and the built helper, then (behind a *single* admin prompt) removes the recovery task and the WebHID grant. Your saved layers and media library are left untouched; delete the folder to finish.
 
