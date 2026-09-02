@@ -155,6 +155,7 @@
         const off = c * room, chunk = flat.slice(off, off + room);
         const since = (typeof performance !== 'undefined' ? performance.now() : Date.now()) - _lastWriteAt;
         if (since < MIN_WRITE_GAP_MS) await _sleep(MIN_WRITE_GAP_MS - since);   // pacing floor: never burst faster than the board can drain (false-ACK guard)
+        if (!device) return false;   // handle closed mid-frame (lease lost / disconnect while a frame was in flight) — not an error; the owner change already stopped the host
         const ack = waitAck(800, off);                    // arm the ACK waiter BEFORE the write so we can't miss it (matched to THIS chunk's offset)
         let timer; const wto = new Promise((_, rej) => { timer = setTimeout(() => rej(new Error('__wstall__')), 800); });
         try {
