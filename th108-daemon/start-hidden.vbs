@@ -17,7 +17,11 @@ Do
   ' marks where each run's stderr begins. Run hidden (0) so no console flashes. Close the header handle before
   ' the run so it can't collide with the 2>> redirect opening the same file.
   ts = Year(Now) & "-" & Right("0" & Month(Now),2) & "-" & Right("0" & Day(Now),2) & " " & Right("0" & Hour(Now),2) & ":" & Right("0" & Minute(Now),2) & ":" & Right("0" & Second(Now),2)
+  ' The header is best-effort: if the log is locked (another supervisor's cmd holds it, OneDrive is syncing it)
+  ' skip it rather than die with a "Permission denied" dialog and take the lighting down with it.
+  On Error Resume Next
   Set f = fso.OpenTextFile(log, 8, True) : f.WriteLine "===== launch " & ts & " =====" : f.Close
+  On Error GoTo 0
   code = sh.Run("cmd /c node daemon.js 2>> " & log, 0, True)   ' True = wait for exit
   If code = 0 Then Exit Do                   ' clean quit - stop supervising
   If code = 42 Then                          ' intentional /restart - revive fast, don't count as a crash

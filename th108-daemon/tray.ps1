@@ -73,9 +73,18 @@ function Get-PortSquatter {
   if ($p.Name -eq 'node.exe' -and $p.CommandLine -match 'daemon\.js') { return $null }   # that's our daemon, not a squatter
   return $p
 }
+# A supervisor (start-hidden.vbs) that is already running means the daemon is booting (node needs
+# several seconds before it binds 8123 - the logon task launches it in the same second as the tray)
+# or is about to be revived after a crash. Spawning a second supervisor then gives a "Permission
+# denied" dialog: the first one's cmd holds daemon-crash.log open, and the second dies on line 20
+# trying to append to it (2026-09-10, first logon after an overnight restart).
+function Test-SupervisorRunning {
+  [bool](Get-CimInstance Win32_Process -Filter "Name='wscript.exe'" -ErrorAction SilentlyContinue | Where-Object { $_.CommandLine -match 'start-hidden\.vbs' })
+}
 function Start-Daemon {
   if (Get-DaemonStatus) { return }   # already healthy - leave it alone
   Clear-HungDaemon                    # status silent: kill a hung daemon that is squatting the port
+  if (Test-SupervisorRunning) { return }   # its supervisor brings it back (3s after a crash / kill) - don't double up
   $sq = Get-PortSquatter              # foreign holder left? Start would EADDRINUSE-die silently - tell the user instead
   if ($sq) {
     $icon.Icon = $iconDown
