@@ -24,6 +24,11 @@ test('shouldFire: cooldown blocks a second shot, then re-arms', () => {
   assert.equal(U.shouldFire({ muteAt, now: fired + C, lastFireAt: fired }), true);
 });
 
+test('cooldown is a loop brake, not a rate limit: a second honest wedge is dark for at most ~2 min', () => {
+  assert.ok(U.COOLDOWN_MS <= 2 * 60_000, 'a 10-min cooldown left the board dark 5-8 min on back-to-back wedges (2026-09-17/18)');
+  assert.ok(U.COOLDOWN_MS > 10_000, 'still long enough to stop a re-wedges-in-seconds loop');
+});
+
 test('idle threshold: AFK recovers strictly sooner than the typing threshold', () => {
   assert.ok(U.IDLE_THRESHOLD_MS < U.THRESHOLD_MS, 'AFK threshold must be shorter than the typing one');
   const muteAt = 1_000_000, mid = muteAt + U.IDLE_THRESHOLD_MS;   // a moment that's past the AFK bar but not the typing bar

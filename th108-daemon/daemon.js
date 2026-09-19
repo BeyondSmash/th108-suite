@@ -660,10 +660,15 @@ function escalateUsbIfDue(context) {
   // Key-hold-off: don't re-enumerate mid-keystroke (drops the held key's keyup → stuck key + input freeze).
   const sinceKeydownMs = lastKeydownAt ? Date.now() - lastKeydownAt : Infinity;
   if (!U.shouldFire({ muteAt, now: Date.now(), lastFireAt: usbFiredAt, thresholdMs, keysHeld: heldKeys.size, sinceKeydownMs })) return false;
+  const usbPrevFiredAt = usbFiredAt;
   usbFiredAt = Date.now();
-  const forced = usbFiredAt - muteAt >= U.HARD_CEILING_MS;
+  // Order matters: the mute may have aged past the ceiling only because the cooldown held the shot back - name
+  // that, not the ceiling (the 5-min dark spells of 2026-09-17/18 were the 10-min cooldown, logged as 'hard ceiling').
+  const cooled  = muteAt < usbPrevFiredAt + U.COOLDOWN_MS;   // this mute started inside the previous shot's cooldown
+  const forced  = !cooled && usbFiredAt - muteAt >= U.HARD_CEILING_MS;
   const staleHeld = heldKeys.size > 0 && sinceKeydownMs >= U.STALE_HELD_MS;   // a key in `held` but no keydown for staleHeldMs = a missed keyup, not a real hold
-  const why = afk ? 'AFK — recovering early'
+  const why = cooled ? 'held back by the ' + (U.COOLDOWN_MS / 60000) + '-min brake between USB restarts (second wedge in quick succession)'
+            : afk ? 'AFK — recovering early'
             : forced ? 'hard ceiling — no lull found, recovering anyway'
             : staleHeld ? heldKeys.size + ' stale held key(s) (missed keyup — physically up) — recovering now'
             : grabberActive ? 'known board-grabber was foreground — recovering fast (you flagged this app)'

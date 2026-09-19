@@ -23,7 +23,11 @@ const LOG_PATH = fs.existsSync(path.join(DEPLOY_DIR, 'restart-usb.bat'))
 const THRESHOLD_MS = 30_000;        // mute must persist this long before we touch USB *while you're typing* — a 1-2s dropout mid-sentence is worse than a few more dark seconds
 const IDLE_THRESHOLD_MS = 12_000;   // …but if you've been AFK (see IDLE_AFTER_MS), a dropout costs nothing, so recover the lighting ~18s sooner
 const IDLE_AFTER_MS = 20_000;       // "AFK" = no keypress for this long; under it we assume you're mid-task and hold the conservative threshold
-const COOLDOWN_MS = 10 * 60_000;
+// Brake against a restart LOOP (a board that re-wedges within seconds of every re-enumeration) - not a rate
+// limit on honest recoveries. Was 10 min: a second wedge inside that window sat DARK until the brake expired
+// (2026-09-18 01:15 -> 5 min dark, 09-17 04:31 -> 8 min, both mislabelled 'hard ceiling' in the log). 2 min
+// still stops a loop (that re-wedges in seconds) and caps the worst honest case at ~2 min instead of ~10.
+const COOLDOWN_MS = 2 * 60_000;
 // Key-hold-off: a USB re-enumeration mid-keystroke drops the held key's key-UP event, so Windows sees the
 // key as still down (stuck Shift → '/' types '?', WASD stuck in-game) plus a ~1-2s input freeze. Confirmed
 // 2026-07-25 in a live Palworld session (daemon.log: 20:04:12 fired "actively typing"). So once past the
