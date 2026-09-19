@@ -4,7 +4,7 @@ const test = require('node:test');
 const assert = require('node:assert');
 const U = require('./usb-reset.js');
 
-const T = 30_000, C = 600_000;
+const T = U.THRESHOLD_MS, C = U.COOLDOWN_MS;
 
 test('shouldFire: no mute → never', () => {
   assert.equal(U.shouldFire({ muteAt: 0, now: 1_000_000, lastFireAt: 0 }), false);
